@@ -1,8 +1,19 @@
 # mecon-firmware documentation
 
-These documents describe the **MECON 1.0 public release target**. MECON 1.0 has an explicit upstream dependency on **MeshCore 1.18 after 1.18 is merged/released on upstream `main`**. The moving MeshCore `dev` branch may be used for investigation and early validation, but is not the production source baseline.
+These documents describe the **complete MECON 1.0 public target**, not merely differences from stock MeshCore and not the temporary state of the private development repositories. MECON 1.0 depends on **MeshCore 1.18 after it is merged/released on upstream `main`**; `dev` is investigation/validation only.
 
-The private MVP is a behavioural/test reference. Public implementation and contracts are rebuilt from the released MeshCore 1.18 baseline rather than copied from the private firmware.
+The documentation has two jobs:
+
+1. A developer must be able to implement the firmware anew from released MeshCore 1.18 without reading the private MVP source.
+2. A backend developer must be able to identify every change required to move the current MeshContinuum backend/Reader from the private MVP to MECON 1.0.
+
+Firmware requirements belong here and in `contract/`. **Backend migration work caused by differences from the private firmware belongs in `BACKEND_MIGRATION.md`.** Do not preserve legacy firmware architecture in the normative contract merely to avoid backend changes.
+
+## Start here
+
+- [Complete MECON 1.0 firmware implementation specification](FIRMWARE_IMPLEMENTATION_SPEC.md) — functional checklist for rebuilding the firmware.
+- [Backend migration from the private MVP](BACKEND_MIGRATION.md) — MeshContinuum backend/Reader changes required by the clean public firmware.
+- [Public device contract](contract/README.md) — normative device-facing protocol and behaviour.
 
 ## Product and architecture
 
@@ -24,8 +35,11 @@ The private MVP is a behavioural/test reference. Public implementation and contr
 - [Settings contract](contract/DEVICE_SETTINGS.md)
 - [Security and authority contract](contract/SECURITY_AND_AUTHORITY.md)
 
-The contract documents are normative for MECON-specific behaviour. Where MeshCore 1.18 already supplies a suitable native operation, MECON reuses it rather than defining a duplicate operation.
+The contract documents are normative for MECON 1.0. They must describe **all device-visible functionality required by the implementation specification**, including inherited/reused MeshCore functionality where a MECON backend must know how to invoke or interpret it. Where MeshCore 1.18 already supplies a suitable native operation, MECON reuses it rather than defining a duplicate operation.
 
-## Migration
+## Migration/reference material
 
-[Current-to-target contract adjustments](CONTRACT_MIGRATION_NOTES.md) records lessons and differences from the private MVP. It is deliberately non-normative.
+- [Backend migration](BACKEND_MIGRATION.md) is the actionable backend-side delta from deployed private firmware to MECON 1.0.
+- [Current-to-target contract adjustments](CONTRACT_MIGRATION_NOTES.md) is non-normative engineering/reference material explaining legacy inconsistencies and why the public target differs.
+
+The private `deimos-mesh-firmware` implementation and historical contracts may be consulted as evidence when filling a missing detail, but every required behaviour must ultimately be captured here. **A requirement that exists only in private source or private documentation is considered undocumented for MECON 1.0.**
