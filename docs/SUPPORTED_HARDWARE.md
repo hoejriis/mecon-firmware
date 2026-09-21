@@ -1,60 +1,28 @@
 # Supported hardware and roles
 
-This is the **release-target matrix**. A target is called supported only after its real-hardware release gate passes.
+MECON 1.0 depends on released **MeshCore 1.18 from upstream `main`**. A target is called supported only after the 1.18-derived, IDF5/NimBLE-based build passes its real-hardware gate.
 
 | Hardware | Companion | Repeater | Wi-Fi | USB | BLE | MQTT |
 |---|---:|---:|---:|---:|---:|---:|
-| Heltec V3 | Yes | Yes | Yes | Yes | Companion | Up to 2 |
-| Heltec V4 | Yes | Yes | Yes | Yes | Companion | Up to 2 |
+| Heltec V3 | Yes | Yes | Yes | Yes | capability-dependent | one active session |
+| Heltec V4 | Yes | Yes | Yes | Yes | capability-dependent | one active session |
 
-## Companion profile
+V3 and V4 are first-class targets from initial bring-up.
 
-The normal Companion image:
+## Companion
 
-- preserves standard MeshCore Companion behavior;
-- uses **64 contact slots**;
-- enables Wi-Fi, USB and BLE by default;
-- stores up to three Wi-Fi profiles;
-- supports up to two MQTT brokers;
-- supports normal MeshCore messaging locally;
-- supports MECON observations, remote management and messaging according to granted capabilities;
-- supports direct browser operation over USB or BLE.
+The Companion image preserves MeshCore 1.18 behaviour, adds three ordered Wi-Fi profiles, local-first/cloud-fallback MQTT, MECON management/observations, and direct USB/BLE where advertised. BLE uses NimBLE.
 
-The 64-contact limit is a deliberate resource trade-off to provide memory headroom for simultaneous Wi-Fi, MQTT/TLS and BLE operation. It must be visible in release manifests and status.
+Companion contact capacity is **not fixed in advance at the private MVP's historical 32/64 values**. It is set from the measured memory budget after pioarduino/Arduino-ESP32 3.x/IDF5 and NimBLE migration and published in status/manifests.
 
-## Repeater profile
+## Repeater
 
-The normal Repeater image:
+The Repeater image preserves MeshCore 1.18 repeating behaviour and adds the same shared MECON runtime where hardware/role capabilities permit. USB remains the recovery/configuration path. BLE support is explicitly advertised rather than assumed.
 
-- preserves upstream MeshCore repeating behavior;
-- enables Wi-Fi and USB by default;
-- stores up to three Wi-Fi profiles;
-- supports up to two MQTT brokers;
-- publishes observations and health where authorized;
-- supports remote configuration where authorized;
-- supports direct USB configuration and observation streaming.
+## Device UI
 
-Repeater BLE is not required for the initial public release.
-
-## Experimental variants
-
-Board revisions or memory/radio variants may be published as experimental artifacts. They must use distinct hardware/variant identifiers and cannot silently share a manifest with a hardware target whose radio or flash layout differs.
+Supported display targets retain the stock 1.18 front screen/button model with only the documented MECON 1.0 additions: MECON version at boot, Wi-Fi/MQTT/BLE status, BLE PIN while unconnected, and DM/favourite wake filtering.
 
 ## Hardware gate
 
-A supported release target must be verified on real hardware for at least:
-
-- clean boot and upgrade boot;
-- native MeshCore role behavior;
-- USB operation;
-- BLE Companion operation where applicable;
-- all three Wi-Fi profile slots;
-- both MQTT broker slots;
-- packet observations;
-- configuration read/write and recovery;
-- messaging for Companion;
-- reconnect after Wi-Fi/broker loss;
-- memory headroom under realistic persisted state;
-- signed OTA update and rollback/recovery where OTA is advertised.
-
-Compilation alone is not a hardware gate.
+Each supported V3/V4 Companion/Repeater target must verify stock-derived role behaviour, USB, advertised BLE/NimBLE, all three Wi-Fi slots, local broker discovery and cloud fallback, packet observations, configuration/recovery, reconnect behaviour, memory headroom, UI additions and managed OTA. Compilation alone is not a hardware gate.

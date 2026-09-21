@@ -1,39 +1,32 @@
 # Upstream and porting
 
-## Canonical upstream
+## MECON 1.0 dependency
 
-The canonical firmware upstream is [`meshcore-dev/MeshCore`](https://github.com/meshcore-dev/MeshCore).
+The canonical upstream is `meshcore-dev/MeshCore`. **MECON 1.0 depends on MeshCore 1.18 being merged/released on upstream `main`.** The current `dev` branch is suitable for analysis and early validation only. The production refactor begins from a pinned 1.18 revision after it reaches `main`.
 
-mecon-firmware should retain upstream Git ancestry and merge upstream releases rather than periodically copying source snapshots. Other MeshCore forks may be consulted as references, but are not part of the dependency or update chain unless explicitly documented.
+The private MVP is a requirements/test oracle, not the source baseline.
+
+## Initial fork sequence
+
+1. wait for MeshCore 1.18 on upstream `main`;
+2. pin a specific 1.18 revision;
+3. prove stock V3/V4 Companion and Repeater behaviour;
+4. migrate V3/V4 to pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x;
+5. replace legacy ESP32 BLE assumptions with NimBLE;
+6. prove stock-derived behaviour again;
+7. measure memory/runtime headroom and set resource limits;
+8. add the shared MECON runtime and transport adapters;
+9. extend 1.18 Wi-Fi support to three ordered profiles and add one-session local-first MQTT;
+10. add resilience and managed OTA features.
 
 ## Patch-surface rule
 
-MECON additions should live in:
-
-- a shared MECON runtime;
-- thin Companion and Repeater adapters;
-- thin hardware adapters;
-- explicit, documented upstream hooks where unavoidable.
-
-Avoid duplicating upstream configuration, radio, identity or role logic. Translate MECON operations into native MeshCore APIs/storage where practical.
+Reuse 1.18 configuration, command/CLI, board preference, UI, radio, identity and role logic. MECON additions belong in a shared runtime plus thin role/hardware/transport adapters. Do not port private-MVP parallel implementations where upstream 1.18 now provides the primitive.
 
 ## Upgrade procedure
 
-For each supported upstream MeshCore release:
+For later MeshCore releases: merge upstream, review integration hooks, build all V3/V4 role targets, run contract tests and real-hardware gates, record the exact base, then publish.
 
-1. fetch and merge the new upstream release;
-2. review the documented integration-hook inventory;
-3. resolve only necessary upstream conflicts;
-4. build all supported V3/V4 Companion/Repeater targets;
-5. run contract and compatibility tests;
-6. run real-hardware release gates;
-7. record the exact MeshCore base version in manifests/status;
-8. publish a signed mecon-firmware release.
+## Compatibility
 
-## Compatibility rule
-
-A new MeshCore base must not silently change the public MECON contract. If an upstream change requires a contract change, version the affected MECON profile/contract independently from the firmware release.
-
-## Porting to new hardware
-
-New hardware support should primarily supply board/radio/display/power configuration. It should not fork the MECON runtime. A new target is promoted only after the same contract and hardware gates used by existing supported targets pass.
+An upstream change must not silently change the public MECON contract. Contract/profile versions are independent from firmware and MeshCore release numbers.

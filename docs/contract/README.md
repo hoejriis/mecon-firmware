@@ -1,6 +1,6 @@
 # Public device contract
 
-These documents are the canonical target contract between mecon-firmware and compatible backends/Readers.
+These documents define the canonical **MECON-specific** contract for MECON 1.0. The firmware itself is based on released MeshCore 1.18 from upstream `main`; native 1.18 operations remain native and are not duplicated here merely to create a MECON equivalent.
 
 - [Core device contract](CORE_DEVICE_CONTRACT.md)
 - [MQTT protocol](MQTT_PROTOCOL.md)
@@ -8,14 +8,15 @@ These documents are the canonical target contract between mecon-firmware and com
 - [Device settings](DEVICE_SETTINGS.md)
 - [Security and authority](SECURITY_AND_AUTHORITY.md)
 
-## Contract principles
+## Principles
 
-1. Contracts are backend-neutral.
-2. Capabilities and independently versioned profiles describe behavior.
-3. Transport does not redefine the logical operation.
-4. Authority is explicit and least-privilege.
-5. Unknown fields are forward-compatible; unknown authority is never granted.
-6. MeshCore-native operation remains available without this contract.
-7. Public target names use `mecon`, never a private deployment name.
+1. MeshCore 1.18 native behaviour is reused where suitable.
+2. MECON contracts are backend-neutral.
+3. Capabilities and independently versioned profiles describe MECON behaviour.
+4. MQTT, USB and BLE do not redefine logical MECON operations.
+5. Authority is explicit and least-privilege.
+6. Unknown fields are forward-compatible; unknown authority is never granted.
+7. Public names use `mecon`, never private deployment vocabulary.
+8. Resource limits such as contact capacity are reported from the measured supported build, not hard-coded from the private MVP.
 
-The current private implementation contains legacy spellings and transport-specific mechanisms. Those are migration concerns recorded in `../CONTRACT_MIGRATION_NOTES.md`, not normative behavior here.
+Legacy/private behaviour is documented only in `../CONTRACT_MIGRATION_NOTES.md`.

@@ -1,22 +1,21 @@
 # Why mecon-firmware?
 
-MeshCore is valuable because the mesh continues to work without cloud infrastructure. mecon-firmware starts from that property rather than replacing it.
+MeshCore is valuable because the mesh continues to work without cloud infrastructure. MECON starts from that property rather than replacing it.
 
-A stock-style Companion or Repeater is excellent at its RF role, but a permanently or semi-permanently deployed device also benefits from several optional paths around the radio: remote configuration, packet observation, remote message access, health reporting, and a direct browser connection when no network exists.
-
-mecon-firmware adds those paths while keeping the native MeshCore role authoritative.
+MECON 1.0 is deliberately built on **MeshCore 1.18 after it lands on upstream `main`**. The newer upstream facilities are the foundation; the private MVP is evidence about useful behaviour and failure modes, not source architecture to preserve.
 
 ## Design goals
 
-- **Offline first:** RF behavior does not depend on Wi-Fi, MQTT, Internet or a backend.
-- **One everyday firmware:** Wi-Fi, USB and BLE are available without choosing a special connectivity build; the Companion memory profile is deliberately bounded to 64 contacts.
-- **Redundant access:** three Wi-Fi profiles, two MQTT brokers and direct USB/BLE access reduce dependence on any single network path.
-- **Backend neutrality:** the wire contract belongs to this firmware project, not to MeshContinuum or any other service.
-- **Least authority:** observing packets, sending messages and administering a device are separate permissions.
-- **Upstream friendliness:** new MeshCore releases should be mergeable with a small, documented MECON patch surface.
+- **MeshCore first:** normal Companion/Repeater RF behaviour survives loss of MECON infrastructure.
+- **1.18 first:** reuse upstream 1.18 Wi-Fi, configuration, command, UI and board facilities rather than recreating older equivalents.
+- **Modern ESP32 baseline:** pioarduino / Arduino-ESP32 3.x / IDF 5.x and NimBLE are established before MECON features are layered on.
+- **Local first:** three ordered Wi-Fi profiles and one MQTT session that prefers a locally discovered compatible broker, then falls back to cloud.
+- **One capability model:** MQTT, USB and BLE expose the same logical MECON operations where applicable.
+- **Resilient messaging:** mesh can provide an outage path when IP is unavailable, and authorized MQTT infrastructure can provide an alternate path when RF is unavailable.
+- **Backend neutrality:** the public contract belongs to this project, not MeshContinuum.
+- **Measured resource limits:** contact capacity and other constraints are determined after the modern-runtime migration, not copied blindly from the private MVP.
+- **Upstream friendliness:** MECON maintains a small, documented patch surface.
 
 ## Relationship to MeshContinuum
 
-[MeshContinuum](https://github.com/hoejriis/MeshContinuum) is the sister project and reference implementation of a MECON-compatible backend and web Reader. The projects release together initially, but neither is intended to be a private API of the other.
-
-A third-party project should be able to implement the contracts in `docs/contract/`, provision a device with its own brokers and credentials, and use the supported functionality without running MeshContinuum.
+MeshContinuum is the sister project and reference backend/Reader. Third parties can implement `docs/contract/` without running MeshContinuum.

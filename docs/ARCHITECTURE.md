@@ -1,69 +1,49 @@
 # Architecture
 
-## Layering
+## Upstream foundation
 
-mecon-firmware is an extension of upstream MeshCore, not an independent RF stack.
+MECON 1.0 is an extension of **released MeshCore 1.18 from upstream `main`**, not an independent RF stack. The 1.18 merge/release is a dependency for the production refactor. A specific 1.18 revision is pinned before implementation proceeds.
 
 ```text
-┌─────────────────────────────────────────────┐
-│ upstream MeshCore                           │
-│  Companion role          Repeater role      │
-└──────────────┬──────────────────┬───────────┘
-               │ thin adapters    │
-┌──────────────┴──────────────────┴───────────┐
-│ shared MECON runtime                        │
-│ identity · config · health · replay         │
-│ Wi-Fi · MQTT · observations · security      │
-└───────┬─────────────┬─────────────┬─────────┘
-        │             │             │
-      Wi-Fi          MQTT          USB/BLE
-      ×3             ×2           direct Reader
+MeshCore 1.18 (upstream main; pinned)
+        │
+        ├── Companion ──┐
+        │               ├── shared MECON runtime
+        └── Repeater ───┘       │
+                                ├── Wi-Fi ×3
+                                ├── one local-first MQTT session
+                                ├── USB
+                                └── NimBLE where supported
 ```
 
-Role adapters translate the generic MECON operations into native MeshCore role APIs. Hardware adapters contain board-specific radio/display/power details. Neither should duplicate the common runtime.
+MECON extends the 1.18 Wi-Fi/configuration, command, board-preference, UI and native Companion/Repeater facilities wherever suitable. It does not recreate their 1.17/private-MVP equivalents.
+
+## Runtime baseline
+
+After pinning and proving stock MeshCore 1.18 on Heltec V3/V4, the fork migrates those targets to **pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x** and establishes **NimBLE**. Stock-derived Companion and Repeater behaviour is proven again before the MECON feature layer is added.
+
+Network work must be non-blocking with respect to radio servicing. V3 and V4 are first-class targets with shared behaviour and explicit hardware adapters.
 
 ## Native role is authoritative
 
-With every MECON transport unavailable:
+With every MECON transport unavailable, Companion and Repeater retain their normal MeshCore 1.18 behaviour. MECON never makes RF operation dependent on Wi-Fi, MQTT, a backend or Internet connectivity.
 
-- a Companion remains usable by normal MeshCore clients over its supported local interfaces;
-- a Repeater continues normal MeshCore repeating/advertising behavior;
-- no MECON service is required for RF receive, forwarding or ordinary local Companion use.
+Companion contact capacity is deliberately reduced only as required by the **measured post-IDF5/NimBLE memory budget**. The private MVP's historical 32/64-contact values are not a normative 1.0 constant. The final supported capacity is published as a machine-readable resource limit.
 
-The Companion release profile uses 64 contact slots. Contact retention must protect explicitly managed identities and evict ordinary learned contacts deterministically when space is needed.
+## Connectivity
 
-## Connectivity independence
+The device stores up to three ordered Wi-Fi profiles. It uses **one MQTT client/session at a time**: a compatible locally discovered broker is preferred, otherwise the configured cloud broker is used. The old private-MVP concurrent two-broker architecture is not part of MECON 1.0.
 
-Wi-Fi, MQTT, USB and BLE are transports, not roles. Device capabilities are advertised explicitly and clients must not infer them merely from board, role or firmware version.
+MQTT, USB and BLE are transports for one logical capability model. Native MeshCore 1.18 operations are reused where appropriate; MECON-specific operations use the public versioned contract.
 
-The target supports three Wi-Fi profiles and two concurrent MQTT broker profiles. Broker authority is independent per broker. A second broker is not implicitly a failover clone of the first.
+## Device UI
 
-## Direct Reader path
-
-A Companion can expose the same logical MECON operations over USB and BLE to a browser Reader. The direct transport must reuse the same command/configuration envelopes and authorization concepts as MQTT wherever transport characteristics permit.
-
-Desktop Chrome and Edge are the supported browser targets. Repeater direct access is USB in the initial release target; Repeater BLE is not required.
-
-A Reader may operate in two ways:
-
-- **bridge mode:** browser transports device events/jobs to a reachable backend;
-- **standalone mode:** browser operates the attached device locally and synchronizes later.
-
-These modes must not require different firmware semantics.
+MECON 1.0 preserves the MeshCore 1.18 Companion/Repeater UI and button semantics as far as possible. The deliberate UI delta is limited to MECON version at boot, compact Wi-Fi/MQTT/BLE status on the existing front screen, BLE PIN while unconnected, and the established display-wake filtering for DMs/favourited channels. There is no MECON secondary screen in 1.0.
 
 ## Contract ownership
 
-`mecon-firmware/docs/contract/` is canonical for the device-facing protocol. MeshContinuum consumes that contract as the reference backend/Reader. Contract changes must remain implementable by third parties without access to MeshContinuum internals.
+`docs/contract/` is canonical for MECON-specific device-facing behaviour. MeshContinuum is the reference backend/Reader, not a prerequisite.
 
 ## Upstream boundary
 
-The repository retains upstream MeshCore ancestry and a documented upstream remote. MECON-owned code should be isolated so upgrading MeshCore normally means:
-
-1. merge a newer upstream MeshCore release;
-2. resolve a small documented set of integration hooks;
-3. build every supported board/role;
-4. run protocol tests;
-5. run hardware release gates;
-6. publish a new mecon-firmware release.
-
-No third-party MeshCore fork is part of the update chain.
+MECON-owned code should remain isolated so later MeshCore releases can be merged with a small documented patch surface. No third-party MeshCore fork is part of the update chain.

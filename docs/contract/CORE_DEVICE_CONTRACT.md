@@ -2,47 +2,22 @@
 
 ## Identity
 
-A device reports separately:
+A device reports `device_id`, native `node_public_key_hex`, `hardware_target`, native role (`companion`/`repeater`), build variant, `mecon_firmware_version`, exact `meshcore_base_version`, and MECON contract/profile versions.
 
-- `device_id` — backend-neutral stable MECON device identifier;
-- `node_public_key_hex` — native MeshCore node identity;
-- `hardware_target` — e.g. `heltec_v3`, `heltec_v4`;
-- `role` — `companion` or `repeater`;
-- `build_variant` — release artifact variant;
-- `mecon_firmware_version`;
-- `meshcore_base_version`;
-- contract/profile versions.
+For MECON 1.0, supported release builds identify a pinned **MeshCore 1.18** base from upstream `main`.
 
-A backend may maintain its own local record identifier, but that identifier is not the firmware's public identity vocabulary.
+## Profiles and capabilities
 
-## Profiles
+`core` is mandatory. Optional profiles may include messaging, remote administration, health, OTA and direct Reader functionality. Capabilities are discovered explicitly. A client must not infer a MECON capability from board/role/version alone.
 
-`core` is mandatory. Optional independently versioned profiles include:
+## Native boundary
 
-- `messaging`
-- `remote_admin`
-- `health`
-- `ota`
-- `direct_reader`
+Companion and Repeater retain their MeshCore 1.18 semantics. MECON does not define proprietary replacement RF roles. Where 1.18 already exposes a suitable operation, the public contract references/reuses it rather than creating a duplicate MECON command.
 
-Additional profiles may be introduced without redefining a role.
+## Core status
 
-## Core capabilities
-
-Every supported build reports:
-
-- identity/version/role;
-- capabilities/profiles;
-- configuration schema readable through a supported management transport;
-- health/status;
-- native RF role state.
-
-Observation capability is advertised explicitly. Supported public Companion and Repeater builds advertise it.
-
-## Role semantics
-
-A Companion exposes native MeshCore Companion messaging and contact/channel behavior. A Repeater exposes native MeshCore repeating behavior. MECON clients must not invent a proprietary RF role called Observer; observation is a capability of a Companion or Repeater.
+Supported builds report identity/version/role, capabilities/profiles, health/status, native RF role state, Wi-Fi state, MQTT state/path (`local` or `cloud` where applicable), BLE state where supported, and machine-readable resource limits.
 
 ## Resource declaration
 
-Limits that materially affect clients are machine-readable, including Companion contact capacity. The initial public Companion target declares `contact_capacity: 64`.
+Contact capacity and other material limits are measured after the IDF5/NimBLE migration and reported by the build. MECON 1.0 does **not** normatively fix contact capacity to the private MVP's historical 32 or 64 slots.

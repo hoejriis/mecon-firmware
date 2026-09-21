@@ -2,35 +2,30 @@
 
 ## Principles
 
-- MeshCore RF security remains MeshCore's responsibility.
-- Transport access and device authority are separate concepts.
-- Observation, messaging and administration are separate grants.
+- MeshCore 1.18 RF security remains MeshCore's responsibility.
+- Transport access and device authority are separate.
+- Observation, messaging, management and OTA are separate grants.
 - Secrets are write-only through ordinary management APIs.
-- No backend receives an unrestricted shell, serial console or arbitrary NVS interface merely because it can manage the device.
-- Direct local access must not silently inherit remote administrator authority.
+- No remote transport grants an unrestricted shell or arbitrary execution surface.
 
 ## MQTT trust
 
-Each broker profile has its own TLS/authentication material and authorization grants. Connecting successfully to a broker does not by itself authorize every command that can reach the device.
+MECON 1.0 maintains one active MQTT session. A locally discovered broker may be preferred over cloud, but discovery alone never grants trust or authority. The active endpoint must satisfy the provisioned authentication/authority model.
 
-Remote jobs use stable identifiers, expiry where applicable and replay/idempotency protection. Results are tied to the originating job.
+Remote state-changing jobs use stable identifiers and replay/idempotency protection across endpoint changes and direct transports.
 
 ## Secrets
 
-Wi-Fi passwords, broker passwords/tokens, private MeshCore identity material and equivalent credentials must never be returned in clear text by status or configuration reads. APIs may report safe metadata such as configured/not-configured, SSID, host and redacted identifiers.
+Wi-Fi passwords, MQTT credentials/tokens and private MeshCore identity material are never returned in clear text by ordinary status/configuration reads.
 
-## Direct USB/BLE
+## USB/BLE
 
-USB is treated as physical/local access but still uses explicit protocol operations rather than an implicit arbitrary command bridge. BLE uses per-device pairing credentials and permits one supported central session at a time unless a future contract states otherwise.
-
-The MECON direct tunnel carries allowlisted logical operations. It must not turn a browser connection into arbitrary firmware execution.
+USB is physical/local access but still uses explicit operations. BLE uses NimBLE and device-specific pairing credentials. The pairing PIN may be displayed locally while BLE is unconnected; it is not exposed as a remotely readable secret.
 
 ## OTA
 
-Supported OTA releases are selected from approved manifests and validated for hardware target, role and build variant. Firmware images are integrity checked and release manifests are signed. Arbitrary URL flashing is not part of the remote-management contract.
-
-Recovery through USB remains available when OTA cannot recover a device.
+Managed OTA installs only approved firmware represented by signed/integrity-checked release metadata compatible with hardware, role and variant. MECON 1.0's release chain is rooted in the pinned MeshCore 1.18-derived source baseline plus documented MECON changes. USB remains the ultimate recovery path.
 
 ## Backend independence
 
-No MeshContinuum-specific trust root, hostname, account or credential is compiled into the generic public firmware. A third-party backend can establish its own broker and management authority using the same documented mechanisms.
+No MeshContinuum-specific hostname, account or credential is compiled into generic public firmware.

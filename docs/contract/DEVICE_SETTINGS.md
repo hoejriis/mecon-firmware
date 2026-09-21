@@ -1,51 +1,31 @@
 # Device settings contract
 
-Configuration is one logical API across MQTT, USB and BLE.
+Configuration is one logical model across supported MQTT, USB and BLE paths, while native MeshCore 1.18 configuration primitives are reused wherever they already provide the required semantics.
 
 ## Operations
 
-- `get_config` — current non-secret values plus schema.
-- `apply_config` — validate and atomically apply a set of changes.
-
-Transport adapters carry these operations without redefining their semantics.
+MECON-specific configuration uses `get_config` and atomic `apply_config`. Transport adapters do not redefine their meaning.
 
 ## Namespace
 
-Canonical settings use neutral paths:
+Canonical MECON paths use neutral names such as `mecon.wifi.profiles.*`, `mecon.mqtt.*` and `mecon.security.*`. Native mesh/radio/channel settings should map to MeshCore 1.18's canonical configuration model rather than being duplicated under MECON solely for transport convenience.
 
-```text
-mesh.name
-mesh.radio.*
-mesh.location.*
-mesh.channels.*
-mecon.wifi.profiles.*
-mecon.mqtt.brokers.*
-mecon.security.*
-```
+## Wi-Fi
 
-Private deployment names and the legacy `deimos.*` namespace are not part of the public target.
+MECON extends upstream Wi-Fi support to **three ordered profiles**. Applying Wi-Fi changes should preserve a known-working management path where practical.
+
+## MQTT
+
+Settings describe a **single active-session architecture**: configured cloud endpoint/credentials/namespace plus local-broker discovery/preference and authority information. The public target does not expose two concurrent broker slots.
 
 ## Schema metadata
 
-Each setting advertises as applicable:
-
-- type and constraints;
-- readable/writable;
-- secret/write-only;
-- supported role(s);
-- effect: `live`, `reconnect_required`, `restart_required`, or `reboot_required`;
-- whether it disrupts RF or management connectivity.
-
-## Transaction behavior
-
-An apply job validates the complete requested set before persistence. Invalid jobs do not partially apply unrelated values. Successful values are persisted through canonical MeshCore/MECON storage and applied according to the declared effect.
-
-Connection-changing jobs must acknowledge safely and retain/recover a known-working management path where practical. Wi-Fi changes must not destroy the last working profile before replacement connectivity is proven.
+Settings advertise type/constraints, readability/writability, secret status, role/capability applicability, application effect and connectivity impact.
 
 ## Secrets
 
-Secret settings may be replaced but are never returned. Reads expose only safe metadata such as configured state, SSID, broker host and redacted identifiers.
+Secrets may be replaced but are never returned. Reads expose safe metadata only.
 
 ## Roles
 
-Companion and Repeater use the same settings mechanism. Role-specific settings are expressed through schema applicability, not separate MQTT command families or a second Repeater-only management contract.
+Companion and Repeater share the logical MECON settings mechanism; applicability is capability/schema-driven.
