@@ -6,17 +6,25 @@ It is the sister project of [MeshContinuum](https://github.com/hoejriis/MeshCont
 
 > This repository currently defines the public release target. The existing private MVP is an implementation reference, not source to be copied wholesale. The public firmware will be refactored here against the documented behaviour and contracts.
 
+## Upstream dependency for MECON 1.0
+
+**MECON 1.0 depends on MeshCore 1.18.** Development work may study and validate against the upstream MeshCore `dev` branch while 1.18 is being prepared, but the production MECON 1.0 implementation will be based on **MeshCore 1.18 only after that release has been merged into upstream `main`**. Until that happens, the upstream firmware baseline is considered unresolved and MECON 1.0 cannot complete its foundational fork/refactor.
+
+This dependency is intentional. The 1.18 lineage contains substantial upstream work that overlaps areas MECON needs, including Wi-Fi infrastructure, runtime configuration, Companion/Repeater command handling, board-specific preferences, remote CLI/message primitives, scoping/subscription work, UI evolution and Heltec V3/V4 support. MECON should extend those upstream facilities rather than recreate their older 1.17-era equivalents from the private MVP.
+
+Once MeshCore 1.18 is on `main`, MECON will pin its initial upstream baseline to a specific 1.18 commit/tag and perform the clean public refactor from there. The private MVP remains a behavioural and test reference, not the source-code baseline.
+
 ## What MECON changes compared with stock MeshCore
 
 MECON is deliberately an extension of MeshCore, not a replacement for it. A device should remain useful as an ordinary MeshCore node even when every MECON service is unavailable.
 
 1. **It remains a normal MeshCore Companion or Repeater.** RF operation, mesh participation and the native role continue without Wi-Fi, MQTT, a backend or Internet connection. MECON uses a deliberately smaller Companion contact table than stock configurations may allow, trading contact capacity for enough RAM to run the additional connectivity and management services reliably. Managed/protected contacts must survive normal eviction.
 
-2. **It can store three ordered Wi-Fi profiles.** The device automatically tries configured networks in their entered priority order and reconnects as availability changes. Losing Wi-Fi must not interrupt the underlying MeshCore role.
+2. **It can store three ordered Wi-Fi profiles.** The device automatically tries configured networks in their entered priority order and reconnects as availability changes. Losing Wi-Fi must not interrupt the underlying MeshCore role. MECON should extend the MeshCore 1.18 Wi-Fi/configuration infrastructure rather than carry forward the private MVP's parallel Wi-Fi implementation.
 
 3. **It adds local-first MQTT connectivity.** A device may be provisioned with MQTT credentials and authority. When a compatible broker is advertised on the local network, the device prefers that local path; otherwise it uses its configured cloud broker. Local broker discovery is automatic, while credentials and permitted capabilities remain provisioned configuration. Only one MQTT session is active at a time, reducing RAM pressure on constrained hardware.
 
-4. **It exposes one management and observation model over MQTT, USB and BLE.** Packet observations, device events, logs, status, inventory, configuration and supported actions are available through the applicable transports using the same logical, versioned MECON contracts. Companion devices support direct USB/BLE operation; Repeaters support direct USB, with BLE support dependent on the advertised hardware/role capability. Native MeshCore operations should be reused rather than duplicated where they already provide the required behaviour.
+4. **It exposes one management and observation model over MQTT, USB and BLE.** Packet observations, device events, logs, status, inventory, configuration and supported actions are available through the applicable transports using the same logical, versioned MECON contracts. Companion devices support direct USB/BLE operation; Repeaters support direct USB, with BLE support dependent on the advertised hardware/role capability. Native MeshCore 1.18 operations, CLI/configuration primitives and transport-independent behaviour should be reused rather than duplicated where they already provide the required behaviour.
 
 5. **It supports managed OTA firmware updates.** Firmware can be updated remotely through the MECON management path, including MQTT-triggered OTA. Releases use manifests, integrity checks and the device's supported OTA trust model rather than treating an arbitrary URL as permission to install firmware.
 
@@ -40,13 +48,14 @@ MECON 1.0 deliberately keeps the physical user interface as close to the corresp
 - **Buttons:** MECON 1.0 introduces no new normal button semantics. Preserve the stock Companion/Repeater button behaviour.
 - **Framebuffer export:** retain framebuffer/display export through the applicable management/debug interface for automated testing and diagnostics. This is a management/test capability, not an additional user-facing screen.
 
-The UI rule for 1.0 is therefore: **preserve the stock MeshCore interaction model; add only MECON firmware identity, connectivity state and BLE pairing information, plus the established DM/favourite display filtering.**
+The UI rule for 1.0 is therefore: **preserve the stock MeshCore 1.18 interaction model; add only MECON firmware identity, connectivity state and BLE pairing information, plus the established DM/favourite display filtering.**
 
 ## Modern runtime baseline
 
-The public refactor deliberately modernizes the underlying ESP32 runtime **before** the MECON feature layer is ported. These are foundational choices, not later optimizations:
+The public refactor deliberately modernizes the underlying ESP32 runtime **after establishing the released MeshCore 1.18 baseline and before the MECON feature layer is ported**. These are foundational choices, not later optimizations:
 
-- **pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x for Heltec V3 and V4.** The public firmware will not reproduce the private MVP's Arduino-ESP32 2.x / ESP-IDF 4.4 baseline. V3 and V4 should be brought up on the modern platform first, and ordinary stock-derived Companion and Repeater behaviour proven there before MECON functionality is layered on top.
+- **MeshCore 1.18 from upstream `main` is the source baseline.** The current upstream `dev` branch may be used for investigation and early compatibility work, but MECON 1.0 does not fork a moving development branch as its release foundation. The implementation gate is MeshCore 1.18 merged to `main`, after which a specific upstream revision is pinned.
+- **pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x for Heltec V3 and V4.** The public firmware will not reproduce the private MVP's Arduino-ESP32 2.x / ESP-IDF 4.4 baseline. V3 and V4 should be brought up on the modern platform first, and ordinary 1.18-derived Companion and Repeater behaviour proven there before MECON functionality is layered on top.
 - **NimBLE for Bluetooth.** BLE support should be based on NimBLE from the beginning rather than porting a legacy Bluedroid implementation and replacing it later. Wi-Fi, MQTT/TLS and BLE must be designed to coexist within the measured V3/V4 memory budget.
 - **One MQTT client/session architecture.** Do not port the private MVP's historical concurrent-broker implementation. The target is one active MQTT session with local discovery/preference and cloud fallback.
 - **Non-blocking networking and discovery.** DNS, mDNS, broker discovery, MQTT management, OTA and similar IP work must not block the MeshCore/radio main loop for multi-second waits. Local broker discovery should be asynchronous or incrementally polled and should not retain unnecessary responder/task memory between searches.
@@ -55,20 +64,23 @@ The public refactor deliberately modernizes the underlying ESP32 runtime **befor
 
 The order matters. The intended bring-up is:
 
-1. start from the selected upstream MeshCore baseline;
-2. migrate the Heltec V3/V4 targets to pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x;
-3. establish NimBLE as the BLE implementation;
-4. prove stock-derived Companion and Repeater operation on real V3 and V4 hardware;
-5. measure and document the new memory/runtime baseline;
-6. add the shared MECON runtime and transport adapters;
-7. add Wi-Fi and single-session local-first MQTT;
-8. add outage/resilience behaviour and managed OTA.
+1. wait for MeshCore 1.18 to be merged/released on upstream `main`;
+2. pin MECON 1.0 to a specific MeshCore 1.18 upstream revision;
+3. prove unmodified stock MeshCore 1.18 Companion and Repeater operation on the target Heltec V3/V4 hardware;
+4. migrate the Heltec V3/V4 targets to pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x;
+5. establish NimBLE as the BLE implementation;
+6. prove the 1.18-derived Companion and Repeater behaviour again on real V3 and V4 hardware;
+7. measure and document the new memory/runtime baseline;
+8. add the shared MECON runtime and transport adapters, extending native 1.18 facilities where possible;
+9. extend upstream Wi-Fi support to the MECON three-profile model and add single-session local-first MQTT;
+10. add outage/resilience behaviour and managed OTA.
 
 The private MVP is useful evidence for required behaviour, failure modes and hardware constraints. It is **not** the architectural baseline to preserve when the clean public implementation can avoid known technical debt.
 
 ## Design principles
 
 - **MeshCore first:** loss of Wi-Fi, MQTT, a MECON-compatible backend or Internet connectivity must never prevent the device from performing its underlying MeshCore role.
+- **1.18 first:** MECON 1.0 extends released MeshCore 1.18 behaviour rather than recreating features from an older upstream baseline.
 - **Local first, cloud second:** use nearby infrastructure when available and fall back to cloud connectivity when it is not.
 - **Transport-independent operations:** MQTT, USB and BLE are transports for the same logical capabilities, not separate product implementations.
 - **Backend-neutral:** MeshContinuum is the reference implementation, not a required service.
@@ -80,7 +92,7 @@ The private MVP is useful evidence for required behaviour, failure modes and har
 ## Target architecture
 
 ```text
-meshcore-dev/MeshCore
+meshcore-dev/MeshCore 1.18 (released on main; pinned revision)
         │
         ├── Companion role ──┐
         │                    ├── shared MECON runtime
