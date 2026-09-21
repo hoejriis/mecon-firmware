@@ -28,6 +28,20 @@ MECON is deliberately an extension of MeshCore, not a replacement for it. A devi
 
 These behaviours are the public product target. The private development firmware demonstrates much of the machinery and informs the implementation, but the public repository's contracts and tests are authoritative for the refactor.
 
+## Device UI for 1.0
+
+MECON 1.0 deliberately keeps the physical user interface as close to the corresponding stock MeshCore Companion or Repeater firmware as possible. MECON should add useful connectivity information without turning the device display into a separate management dashboard.
+
+- **Boot identity:** show `MECON <version>` during boot as the firmware identity. Do not add a build date to the boot display.
+- **Existing front screen:** retain the stock Companion/Repeater front-screen layout and behaviour as far as possible, adding compact connection status for **Wi-Fi**, **MQTT** and **BLE**.
+- **BLE PIN:** when BLE is available but not connected, the front screen must expose the device's pairing PIN. Once BLE is connected, show connected state instead of the PIN.
+- **No additional MECON screen in 1.0:** there is no secondary connectivity/diagnostic screen. Details such as IP address, RSSI, broker identity, uptime and extended diagnostics belong on the management transports rather than in the 1.0 device UI.
+- **Message wake/display filtering:** preserve the private-MVP behaviour: direct messages and messages on favourited channels may wake/show on the display. Public and unfavourited-channel traffic continues to be processed normally but does not wake the display merely because MECON observed it.
+- **Buttons:** MECON 1.0 introduces no new normal button semantics. Preserve the stock Companion/Repeater button behaviour.
+- **Framebuffer export:** retain framebuffer/display export through the applicable management/debug interface for automated testing and diagnostics. This is a management/test capability, not an additional user-facing screen.
+
+The UI rule for 1.0 is therefore: **preserve the stock MeshCore interaction model; add only MECON firmware identity, connectivity state and BLE pairing information, plus the established DM/favourite display filtering.**
+
 ## Modern runtime baseline
 
 The public refactor deliberately modernizes the underlying ESP32 runtime **before** the MECON feature layer is ported. These are foundational choices, not later optimizations:
