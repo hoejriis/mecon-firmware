@@ -1,6 +1,8 @@
 # Current-to-target contract adjustments
 
-This file is **non-normative**. It records lessons from the private MVP and differences from the MECON 1.0 public target. MECON 1.0 is rebuilt from **MeshCore 1.18 after it reaches upstream `main`**; the private implementation is inspiration/evidence, not a code migration baseline.
+This file is **non-normative engineering history**. It explains lessons from the private MVP and why MECON 1.0 differs. It is not the backend implementation checklist: all actionable changes required in MeshContinuum because of these differences belong in [`BACKEND_MIGRATION.md`](BACKEND_MIGRATION.md).
+
+MECON 1.0 is rebuilt from **MeshCore 1.18 after it reaches upstream `main`**; the private implementation is inspiration/evidence and a behavioural test oracle, not a code migration baseline.
 
 ## Foundational reset
 
@@ -26,7 +28,7 @@ The private MVP contains parallel Wi-Fi, configuration, CLI/command, UI and boar
 
 ## Wi-Fi and MQTT
 
-The target is **three ordered Wi-Fi profiles and one active MQTT session**. A compatible locally discovered broker is preferred; otherwise the device uses its configured cloud broker. The private MVP's historical two-concurrent-broker architecture, independent broker slots and associated replay complexity are not public 1.0 requirements.
+The target is **three ordered Wi-Fi profiles and one active MQTT session**. A compatible locally discovered broker is preferred; otherwise the device uses its configured cloud broker. The private MVP's historical concurrent-broker architecture and associated replay complexity are not public 1.0 requirements.
 
 Discovery is non-blocking and conveys reachability only; trust/authority remains provisioned.
 
@@ -46,12 +48,22 @@ Do not port the private UI wholesale. Preserve the MeshCore 1.18 Companion/Repea
 
 ## Resilience features to preserve
 
-The public refactor should preserve the MVP-derived product behaviours: MQTT-offline DM forwarding to a configured private channel; daily private-channel health/status report; and authorized MQTT delivery of DMs/channel messages when the RF mesh path is unavailable. Define loop/duplicate prevention in the final implementation.
+The public refactor preserves the MVP-derived product behaviours: MQTT-offline DM forwarding to a configured private channel; daily private-channel health/status report; delivery/outage synchronization; and authorized MQTT delivery of DMs/channel messages when the RF mesh path is unavailable. Loop/duplicate prevention and stable delivery identity are required.
 
 ## OTA
 
 Signed managed OTA remains a 1.0 requirement, implemented after the clean 1.18/IDF5/NimBLE base is established.
 
+## Historical-contract audit
+
+The private firmware has substantial historical contracts for device health, device settings, MQTT gateway behaviour, outage synchronization and serial provisioning. Before MECON 1.0 implementation is considered specification-complete, each operation/field/lifecycle in those documents and the deployed backend must be classified as:
+
+- still required and represented in the public MECON 1.0 contract;
+- supplied by a named native MeshCore 1.18 operation; or
+- intentionally legacy/backend-only and covered by `BACKEND_MIGRATION.md`.
+
+This audit is necessary because the public documentation must be sufficient to implement the firmware anew; merely summarizing the private MVP is not sufficient.
+
 ## MeshContinuum alignment
 
-`mecon-firmware/docs/contract/` is canonical for MECON-specific public behaviour. MeshContinuum should consume it and keep legacy compatibility adapters outside the public v1 contract.
+`mecon-firmware/docs/contract/` is canonical for public device behaviour. MeshContinuum should consume it and keep legacy compatibility adapters outside the public v1 contract. See [`BACKEND_MIGRATION.md`](BACKEND_MIGRATION.md) for the concrete backend work.
