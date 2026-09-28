@@ -13,7 +13,7 @@ MeshCore 1.18 (upstream main; pinned)
         │               ├── MECON Core
         └── Repeater ───┘       │
                                 ├── identity / capabilities / versions
-                                ├── common configuration model
+                                ├── CLI/configuration extensions
                                 ├── health / status / diagnostics
                                 ├── messaging / favourites semantics
                                 ├── resilience / outage-sync behaviour
@@ -22,13 +22,30 @@ MeshCore 1.18 (upstream main; pinned)
                  ┌────────────────────┼────────────────────┐
                  │                    │                    │
              MECON USB            MECON BLE            MECON IP
+                                      │
+                               MeshCore RF/LoRa
+                               where supported
 ```
 
 A target advertises capabilities. Reader/backend must not infer Wi-Fi, MQTT, display, OTA mechanism, BLE or recovery support solely from MECON identity.
 
+## One management plane: extend the MeshCore CLI
+
+**MeshCore CLI/configuration semantics are the canonical device-management semantics.** MECON does not define separate configuration products for USB, BLE, MQTT and LoRa.
+
+Where released MeshCore 1.18 already exposes a suitable CLI/configuration operation, MECON reuses it and its authoritative persistence/validation. MECON-specific behaviour extends the same logical plane under a `mecon` namespace. USB, BLE, MQTT and MeshCore RF/LoRa are transports to that plane; they do not redefine setting names or side effects.
+
+This does **not** mean exposing an unrestricted raw shell. MECON transports carry an allowlisted, versioned operation envelope with request/job correlation, authorization, results/errors and replay/idempotency protection. A transport may use a compact binary encoding, especially over LoRa, while mapping to the same canonical operation.
+
+For native configuration, upstream storage such as `NodePrefs`/`ConfigSerializer` (or the released 1.18 equivalent) remains authoritative. MECON must not maintain a second authoritative copy of radio/name/location/routing/GPS/etc. Schema and atomic `get_config`/`apply_config` facilities are UI/API orchestration over this command/configuration plane, not a competing settings architecture.
+
+Remote RF management should use MeshCore's released authenticated CLI/command mechanism where available: Backend/Reader -> local transport -> Companion -> MeshCore RF -> target CLI/configuration. MECON may add correlation, auditing, policy and compact framing around the operation without inventing a proprietary RF configuration protocol.
+
+The consolidated pre-release target definition is [`contract/TARGET_FIRMWARE_CONTRACT_0.9.md`](contract/TARGET_FIRMWARE_CONTRACT_0.9.md). Exact MECON extension names/encodings are frozen only after the released 1.18 API is pinned.
+
 ## Portable MECON Core
 
-Core functionality includes, where the target permits it: stable identity/version/capability discovery, common configuration, health/status, native contact/channel inventory, DM/channel/favourites semantics, private-channel outage/resilience behaviour, autonomous health reports, common authorization/replay/idempotency and transport-independent management operations.
+Core functionality includes, where the target permits it: stable identity/version/capability discovery, common CLI/configuration dispatch, health/status, native contact/channel inventory, DM/channel/favourites semantics, private-channel outage/resilience behaviour, autonomous health reports, common authorization/replay/idempotency and transport-independent management operations.
 
 ## Deployment and device identities
 
@@ -98,7 +115,7 @@ With every MECON transport unavailable, Companion and Repeater retain normal Mes
 
 ## Connectivity and transport profiles
 
-MQTT, USB and BLE are transports for one logical capability model; a device need not implement all.
+MQTT, USB, BLE and applicable MeshCore RF/LoRa are transports for one logical capability/command model; a device need not implement all.
 
 ### MECON IP
 
@@ -111,6 +128,10 @@ BLE provides direct Reader/configuration/messaging where supported. ESP32 uses N
 ### MECON USB
 
 USB/direct management provides configuration, recovery and Reader access according to capability. Recovery Package export is a distinct privileged USB-only operation and is available only on explicitly designated Recovery Companions.
+
+### MeshCore RF/LoRa
+
+Where released MeshCore provides remote CLI/command delivery, MECON uses it as the remote transport for the same canonical operations. Remote management remains bounded, authenticated and airtime-aware; LoRa does not acquire a separate MECON settings protocol.
 
 ## Non-display targets
 
@@ -126,7 +147,7 @@ MECON 1.0 Heltec builds preserve MeshCore 1.18 Companion/Repeater UI/button sema
 
 ## Contract ownership
 
-`docs/contract/` is canonical for MECON-specific device-facing behaviour. Contracts distinguish Core semantics from optional capability profiles, including recovery capability. MeshContinuum is the reference backend/Reader, not a prerequisite.
+`docs/contract/` is canonical for MECON-specific device-facing behaviour. `TARGET_FIRMWARE_CONTRACT_0.9.md` is the consolidated pre-1.0 target contract and architecture freeze candidate. Contracts distinguish Core semantics from optional capability profiles, including recovery capability. MeshContinuum is the reference backend/Reader, not a prerequisite.
 
 ## Upstream boundary
 
