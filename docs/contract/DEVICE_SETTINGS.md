@@ -1,15 +1,27 @@
 # Device settings contract
 
-Configuration is one logical model across supported MQTT, USB and BLE paths. Native MeshCore 1.18 configuration primitives/storage are reused wherever they provide the required semantics; MECON does not maintain a second authoritative copy of native settings.
+Configuration is one logical model across supported MQTT, USB, BLE and remote MeshCore/LoRa paths. **Released MeshCore 1.18 CLI/configuration semantics and storage are authoritative for native settings.** MECON does not maintain a second authoritative copy of native settings and does not define transport-specific setting semantics.
 
-## Operations
+See [`TARGET_FIRMWARE_CONTRACT_0.9.md`](TARGET_FIRMWARE_CONTRACT_0.9.md) for the consolidated pre-1.0 target contract.
 
-MECON-specific configuration provides:
+## Canonical command/configuration plane
 
-- `get_config` — read current safe values/metadata;
-- `get_schema` — discover paths, constraints and applicability;
-- `apply_config` — atomic requested changes;
+For every native setting/operation exposed suitably by released MeshCore 1.18, MECON reuses the upstream CLI/configuration operation. USB, BLE, MQTT and applicable MeshCore RF/LoRa carry that same operation.
+
+MECON-specific settings extend the common plane under `mecon.*` (or the final collision-free 1.0 CLI namespace frozen after 1.18 is pinned). They are not a separate configuration product.
+
+The public contract does not expose an unrestricted shell. Transports carry allowlisted operations using a versioned envelope with request/job identity, authorization, result/error correlation and replay/idempotency rules. Compact transport encodings may map onto the same operation.
+
+## Structured operations
+
+MECON provides a structured orchestration layer useful to Reader/backend UIs:
+
+- `get_config` — read current safe values/metadata across native and MECON-owned configuration;
+- `get_schema` — discover paths, constraints, applicability and mapping/capability metadata;
+- `apply_config` — atomic requested changes where the requested set can be transacted safely;
 - explicit job/result correlation.
+
+These operations **describe and orchestrate the canonical CLI/configuration plane**. They do not replace it. A simple native setting change may map directly to its released MeshCore CLI operation; a multi-field transaction validates first and then applies the required canonical operations/storage changes.
 
 Transport adapters do not redefine these meanings.
 
@@ -19,13 +31,14 @@ An `apply_config` job is one transaction, not a sequence of unrelated path write
 
 For changes that can strand the management path (Wi-Fi/MQTT/network policy), preserve/recover a known-working path where practical and roll back a failed transition rather than persist an unreachable configuration without reporting failure.
 
-State-changing jobs are replay-protected/idempotent across MQTT reconnects, local/cloud path switching and supported direct transports.
+State-changing jobs are replay-protected/idempotent across MQTT reconnects, local/cloud path switching and supported direct/RF transports.
 
 ## Schema metadata
 
 Each setting advertises, as applicable:
 
-- canonical path;
+- canonical path/operation mapping;
+- ownership (`meshcore` or `mecon`);
 - type;
 - readable/writable flags independently;
 - secret/write-only flag;
@@ -41,11 +54,11 @@ A reported/readable setting is not automatically writable. Read-only exposure is
 
 MECON-owned settings use `mecon.*`. New MECON 1.0 devices do not advertise the historical `deimos.*` namespace. Legacy translation belongs in backend/tool adapters.
 
-Native mesh/radio/location/channel settings map to released MeshCore 1.18's canonical configuration model where possible. Expected configurable outcomes include node name, applicable radio parameters and location. Final path/operation mapping is frozen after 1.18 reaches `main`.
+Native mesh/radio/location/routing/GPS/system settings map to released MeshCore 1.18's canonical CLI/configuration model wherever possible. Expected configurable outcomes include node name, applicable radio parameters and location. Final command/path mapping is frozen after 1.18 reaches `main`.
 
 ## Wi-Fi
 
-MECON extends upstream Wi-Fi support to **three ordered profiles**, slots 0–2. Each profile contains SSID and write-only credential material plus any future versioned connection metadata. The device tries available configured networks in entered priority order and changes association as availability changes.
+MECON extends upstream Wi-Fi support to **three ordered profiles**, slots 0–2, only where the target supports the IP profile. Each profile contains SSID and write-only credential material plus any future versioned connection metadata. The device tries available configured networks in entered priority order and changes association as availability changes.
 
 Current status reports the actual associated slot and actual SSID independently from configured values so configuration drift can be detected. Disconnected state is explicit `null`; slot 0 must never be overloaded to mean disconnected.
 
@@ -63,6 +76,12 @@ MECON 1.0 describes a **single active-session architecture**:
 The device prefers an eligible local broker and falls back to cloud. There are no two concurrent public broker slots and no backend may depend on simultaneous sessions.
 
 MQTT username/password/tokens are write-only.
+
+## Remote MeshCore/LoRa configuration
+
+Where released MeshCore 1.18 supports authenticated remote CLI/command delivery, MECON uses it rather than defining an RF-only configuration protocol. A request routed through a Companion to a remote target reaches the same canonical operation used locally.
+
+Remote requests are target-addressed, replay-protected, correlated and bounded for LoRa airtime/MTU. A compact RF encoding may be used, but it must map unambiguously to the same command semantics.
 
 ## Security/identity settings
 
@@ -90,12 +109,14 @@ Secrets may be replaced but are never returned. A read/schema may expose `config
 
 ## Unknown and unsupported settings
 
-Unknown paths are rejected explicitly. Type coercion is not used for security-sensitive settings. Unsupported settings are not silently accepted and ignored.
+Unknown paths/operations are rejected explicitly. Type coercion is not used for security-sensitive settings. Unsupported settings are not silently accepted and ignored.
 
 ## Roles
 
-Companion and Repeater share the logical MECON settings mechanism; applicability is schema/capability-driven. A client must not infer a setting solely from the role label.
+Companion and Repeater share the logical MECON command/settings mechanism; applicability is schema/capability-driven. A client must not infer a setting solely from the role label.
 
-## Versioning
+## Versioning and 1.18 freeze
 
 The configuration profile is independently versioned. Additive schema fields are forward-compatible; semantic changes to transaction/path meaning require a profile version change.
+
+Before contract 1.0 is frozen, released MeshCore 1.18 is pinned and every native configuration requirement is mapped to its final upstream CLI/configuration operation. Only true MECON extensions receive new commands/paths.
