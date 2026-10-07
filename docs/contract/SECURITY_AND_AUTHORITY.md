@@ -4,7 +4,7 @@
 
 Reachability is not authority. Discovering a broker, connecting to MQTT, being on the same Wi-Fi, holding a resilience-channel key or having physical proximity MUST NOT silently grant broader device administration.
 
-MECON device authority is rooted in the **Deployment** trust model frozen by MeshContinuum #632 / firmware #66. This document defines firmware-side invariants; the cross-repository Deployment authority contract defines the exact authority objects/signatures/generations.
+MECON device authority is rooted in the **Deployment** trust model frozen by the MeshContinuum Deployment authority contract (`DEPLOYMENT_AUTHORITY_CONTRACT.md`). This document defines firmware-side invariants; the cross-repository Deployment authority contract defines the exact authority objects/signatures/generations.
 
 Authority is explicit, versioned and enforced by the device. Security posture determines which local surfaces exist; it does not replace Deployment authority.
 
@@ -54,7 +54,7 @@ Normal preserves applicable stock MeshCore local interoperability. BLE/USB/user 
 
 Hardened is a managed-infrastructure posture. It MUST:
 
-- not initialize BLE;
+- not initialize BLE, including on non-Wi-Fi targets, where USB then answers only identification and the authenticated-Reader handshake;
 - not expose stock inbound Wi-Fi/app management;
 - not expose stock USB/WebSerial administration;
 - retain authorized MECON MQTT, secure-RF and same-Deployment Reader USB management where supported;
@@ -86,6 +86,7 @@ Firmware provides a protected opaque continuity-storage boundary.
 - Normal → Hardened cryptographically destroys the local ability to use/decrypt the continuity blob.
 - Hardened never exports continuity material over any management/status/logging surface.
 - Hardened → Normal does not recreate it automatically.
+- The device-local key protecting the blob MUST be made unusable by firmware on destroy. Where the target permits it SHOULD live in dedicated erasable storage outside the filesystem and be destroyed by physical erase with verification, since a filesystem unlink can leave bytes in flash (target-dependent). A physical flash dump of an unprotected device is outside this protection: the package itself is sealed by an operator passphrase and a compromised device is revoked.
 
 The blob's schema, package generation, sync-key generation and Join/Recovery semantics are defined by the P3 Deployment continuity contract, not here.
 
@@ -95,11 +96,31 @@ Continuity material MUST NOT be confused with Deployment membership/authority st
 
 Remote state-changing jobs carry stable identifiers. The device prevents duplicate execution across MQTT redelivery/reconnect/path changes and supported direct/RF retries when the same logical job identity is used.
 
+A management line refused before execution (for example unsigned where signed is required) consumes no request identifier and does not move any signer's watermark.
+
+## Device identity and private-key custody
+
+On ownership reassignment a device rotates to a new mesh identity generated on the device, triggered by a Deployment-signed request (or an authenticated direct Reader in a restricted posture). Rotation keeps configuration, connectivity, enrolment, the Deployment record, channels and posture, and drops contacts and queued messages; the old and new public keys are reported.
+
+The backend needs the private key to decrypt direct messages addressed to the device. Before provisioning into a Deployment the key may be read over a physically connected USB link only. After provisioning it can be read only by a Deployment-signed request (fleet-owner authority), answered only to the requester's channel. Stock key export/import is disabled on every transport once provisioned, import is never available, and no end user can read the key.
+
+## Direct Reader authentication accounting
+
+The Reader's single unsigned readiness probe on attach is answered but not counted as an authentication rejection. Every other unsigned request on a Deployment-aware device is refused and counted.
+
+## Restricted-posture recovery boundary
+
+Where the bootloader accepts images over USB, a recovery path outside OTA clears the posture record and continuity material while preserving identity, enrolment and the Deployment record. Because such a bootloader accepts unsigned images, physical USB access can always replace the application: restricted posture protects the application's command surface, not against reflashing.
+
+## Repeater signed-writes switch
+
+A per-device setting, off by default. When on, unsigned RF management writes are refused and reads stay available. It changes only by a Deployment-signed request or the physical console, and is cleared when the Deployment record is erased.
+
 ## Credentials and secrets
 
-Wi-Fi passwords, MQTT credentials, resilience keys, MeshCore private identity material, Deployment private material and continuity/recovery secrets are write-only and are not returned through ordinary status/configuration/logging surfaces.
+Wi-Fi passwords, MQTT credentials, resilience keys, MeshCore private identity material, Deployment private material and continuity/recovery secrets are write-only and are not returned through ordinary status/configuration/logging surfaces. The two narrow exceptions are the device private key under the custody rules above and the BLE pairing passkey below.
 
-BLE pairing credentials are device-specific in Normal BLE/Both mode. Hardened has no BLE stack.
+BLE pairing passkeys are random per device, drawn from the hardware RNG and persisted; never derived from public data such as the public key and never a shared or stock default. A device holding a non-secret value (unset, stock default, or key-derived) re-rolls it once on upgrade, and existing bonds survive. The passkey is never in advertisements or periodic status; it is available on the device's own display, as a read-only setting over authenticated management (MQTT is a trusted transport for this purpose) and over physical USB. If no secret passkey can be established, BLE does not start (fail closed). Bonds can be counted and cleared over physical USB only; a clear requested while BLE is not running is persisted and executed at the next BLE start before advertising, then verified, and is immediate where the bond store is reachable without the stack. Hardened has no BLE stack.
 
 ## TLS trust
 

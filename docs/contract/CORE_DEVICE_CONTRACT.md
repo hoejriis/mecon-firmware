@@ -80,6 +80,8 @@ MECON 1.0 does not report an array of simultaneously connected broker sessions b
 
 Where supported, report stable state such as `off`, `advertising` or `connected`. BLE startup is not dependent on successful MQTT; direct local recovery remains available according to the direct profile.
 
+Where the silicon exposes them, health also reports the debug-access-port protection state and the silicon variant, raw and uninterpreted.
+
 ### RF
 
 Expose enough state to diagnose both traffic and a receiver that appears armed in software but is no longer receiving. Required logical fields are:

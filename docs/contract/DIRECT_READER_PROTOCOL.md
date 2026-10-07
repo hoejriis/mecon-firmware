@@ -36,7 +36,15 @@ BLE preserves stock Companion interoperability but the public ESP32 implementati
 
 BLE is a local recovery/Reader path and must not require successful Wi-Fi or MQTT before becoming available. Startup may be delayed only for bounded boot/resource reasons documented by the supported build, never indefinitely waiting for cloud connectivity.
 
-Pairing uses a device-specific credential/PIN. On display-capable targets, the PIN is shown on the existing front screen while BLE is available but unconnected; connected state replaces the PIN. The PIN is not an ordinary remotely readable setting.
+Pairing uses a device-specific credential/PIN. On display-capable targets, the PIN is shown on the existing front screen while BLE is available but unconnected; connected state replaces the PIN. The passkey is random per device, never derived from public data and never a shared default, and BLE does not start if one cannot be established. It is not an ordinary readable setting: it is exposed read-only over authenticated management and physical USB only. Bonds can be counted and cleared over physical USB only; a clear requested while BLE is not running is deferred to the next BLE start and verified.
+
+### Handshake, replay and capability paging
+
+The Reader's single unsigned readiness probe on attach is answered but not counted as an authentication rejection; every other unsigned request on a Deployment-aware device is refused and counted. A line refused before execution consumes no request identifier and moves no signer watermark. The identification response pages its capability list so a device may advertise more capabilities than one frame holds.
+
+### Firmware update over a direct Reader
+
+For targets updated through USB/bootloader DFU: offer, bootloader update, attest on boot, acknowledge. An otherwise-valid new offer supersedes a pending update whose image already attested OK but whose acknowledgement was lost (the old job is reported as succeeded first); an unverified pending image never blocks.
 
 ## Repeater USB
 
@@ -71,5 +79,7 @@ Direct management must define explicit reset scopes. At minimum tooling must be 
 No secondary MECON screen exists in 1.0. Framebuffer export is retained so automated tests can verify boot identity, connectivity indicators, BLE PIN/connected state and message-wake behaviour without a camera.
 
 ## Security
+
+In Hardened and the fail-secure state BLE does not start on any target; USB answers identification and the authenticated-Reader handshake only.
 
 Direct access never exposes unrestricted command execution. Sensitive values remain write-only. Native MeshCore identity/key operations remain governed by native/security semantics. MECON extensions are allowlisted/versioned; unknown operations fail rather than falling through to arbitrary CLI execution.

@@ -85,7 +85,7 @@ Remote requests are target-addressed, replay-protected, correlated and bounded f
 
 ## Security/identity settings
 
-Device authority/enrollment credentials are write-only and protected from ordinary config reads. BLE pairing PIN is not a remotely readable setting. Reset/reprovision operations must explicitly define whether they clear network credentials, backend authority, device identity and/or native MeshCore state; a generic 'factory reset' must not ambiguously claim to clear everything.
+Device authority/enrollment credentials are write-only and protected from ordinary config reads. The BLE pairing passkey is a per-device random secret that is never derived from public data; it is exposed only as a read-only setting over authenticated management, on the device's own display and over physical USB, never as a writable or unauthenticated one. Private-key custody and identity rotation follow `SECURITY_AND_AUTHORITY.md`, not the ordinary settings path. Reset/reprovision operations must explicitly define whether they clear network credentials, backend authority, device identity and/or native MeshCore state; a generic 'factory reset' must not ambiguously claim to clear everything.
 
 ## Outage/resilience settings
 
