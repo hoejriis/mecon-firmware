@@ -2,7 +2,7 @@
 
 This public repository currently contains documentation and contracts. Useful first contributions are clear use cases, contract questions, documentation corrections and reproducible hardware evidence from an authorized test build. No public build path exists yet.
 
-Use [Issues](https://github.com/hoejriis/mecon-firmware/issues) for public discussion while Discussions is not enabled. General beta interest belongs in [MeshContinuum](https://github.com/hoejriis/MeshContinuum/issues/new?template=beta-interest.yml); no invitation or date is promised.
+Use [Discussions](https://github.com/hoejriis/mecon-firmware/discussions) for firmware questions and ideas, and [Issues](https://github.com/hoejriis/mecon-firmware/issues) for a specific contract question, documentation correction or hardware evidence. General conversation about MECON lives in [MeshContinuum's Discussions](https://github.com/hoejriis/MeshContinuum/discussions), and beta interest in [its interest form](https://github.com/hoejriis/MeshContinuum/issues/new?template=beta-interest.yml); no invitation or date is promised.
 
 Contributions here use the [MIT licence](LICENSE). Do not post secrets, private traffic or provisioning exports. See [security reporting](SECURITY.md).
 
