@@ -1,5 +1,7 @@
 # Public device contract
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 These documents define the canonical device-facing contract for **MECON 1.0**, built on released MeshCore 1.18 from upstream `main`.
 
 The current consolidated architecture freeze candidate is **[Target Firmware Contract v0.9](TARGET_FIRMWARE_CONTRACT_0.9.md)**. It records the target architecture before the final MeshCore 1.18 API is released/pinned. Contract 1.0 will freeze exact upstream CLI/configuration mappings and MECON extension names/encodings after that gate.

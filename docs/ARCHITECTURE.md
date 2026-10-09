@@ -1,5 +1,7 @@
 # Architecture
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 ## Upstream foundation
 
 MECON 1.0 is an extension of **released MeshCore 1.18 from upstream `main`**, not an independent RF stack. The 1.18 merge/release is a dependency for the production refactor. A specific 1.18 revision is pinned before implementation proceeds.

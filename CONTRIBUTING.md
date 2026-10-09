@@ -1,5 +1,11 @@
 # Contributing
 
+This public repository currently contains documentation and contracts. Useful first contributions are clear use cases, contract questions, documentation corrections and reproducible hardware evidence from an authorized test build. No public build path exists yet.
+
+Use [Issues](https://github.com/hoejriis/mecon-firmware/issues) for public discussion while Discussions is not enabled. General beta interest belongs in [MeshContinuum](https://github.com/hoejriis/MeshContinuum/issues/new?template=beta-interest.yml); no invitation or date is promised.
+
+Contributions here use the [MIT licence](LICENSE). Do not post secrets, private traffic or provisioning exports. See [security reporting](SECURITY.md).
+
 mecon-firmware is an upstream-derived MeshCore firmware project with a public backend-neutral integration contract.
 
 ## Before changing code

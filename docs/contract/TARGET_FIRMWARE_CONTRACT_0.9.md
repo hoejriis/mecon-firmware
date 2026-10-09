@@ -1,5 +1,7 @@
 # MECON Target Firmware Contract v0.9
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 **Status:** architecture-frozen v0.9 target contract, updated 2026-10-07 to add device identity rotation, private-key custody, BLE pairing-secret and bond lifecycle, restricted-posture recovery, direct-Reader firmware update and related hardening (earlier update 2026-09-28: settled posture/connectivity model and Deployment-authority boundary). Exact command spelling/encoding remains subject to the pinned MeshCore 1.18 surface.
 
 This document is the consolidated target contract for the MECON firmware re-founding. Detailed wire/profile documents under `docs/contract/` remain normative where referenced. Cross-repository Deployment authority/continuity contracts owned by MeshContinuum are normative for the device-facing fields they define.

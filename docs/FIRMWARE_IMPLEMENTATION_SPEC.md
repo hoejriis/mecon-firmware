@@ -1,5 +1,7 @@
 # MECON 1.0 firmware implementation specification
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 This document is the **functional implementation checklist** for rebuilding mecon-firmware from the released MeshCore 1.18 baseline. Together with `docs/contract/`, it must be sufficient to determine what the firmware is expected to do without reading the private MVP source. The private MVP is evidence and a test oracle only.
 
 The five historical private firmware contracts have been audited field-by-field/function-by-function at product-contract level in [`LEGACY_CONTRACT_AUDIT.md`](LEGACY_CONTRACT_AUDIT.md). Any implementation ambiguity should be resolved from the public contracts plus that classification, not by silently copying private source.

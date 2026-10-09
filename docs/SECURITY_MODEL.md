@@ -1,5 +1,7 @@
 # Security model
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 ## Principles
 
 - MeshCore RF cryptography remains MeshCore's responsibility.

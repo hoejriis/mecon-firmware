@@ -1,5 +1,7 @@
 # Upstream and porting
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 ## MECON 1.0 dependency
 
 The canonical upstream is `meshcore-dev/MeshCore`. **MECON 1.0 depends on MeshCore 1.18 being merged/released on upstream `main`.** The current `dev` branch is suitable for analysis and early validation only. The production refactor begins from a pinned 1.18 revision after it reaches `main`.

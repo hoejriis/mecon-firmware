@@ -1,18 +1,11 @@
-# Security policy
+# Security reporting
 
-Please do not publish exploitable security vulnerabilities as ordinary public issues before maintainers have had a reasonable opportunity to assess them.
+This public repository has no supported software release line yet. Private beta acceptance and public release readiness are distinct.
 
-Security-sensitive areas include:
+Do not publish suspected vulnerabilities, exploit details, private keys, tokens, passwords or private message contents in public issues.
 
-- MeshCore private identity handling;
-- Wi-Fi and MQTT credentials;
-- broker authorization and ACLs;
-- remote configuration and replay protection;
-- BLE pairing/authentication;
-- OTA signing and verification;
-- USB/BLE management tunnels;
-- any path that could permit unauthorized RF transmission or arbitrary code execution.
+Use this repository's **Security → Advisories → Report a vulnerability** route **if the private reporting button is available**. If it is absent, open a public issue asking only for a private security contact, without the vulnerability details. Maintainers must verify a working private route before inviting external testers; this document does not claim the GitHub setting is already enabled.
 
-When reporting a vulnerability, include affected firmware version/build, hardware target and role, reproduction conditions, expected impact and whether physical access is required.
+A private report should identify the affected build, component or board/role, reproduction conditions and likely impact. A roadmap or contract is not evidence of a completed security review.
 
-The project's intended security boundaries are documented in [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) and [docs/contract/SECURITY_AND_AUTHORITY.md](docs/contract/SECURITY_AND_AUTHORITY.md).
+See [Security model](docs/SECURITY_MODEL.md) and [Security and authority contract](docs/contract/SECURITY_AND_AUTHORITY.md) for the target boundaries.

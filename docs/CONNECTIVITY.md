@@ -1,5 +1,7 @@
 # Connectivity and operating modes
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 Connectivity is additive to the underlying MeshCore role, but MECON security posture controls which management transports may be initialized. RF operation must continue independently of IP connectivity.
 
 ## Security posture

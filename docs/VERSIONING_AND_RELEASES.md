@@ -26,3 +26,17 @@ Managed OTA validates signed metadata and hardware/role/variant compatibility. U
 ## Development builds
 
 Builds based on upstream `dev`, dirty trees or unpinned revisions identify themselves as development builds and must not be mistaken for MECON 1.0 release artifacts.
+
+## Staged migration and public availability
+
+No public release artifacts exist in this repository yet. Follow the [shared roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md):
+
+1. Released MeshCore 1.18, pinned and stock behavior proven.
+2. MECON 0.8.1 programme milestone: test-board firmware against the current Backend.
+3. Current Backend dual-compatibility, then MECON 0.9.1 fleet migration.
+4. Public Backend refounding after the fleet migration.
+5. MECON 1.0.1 validation against that public Backend.
+
+These are existing programme milestone names, not upgrade instructions from independently numbered private beta releases. Resolve tag/channel ordering before publication. A private release number is not a public download or evidence that its hardware gates passed.
+
+The [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) is the public maturity reference.

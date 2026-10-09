@@ -1,5 +1,7 @@
 # Integrating with mecon-firmware
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 MECON 1.0 is based on released MeshCore 1.18 and is designed for MeshContinuum and independent integrations.
 
 ## Start with capabilities

@@ -1,5 +1,7 @@
 # Device settings contract
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 Configuration is one logical model across supported MQTT, USB, BLE and remote MeshCore/LoRa paths. **Released MeshCore 1.18 CLI/configuration semantics and storage are authoritative for native settings.** MECON does not maintain a second authoritative copy of native settings and does not define transport-specific setting semantics.
 
 See [`TARGET_FIRMWARE_CONTRACT_0.9.md`](TARGET_FIRMWARE_CONTRACT_0.9.md) for the consolidated pre-1.0 target contract.

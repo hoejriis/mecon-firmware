@@ -1,5 +1,7 @@
 # Non-ESP portability
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 MECON is a capability architecture around MeshCore, not an ESP32/Wi-Fi/MQTT product definition.
 
 The initial MECON 1.0 release is intentionally Heltec V3/V4 focused, but portable functionality is separated so later targets can implement only what their hardware supports.

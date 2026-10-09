@@ -1,5 +1,7 @@
 # MQTT protocol
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 This document defines the MECON 1.0 network contract. It is normative for MECON-specific network behaviour. Released MeshCore 1.18 operations are reused where suitable rather than reimplemented as private MQTT-only device logic.
 
 ## Connection model

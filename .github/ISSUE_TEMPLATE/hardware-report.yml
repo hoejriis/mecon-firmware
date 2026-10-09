@@ -1,0 +1,33 @@
+name: Hardware test evidence
+description: Record real board/role results for an authorized test build.
+title: "[Hardware] "
+body:
+  - type: markdown
+    attributes:
+      value: "There are no public builds here yet. Report only tests you actually ran. Do not upload private firmware, keys, provisioning exports or private traffic."
+  - type: input
+    id: target
+    attributes:
+      label: Board, exact revision and role
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version and build identifier
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: Test date, environment and steps
+      description: "Include transport, browser/OS if relevant, and whether this ran on physical hardware."
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: Measured results and remaining gaps
+      description: "Separate observed passes, failures and untested behavior. Include resource readings where relevant."
+    validations:
+      required: true

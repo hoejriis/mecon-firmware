@@ -1,14 +1,16 @@
 # Supported hardware and roles
 
+> **Public availability:** no firmware releases are published here yet. Read the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for the private beta versus public target distinction. Every table below describes the target, not accepted downloadable builds.
+
 MECON 1.0 depends on released **MeshCore 1.18 from upstream `main`**. A target is called supported only after its derived build passes its real-hardware gate.
 
-MECON uses capability profiles rather than defining the product as ESP32/Wi-Fi/MQTT firmware. Heltec V3/V4 are the **supported 1.0 release baseline**; non-ESP boards can implement portable MECON Core plus the transports/features their hardware actually provides.
+MECON uses capability profiles rather than defining the product as ESP32/Wi-Fi/MQTT firmware. Heltec V3/V4 are the **intended 1.0 release baseline, subject to acceptance**; non-ESP boards can implement portable MECON Core plus the transports/features their hardware actually provides.
 
 | Hardware | Status | Companion | Repeater | IP/Wi-Fi | USB | BLE | MQTT |
 |---|---|---:|---:|---:|---:|---:|---:|
 | Heltec V3 | MECON 1.0 target | Yes | Yes | Yes | Yes | capability-dependent | one active session |
 | Heltec V4 | MECON 1.0 target | Yes | Yes | Yes | Yes | capability-dependent | one active session |
-| SenseCAP T1000-E | Experimental / P3 | Planned MVP | No initial target | No | Planned | Planned | No direct client |
+| SenseCAP T1000-E | Experimental | Planned MVP | No initial target | No | Planned | Planned | No direct client |
 
 V3 and V4 are first-class targets from initial 1.0 bring-up. T1000-E is explicitly **not a MECON 1.0 release dependency**; it is the first planned portability proof for the Core/BLE/USB architecture.
 

@@ -1,5 +1,14 @@
 # mecon-firmware documentation
 
+## Start with availability
+
+- [Shared capability and maturity matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md)
+- [Hosted beta expectations](https://github.com/hoejriis/MeshContinuum/blob/main/docs/GETTING_STARTED.md)
+- [Staged release roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md)
+- [Detailed product target](PRODUCT_TARGET.md)
+
+There is no public firmware download or source build yet. Documents below specify the target rather than certifying implementation or hardware readiness.
+
 These documents describe the **complete MECON 1.0 public target**, not merely differences from stock MeshCore and not the temporary state of the private development repositories. MECON 1.0 depends on **MeshCore 1.18 after it is merged/released on upstream `main`**; `dev` is investigation/validation only.
 
 The documentation has two jobs:

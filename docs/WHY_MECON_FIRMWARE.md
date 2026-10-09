@@ -1,5 +1,7 @@
 # Why mecon-firmware?
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 MeshCore is valuable because the mesh continues to work without cloud infrastructure. MECON starts from that property rather than replacing it.
 
 MECON 1.0 is deliberately built on **MeshCore 1.18 after it lands on upstream `main`**. The newer upstream facilities are the foundation; the private MVP is evidence about useful behaviour and failure modes, not source architecture to preserve.

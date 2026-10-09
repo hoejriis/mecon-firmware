@@ -1,5 +1,7 @@
 # Security and authority contract
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 ## Principles
 
 Reachability is not authority. Discovering a broker, connecting to MQTT, being on the same Wi-Fi, holding a resilience-channel key or having physical proximity MUST NOT silently grant broader device administration.

@@ -1,5 +1,7 @@
 # Direct USB/BLE Reader protocol
 
+> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
 ## Goal
 
 Direct access preserves native MeshCore 1.18 interfaces and adds only the MECON-specific operations needed for the public capability model. A device remains recoverable/manageable locally when Wi-Fi, MQTT or the backend is unavailable.
