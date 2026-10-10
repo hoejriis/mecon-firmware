@@ -29,6 +29,8 @@ The public implementation is gated on a pinned released MeshCore 1.18 baseline a
 
 No public flash command is provided before accepted artifacts exist. Compilation alone is not a hardware-support claim.
 
+**Hosted beta:** the boards and roles that have passed real-hardware tests for the first hosted beta are listed in [Beta boards](docs/BETA_BOARDS.md): today the Heltec V3 and V4 Companion gateways, with the T1000-E experimental. To see the Reader in use, the [MeshContinuum demonstration](https://github.com/hoejriis/MeshContinuum#one-reader-more-reception) shows two Heltec gateways with synthetic data; it is not a claim about any other board or role.
+
 ## Get involved
 
 - [Express beta interest](https://github.com/hoejriis/MeshContinuum/issues/new?template=beta-interest.yml) with your use case and board; this is not a guaranteed invitation.
@@ -45,6 +47,7 @@ Do not post private keys, provisioning exports or private message contents.
 - [Implementation specification](docs/FIRMWARE_IMPLEMENTATION_SPEC.md)
 - [Canonical device contracts](docs/contract/README.md)
 - [Supported hardware target](docs/SUPPORTED_HARDWARE.md)
+- [Beta boards](docs/BETA_BOARDS.md) — what the hosted beta offers, tested on real hardware
 - [Versioning and release gates](docs/VERSIONING_AND_RELEASES.md)
 - [Security model](docs/SECURITY_MODEL.md)
 - [Contributing](CONTRIBUTING.md) · [Security reporting](SECURITY.md)

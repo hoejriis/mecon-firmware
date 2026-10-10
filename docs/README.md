@@ -30,6 +30,7 @@ Firmware requirements belong here and in `contract/`. **Backend migration work c
 - [Why mecon-firmware](WHY_MECON_FIRMWARE.md)
 - [Architecture](ARCHITECTURE.md)
 - [Supported hardware and roles](SUPPORTED_HARDWARE.md)
+- [Beta boards](BETA_BOARDS.md): what the hosted beta offers, tested on real hardware
 - [Connectivity and operating modes](CONNECTIVITY.md)
 - [Integration guide](INTEGRATION.md)
 - [Security model](SECURITY_MODEL.md)
