@@ -1,6 +1,6 @@
 # Core device and health contract
 
-> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation:** this public repository has no installable release yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 ## Identity
 
@@ -8,8 +8,8 @@ A device reports:
 
 - stable MECON `device_id`;
 - native `node_public_key_hex`;
-- `hardware_target` (`heltec_v3` / `heltec_v4` for 1.0 supported releases);
-- native role (`companion` / `repeater`);
+- `hardware_target` (`heltec_v3` / `heltec_v4` for the Heltec targets; the reference firmware also reports `t1000_e` and `wio_tracker_l1`);
+- native role (`companion` / `repeater`; the reference firmware reports `companion_gateway` or `repeater_observer`, and an RF repeater reports `repeater`);
 - build variant;
 - `mecon_firmware_version`;
 - exact `meshcore_base_version`;
@@ -18,6 +18,8 @@ A device reports:
 For MECON 1.0, supported release builds identify a pinned **MeshCore 1.18** base from upstream `main`.
 
 Backend enrollment/database identifiers are not firmware identity and must not replace `device_id` or the native node key.
+
+The reference firmware identifies a device by `gateway_id` and reports `mecon_firmware_version` together with a `deimos_firmware_version` alias.
 
 ## Profiles and capabilities
 
@@ -57,7 +59,7 @@ MECON 1.0 health/status preserves the diagnostic coverage proven useful in the p
 - loop-task stack size and minimum free/high-water headroom;
 - battery millivolts where the board can measure it.
 
-No firmware-derived battery percentage is required unless a trustworthy chemistry/model-specific implementation is later added.
+No firmware-derived battery percentage is required unless a trustworthy chemistry/model-specific implementation is later added. The reference firmware reports a coarse `battery_level` (`ok`, `low`, `critical` or `unknown`, from a 60 s mean with 100 mV hysteresis, plus a change counter) and takes the thresholds from the settings `mesh.power.battery_low_mv` and `mesh.power.battery_critical_mv`; `battery_pct` is reserved and null.
 
 ### Wi-Fi
 
@@ -76,7 +78,7 @@ Configured SSID and actual associated SSID are separate facts.
 - connection/reconnect/error counters sufficient to diagnose flapping;
 - publish counters for consequential/observation traffic.
 
-MECON 1.0 does not report an array of simultaneously connected broker sessions because only one session is active.
+MECON 1.0 does not report an array of simultaneously connected broker sessions because only one session is active. (The reference firmware's status still has `brokers[]` entries holding per-profile state and counters, of which only one is connected, and a `connection_path` object `{role, broker_profile_id, state}`.)
 
 ### BLE
 
@@ -126,6 +128,10 @@ Roles with no contact table omit these fields rather than report `0/0`. Capacity
 ### Status coalescing
 
 Expose a boot-scoped suppressed/coalesced status-event counter so repeated state transitions can be diagnosed without publishing every transition immediately.
+
+### Reference firmware additions
+
+Beyond the logical values above, the 0.9x reference status also carries: the network fields `wifi_ip`, `wifi_gateway`, `wifi_netmask` and `wifi_bssid` (identifiers of the local network; never publish real values); a `radio` object (`freq`, `bw`, `sf`, `cr`, `tx_power`); duty-cycle fields (`duty_limit_permille`, `duty_legal_permille`, `tx_budget_ms`, `tx_shed`); uplink-signing counters (`usig_boot`, `usig_count`, `usig_fail`, `usig_us_max`, `usig_unsaved`); `ble_events`; `crash_history` and lifetime reset counters; a `power` object (source, charging); `ble_passkey_boot` / `ble_passkey_pending`; a `location` object (`lat`, `lon`, `source`, `fix_age_s`); posture and connectivity mode; `deployment` (`contract_version`, `state`, `auth_rejections`); `capabilities` strings, `profiles` and `subscriptions` (broker ACL denials); and `radio_temp`.
 
 ## Crash record
 

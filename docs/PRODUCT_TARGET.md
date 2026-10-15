@@ -2,19 +2,21 @@
 
 > **Target specification, not current availability.** See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) and [staged roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md). This repository currently contains documentation only.
 
-**mecon-firmware** is an open MeshCore firmware distribution for Heltec V3 and V4 devices. It preserves normal MeshCore Companion and Repeater operation while adding resilient IP connectivity, remote management, observations and messaging through Wi-Fi, MQTT, USB and BLE.
+**mecon-firmware** is an open MeshCore firmware distribution, centred on Heltec V3 and V4 devices; its first release, 0.8.0, also carries the SenseCAP T1000-E BLE Companion and the Seeed Wio Tracker L1 RF repeater. It preserves normal MeshCore Companion and Repeater operation while adding resilient IP connectivity, remote management, observations and messaging through Wi-Fi, MQTT, USB and BLE.
 
 It is the sister project of [MeshContinuum](https://github.com/hoejriis/MeshContinuum), but it is **not coupled to MeshContinuum**. Any backend, broker or Reader may integrate with mecon-firmware by implementing the public, versioned contracts in this repository.
 
 > This repository currently defines the public release target. The existing private MVP is an implementation reference, not source to be copied wholesale. The public firmware will be refactored here against the documented behaviour and contracts.
 
-## Upstream dependency for MECON 1.0
+## Upstream dependency
 
-**MECON 1.0 depends on MeshCore 1.18.** Development work may study and validate against the upstream MeshCore `dev` branch while 1.18 is being prepared, but the production MECON 1.0 implementation will be based on **MeshCore 1.18 only after that release has been merged into upstream `main`**. Until that happens, the upstream firmware baseline is considered unresolved and MECON 1.0 cannot complete its foundational fork/refactor.
+**The public line depends on MeshCore 1.18.** MeshCore 1.18.0 was released on upstream `main` on 2026-10-15, so the baseline is no longer unresolved; the production implementation is based on a specific revision of it, which is not yet pinned. The `dev` branch remains for investigation and validation only.
+
+The first public firmware is **mecon-firmware 0.8.0**. The public 0.8.x line and the private 0.9x reference firmware are separate lines, and their version numbers do not order across each other.
 
 This dependency is intentional. The 1.18 lineage contains substantial upstream work that overlaps areas MECON needs, including Wi-Fi infrastructure, runtime configuration, Companion/Repeater command handling, board-specific preferences, remote CLI/message primitives, scoping/subscription work, UI evolution and Heltec V3/V4 support. MECON should extend those upstream facilities rather than recreate their older 1.17-era equivalents from the private MVP.
 
-Once MeshCore 1.18 is on `main`, MECON will pin its initial upstream baseline to a specific 1.18 commit/tag and perform the clean public refactor from there. The private MVP remains a behavioural and test reference, not the source-code baseline.
+MECON pins its initial upstream baseline to a specific 1.18.0 commit/tag and performs the clean public refactor from there. The private MVP remains a behavioural and test reference, not the source-code baseline.
 
 ## What MECON changes compared with stock MeshCore
 
@@ -32,9 +34,11 @@ MECON is deliberately an extension of MeshCore, not a replacement for it. A devi
 
 6. **It can use the mesh itself as an outage path.** When MQTT/IP connectivity is unavailable, selected direct-message traffic can be relayed into a configured private MeshCore channel so loss of the Internet path does not necessarily mean loss of communication. The exact forwarding rules must prevent loops and duplicate delivery when IP connectivity returns.
 
-7. **It can publish autonomous health reports over MeshCore.** A configured private channel can receive a daily status report from the device, providing basic health and connectivity visibility even when no MQTT backend is reachable.
+7. **It can publish autonomous health reports over MeshCore.** A configured private channel can receive a periodic status report from the device, providing basic health and connectivity visibility even when no MQTT backend is reachable. The reference firmware's counterpart is a signed status beacon (group-data type 0x4402, signed with the node key), sent at a random time every 20 to 23 hours plus one at boot if the last automatic one is 12 hours old, carrying uptime, firmware, battery, Wi-Fi/broker state, packets seen in 24 hours, reset reason and, optionally, location and power flags. The "daily report" wording below is the target's name for the same capability.
 
 8. **It can use MQTT as an alternate messaging path when the RF mesh is unavailable.** Direct messages and channel messages can be submitted through the authorized MQTT interface for transmission/delivery through the connected MECON infrastructure. MQTT augments MeshCore messaging; it does not change the MeshCore RF protocol or make normal mesh operation dependent on a backend.
+
+The private 0.9x reference firmware also ships, beyond the list above: Deployment-signed management on every transport, Normal and Hardened security posture, identity rotation and export, BLE bonds and passkey management, an opaque continuity slot, update relay over LoRa, duty-cycle enforcement, battery level reporting, clock correction and repeater passwords. These are not all part of the public target yet.
 
 These behaviours are the public product target. The private development firmware demonstrates much of the machinery and informs the implementation, but the public repository's contracts and tests are authoritative for the refactor.
 
@@ -57,8 +61,8 @@ The UI rule for 1.0 is therefore: **preserve the stock MeshCore 1.18 interaction
 The public refactor deliberately modernizes the underlying ESP32 runtime **after establishing the released MeshCore 1.18 baseline and before the MECON feature layer is ported**. These are foundational choices, not later optimizations:
 
 - **MeshCore 1.18 from upstream `main` is the source baseline.** The current upstream `dev` branch may be used for investigation and early compatibility work, but MECON 1.0 does not fork a moving development branch as its release foundation. The implementation gate is MeshCore 1.18 merged to `main`, after which a specific upstream revision is pinned.
-- **pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x for Heltec V3 and V4.** The public firmware will not reproduce the private MVP's Arduino-ESP32 2.x / ESP-IDF 4.4 baseline. V3 and V4 should be brought up on the modern platform first, and ordinary 1.18-derived Companion and Repeater behaviour proven there before MECON functionality is layered on top.
-- **NimBLE for Bluetooth.** BLE support should be based on NimBLE from the beginning rather than porting a legacy Bluedroid implementation and replacing it later. Wi-Fi, MQTT/TLS and BLE must be designed to coexist within the measured V3/V4 memory budget.
+- **pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x for Heltec V3 and V4.** The public firmware will not reproduce the private reference firmware's Arduino-ESP32 2.x / ESP-IDF 4.4 baseline, which its V3/V4 builds still use today. V3 and V4 should be brought up on the modern platform first, and ordinary 1.18-derived Companion and Repeater behaviour proven there before MECON functionality is layered on top.
+- **NimBLE for Bluetooth.** BLE support should be based on NimBLE from the beginning rather than porting a legacy Bluedroid implementation and replacing it later. The private reference gateways already use NimBLE (NimBLE-Arduino 2.5.1). Wi-Fi, MQTT/TLS and BLE must be designed to coexist within the measured V3/V4 memory budget.
 - **One MQTT client/session architecture.** Do not port the private MVP's historical concurrent-broker implementation. The target is one active MQTT session with local discovery/preference and cloud fallback.
 - **Non-blocking networking and discovery.** DNS, mDNS, broker discovery, MQTT management, OTA and similar IP work must not block the MeshCore/radio main loop for multi-second waits. Local broker discovery should be asynchronous or incrementally polled and should not retain unnecessary responder/task memory between searches.
 - **V3 and V4 are first-class targets from the start.** Common behaviour belongs in shared code, while hardware-specific USB, display, button, radio and board behaviour remains behind explicit target abstractions. V4 must not be treated as a later port of a V3-only MECON implementation.
@@ -66,8 +70,8 @@ The public refactor deliberately modernizes the underlying ESP32 runtime **after
 
 The order matters. The intended bring-up is:
 
-1. wait for MeshCore 1.18 to be merged/released on upstream `main`;
-2. pin MECON 1.0 to a specific MeshCore 1.18 upstream revision;
+1. MeshCore 1.18.0 on upstream `main` (done: released 2026-10-15);
+2. pin the public line to a specific MeshCore 1.18.0 upstream revision;
 3. prove unmodified stock MeshCore 1.18 Companion and Repeater operation on the target Heltec V3/V4 hardware;
 4. migrate the Heltec V3/V4 targets to pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x;
 5. establish NimBLE as the BLE implementation;
@@ -113,10 +117,15 @@ meshcore-dev/MeshCore 1.18 (released on main; pinned revision)
 
 ## Supported release targets
 
-- Heltec V3 Companion
-- Heltec V3 Repeater
-- Heltec V4 Companion
-- Heltec V4 Repeater
+Intended for the first public release, mecon-firmware 0.8.0:
+
+- Heltec V3 Companion Gateway
+- Heltec V4 Companion Gateway
+- Heltec V3 ESP32 Repeater Observer
+- SenseCAP T1000-E BLE Companion (limited scope)
+- Seeed Wio Tracker L1 RF repeater (limited scope)
+
+A Heltec V4 repeater is a target without a build.
 
 All advertised release targets must pass their hardware release gate before being labelled supported. Experimental board revisions may be published separately but are not part of the supported baseline until promoted.
 

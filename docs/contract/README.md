@@ -1,10 +1,10 @@
 # Public device contract
 
-> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation:** this public repository has no installable release yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
-These documents define the canonical device-facing contract for **MECON 1.0**, built on released MeshCore 1.18 from upstream `main`.
+These documents define the canonical device-facing contract for **MECON 1.0**, built on released MeshCore 1.18 from upstream `main`. They are the **target** for the public line (first release mecon-firmware 0.8.0). The private 0.9x reference firmware speaks a legacy wire today (`gateway_id`, `deimos/gw/…`, `enrollment_token`); that shipped behaviour is summarised in [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) and is not yet normative here.
 
-The current consolidated architecture freeze candidate is **[Target Firmware Contract v0.9](TARGET_FIRMWARE_CONTRACT_0.9.md)**. It records the target architecture before the final MeshCore 1.18 API is released/pinned. Contract 1.0 will freeze exact upstream CLI/configuration mappings and MECON extension names/encodings after that gate.
+The current consolidated architecture freeze candidate is **[Target Firmware Contract v0.9](TARGET_FIRMWARE_CONTRACT_0.9.md)**. It records the target architecture before the final MeshCore 1.18 API is released/pinned. Contract 1.0 will freeze exact upstream CLI/configuration mappings and MECON extension names/encodings after that gate. MeshCore 1.18.0 was released on 2026-10-15, so the gate is open; the mapping inventory against it has not been completed.
 
 The contract set is intended to be **implementation-complete**: a firmware developer should not need the private MVP source to discover required device-visible behaviour, and a backend implementer should not need private MeshContinuum knowledge to integrate. If a required payload, operation, lifecycle, error, setting or capability is missing here, that is a documentation defect.
 
@@ -14,6 +14,7 @@ The contract set is intended to be **implementation-complete**: a firmware devel
 - [Direct USB/BLE protocol](DIRECT_READER_PROTOCOL.md)
 - [Device settings](DEVICE_SETTINGS.md)
 - [Security and authority](SECURITY_AND_AUTHORITY.md)
+- [Reference firmware today (legacy wire)](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line): what the 0.9x firmware speaks now; informative, not normative
 
 The complete functional scope is enumerated in [`../FIRMWARE_IMPLEMENTATION_SPEC.md`](../FIRMWARE_IMPLEMENTATION_SPEC.md). Every device-visible item there must either be specified in this contract set or explicitly identified as a native MeshCore 1.18 operation that MECON reuses unchanged.
 
@@ -28,7 +29,7 @@ The complete functional scope is enumerated in [`../FIRMWARE_IMPLEMENTATION_SPEC
 7. Authority is explicit and least-privilege.
 8. State-changing jobs have stable identity, explicit results and replay/idempotency protection.
 9. Unknown fields are forward-compatible; unknown authority is never granted.
-10. Public names use `mecon`, never private deployment vocabulary.
+10. Public names use `mecon`, never private deployment vocabulary. (This is the target; the reference firmware's shipped wire still uses `deimos/gw` topics and `deimos_*` aliases, and accepts `deimos.*` settings permanently.)
 11. Resource limits such as contact capacity are reported by the supported build, not assumed from the private MVP.
 12. The contract covers observations, inventory, health/status/logging, settings, messaging, outage resilience, local/cloud MQTT selection, direct Reader access and OTA wherever these are device-visible.
 

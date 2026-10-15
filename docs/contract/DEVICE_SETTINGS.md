@@ -1,6 +1,6 @@
 # Device settings contract
 
-> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation:** this public repository has no installable release yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 Configuration is one logical model across supported MQTT, USB, BLE and remote MeshCore/LoRa paths. **Released MeshCore 1.18 CLI/configuration semantics and storage are authoritative for native settings.** MECON does not maintain a second authoritative copy of native settings and does not define transport-specific setting semantics.
 
@@ -54,7 +54,7 @@ A reported/readable setting is not automatically writable. Read-only exposure is
 
 ## Canonical namespace
 
-MECON-owned settings use `mecon.*`. New MECON 1.0 devices do not advertise the historical `deimos.*` namespace. Legacy translation belongs in backend/tool adapters.
+MECON-owned settings use `mecon.*`. New MECON 1.0 devices do not advertise the historical `deimos.*` namespace. Legacy translation belongs in backend/tool adapters. (The reference firmware already advertises `mecon.*`, since 0.25.0, and accepts `deimos.*` permanently as an alias.)
 
 Native mesh/radio/location/routing/GPS/system settings map to released MeshCore 1.18's canonical CLI/configuration model wherever possible. Expected configurable outcomes include node name, applicable radio parameters and location. Final command/path mapping is frozen after 1.18 reaches `main`.
 
@@ -75,7 +75,7 @@ MECON 1.0 describes a **single active-session architecture**:
 - authentication/authority information needed to use an eligible discovered local broker;
 - TLS trust selection/policy where configurable.
 
-The device prefers an eligible local broker and falls back to cloud. There are no two concurrent public broker slots and no backend may depend on simultaneous sessions.
+The device prefers an eligible local broker and falls back to cloud. There are no two concurrent public broker slots and no backend may depend on simultaneous sessions. (The reference firmware exposes the single legacy `mecon.mqtt.broker_*` settings and also stores up to four broker profiles through an `apply_settings` command, tiered cloud or LAN; it opens one session at a time.)
 
 MQTT username/password/tokens are write-only.
 
@@ -87,7 +87,7 @@ Remote requests are target-addressed, replay-protected, correlated and bounded f
 
 ## Security/identity settings
 
-Device authority/enrollment credentials are write-only and protected from ordinary config reads. The BLE pairing passkey is a per-device random secret that is never derived from public data; it is exposed only as a read-only setting over authenticated management, on the device's own display and over physical USB, never as a writable or unauthenticated one. Private-key custody and identity rotation follow `SECURITY_AND_AUTHORITY.md`, not the ordinary settings path. Reset/reprovision operations must explicitly define whether they clear network credentials, backend authority, device identity and/or native MeshCore state; a generic 'factory reset' must not ambiguously claim to clear everything.
+Device authority/enrollment credentials are write-only and protected from ordinary config reads. The BLE pairing passkey is a per-device random secret that is never derived from public data. As a settings path it is read-only (`writable: false`; an `apply_config` naming it is rejected as `read_only`), and the target exposes it only over authenticated management, on the device's own display and over physical USB. It is changed by a Deployment-signed command or by USB, not by a settings write. The reference firmware returns it in `get_config` and, on a device with no Deployment record, also without authentication over BLE and the Wi-Fi companion port; after a signed passkey command of 0, `get_config` reports 0 although a fresh value is stored at the next boot. Private-key custody and identity rotation follow `SECURITY_AND_AUTHORITY.md`, not the ordinary settings path. Reset/reprovision operations must explicitly define whether they clear network credentials, backend authority, device identity and/or native MeshCore state; a generic 'factory reset' must not ambiguously claim to clear everything.
 
 ## Outage/resilience settings
 
@@ -103,7 +103,7 @@ Protected/managed-contact semantics, if the supported build evicts contacts unde
 
 ## Companion TCP/private legacy features
 
-The private MVP exposed `mecon.companion_tcp.enabled` for an unauthenticated port-5000 Companion TCP listener. This is **not automatically part of MECON 1.0**. After MeshCore 1.18 is released, retain it only if a concrete interoperability requirement remains and the security model explicitly documents the exposure. Backends must not assume it exists on v1 devices.
+The private MVP exposed `mecon.companion_tcp.enabled` for an unauthenticated port-5000 Companion TCP listener; the reference firmware still ships it (default off, no authentication when on, latched at boot). This is **not automatically part of MECON 1.0**. After MeshCore 1.18 is released, retain it only if a concrete interoperability requirement remains and the security model explicitly documents the exposure. Backends must not assume it exists on v1 devices.
 
 ## Secrets
 
@@ -112,6 +112,10 @@ Secrets may be replaced but are never returned. A read/schema may expose `config
 ## Unknown and unsupported settings
 
 Unknown paths/operations are rejected explicitly. Type coercion is not used for security-sensitive settings. Unsupported settings are not silently accepted and ignored.
+
+## Reference firmware settings
+
+The 0.9x reference firmware's schema contains: `mesh.name`; `mesh.radio.{frequency_mhz,bandwidth_khz,spreading_factor,coding_rate}`; `mesh.power.{battery_low_mv,battery_critical_mv}`; `mesh.location.{lat,lon,source,fix_age_s,advert}`; `mesh.gps.enabled`; `mesh.channels[N].{name,slot}` (read-only); `mecon.wifi_profiles[0-2].{ssid,password}`; `mecon.mqtt.{broker_uri,broker_username,broker_password}`; `mecon.companion_tcp.enabled`; `mecon.companion_ble.enabled`; `mecon.connectivity.mode`; and `mecon.posture`. A Companion's GPS defaults on and advertising its location defaults off. Effects are `live` or `restart_required`, and Wi-Fi/MQTT changes are committed in two phases and reverted if the device does not return. Its base is MeshCore 1.17.1, so the native keys map to that release's preferences, not yet to 1.18's. On the Wio repeater only `mesh.name`, `mesh.location.lat`, `mesh.location.lon`, `mesh.location.advert` and `mesh.gps.enabled` can be written over RF; `mesh.radio.*` cannot.
 
 ## Roles
 

@@ -1,10 +1,10 @@
 # Architecture
 
-> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation:** this public repository has no installable release yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 ## Upstream foundation
 
-MECON 1.0 is an extension of **released MeshCore 1.18 from upstream `main`**, not an independent RF stack. The 1.18 merge/release is a dependency for the production refactor. A specific 1.18 revision is pinned before implementation proceeds.
+The public firmware is an extension of **released MeshCore 1.18 from upstream `main`**, not an independent RF stack. MeshCore 1.18.0 was released on 2026-10-15; a specific 1.18.0 revision is pinned before implementation proceeds (none is pinned yet).
 
 MECON is intentionally **not defined as MeshCore + Wi-Fi/MQTT**. Portable Core behaviour is separated from optional transports/platform services.
 
@@ -35,7 +35,7 @@ A target advertises capabilities. Reader/backend must not infer Wi-Fi, MQTT, dis
 
 **MeshCore CLI/configuration semantics are the canonical device-management semantics.** MECON does not define separate configuration products for USB, BLE, MQTT and LoRa.
 
-Where released MeshCore 1.18 already exposes a suitable CLI/configuration operation, MECON reuses it and its authoritative persistence/validation. MECON-specific behaviour extends the same logical plane under a `mecon` namespace. USB, BLE, MQTT and MeshCore RF/LoRa are transports to that plane; they do not redefine setting names or side effects.
+Where released MeshCore 1.18 already exposes a suitable CLI/configuration operation, MECON reuses it and its authoritative persistence/validation. MECON-specific behaviour extends the same logical plane under a `mecon` namespace. The reference firmware's shipped plane is `get_config` / `apply_config` plus the native CLI and a set of `cmd` verbs, with settings under `mesh.*` (native keys) and `mecon.*` (and `deimos.*` accepted permanently as an alias); on repeaters the same operations are available as `mecon info|get|list|status|set|reboot|sync|pw|dep|ota|writes|posture|clock|radiotemp` lines, compact (replies of at most 159 characters) and, when written over RF, Deployment-signed. USB, BLE, MQTT and MeshCore RF/LoRa are transports to that plane; they do not redefine setting names or side effects.
 
 This does **not** mean exposing an unrestricted raw shell. MECON transports carry an allowlisted, versioned operation envelope with request/job correlation, authorization, results/errors and replay/idempotency protection. A transport may use a compact binary encoding, especially over LoRa, while mapping to the same canonical operation.
 
@@ -44,6 +44,10 @@ For native configuration, upstream storage such as `NodePrefs`/`ConfigSerializer
 Remote RF management should use MeshCore's released authenticated CLI/command mechanism where available: Backend/Reader -> local transport -> Companion -> MeshCore RF -> target CLI/configuration. MECON may add correlation, auditing, policy and compact framing around the operation without inventing a proprietary RF configuration protocol.
 
 The consolidated pre-release target definition is [`contract/TARGET_FIRMWARE_CONTRACT_0.9.md`](contract/TARGET_FIRMWARE_CONTRACT_0.9.md). Exact MECON extension names/encodings are frozen only after the released 1.18 API is pinned.
+
+## Roles in the reference firmware
+
+The private 0.9x firmware builds four roles, which the contracts abbreviate to Companion and Repeater: the **Companion Gateway** (ESP32, Heltec V3 and V4, Wi-Fi/MQTT plus USB/BLE), the **Repeater Observer** (ESP32, Heltec V3, MQTT plus RF administration), the **T1000-E BLE Companion** (nRF52, no Wi-Fi) and the **Wio RF repeater** (nRF52, managed over RF and USB). Capabilities, not these names, decide what a client may request.
 
 ## Portable MECON Core
 
@@ -77,6 +81,8 @@ Firmware must represent sync-key generation explicitly enough to reject/diagnose
 ## Recovery Companion capability
 
 Recovery is optional and explicitly provisioned. A normal enrolled Companion is not automatically a Recovery Companion.
+
+*Reference firmware today:* the private 0.9x firmware ships the underlying slot as an opaque continuity slot on the Companion gateways and the T1000-E (`continuity_store`, `continuity_clear`, `continuity_status` and `continuity_read`, the last USB only and bare). It is bounded to 1,953 bytes on the T1000-E, refused for storing in a restricted posture, and destroyed on every posture change. The terms "Recovery Companion" and "designated" are target terminology and do not appear in the shipped specification.
 
 A Recovery Companion stores a small opaque encrypted **Recovery Package** in persistent storage. It must not keep a directly usable plaintext Deployment master/recovery key. Package encryption uses a key derived from a user-selected passphrase; MECON does not impose passphrase complexity, though clients may provide strength guidance.
 
@@ -121,7 +127,7 @@ MQTT, USB, BLE and applicable MeshCore RF/LoRa are transports for one logical ca
 
 ### MECON IP
 
-Initial Heltec targets store up to three ordered Wi-Fi profiles and use one MQTT session at a time. Post-P3 broker selection is compatible authenticated local broker first, then configured primary cloud broker, then secondary cloud broker, with backoff/anti-flapping. Boards without IP omit MECON IP and may use Reader BLE/USB bridging.
+Initial Heltec targets store up to three ordered Wi-Fi profiles and use one MQTT session at a time. Broker selection is compatible authenticated local broker first, then configured primary cloud broker, then secondary cloud broker, with backoff/anti-flapping; the private 0.9x reference firmware already behaves this way (see [Connectivity](CONNECTIVITY.md#mqtt-and-broker-selection)). Boards without IP omit MECON IP and may use Reader BLE/USB bridging.
 
 ### MECON BLE
 

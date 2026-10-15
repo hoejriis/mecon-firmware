@@ -1,6 +1,6 @@
 # Security and authority contract
 
-> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation:** this public repository has no installable release yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 ## Principles
 
@@ -102,17 +102,21 @@ A management line refused before execution (for example unsigned where signed is
 
 ## Device identity and private-key custody
 
-On ownership reassignment a device rotates to a new mesh identity generated on the device, triggered by a Deployment-signed request (or an authenticated direct Reader in a restricted posture). Rotation keeps configuration, connectivity, enrolment, the Deployment record, channels and posture, and drops contacts and queued messages; the old and new public keys are reported.
+On ownership reassignment a device rotates to a new mesh identity generated on the device, triggered by a Deployment-signed request (or an authenticated direct Reader in a restricted posture). Rotation keeps configuration, connectivity, enrolment, the Deployment record, channels and posture, and drops contacts and queued messages; the old and new public keys are reported. A device with no readable Deployment record refuses rotation. The order is: generate, save, swap, drop contacts and queue, then one self-advert.
 
-The backend needs the private key to decrypt direct messages addressed to the device. Before provisioning into a Deployment the key may be read over a physically connected USB link only. After provisioning it can be read only by a Deployment-signed request (fleet-owner authority), answered only to the requester's channel. Stock key export/import is disabled on every transport once provisioned, import is never available, and no end user can read the key.
+The backend needs the private key to decrypt direct messages addressed to the device. Before provisioning into a Deployment the key may be read over a physically connected USB link only. After provisioning it can be read only by a Deployment-signed request (fleet-owner authority), answered only to the requester's channel. If the Deployment record is corrupt, so that no authority can be verified, the reference firmware also allows the read over USB without a signature; an authenticated Reader does not count as fleet-owner authority for it. Stock key export and import are disabled on every transport once provisioned; key import is refused over the companion protocol, a radio or a broker, and the stock repeater console `set prv.key` works only while no valid Deployment record is held; no end user can read the key.
 
 ## Direct Reader authentication accounting
 
 The Reader's single unsigned readiness probe on attach is answered but not counted as an authentication rejection. Every other unsigned request on a Deployment-aware device is refused and counted.
 
+## Reference firmware authority classes
+
+The reference firmware's vocabulary maps the classes above to five codes: **S** (Deployment-signed, accepted on any transport), **P** (physical possession over USB or a repeater console, unsigned), **R** (an authenticated Reader over USB in a restricted posture), **open** (reads that disclose nothing secret) and **L** (a device with no Deployment record). A device must hold a USB-auth secret before it can enter Hardened, so that a Reader can always unlock it; the secret is write-once over USB and never the enrolment credential. Unsigned exceptions are listed in [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) and in [Security model](../SECURITY_MODEL.md#reference-firmware-today).
+
 ## Restricted-posture recovery boundary
 
-Where the bootloader accepts images over USB, a recovery path outside OTA clears the posture record and continuity material while preserving identity, enrolment and the Deployment record. Because such a bootloader accepts unsigned images, physical USB access can always replace the application: restricted posture protects the application's command surface, not against reflashing.
+Where the bootloader accepts images over USB, a recovery path outside OTA clears the posture record and continuity material while preserving identity, enrolment and the Deployment record. The reference firmware ships this as a recovery-only image for the Wio repeater and the T1000-E (it removes only the posture records); gateways recover through the Reader unlock or a USB `deployment_reset`. A USB factory erase removes everything, the posture and Deployment records included. Because such a bootloader accepts unsigned images, physical USB access can always replace the application: restricted posture protects the application's command surface, not against reflashing.
 
 ## Repeater signed-writes switch
 
@@ -122,7 +126,7 @@ A per-device setting, off by default. When on, unsigned RF management writes are
 
 Wi-Fi passwords, MQTT credentials, resilience keys, MeshCore private identity material, Deployment private material and continuity/recovery secrets are write-only and are not returned through ordinary status/configuration/logging surfaces. The two narrow exceptions are the device private key under the custody rules above and the BLE pairing passkey below.
 
-BLE pairing passkeys are random per device, drawn from the hardware RNG and persisted; never derived from public data such as the public key and never a shared or stock default. A device holding a non-secret value (unset, stock default, or key-derived) re-rolls it once on upgrade, and existing bonds survive. The passkey is never in advertisements or periodic status; it is available on the device's own display, as a read-only setting over authenticated management (MQTT is a trusted transport for this purpose) and over physical USB. If no secret passkey can be established, BLE does not start (fail closed). Bonds can be counted and cleared over physical USB only; a clear requested while BLE is not running is persisted and executed at the next BLE start before advertising, then verified, and is immediate where the bond store is reachable without the stack. Hardened has no BLE stack.
+BLE pairing passkeys are random per device, drawn from the hardware RNG and persisted; never derived from public data such as the public key and never a shared or stock default. A device holding a non-secret value (unset, stock default, or key-derived) re-rolls it once on upgrade, and existing bonds survive. The passkey is never in advertisements or periodic status; it is available on the device's own display, as a read-only setting over authenticated management (MQTT is a trusted transport for this purpose) and over physical USB. If no secret passkey can be established, BLE does not start (fail closed). Bonds can be cleared over physical USB only (the count is also available on any `cmd` path in the reference firmware); a clear requested while BLE is not running is persisted and executed at the next BLE start before advertising, then verified, and is immediate where the bond store is reachable without the stack. Hardened has no BLE stack. The reference firmware additionally lets the passkey be set by a Deployment-signed command or USB, and returns it in `get_config`, including without authentication over BLE and the Wi-Fi companion port on a device that holds no Deployment record.
 
 ## TLS trust
 

@@ -1,6 +1,6 @@
 # Security model
 
-> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation:** this public repository has no installable release yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 ## Principles
 
@@ -9,11 +9,11 @@
 - A MECON **Deployment** is the administrative trust domain.
 - Device authority is rooted in a Deployment Authority Key (DAK); Backend instance authority is explicitly granted under that Deployment authority contract.
 - Observation, configuration, messaging, management/admin, resilience/backfill and OTA are distinct capabilities and may be authorized separately.
-- Secrets are write-only through ordinary management APIs.
+- Secrets are write-only through ordinary management APIs. The two narrow exceptions are the device private key under the custody rules and the BLE pairing passkey (see [Security and authority](contract/SECURITY_AND_AUTHORITY.md)).
 - No management transport grants an unrestricted shell, arbitrary execution surface or raw secret-store access merely because it is authenticated.
 - Security posture controls local exposure; it does not redefine who has Deployment authority.
 
-The canonical Backend-side Deployment authority contract is maintained by MeshContinuum (`DEPLOYMENT_AUTHORITY_CONTRACT.md`, originating from deimos-mesh #632). Firmware implementations must consume that contract rather than inventing transport-specific trust rules.
+The canonical Backend-side Deployment authority contract is maintained by MeshContinuum (`DEPLOYMENT_AUTHORITY_CONTRACT.md`). Firmware implementations must consume that contract rather than inventing transport-specific trust rules.
 
 ## Normal and Hardened posture
 
@@ -102,6 +102,16 @@ USB/full reflash remains the ultimate physical recovery path.
 Backend federation and device authority are complementary but distinct. Backends may replicate Deployment state between trusted Backend instances, but federation membership alone does not grant device authority: an instance still requires authorization under the Deployment authority contract.
 
 Firmware does not implement Backend-to-Backend state federation and does not need to understand federation HLCs, cursors, snapshots or replicated user/session semantics.
+
+## Reference firmware today
+
+The private 0.9x reference firmware already enforces much of this model; the mechanics below are shipped behaviour, not yet normative contract text (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)).
+
+- **Signed management on every transport.** Writes carry a Deployment-signed wrapper (issuer, authority revision, signature over the canonical body, which names the device or, for a repeater, its node public key); a wrong-device body is refused. Replay is per issuer and per job class. A message over the 3,072-byte slot is refused before parsing, and refusals are counted (`auth_rejections`). USB under physical possession is the one unsigned write path; in a restricted posture an authenticated Reader unlocks USB with a challenge over a write-once USB-auth secret.
+- **Record states.** A Deployment record is none, present or corrupt; corrupt fails closed. A device with no record accepts, from a broker, BLE or TCP, only reads, the first bare provisioning and bare contact protection.
+- **Signed uplink.** Every MQTT publish from a gateway carries a boot counter, sequence and Ed25519 signature, and the Backend latches per device, so device-to-backend traffic is authenticated as well.
+- **Unsigned exceptions.** A paired BLE central may reboot the device unsigned; a corrupt or missing record may be reset unsigned over USB; some counts and reads over USB, the Reader's attach probe and a guest RF `mecon info` are unsigned. MECON writes over USB are authorised by possession, not by signature.
+- **Passkey.** The reference firmware returns the BLE pairing passkey as a read-only entry of `get_config`; it is never in a status, an advertisement or a log.
 
 ## Backend independence
 

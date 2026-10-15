@@ -7,9 +7,11 @@
 - [Staged release roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md)
 - [Detailed product target](PRODUCT_TARGET.md)
 
-There is no public firmware download or source build yet. Documents below specify the target rather than certifying implementation or hardware readiness.
+There is no public firmware download or source build yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). Documents below specify the target rather than certifying implementation or hardware readiness.
 
-These documents describe the **complete MECON 1.0 public target**, not merely differences from stock MeshCore and not the temporary state of the private development repositories. MECON 1.0 depends on **MeshCore 1.18 after it is merged/released on upstream `main`**; `dev` is investigation/validation only.
+These documents describe the **complete MECON 1.0 public target**, not merely differences from stock MeshCore and not the temporary state of the private development repositories. The public line is built on **upstream MeshCore 1.18.0** (released 2026-10-15) from `main`; a specific revision is pinned for each public release, and `dev` is investigation/validation only. The target vocabulary (`device_id`, `{namespace}/…` topics) differs in places from what the private 0.9x reference firmware speaks today; [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) states the shipped behaviour.
+
+"The private MVP" in these documents is the earlier name for the private reference firmware, now the 0.9x line.
 
 The documentation has two jobs:
 
@@ -54,6 +56,6 @@ The contract documents are normative for MECON 1.0. They describe **all device-v
 - [Legacy contract audit](LEGACY_CONTRACT_AUDIT.md) is the traceability matrix proving historical private requirements have a public disposition.
 - [Current-to-target contract adjustments](CONTRACT_MIGRATION_NOTES.md) is non-normative engineering/reference material explaining legacy inconsistencies and why the public target differs.
 
-The private `deimos-mesh-firmware` implementation and historical contracts were used as evidence for the audit, but every required product behaviour is now required to live here. **A requirement that exists only in private source or private documentation is considered undocumented for MECON 1.0.**
+The private `deimos-mesh-firmware` implementation and historical contracts were used as evidence for the audit, but every required product behaviour is now required to live here. **A requirement that exists only in private source or private documentation is considered undocumented for MECON 1.0.** Shipped behaviour of the reference firmware that these contracts do not yet specify (the signed management wrapper, the USB-unlock secret, signed uplink, the compact RF line, repeater posture, LoRa-relayed OTA, duty-cycle limits) is summarised in the adjustments note and is not yet normative here.
 
-The remaining `VERIFY 1.18` entries are not permission to consult private code during implementation. They mean the product requirement is known but its exact native-vs-MECON implementation mapping must wait until MeshCore 1.18 is released on `main`.
+The remaining `VERIFY 1.18` entries are not permission to consult private code during implementation. They mean the product requirement is known but its exact native-vs-MECON implementation mapping must wait for the mapping inventory against the released MeshCore 1.18.0, which has not been completed.

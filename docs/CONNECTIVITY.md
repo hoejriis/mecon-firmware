@@ -1,6 +1,6 @@
 # Connectivity and operating modes
 
-> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation:** this public repository has no installable release yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 Connectivity is additive to the underlying MeshCore role, but MECON security posture controls which management transports may be initialized. RF operation must continue independently of IP connectivity.
 
@@ -11,6 +11,8 @@ MECON defines two persistent operating postures plus a fail-secure recovery stat
 - **Normal** — stock MeshCore interoperability and MECON convenience access are preserved.
 - **Hardened** — a managed-infrastructure posture. Physical possession or proximity does not grant administration or message access.
 - **Fail-secure recovery** — entered when persisted posture cannot be validated; it is not user-selectable and must never silently fall back to Normal.
+
+In the private 0.9x reference firmware the posture ships on all four roles: the Heltec Companion gateways and the T1000-E, and, since 0.90.0, the Wio repeater and the ESP32 Repeater Observer. Entering Hardened requires a USB-auth secret to be set first (otherwise the change is refused as `no_usb_auth_secret`), so the device can always be unlocked by an authenticated Reader. The Wio and the T1000-E have a recovery-only image that clears the posture records and nothing else; a gateway recovers through the Reader unlock or a USB `deployment_reset`.
 
 Posture changes require authenticated MECON management, persist across reboot, and take effect through a controlled reboot so services are initialized according to the selected posture rather than dynamically torn down as a security boundary.
 
@@ -24,7 +26,7 @@ On Wi-Fi-capable MECON devices the Normal posture exposes three persistent conne
 
 The connectivity selector exists only in Normal posture. Entering Hardened discards the previous Normal mode. Returning Hardened → Normal on a Wi-Fi-capable device starts in **MQTT**, not the previous BLE/Both choice.
 
-Non-Wi-Fi targets expose only modes supported by their hardware.
+Non-Wi-Fi targets expose only modes supported by their hardware. In the reference firmware `Both` is also not available on the Heltec V3 (a measured 9 KB of heap remains), so the V3 offers `MQTT` and `BLE` only, and a V3 found in `Both` is migrated to `MQTT`.
 
 ## Wi-Fi
 
@@ -40,7 +42,9 @@ A provisioned cloud broker is the fallback/default remote path. A compatible loc
 
 The device may switch between eligible local and remote endpoints without duplicating state-changing jobs or RF transmissions. MQTT failure never stops RF.
 
-The historical private concurrent-multi-broker architecture is not the target architecture.
+The historical private concurrent-multi-broker architecture is not the target architecture, and has not been the shipped one since reference firmware 0.51.0.
+
+Reference behaviour today: one session, tried in the order local, primary, secondary broker (the device may store up to four broker profiles). A connect that has not completed in 45 s, or an unhealthy session, moves the device down the list; failure cooldowns start at 60 s and double up to 600 s. It moves up only from a settled session and to a path known to be reachable: back to the local broker after 30 s settled (cloud 2 min). A local broker that delivers no signed liveness beacon within 90 s of connecting is untrusted for 900 s; after a local session drops the cooldown before rediscovery is 30, 60, 120, 240, then 300 s. Silence from a cloud broker alone never condemns it. The transport is MQTT over WSS.
 
 ## BLE
 
@@ -60,7 +64,7 @@ Full flash erase/reflash by a person with physical access is outside the enrolle
 
 ## Secure RF management
 
-Authenticated MECON management over MeshCore RF is a first-class management path where the target supports it. It is particularly important for non-Wi-Fi repeaters. Hardened posture retains secure RF management; posture must not turn a deployed non-Wi-Fi device into an unmanageable appliance.
+Authenticated MECON management over MeshCore RF is a first-class management path where the target supports it. The reference firmware ships it as a compact Deployment-signed line on the Wio repeater and, for password and reboot, on the Observer, with a per-signer replay watermark and replies of at most 159 characters; at most four signature verifications are made per 10 s. It is particularly important for non-Wi-Fi repeaters. Hardened posture retains secure RF management; posture must not turn a deployed non-Wi-Fi device into an unmanageable appliance.
 
 RF management is part of the same logical management capability model as MQTT and authenticated Reader USB, not a separate configuration language.
 
@@ -77,6 +81,8 @@ Authenticated management retains applicable detailed telemetry, diagnostics, con
 
 ## Outage behaviour
 
+- The reference firmware limits its own transmit airtime to the legal duty cycle of the configured channel (10 % in 869.40-869.65 MHz, 1 % in 868.0-868.6 and 869.7-870.0 MHz, 0.1 % elsewhere); an operator setting can only tighten it. Past the budget it sheds its own adverts and flood forwards first, and reports the limit, budget and shed count in status.
+
 - Wi-Fi/MQTT loss never stops MeshCore RF operation.
 - Hardened never weakens posture because infrastructure is unavailable.
 - Configured DM outage forwarding may use the configured private MeshCore channel where the role/posture permits the underlying messaging function.
@@ -85,7 +91,7 @@ Authenticated management retains applicable detailed telemetry, diagnostics, con
 
 ## OTA
 
-Posture restricts authority and exposure, not authorized OTA capability. Hardened devices may accept OTA through authenticated network/MQTT management and authenticated Reader USB where supported. Future secure RF OTA may be supported if technically safe; LoRa OTA is not a requirement.
+Posture restricts authority and exposure, not authorized OTA capability. Hardened devices may accept OTA through authenticated network/MQTT management and authenticated Reader USB where supported. LoRa OTA is not a requirement of the target contract. The private 0.9x reference firmware ships it: an ESP32 gateway can take a full image relayed over one LoRa hop (the Deployment-signed manifest still verifies the image), and the Wio repeater stages an image without ever activating it. Whether the public line carries it is decided with the OTA contract.
 
 In Normal `Both` mode an OTA coordinator may temporarily stop BLE to free heap without changing the persisted connectivity choice, then restore it after the OTA/reboot flow when appropriate. MQTT mode never loads BLE in the first place.
 

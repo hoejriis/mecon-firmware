@@ -2,6 +2,8 @@
 
 This document is the **single place for backend-side changes required because the public MECON 1.0 firmware differs from the deployed/private MVP**. The firmware and public contract documents describe the desired end state; they must not be polluted with legacy behaviour merely to make migration easier.
 
+"Legacy" in this document means the wire the private 0.9x reference firmware speaks today (its shipped behaviour is summarised in [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). The public 0.8.x line and that private line are separate lines: version numbers do not order across them.
+
 The current backend must continue to support deployed private-MVP firmware during rollout. Implement compatibility at the backend boundary and remove it only when the old fleet is retired.
 
 ## Migration rule
@@ -16,6 +18,8 @@ For each difference below, the backend should support **old and new simultaneous
 6. remove the adapter after the old fleet is retired.
 
 Do not make the new firmware emit private legacy names merely to avoid backend work.
+
+*Open sequencing question:* the programme's first public release is exercised against the current Backend, which speaks only the legacy names (`gateway_id`, `deimos/gw/…`). Whether mecon-firmware 0.8.0 emits the legacy vocabulary, the v1 vocabulary below, or both is a roadmap decision that this document does not settle. Until it is made, v1 is the target and the legacy wire is shipped reference behaviour.
 
 ## Identity and naming
 
@@ -49,7 +53,7 @@ Accept legacy fields/topics while deployed, normalize them to the new device mod
 
 ### Legacy
 
-The private MVP evolved toward multiple broker profiles and, in some versions/designs, simultaneous broker sessions with independent authority.
+Earlier private builds held several broker profiles and, in some versions, simultaneous broker sessions with independent authority. Since reference firmware 0.51.0 the device opens one session at a time, in the order local, primary, secondary broker. Up to four broker profiles are still stored, each with its own capability grants (`cap_receive_admin_config`, `cap_receive_backfill`, `cap_publish_events`).
 
 ### MECON 1.0
 
@@ -114,7 +118,7 @@ The user-visible three-profile behaviour remains. Backend code must rely on the 
 
 ### Legacy
 
-Direct support evolved incrementally; some operations use native Companion commands, some use MECON/private tunnels, and older builds may have different BLE/passkey/startup behaviour.
+Direct support evolved incrementally; some operations use native Companion commands, some use MECON/private tunnels. In the 0.9x firmware the passkey is random per device, re-rolled once on upgrade from a non-secret value, settable by a Deployment-signed `ble_passkey` command or by USB command 37, and BLE startup follows documented timing rules; older builds differ.
 
 ### MECON 1.0
 
@@ -132,7 +136,7 @@ Companion uses NimBLE, per-device PIN, standard MeshCore Companion interoperabil
 
 ### Legacy
 
-Recent private builds use a fixed/reduced contact-table target (including 64 and temporary lower values during memory mitigation).
+Earlier private builds used a fixed/reduced contact-table target (including 64 and temporary lower values during memory mitigation). The 0.9x firmware enforces 50 contacts on Heltec V3 and V4 and 350 on the T1000-E, and reports the runtime capacity.
 
 ### MECON 1.0
 
@@ -160,6 +164,10 @@ The logical object is an `observation`: raw MeshCore bytes plus receiver/time/RS
 
 Normalize legacy raw/rx and v1 observations into the same observation store. Do not infer a separate Observer RF role. Preserve multiple receptions of the same canonical packet as separate observations/evidence where the backend model supports that distinction.
 
+## What the Backend already speaks to the 0.9x firmware
+
+Shipped inputs the current Backend must keep handling until the legacy fleet is retired: the Deployment-signed wrapper on every management message (naming `gateway_id`, or the target node public key for a repeater; whether the Backend sends the latter form is not established); the write-once USB-auth secret provisioned over USB so a Reader can unlock a restricted device; signed uplink (`usig_boot`, `usig_seq`, `usig`) latched per device; `ota_ack_signed` and the `ota/relay/*` topics; and the first bare `deployment_provision` that must precede every other write on a device with no Deployment record. A proposed `device_operations_version` is emitted by no build.
+
 ## Messaging, inventories and provisioning
 
 MECON 1.0 reuses native MeshCore 1.18 operations where they already solve Companion messaging/contact/channel behaviour and uses MECON typed operations only for additional semantics.
@@ -174,7 +182,7 @@ Backend changes:
 
 - map legacy `backfill`, `backfill_result`, `sync_status` and related payloads into the v1 outage/delivery model;
 - recognize DM copies forwarded through the configured private MeshCore channel and prevent loops/double presentation when the IP copy later arrives;
-- ingest the device's daily private-channel status report as health evidence without presenting it as an ordinary user message unless the product explicitly chooses to;
+- ingest the device's periodic private-channel status report (in the 0.9x firmware a signed status beacon, group-data type 0x4402) as health evidence without presenting it as an ordinary user message unless the product explicitly chooses to;
 - preserve stable message/delivery identity across RF and MQTT paths.
 
 ## MQTT as alternate message path
@@ -187,7 +195,7 @@ Backend parsers and UI must move from legacy health/status field assumptions to 
 
 ## OTA
 
-The private firmware already developed signed-manifest OTA machinery; MECON 1.0 makes managed OTA part of the public contract.
+The private firmware already ships signed-manifest OTA: Ed25519-signed manifests, revert of an unconfirmed update, a signed `ota/ack` (capability `ota_ack_signed`), relay of a full image over one LoRa hop to ESP32 gateways (`ota/relay/*`) and a staged-only LoRa image on the Wio repeater. MECON 1.0 makes managed OTA part of the public contract.
 
 Backend changes:
 
@@ -195,7 +203,8 @@ Backend changes:
 - send OTA through the v1 authorized job surface;
 - track accepted/progress/succeeded/failed lifecycle;
 - do not expose arbitrary URL flashing as normal remote administration;
-- retain legacy OTA handling only for legacy devices during migration.
+- retain legacy OTA handling only for legacy devices during migration;
+- sign `ota/ack` for devices that advertise `ota_ack_signed`.
 
 ## MeshCore 1.18 capability changes
 

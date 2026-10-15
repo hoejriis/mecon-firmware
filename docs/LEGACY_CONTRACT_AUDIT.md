@@ -10,6 +10,8 @@ The source set audited is the five firmware-owned private contracts:
 - `OUTAGE_SYNC_PROTOCOL.md`
 - `PROVISIONING_SERIAL_PROTOCOL.md`
 
+*Status note, 2026-10-15:* the dispositions below are dispositions for the public target. Several describe the private 0.9x reference firmware's present behaviour rather than a change to it; rows where it differs are annotated. Surfaces the reference firmware added after this audit was written are listed after the last table.
+
 Every material private surface is classified as one of:
 
 - **KEEP / MECON v1** — required public behaviour; specify in `docs/contract/`.
@@ -37,13 +39,13 @@ Every material private surface is classified as one of:
 | `cmd` | **KEEP/NATIVE 1.18:** native 1.18 operations where adequate; MECON typed jobs only for extra semantics |
 | QoS 1 for consequential messages | **KEEP** |
 | retained last-known status/inventory/sync state | **KEEP where state is a snapshot** |
-| multiple simultaneous broker profiles/sessions | **RETIRE:** one active session, local preferred, cloud fallback |
-| per-broker independent publish/cmd capability model | **CHANGE:** one logical authority across alternate paths; path discovery grants no authority |
+| multiple simultaneous broker profiles/sessions | **RETIRE:** one active session, local preferred, cloud fallback (already retired in the reference firmware since 0.51.0, which still stores up to four profiles and opens one session) |
+| per-broker independent publish/cmd capability model | **CHANGE:** one logical authority across alternate paths; path discovery grants no authority (per-profile capability grants still exist in the reference firmware) |
 | shared replay guard / at-most-once state-changing jobs | **KEEP**, extended across local/cloud/direct transports |
 | result returns only on ingress broker | **RETIRE as broker-specific rule:** result belongs to logical job; route over available authorized path |
 | broker CA selection/bundle | **KEEP conceptually:** TLS trust is firmware-owned/provisioned policy; exact root bundle belongs to release implementation, not backend authority |
 | WSS-only historical transport | **CHANGE:** secure MQTT transport is required; exact supported MQTT transport(s) are capability/configuration-defined rather than hard-coding a private broker deployment |
-| application-layer enrollment token | **KEEP conceptually:** public security contract requires device-specific authority credential; exact v1 envelope field is canonical MECON vocabulary |
+| application-layer enrollment token | **KEEP conceptually:** public security contract requires device-specific authority credential; exact v1 envelope field is canonical MECON vocabulary. The reference firmware's `enrollment_token` appears on every envelope and status; it is to be dropped once every device is latched on signed uplink, so the field itself is not carried forward |
 | `deimos_*` aliases | **RETIRE from new device output; backend legacy adapter only** |
 | raw observations dropped rather than unbounded offline queue | **KEEP** |
 | command replay/idempotency | **KEEP** |
@@ -65,7 +67,7 @@ Every material private surface is classified as one of:
 | Wi-Fi passwords write-only | **KEEP** |
 | MQTT URI/user/password | **KEEP**, adjusted to local-first single-session architecture |
 | broker profile arrays / concurrent broker capabilities | **RETIRE/CHANGE** |
-| `mecon.companion_tcp.enabled` | **VERIFY 1.18/product need:** do not automatically port an unauthenticated TCP listener; only expose if retained deliberately and document security consequences |
+| `mecon.companion_tcp.enabled` | **VERIFY 1.18/product need:** do not automatically port an unauthenticated TCP listener; only expose if retained deliberately and document security consequences (in the reference firmware it ships, default off, unauthenticated when on, latched at boot) |
 | `deimos.*` path alias | **RETIRE from public contract; backend/legacy tooling adapter only** |
 | schema metadata: type, writable, secret, constraints, effect | **KEEP** |
 | `live`, reconnect/restart effects | **KEEP** |
@@ -127,8 +129,8 @@ All of these remain required unless the target hardware cannot measure them; una
 | stock-copy `[DM xx > yy]` representation | **KEEP for compatibility unless 1.18 constraints require revision** |
 | stock-copy airtime roughly doubles | **KEEP warning/test requirement** |
 | outage-sync configured/current status in normal status | **KEEP** |
-| daily private-channel health report | **ADD:** planned MECON 1.0 behaviour not fully represented by old outage-sync contract; public resilience contract must specify it |
-| MQTT alternate DM/channel path when RF mesh unavailable | **ADD:** planned MECON 1.0 behaviour; stable message identity/dedup required |
+| daily private-channel health report | **ADD:** MECON 1.0 behaviour not fully represented by the old outage-sync contract; public resilience contract must specify it (the reference firmware ships a counterpart, the signed status beacon, group-data type 0x4402, every 20 to 23 hours) |
+| MQTT alternate DM/channel path when RF mesh unavailable | **ADD:** MECON 1.0 behaviour; stable message identity/dedup required (shipped in the reference firmware as `send_dm`, `send_channel`, `relay_dm` and backfill) |
 
 ## Provisioning and direct USB/BLE
 
@@ -150,6 +152,10 @@ The old first-boot line-JSON provisioning console is explicitly superseded even 
 | PIN shown on front display while unconnected | **KEEP** |
 | BLE starts independently of successful MQTT | **KEEP** |
 | framebuffer export | **KEEP diagnostic/test capability** |
+
+## Surfaces added since the audit
+
+The audit predates these shipped features of the reference firmware, which have no row above and are summarised in [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line): the Deployment-signed management wrapper and record states; the write-once USB-auth secret and Reader unlock; signed uplink; signed `ota/ack`; relay of updates over LoRa; security posture on the repeater roles; identity rotation and export; the continuity slot; duty-cycle enforcement; battery level; `set_clock`; repeater passwords; and the status beacon schema.
 
 ## UI and runtime requirements learned outside the five wire contracts
 
@@ -174,7 +180,7 @@ These are required for rebuild completeness even though they are not primarily b
 
 ## Release-blocking items that remain dependent on MeshCore 1.18
 
-The audit is complete at the product-contract level. These mappings intentionally remain marked **VERIFY 1.18** until 1.18 is released on upstream `main`:
+The audit is complete at the product-contract level. MeshCore 1.18.0 was released on upstream `main` on 2026-10-15, but these mappings remain marked **VERIFY 1.18** until the inventory against it is completed:
 
 1. exact native settings/CLI primitives for node/radio/location/channel management;
 2. exact native Companion messaging/contact/channel operations to reuse;
@@ -183,4 +189,4 @@ The audit is complete at the product-contract level. These mappings intentionall
 5. final sensor/capability exposure inherited from 1.18;
 6. final memory/resource baseline before fixing contact/roster capacities.
 
-Those are implementation mappings, not undocumented requirements. A coding agent can now identify what behaviour must exist without consulting the private repository; after 1.18 lands, the remaining work is deciding which released native primitive implements each marked requirement.
+Those are implementation mappings, not undocumented requirements. A coding agent can now identify what behaviour must exist without consulting the private repository; now that 1.18.0 is out, the remaining work is deciding which released native primitive implements each marked requirement.
