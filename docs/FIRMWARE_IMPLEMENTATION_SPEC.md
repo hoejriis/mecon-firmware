@@ -1,6 +1,6 @@
 # MECON 1.0 firmware implementation specification
 
-> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation:** this public repository has no installable release yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 This document is the **functional implementation checklist** for rebuilding mecon-firmware from the released MeshCore 1.18 baseline. Together with `docs/contract/`, it must be sufficient to determine what the firmware is expected to do without reading the private MVP source. The private MVP is evidence and a test oracle only.
 
@@ -10,7 +10,7 @@ The five historical private firmware contracts have been audited field-by-field/
 
 The following decisions supersede older wording in migration/audit material and are normative for the target firmware:
 
-1. **Deployment authority is transport-independent.** Firmware consumes the frozen MeshContinuum Deployment authority contract from deimos-mesh #632 / firmware #66. Broker discovery, network location and TLS transport do not grant device authority.
+1. **Deployment authority is transport-independent.** Firmware consumes the frozen MeshContinuum Deployment authority contract. Broker discovery, network location and TLS transport do not grant device authority.
 2. **Normal and Hardened are persistent security postures.** Normal preserves stock interoperability. Hardened is a managed-infrastructure appliance posture where physical access/proximity does not imply administrative trust.
 3. **Normal connectivity mode is `MQTT | BLE | Both`.** MQTT is the default on Wi-Fi-capable MECON devices; BLE is contingency/direct access; Both is explicit and resource-expensive.
 4. **Hardened has no connectivity-mode selector and no BLE stack.** Wi-Fi-capable Hardened devices use infrastructure/outbound Wi-Fi/MQTT; non-Wi-Fi devices remain manageable through secure RF and authenticated Reader USB.
@@ -19,22 +19,19 @@ The following decisions supersede older wording in migration/audit material and 
 7. **Firmware provides an opaque protected continuity-storage boundary.** The posture layer does not define the P3 continuity package schema. Normal → Hardened destroys usable continuity authority while preserving Deployment membership/authority needed to administer the Hardened device.
 8. **Backend federation is not a firmware protocol.** Firmware needs the device authority contract and later continuity/broker contracts, not Backend HLC/cursor/snapshot/user-replication mechanics.
 
+*Reference firmware status (2026-10-15):* items 1-5 are implemented in the private 0.9x firmware wherever a role has the surface concerned (Companion gateways and the T1000-E), and the posture of item 2 also on the Wio repeater and the Observer since 0.90.0 (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)).
+
 ## Release dependency and foundation
 
-MECON 1.0 is based on MeshCore 1.18. Pin a specific compatible upstream revision, prove stock Companion and Repeater behaviour on supported hardware, then layer MECON functionality through upstream extension points rather than recreating native capabilities.
+The public line (first release mecon-firmware 0.8.0) is based on MeshCore 1.18.0, released 2026-10-15. Pin a specific compatible upstream revision, prove stock Companion and Repeater behaviour on supported hardware, then layer MECON functionality through upstream extension points rather than recreating native capabilities.
 
 MECON extends upstream facilities for Wi-Fi/runtime configuration, native Companion/Repeater commands, radio settings, board preferences, UI and remote CLI/message primitives wherever they already solve the requirement.
 
 ## Supported targets
 
-Initial first-class targets are:
+Initial first-class targets are the Heltec V3 and V4 Companion Gateway and the Heltec V3 ESP32 Repeater Observer. A Heltec V4 repeater is a target without a build.
 
-- Heltec V3 Companion
-- Heltec V3 Repeater
-- Heltec V4 Companion
-- Heltec V4 Repeater
-
-The portability architecture also anticipates non-Wi-Fi targets such as Seeed/SenseCAP-class hardware. Hardware-specific USB, display, buttons, radio, GNSS, networking and power code belongs behind target/capability abstractions. A target is supported only after its real-hardware gate passes.
+The first public release also carries two non-Wi-Fi nRF52 targets in limited scope, the SenseCAP T1000-E BLE Companion and the Seeed Wio Tracker L1 RF repeater, and the portability architecture anticipates further Seeed/SenseCAP-class hardware. Hardware-specific USB, display, buttons, radio, GNSS, networking and power code belongs behind target/capability abstractions. A target is supported only after its real-hardware gate passes.
 
 ## Native MeshCore behaviour
 
@@ -117,7 +114,7 @@ MECON uses **one MQTT client/session at a time**.
 
 ## Deployment authority
 
-Firmware consumes the frozen Deployment authority contract defined by MeshContinuum #632 and implemented through firmware #66.
+Firmware consumes the frozen Deployment authority contract defined by MeshContinuum.
 
 A device stores the Deployment identity/trust state required by that contract. Backend instance authority is explicitly granted under the Deployment trust root and follows monotonic generation/revocation rules. A command arriving through a reachable broker is accepted only when its authority proof is current and valid for the requested operation.
 
@@ -232,6 +229,8 @@ Expose enough state to diagnose a remote device without serial access. Detailed 
 - contact count/capacity/protected/evicted where applicable;
 - GPS/fix data where hardware provides it;
 - OTA state/errors.
+
+The reference firmware's status carries further health fields not listed above: `battery_level` with its change count, a `radio` object (frequency, bandwidth, spreading factor, coding rate, TX power), duty-cycle fields, uplink-signing counters, BLE event counters, a `power` object, `location`, the network identifiers `wifi_ip`, `wifi_gateway`, `wifi_netmask` and `wifi_bssid`, `connection_path`, and `deployment` with `auth_rejections`. See [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
 
 Local/unauthenticated Hardened diagnostics are a sanitized subset. Logs are bounded and must not block RF or leak secrets.
 

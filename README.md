@@ -4,7 +4,7 @@
 
 **mecon-firmware** is the planned open firmware distribution for MeshContinuum (MECON). It extends MeshCore Companion and Repeater roles with observations, configuration and messaging through the transports each device supports.
 
-> **Status — 9 October 2026:** this public repository contains specifications and target contracts, **not firmware source or downloadable builds**. A separate private beta informs the design. [Current capabilities and hardware maturity](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md).
+> **Status — 15 October 2026:** this public repository contains specifications and target contracts, **not firmware source or downloadable builds**. The first public firmware will be **mecon-firmware 0.8.0**, built on upstream MeshCore 1.18.0; no release date is announced. A separate private beta (the 0.9x reference firmware) informs the design. [Current capabilities and hardware maturity](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md).
 
 ## What it adds
 
@@ -23,13 +23,17 @@ For the web Reader and overall product, start with **[MeshContinuum](https://git
 
 ## Hardware and release path
 
-Heltec **V3 and V4**, each in Companion and Repeater roles, are the intended public release baseline. Support is granted per board/revision, role and build after hardware acceptance. SenseCAP T1000-E and broader portability remain experimental.
+The first public release, **mecon-firmware 0.8.0**, is planned to ship four roles on upstream MeshCore 1.18.0 (released 15 October 2026): the Heltec V3 and V4 Companion Gateway, the SenseCAP T1000-E BLE Companion, the Seeed Wio Tracker L1 RF repeater and the ESP32 Repeater Observer (Heltec V3 and V4; the V4 build is new in 0.8.0). Support is granted per board/revision, role and build after hardware acceptance, and the T1000-E and Wio roles are limited in scope. Broader portability remains experimental.
 
-The public implementation is gated on a pinned released MeshCore 1.18 baseline and the existing firmware-first migration programme. [Roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md) · [Hardware target](docs/SUPPORTED_HARDWARE.md).
+The public implementation is gated on a pinned revision of MeshCore 1.18.0 and the existing firmware-first migration programme. [Roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md) · [Hardware target](docs/SUPPORTED_HARDWARE.md).
+
+The public 0.8.x line and the private 0.9x line are **separate lines**: version numbers do not order across them, so a lower public number is not a downgrade from a private build.
+
+**What the private beta does today (0.90 series):** Deployment-signed management on every transport; Normal and Hardened security posture; signed over-the-air updates for the Heltec gateways, including relay over a LoRa hop, and a staged LoRa image on the Wio repeater; signed uplink from the gateways; 50-contact Heltec gateways; a signed status beacon; and duty-cycle limits on transmit airtime. It speaks the legacy wire vocabulary (`gateway_id`, `deimos/gw/…`); the vocabulary in this repository's contracts is the target. See [Current-to-target adjustments](docs/CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
 
 No public flash command is provided before accepted artifacts exist. Compilation alone is not a hardware-support claim.
 
-**Hosted beta:** the boards and roles that have passed real-hardware tests for the first hosted beta are listed in [Beta boards](docs/BETA_BOARDS.md): today the Heltec V3 and V4 Companion gateways, with the T1000-E experimental. To see the Reader in use, the [MeshContinuum demonstration](https://github.com/hoejriis/MeshContinuum#one-reader-more-reception) shows two Heltec gateways with synthetic data; it is not a claim about any other board or role.
+**Hosted beta:** the boards and roles that have passed real-hardware tests for the first hosted beta are listed in [Beta boards](docs/BETA_BOARDS.md): today the Heltec V3 and V4 Companion gateways (beta firmware 0.90.5), with the T1000-E and the Wio repeater held back. To see the Reader in use, the [MeshContinuum demonstration](https://github.com/hoejriis/MeshContinuum#one-reader-more-reception) shows two Heltec gateways with synthetic data; it is not a claim about any other board or role.
 
 ## Get involved
 

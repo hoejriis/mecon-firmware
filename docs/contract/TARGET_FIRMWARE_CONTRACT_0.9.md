@@ -1,8 +1,8 @@
 # MECON Target Firmware Contract v0.9
 
-> **Target documentation:** this public repository has no installable release yet. See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation:** this public repository has no installable release yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
-**Status:** architecture-frozen v0.9 target contract, updated 2026-10-07 to add device identity rotation, private-key custody, BLE pairing-secret and bond lifecycle, restricted-posture recovery, direct-Reader firmware update and related hardening (earlier update 2026-09-28: settled posture/connectivity model and Deployment-authority boundary). Exact command spelling/encoding remains subject to the pinned MeshCore 1.18 surface.
+**Status:** architecture-frozen v0.9 target contract, annotated 2026-10-15 with the behaviour the private 0.9x reference firmware ships today (notes marked *Reference firmware*; the target text itself is unchanged since 2026-10-07), and updated 2026-10-07 to add device identity rotation, private-key custody, BLE pairing-secret and bond lifecycle, restricted-posture recovery, direct-Reader firmware update and related hardening (earlier update 2026-09-28: settled posture/connectivity model and Deployment-authority boundary). Exact command spelling/encoding remains subject to the pinned MeshCore 1.18 surface.
 
 This document is the consolidated target contract for the MECON firmware re-founding. Detailed wire/profile documents under `docs/contract/` remain normative where referenced. Cross-repository Deployment authority/continuity contracts owned by MeshContinuum are normative for the device-facing fields they define.
 
@@ -130,13 +130,13 @@ Where BLE is available, each device has its own random pairing passkey drawn fro
 - MUST NOT be derived from public data (such as the public key) and MUST NOT be a shared or stock default;
 - is re-rolled once on upgrade for a device that holds a non-secret value (unset, the stock default or a public-data-derived value); existing bonds survive the re-roll;
 - is never present in advertisements or periodic status;
-- is available on the device's own display where it has one, to the management plane as a read-only setting over authenticated management (MQTT is treated as a trusted transport for this purpose), and over a physical USB link.
+- is available on the device's own display where it has one, to the management plane as a read-only setting over authenticated management (MQTT is treated as a trusted transport for this purpose), and over a physical USB link. *Reference firmware:* `get_config` also returns it, without authentication over BLE and the Wi-Fi companion port, on a device that holds no Deployment record; it can be set by a Deployment-signed command or USB.
 
 **Fail closed:** if no secret passkey can be established (for example hardware RNG failure), BLE does not start.
 
 ### BLE bond lifecycle
 
-Bonds can be counted, and cleared over a physical USB link only. A clear requested while BLE is not running is accepted and deferred: it is persisted, executed at the next BLE start before any advertising begins, and then verified. On targets whose bond store is reachable without the BLE stack running, the clear is immediate.
+Bonds can be counted, and cleared over a physical USB link only. *Reference firmware:* the count is available on any `cmd` path (broker, USB, BLE); only the clear is USB-only. A clear requested while BLE is not running is accepted and deferred: it is persisted, executed at the next BLE start before any advertising begins, and then verified. On targets whose bond store is reachable without the BLE stack running, the clear is immediate.
 
 A device reassigned to a new owner owes two separate steps, identity rotation (section 9.1) and bond clear; each is tracked and retried independently so that one failing does not mask the other.
 
@@ -198,9 +198,9 @@ When a device is reassigned to a new user it receives a new mesh identity and th
 The management plane needs the device's private key to decrypt direct messages addressed to it, so the key is enrolled with the backend. Access is tiered by provisioning state:
 
 - **Before the device is provisioned into a Deployment**, the key may be read only over a physically connected USB link (first enrolment by whoever sets the device up).
-- **After provisioning**, the key can be read only by a Deployment-signed request, i.e. fleet-owner authority, and the answer is returned only to the requester's channel.
+- **After provisioning**, the key can be read only by a Deployment-signed request, i.e. fleet-owner authority, and the answer is returned only to the requester's channel. *Reference firmware:* it can also be read over USB without a signature while the Deployment record is corrupt.
 - The stock companion-protocol key export and import are disabled on every transport once provisioned.
-- Import is never available. A new identity arises only from on-device rotation (9.1).
+- Import is never available over a radio, a broker or the companion protocol. A new identity arises only from on-device rotation (9.1). *Reference firmware:* the stock repeater console `set prv.key` works while no valid Deployment record is held (none or corrupt).
 - The key is never available to an end user or device user.
 
 This is a deliberate, narrow exception to the rule that private identity material is write-only (section 10): the key is readable solely under the authority above and never through ordinary status, configuration or logging surfaces.
@@ -231,7 +231,7 @@ Native MeshCore messaging remains authoritative in Normal Companion operation. M
 
 Hardened Companion is not a local messaging terminal. Its infrastructure/RF processing may continue as required by its managed role, but local display/send functionality is suppressed.
 
-The existing private outage/resilience channel remains a separate managed capability until superseded by the P3 continuity design. Its shared channel key is not Deployment trust-root authority and MUST NOT be conflated with the opaque protected continuity slot.
+The existing private outage/resilience channel remains a separate managed capability until superseded by the P3 continuity design. It includes the periodic health report and a ping reply (in the reference firmware, a signed status beacon). Its shared channel key is not Deployment trust-root authority and MUST NOT be conflated with the opaque protected continuity slot.
 
 ## 13. OTA
 
@@ -268,7 +268,7 @@ Federation matters to firmware only through device-visible contracts: Deployment
 
 ## 16. Initial target families
 
-Initial first-class targets remain Heltec V3/V4 Companion and Repeater. Non-ESP/Seeed/SenseCAP-class targets validate portability through capabilities rather than introducing target-specific product semantics.
+Initial first-class targets are the Heltec V3/V4 Companion Gateway and the Heltec V3 Repeater Observer; a V4 repeater has no build yet. The SenseCAP T1000-E BLE Companion and the Seeed Wio Tracker L1 RF repeater are shipped nRF52 targets in the reference firmware and validate portability through capabilities rather than introducing target-specific product semantics.
 
 ## 17. Conformance rule
 
