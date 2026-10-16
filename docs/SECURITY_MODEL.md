@@ -17,6 +17,8 @@ The canonical Backend-side Deployment authority contract is maintained by MeshCo
 
 ## Normal and Hardened posture
 
+> The standalone line (no Deployment, no enrolment) implements a smaller Normal and Hardened pair; see [Standalone security postures](STANDALONE_POSTURES.md) for exactly what is shipped. This section is the managed-fleet target.
+
 ### Normal
 
 Normal preserves ordinary MeshCore interoperability and MECON convenience access. Stock USB/WebSerial and applicable BLE remain available according to the Normal connectivity mode. A Normal device may hold protected Deployment continuity material.

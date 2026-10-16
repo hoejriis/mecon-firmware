@@ -18,6 +18,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
     - [Region Examples](#region-examples)
   - [GPS](#gps-when-gps-support-is-compiled-in)
   - [Sensors](#sensors-when-sensor-support-is-compiled-in)
+  - [Security posture](#security-posture)
   - [Bridge](#bridge-when-bridge-support-is-compiled-in)
   - [Ethernet](#ethernet-when-ethernet-support-is-compiled-in)
 
@@ -1062,6 +1063,38 @@ region save
 **Parameters:**
 - `key`: Sensor setting name
 - `value`: The value to set the sensor to
+
+---
+
+### Security posture
+
+See [Standalone security postures](STANDALONE_POSTURES.md).
+
+#### View the posture
+**Usage:** `get posture`
+
+**Output:** `> normal` or `> hardened`. Remote callers may read it.
+
+---
+
+#### Harden the device
+**Usage:** `set posture hardened`
+
+**Who:** a trusted local transport (USB / UART console; on a Companion also BLE with a non-default PIN). A remote caller is refused and the refusal is audited.
+
+---
+
+#### Return to Normal
+**Usage:** `set posture normal confirm`
+
+**Who:** USB / UART console only. Without `confirm`, nothing changes.
+
+---
+
+#### Read the audit log
+**Usage:** `get audit [start]`
+
+**Who:** a trusted local transport only. Two entries per reply, newest first: `<time> <event> <caller> <what> x<count>`; `... next:<n>` gives the `start` of the next page.
 
 ---
 
