@@ -1,14 +1,21 @@
 #!/bin/sh
 # Mutation check: break one thing per test group, rebuild, expect that group to go red, restore.
-# usage: sim/mutate.sh   (run from the repo root; needs a clean tree, restores with git checkout)
+# usage: sim/mutate.sh [name]   (run from the repo root; needs a clean tree, restores with git checkout)
+#   name: run only that mutant. Exits 1 if any mutant SURVIVES (its tests still pass).
+#   sim/mutate.sh --list prints the mutant names.
 set -u
 cd "$(dirname "$0")/.."
+mkdir -p .sim-logs
+ONLY="${1:-}"
+SURVIVED=0
+if [ "$ONLY" = "--list" ]; then grep -o "^mutate [a-z0-9_]*" "$0" | cut -d" " -f2; exit 0; fi
 
 build() { sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
 
 # name | file | old text | new text | pytest target
 mutate() {
   name="$1"; file="$2"; old="$3"; new="$4"; target="$5"
+  if [ -n "$ONLY" ] && [ "$ONLY" != "$name" ]; then return 0; fi
   python3 - "$file" "$old" "$new" <<'PY'
 import sys
 p, old, new = sys.argv[1:4]
@@ -18,7 +25,9 @@ open(p, "w").write(s.replace(old, new, 1))
 PY
   build
   sim/run.sh python3 -m pytest $target -q -x -p no:cacheprovider > ".sim-logs/mut_$name.log" 2>&1
-  echo "MUTATION $name -> pytest exit $? : $(tail -1 ".sim-logs/mut_$name.log")"
+  rc=$?
+  echo "MUTATION $name -> pytest exit $rc : $(tail -1 ".sim-logs/mut_$name.log")"
+  if [ $rc -eq 0 ]; then echo "SURVIVED: $name (its tests still pass with the code broken)"; SURVIVED=1; fi
   git checkout -q -- "$file"
 }
 
@@ -40,4 +49,6 @@ mutate trace_short_payload_accepted src/Mesh.cpp "pkt->path_len < MAX_PATH_SIZE 
 mutate radio_parse_unbounded src/helpers/CommonRadioPrefs.cpp "StrHelper::strncpy(tmp, &command[10], sizeof(tmp));" "strcpy(tmp, &command[10]);" sim/tests/test_malformed_input.py::test_overlong_radio_argument_on_repeater_console
 build
 echo "RESTORED; final clean run:"
-sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3
+if [ -z "$ONLY" ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
+
+exit $SURVIVED
