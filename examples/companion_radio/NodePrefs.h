@@ -48,6 +48,7 @@ public:
   char default_scope_name[31];
   uint8_t default_scope_key[16];
   int8_t tz_offset = 0;
+  uint8_t posture = 0;           // Posture::NORMAL / HARDENED (src/helpers/Posture.h)
 #ifdef ENABLE_WIFI_INTERFACE
   #ifndef WIFI_SSID
     #define WIFI_SSID ""
@@ -192,6 +193,7 @@ private:
 protected:
   void structure() override {
     def("name", node_name, sizeof(node_name));
+    def("posture", posture);
     //def("adv_int", advert_interval);
     //def("f_adv_int", flood_advert_interval);
     def("lat", node_lat);

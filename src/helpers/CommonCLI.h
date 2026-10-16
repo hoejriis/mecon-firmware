@@ -72,6 +72,7 @@ public:
   uint8_t loop_detect = 0;
   uint8_t cad_enabled = 0;      // hardware Channel Activity Detection before TX (boolean)
   uint8_t extra_sf[4];
+  uint8_t posture = 0;          // Posture::NORMAL / HARDENED (src/helpers/Posture.h)
 
 private:
   class RadioPrefs : public CommonRadioPrefs {
@@ -211,6 +212,7 @@ protected:
     def("pass", password, sizeof(password));
     def("guest", guest_password, sizeof(guest_password));
     def("owner", owner_info, sizeof(owner_info));
+    def("posture", posture);
     def("adv_int", advert_interval);
     def("f_adv_int", flood_advert_interval);
     def("lat", node_lat);

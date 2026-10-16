@@ -1,5 +1,6 @@
 #pragma once
 
+#include <helpers/Posture.h>
 #include <Arduino.h>
 #include <Mesh.h>
 
@@ -261,6 +262,8 @@ private:
   bool _cli_rescue;
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
+  uint8_t _cli_caller = Posture::CALLER_NET;   // who is behind a local (timestamp 0) handleCommand(); set by each caller, fails closed
+  void recordFactoryReset(uint8_t caller);
   char reply_buf[166];
   float _radio_freq = 0, _radio_bw = 0;
   uint8_t app_target_ver;
