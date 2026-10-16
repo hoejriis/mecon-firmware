@@ -24,6 +24,7 @@ void Dispatcher::begin() {
 
   memset(duty_bins, 0, sizeof(duty_bins));
   duty_sum = 0;
+  duty_seeded = false;
   duty_cur = 0;
   duty_cur_start = _ms->getMillis();
 
@@ -37,8 +38,26 @@ float Dispatcher::getAirtimeBudgetFactor() const {
 
 // ---- duty-cycle window ---------------------------------------------------------------------------------
 
+// The window lives in RAM and is not persisted, so a reboot or crash loop would otherwise start every hour empty
+// and exceed the limit across boots.  On first use after boot the hour is seeded as if the previous hour had used
+// exactly the limit, spread evenly over the bins; capacity then accrues at the limit rate as those bins age out,
+// and a sliding hour that crosses a reboot cannot exceed the limit.  (Done on first use rather than in begin(),
+// because the roles learn their channel, and so their limit, only after begin().)
+void Dispatcher::dutySeed() {
+  if (duty_seeded) return;
+  duty_seeded = true;
+  uint32_t limit = getDutyLimitMs();
+  uint32_t each = limit / DUTY_NUM_BINS, rest = limit % DUTY_NUM_BINS;
+  duty_sum = 0;
+  for (uint32_t i = 0; i < DUTY_NUM_BINS; i++) {
+    duty_bins[i] = each + (i < rest ? 1 : 0);
+    duty_sum += duty_bins[i];
+  }
+}
+
 // Rotate the ring forward so that the bin being filled is the one `now` falls in.
 void Dispatcher::dutyAdvance(unsigned long now) {
+  dutySeed();
   unsigned long elapsed = now - duty_cur_start;
   if (elapsed < DUTY_BIN_MS) return;
   unsigned long steps = elapsed / DUTY_BIN_MS;

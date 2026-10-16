@@ -137,11 +137,13 @@ class Dispatcher {
   uint32_t n_recv_flood, n_recv_direct;
   uint16_t duty_bins[DUTY_NUM_BINS];   // airtime (ms) of each 30 s bin of the trailing hour, ring buffer
   uint32_t duty_sum;                   // sum of duty_bins
+  bool     duty_seeded;                // the hour has been seeded at boot (see dutySeed())
   uint8_t  duty_cur;                   // index of the bin being filled
   unsigned long duty_cur_start;        // millis() at which that bin started
   uint32_t outbound_est_ms;            // estimated airtime of the packet being transmitted
 
   void processRecvPacket(Packet* pkt);
+  void dutySeed();
   void dutyAdvance(unsigned long now);
   void dutyRecord(unsigned long now, uint32_t air_ms);
   uint32_t dutyWaitMs(unsigned long now, uint32_t need_ms, uint32_t limit_ms) const;
@@ -165,6 +167,7 @@ protected:
     prev_isrecv_mode = true;
     memset(duty_bins, 0, sizeof(duty_bins));
     duty_sum = 0;
+    duty_seeded = false;
     duty_cur = 0;
     duty_cur_start = ms.getMillis();
     outbound_est_ms = 0;
