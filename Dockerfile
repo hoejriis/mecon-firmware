@@ -5,9 +5,13 @@ FROM python:3.13-slim-bookworm
 
 ARG PLATFORMIO_VERSION=6.2.0
 
+# libssl-dev: the simulated board's TLS (MQTT controller). mosquitto, mosquitto-clients, openssl: the real broker, its
+# clients and the test certificates for the MQTT tests (docs/MQTT.md). The broker is not started by the image.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git build-essential jq curl ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+      libssl-dev openssl mosquitto mosquitto-clients \
+ && rm -rf /var/lib/apt/lists/* \
+ && (systemctl disable mosquitto 2>/dev/null || true)
 
 RUN pip install --no-cache-dir "platformio==${PLATFORMIO_VERSION}" pytest
 

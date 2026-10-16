@@ -54,6 +54,49 @@ class WifiEnv:
         os.replace(tmp, self.path)
 
 
+class MqttEnv:
+    """The simulated name service of a node: DNS names and the mDNS responders on the network, in a file the node
+    re-reads whenever it changes (like WifiEnv). advertise()/withdraw() add and remove a responder for
+    _secure-mqtt._tcp (secure=True) or _mqtt._tcp, with TXT site=<site>; host() maps a DNS name to an IPv4 address."""
+
+    def __init__(self, path):
+        self.path = str(path)
+        self.hosts = {}
+        self.responders = []
+        self._write()
+
+    def host(self, name, ip):
+        self.hosts[name] = ip
+        self._write()
+
+    def advertise(self, site, ip, port, secure=True):
+        self.responders.append(("secure" if secure else "plain", site, ip, port))
+        self._write()
+
+    def withdraw(self, site, ip, port, secure=True):
+        self.responders.remove(("secure" if secure else "plain", site, ip, port))
+        self._write()
+
+    def _write(self):
+        tmp = self.path + ".tmp"
+        with open(tmp, "w") as f:
+            for name, ip in self.hosts.items():
+                f.write("host\t%s\t%s\n" % (name, ip))
+            for kind, site, ip, port in self.responders:
+                f.write("mdns\t%s\t%s\t%s\t%d\n" % (kind, site, ip, port))
+        os.replace(tmp, self.path)
+
+
+def mqtt_events(node):
+    """The simulated network's lines in the node's log, oldest first, as the text after "SIMMQTT "."""
+    out = []
+    if os.path.exists(node.log_path):
+        for ln in open(node.log_path, errors="replace"):
+            if ln.startswith("SIMMQTT "):
+                out.append(ln[8:].strip())
+    return out
+
+
 def wifi_events(node):
     """The simulated radio's transitions in the node's log, oldest first: [("join"|"up"|"fail"|"lost"|"leave", ssid)]."""
     out = []
@@ -67,7 +110,7 @@ def wifi_events(node):
 
 class Node:
     def __init__(self, kind, name, workdir, ether_path=None, seed=1, time_scale=1.0, fault=None, rtc=None, fault_before=None,
-                 binary=None, wifi=None):
+                 binary=None, wifi=None, mqtt=None):
         self.kind, self.name = kind, name
         self.dir = os.path.join(str(workdir), name)
         os.makedirs(self.dir, exist_ok=True)
@@ -81,6 +124,7 @@ class Node:
             wifi = WifiEnv(os.path.join(str(workdir), name + ".wifi"))
             wifi.set("sim")
         self.wifi = wifi
+        self.mqtt = mqtt
         self.proc = None
         self.port = None
 
@@ -99,6 +143,8 @@ class Node:
             cmd += ["--rtc", str(self.rtc)]
         if self.wifi:
             cmd += ["--wifi-env", self.wifi.path]
+        if self.mqtt:
+            cmd += ["--mqtt-env", self.mqtt.path]
         self.log = open(self.log_path, "ab")
         env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="print_stacktrace=1")
         self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=self.log, env=env)

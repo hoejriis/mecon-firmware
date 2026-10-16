@@ -13,6 +13,8 @@
 #include <algorithm>
 
 #define PROGMEM
+#define pgm_read_byte_near(addr) (*(const unsigned char*)(addr))
+typedef bool boolean;
 #define F(x) x
 #define DEC 10
 #define HEX 16
