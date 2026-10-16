@@ -10,7 +10,8 @@ What the simulated-board suite checks here is software behaviour. BLE needs a ra
 |---|---|---|
 | Management over USB / UART | yes | yes |
 | Management over BLE | non-default PIN only | non-default PIN only; with a default PIN (0 or 123456) BLE does not start |
-| TCP companion server (Wi-Fi, Ethernet) | messaging only; management commands are refused | not started (Wi-Fi is not joined either) |
+| TCP companion server (Wi-Fi, Ethernet) | messaging only; management commands are refused | not started (Wi-Fi is joined only for MQTT over TLS, see [MQTT broker profiles](MQTT.md)) |
+| MQTT broker profiles (Wi-Fi) | plain or TLS static profiles, discovery profiles | plain static profiles refused (at the command and when used), TLS static and discovery profiles as in Normal |
 | Remote admin over RF (repeater, room server) | refused while the admin password is the default; otherwise as stock minus `set prv.key` | read-only plus `reboot`; no remote settings changes |
 | Remote CLI on a Companion (contact flag) | reads plus `reboot` | off |
 | Private key export / import | trusted local transports | refused on every transport, USB included |

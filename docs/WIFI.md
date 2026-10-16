@@ -1,6 +1,6 @@
 # Wi-Fi profiles
 
-The Companion `_wifi` builds join a network for one purpose: serving the TCP companion port. They hold up to **ten profiles** (SSID, password, priority) and a controller that picks among them. The decision logic is platform-free (`src/helpers/wifi/WifiCore.*`, unit-tested natively); `WifiController.*` is a thin layer over the Arduino `WiFi` API that ESP32 and RP2040 share; `WifiProfiles.*` is the profile store and its CLI. Later modules (MQTT, connectivity-mode switching) ask the same controller for the link instead of joining a network themselves.
+The Companion `_wifi` builds join a network for one purpose: serving the TCP companion port. They hold up to **ten profiles** (SSID, password, priority) and a controller that picks among them. The decision logic is platform-free (`src/helpers/wifi/WifiCore.*`, unit-tested natively); `WifiController.*` is a thin layer over the Arduino `WiFi` API that ESP32 and RP2040 share; `WifiProfiles.*` is the profile store and its CLI. Later modules (the MQTT controller, connectivity-mode switching) ask the same controller for the link instead of joining a network themselves.
 
 What is verified, and how: the decision rules by unit tests against a fake radio and by the simulated-board suite against simulated access points ([Simulated-board test harness](SIMULATION.md)). **Not verified on hardware:** the ESP32 disconnect reasons the controller maps (wrong password, network not found) and the RP2040 status polling are written from the platform sources and compiled for the Heltec V3 and V4 and the Pico W, but no real access point has been joined.
 
@@ -43,7 +43,7 @@ No reply, log line or status carries a password; `get` shows only whether one is
 
 ## Postures
 
-Normal serves the TCP companion port on whatever link the controller holds. Hardened starts neither Wi-Fi nor the TCP server, as before ([Standalone security postures](STANDALONE_POSTURES.md)); whether Hardened permits Wi-Fi for MQTT is decided with the MQTT module.
+Normal serves the TCP companion port on whatever link the controller holds. Hardened never starts the TCP server. It starts Wi-Fi only when MQTT has a profile Hardened permits (TLS static or discovery), and then only for MQTT; with no such profile it starts no Wi-Fi at all ([Standalone security postures](STANDALONE_POSTURES.md), [MQTT broker profiles](MQTT.md)).
 
 ## Known limits
 
