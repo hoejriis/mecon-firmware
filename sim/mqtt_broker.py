@@ -1,6 +1,7 @@
 """A real Mosquitto broker for the MQTT tests (docs/MQTT.md): plain or TLS, anonymous or with a password file, bound
 to its own loopback address (127.0.0.N) so several brokers can share a port. Certificates are generated at test time
 with the openssl command line and are throw-away test material."""
+import json
 import os
 import shutil
 import socket
@@ -9,7 +10,7 @@ import time
 
 
 def require_tools():
-    for tool in ("mosquitto", "mosquitto_passwd", "mosquitto_sub", "openssl"):
+    for tool in ("mosquitto", "mosquitto_passwd", "mosquitto_sub", "mosquitto_pub", "openssl"):
         if not shutil.which(tool):
             raise RuntimeError("%s is not installed (apt install mosquitto mosquitto-clients openssl)" % tool)
 
@@ -100,3 +101,24 @@ class Broker:
             cmd += ["--cafile", self.cert, "--insecure"]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
         return r.stdout.strip() or None
+
+    def _client_args(self):
+        return ["-h", self.ip, "-p", str(self.port)] + (["--cafile", self.cert, "--insecure"] if self.cert else [])
+
+    def publish(self, topic, payload, retain=False):
+        """Publish one message as a client of this broker."""
+        cmd = ["mosquitto_pub"] + self._client_args() + ["-t", topic, "-m", payload] + (["-r"] if retain else [])
+        subprocess.run(cmd, check=True, capture_output=True, timeout=15)
+
+    def cli_request(self, node_id, command=None, req_id="t1", timeout=8, raw=None):
+        """The command line over MQTT (docs/CLI.md): send one request to the node's request topic and return the
+        parsed response from its response topic, or None when none arrives within `timeout` seconds. `raw` sends that
+        payload as it is (a malformed request); otherwise the request is {"id": req_id, "cmd": command}."""
+        resp = "mecon/%s/cli/resp" % node_id
+        sub = subprocess.Popen(["mosquitto_sub"] + self._client_args() + ["-t", resp, "-C", "1", "-W", str(timeout)],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        time.sleep(0.6)   # the subscription must be in place before the node answers
+        payload = raw if raw is not None else json.dumps({"id": req_id, "cmd": command})
+        self.publish("mecon/%s/cli/req" % node_id, payload)
+        out, _ = sub.communicate(timeout=timeout + 5)
+        return json.loads(out) if out.strip() else None

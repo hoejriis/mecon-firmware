@@ -29,6 +29,7 @@ struct MqttProfile {
   uint8_t kind;
   uint8_t prio;
   uint8_t tls;       // Static only; a Discovery profile is always TLS
+  uint8_t manage;    // 1: this broker may manage the device over MQTT even in Hardened (docs/CLI.md); set locally only
   uint16_t port;     // 0 = the default for the profile's TLS setting (8883 / 1883)
   char host[HOST_BUF];
   char site[SITE_BUF];
@@ -93,7 +94,7 @@ struct MqttProfileChange {
   bool credentials = false;   // anything but the priority: the session may need to be redone
 };
 
-// Handles `set mqtt.profile <n> type|host|port|tls|anchor|site|user|pwd|priority <value>`,
+// Handles `set mqtt.profile <n> type|host|port|tls|anchor|site|user|pwd|priority|manage <value>`,
 // `set mqtt.profile <n> clear`, `get mqtt.profile <n>` and `get mqtt.profiles [from]`.
 // Returns false when `command` is none of these. `core` is optional; with it the listing carries each profile's last
 // failure. `posture` is the current security posture. `reply_cap` includes the NUL.

@@ -250,6 +250,7 @@ private:
         key[0] = 'a'; def(key, q.anchor, sizeof(q.anchor));
         key[0] = 'u'; def(key, q.user, sizeof(q.user));
         key[0] = 'w'; def(key, q.pwd, sizeof(q.pwd));
+        key[0] = 'g'; def(key, q.manage);
       }
     }
   public:

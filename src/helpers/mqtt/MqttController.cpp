@@ -12,6 +12,8 @@ const uint32_t OPEN_TIMEOUT_MS = 6000;         // DNS aside: the TCP connect and
 const uint32_t STATUS_REPUBLISH_MS = 300000;   // the retained status is refreshed this often
 const uint16_t KEEPALIVE_S = 20;
 const uint16_t SOCKET_TIMEOUT_S = 6;           // CONNACK wait
+const uint32_t CLI_SETTLE_MS = 1500;           // after subscribing, requests are ignored: see onMessage()
+const uint16_t PACKET_BUFFER = 512;            // one request or response (docs/CLI.md); PubSubClient's default is 256
 
 bool parseIPv4(const char* s, uint32_t& out) {
   uint32_t v = 0;
@@ -41,10 +43,14 @@ void MqttController::begin(MqttProfiles* profiles, MqttNet* net, const uint8_t* 
   _posture = posture;
   snprintf(_client_id, sizeof(_client_id), "mecon-%s", node_id);
   snprintf(_topic, sizeof(_topic), "mecon/%s/status", node_id);
+  Cli::Mqtt::requestTopic(_req_topic, sizeof(_req_topic), node_id);
+  Cli::Mqtt::responseTopic(_resp_topic, sizeof(_resp_topic), node_id);
   _net->init(node_id);
   _core.configure(profiles, timing);
   _psc.setKeepAlive(KEEPALIVE_S);
   _psc.setSocketTimeout(SOCKET_TIMEOUT_S);
+  _psc.setBufferSize(PACKET_BUFFER);
+  _psc.setCallback(&MqttController::trampoline);
   _started = true;
   _enabled = true;
   _core.setPosture(*_posture);
@@ -128,7 +134,44 @@ void MqttController::attempt(const MqttAction& a) {
   _cur_addr = addr;
   _cur_port = port;
   _core.onConnected(millis(), tls && anchor != nullptr);
+  if (_cli_fn) {
+    _psc.subscribe(_req_topic);   // before the status, so a client that sees the status can send at once
+    _cli_open_at = millis() + CLI_SETTLE_MS;
+  }
   publishStatus();
+}
+
+void MqttController::trampoline(char* topic, uint8_t* payload, unsigned int len) {
+  mqttController().onMessage(topic, payload, len);
+}
+
+// One request from the broker. The session decides the authentication (a TLS connection whose certificate matched
+// the pinned anchor is "verified"; plain TCP and TLS without an anchor are not), the current profile decides whether
+// the broker may manage the device in Hardened, and the engine's table decides the rest. A request is answered in
+// every case: a refusal is a response, and the engine has already audited it.
+//
+// A broker hands a *retained* message to every new subscriber, and PubSubClient does not tell the callback which
+// messages are retained. A retained request would then run again at every reconnect, a retained "reboot" at every
+// boot. So requests that arrive in the first moments after the subscription are dropped: that is where retained
+// messages arrive, and a client that sent a live request in that window simply gets no answer and sends it again.
+void MqttController::onMessage(const char* topic, const uint8_t* payload, unsigned len) {
+  if (!_cli_fn || strcmp(topic, _req_topic) != 0 || _core.state() != MqttState::Connected) return;
+  if ((int32_t)(millis() - _cli_open_at) < 0) return;
+  char out[440];
+  char reply[160];
+  Cli::Mqtt::Request req;
+  size_t n;
+  if (!Cli::Mqtt::parseRequest(payload, len, req)) {
+    n = Cli::Mqtt::formatResponse(out, sizeof(out), "", Cli::Mqtt::S_BAD_REQUEST, "ERR: bad request");
+  } else {
+    const uint8_t cur = _core.current();
+    const bool manages = cur != MqttCore::NONE && _profiles->p[cur].manage != 0;
+    const Cli::Context ctx = Cli::Mqtt::sessionContext(_core.verified(), *_posture, manages);
+    reply[0] = 0;
+    const uint8_t status = _cli_fn(_cli_user, ctx, req.cmd, reply, sizeof(reply));
+    n = Cli::Mqtt::formatResponse(out, sizeof(out), req.id, status, reply);
+  }
+  if (n) _psc.publish(_resp_topic, (const uint8_t*)out, (unsigned)n, false);
 }
 
 void MqttController::loop() {
