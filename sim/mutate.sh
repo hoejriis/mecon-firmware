@@ -23,6 +23,7 @@ s = open(p).read()
 assert old in s, "mutation target not found: " + old
 open(p, "w").write(s.replace(old, new, 1))
 PY
+  if [ $? -ne 0 ]; then echo "TARGET MISSING: $name (the code it mutates has changed; update the mutant)"; SURVIVED=1; return 0; fi
   build
   case "$target" in
     unit:*) sim/run.sh pio test -e native -f "${target#unit:}" > ".sim-logs/mut_$name.log" 2>&1 ;;
@@ -72,7 +73,7 @@ mutate dutycycle_room_server_floor_missing examples/simple_room_server/MyMesh.h 
 mutate posture_damaged_value_fails_open src/helpers/Posture.h "inline bool isHardened(uint8_t posture) { return posture != NORMAL; }" "inline bool isHardened(uint8_t posture) { return posture == HARDENED; }" unit:test_posture
 mutate posture_ble_default_pin_starts src/helpers/Posture.h "return !isHardened(posture) || (active_pin != 0 && active_pin != 123456);" "return true;" unit:test_posture
 mutate posture_tcp_server_starts_unit src/helpers/Posture.h "inline bool tcpServerMayStart(uint8_t posture) { return !isHardened(posture); }" "inline bool tcpServerMayStart(uint8_t posture) { return true; }" unit:test_posture
-mutate posture_wifi_started_in_hardened examples/companion_radio/main.cpp "if (wifi_enabled && wifi_has_profile && !Posture::tcpServerMayStart(posture)) {" "if (false) {" sim/tests/test_postures_companion.py::test_hardened_wifi_companion_does_not_serve_the_tcp_port
+mutate posture_wifi_started_in_hardened examples/companion_radio/main.cpp "    if (tcp_may_start) {" "    if (true) {" sim/tests/test_postures_companion.py::test_hardened_wifi_companion_does_not_serve_the_tcp_port
 mutate posture_key_transfer_allowed_unit src/helpers/Posture.h "inline bool keyTransferAllowed(uint8_t posture) { return !isHardened(posture); }" "inline bool keyTransferAllowed(uint8_t posture) { return true; }" unit:test_posture
 mutate posture_companion_keys_allowed examples/companion_radio/MyMesh.cpp "!Posture::keyTransferAllowed(_prefs.posture)) ||" "false) ||" sim/tests/test_postures_companion.py::test_hardened_refuses_key_export_and_import_on_usb
 mutate posture_repeater_key_export_allowed src/helpers/CommonCLI.cpp "} else if (sender_timestamp == 0 && memcmp(config, \"prv.key\", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {" "} else if (false) {" sim/tests/test_postures_admin.py::test_key_export_and_import_are_refused_in_hardened_even_on_the_console
@@ -155,7 +156,7 @@ mutate wifi_password_in_listing src/helpers/wifi/WifiProfiles.cpp 'pr.hasPwd(i) 
 mutate wifi_password_in_listing_sim src/helpers/wifi/WifiProfiles.cpp 'pr.hasPwd(i) ? "set" : "unset"' 'pr.hasPwd(i) ? pr.pwd(i) : "unset"' $WIFI_SIM::test_passwords_are_nowhere_but_the_prefs_file
 mutate wifi_password_logged src/helpers/wifi/WifiController.cpp '  WIFICTL_LOG("joining profile %u (%s)", (unsigned)i, _profiles->ssid(i));' '  fprintf(stderr, "joining with %s\n", _profiles->pwd(i));' $WIFI_SIM::test_passwords_are_nowhere_but_the_prefs_file
 mutate wifi_tcp_served_without_a_link variants/sim/sim_wifi_if.cpp "return WiFi.status() == WL_CONNECTED ? inner().checkRecvFrame(dest) : 0; }" "return inner().checkRecvFrame(dest); }" $WIFI_SIM::test_the_tcp_companion_server_serves_only_while_the_controller_has_a_link
-mutate wifi_started_in_hardened examples/companion_radio/main.cpp "if (wifi_enabled && wifi_has_profile && !Posture::tcpServerMayStart(posture)) {" "if (false) {" $WIFI_SIM::test_hardened_starts_no_wifi_at_all
+mutate wifi_started_in_hardened examples/companion_radio/main.cpp "if (wifi_enabled && wifi_has_profile && !tcp_may_start && !mqtt_may_run) {" "if (false) {" $WIFI_SIM::test_hardened_starts_no_wifi_at_all
 # --- MQTT controller rules (docs/MQTT.md): undo each rule and its tests must go red
 MQ_CORE=src/helpers/mqtt/MqttCore.cpp
 MQ_CTRL=src/helpers/mqtt/MqttController.cpp
