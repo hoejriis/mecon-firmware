@@ -50,6 +50,14 @@ class Companion:
             assert self.c.cli(user).startswith("OK"), user
         self.ts = RTC + 100
 
+    def reboot(self):
+        """Power-cycle the node (same directory, radio and prefs persisted) and reconnect."""
+        self.c.close()
+        self.node.restart()
+        self.c = CompanionClient(self.node)
+        self.c.device_query()
+        self.c.app_start()
+
     def pump(self, n=4):
         for _ in range(n):
             self.ts += 1
@@ -64,16 +72,24 @@ class Companion:
 class Repeater:
     """A Repeater kept busy with flood adverts (CLI `advert`)."""
 
-    def __init__(self, nodes, ether, name, seed, freq, bw, sf=10, user=None):
+    def __init__(self, nodes, ether, name, seed, freq, bw, sf=10, user=None, kind="repeater"):
         self.name = name
-        node = nodes("repeater", name, ether_path=ether.path, seed=seed, rtc=RTC, time_scale=SCALE).start()
+        node = nodes(kind, name, ether_path=ether.path, seed=seed, rtc=RTC, time_scale=SCALE).start()
         cli = CliClient(node)
         assert cli.command("set radio %s,%s,%d,5" % (freq, bw, sf)).startswith("OK")
         if user:
             assert cli.command(user).startswith("OK"), user
         cli.close()
-        node.restart()                    # `set radio` applies at boot
-        self.cli_c = CliClient(node)
+        self.node = node
+        self.t_boot = None
+        self.ether = ether
+        self.reboot()                     # `set radio` applies at boot
+
+    def reboot(self):
+        """Power-cycle; t_boot is the broker's (virtual) time just before the new process starts."""
+        self.t_boot = self.ether.now_us()
+        self.node.restart()
+        self.cli_c = CliClient(self.node)
 
     def pump(self, n=2):
         for _ in range(n):
@@ -141,6 +157,66 @@ def test_frequency_change_applies_without_reboot(fast_ether, nodes):
     assert before <= 0.01
     assert after > 0.03, "the 10 % limit of the new band was not applied (only %.3f %%)" % (after * 100)
     assert total <= 0.10
+
+
+# ---------------------------------------------------------------------------------------------- room server
+def test_room_server_gets_the_floor_too(fast_ether, nodes):
+    e = fast_ether
+    room = Repeater(nodes, e, "room", 11, 868.1, 125, user="set af 0", kind="room_server")
+    m = BAND.match(room.cli("get dutycycle"))
+    assert m and m.group(1) == "868.000-868.600" and m.group(2) == "1.00" and m.group(3) == "1.00%", m
+    drive([room], 1.25)
+    duty, n = report("room", e, "room", 0.01)
+    assert duty <= 0.01, "room server reached %.3f %%" % (duty * 100)
+    assert duty >= 0.004
+
+
+# ---------------------------------------------------------------------------------------------- reboots
+def test_reboots_do_not_reset_the_hour(fast_ether, nodes):
+    """A node at full rate that is power-cycled every 5 virtual minutes stays within its limit in every sliding
+    hour, measured on the channel across all its boots."""
+    e = fast_ether
+    a = Companion(nodes, e, "r10", 1, 869.525, 250, user="set af 0")
+    b = Companion(nodes, e, "r1", 2, 868.1, 125, user="set af 0")
+    end = time.time() + 1.3 * HOUR_S / SCALE
+    next_reboot = time.time() + 5 * 60 / SCALE
+    boots = 0
+    while time.time() < end:
+        for ld in (a, b):
+            ld.pump()
+        if time.time() >= next_reboot:
+            a.reboot()
+            b.reboot()
+            boots += 1
+            next_reboot = time.time() + 5 * 60 / SCALE
+        time.sleep(0.003)
+    ra = report("r10", e, "r10", 0.10)
+    rb = report("r1", e, "r1", 0.01)
+    print("MEASURED reboots: %d power cycles per node" % boots)
+    assert boots >= 12
+    assert ra[0] <= 0.10, "10 %% node reached %.3f %% across reboots" % (ra[0] * 100)
+    assert rb[0] <= 0.01, "1 %% node reached %.3f %% across reboots" % (rb[0] * 100)
+    assert ra[0] >= 0.03 and rb[0] >= 0.003, "the nodes barely transmitted"
+
+
+@pytest.mark.parametrize("freq,bw", [(868.1, 125), (869.525, 250)])
+def test_first_advert_delay_after_boot(fast_ether, nodes, freq, bw):
+    """Time from boot to the first transmission (the boot advert), with the hour seeded at the limit."""
+    e = fast_ether
+    name = "fa%d" % int(freq)
+    rp = Repeater(nodes, e, name, 9, freq, bw, user="set af 0")      # ends with a reboot
+    end = time.time() + 5 * 60 * 60 / SCALE
+    first = None
+    while time.time() < end and first is None:
+        txs = [t for t in e.tx_of(name) if t.start_us >= rp.t_boot]
+        if txs:
+            first = txs[0]
+        time.sleep(0.05)
+    assert first is not None, "no transmission within 5 virtual hours of boot"
+    delay_s = (first.start_us - rp.t_boot) / 1e6
+    print("MEASURED first advert after boot at %s MHz BW %s: %.1f virtual s (packet %d bytes, %.0f ms on air)"
+          % (freq, bw, delay_s, first.length, first.toa_us / 1000))
+    assert delay_s < 600
 
 
 # ---------------------------------------------------------------------------------------------- the CLI

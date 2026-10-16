@@ -55,6 +55,10 @@ mutate dutycycle_floor_clamped_like_the_cli src/Dispatcher.cpp "if (floor_bp < l
 mutate dutycycle_straddle_uses_the_looser_band src/helpers/RegulatoryDutyCycle.cpp "if (ov_hi - ov_lo > EDGE_TOLERANCE_KHZ && b.limit_bp < out.limit_bp) {" "if ((double)freq_mhz * 1000.0 >= b.lo_khz && (double)freq_mhz * 1000.0 < b.hi_khz && b.limit_bp < out.limit_bp) {" $DC_LOAD
 mutate dutycycle_straddle_unit src/helpers/RegulatoryDutyCycle.cpp "if (ov_hi - ov_lo > EDGE_TOLERANCE_KHZ && b.limit_bp < out.limit_bp) {" "if ((double)freq_mhz * 1000.0 >= b.lo_khz && (double)freq_mhz * 1000.0 < b.hi_khz && b.limit_bp < out.limit_bp) {" unit:test_regulatory_duty_cycle
 mutate dutycycle_radio_change_not_applied examples/companion_radio/MyMesh.cpp "_radio_freq = _prefs.freq; _radio_bw = _prefs.bw;   // the duty-cycle floor follows at once" "" sim/tests/test_duty_cycle.py::test_frequency_change_applies_without_reboot
+mutate dutycycle_hour_not_seeded_at_boot src/Dispatcher.cpp "  if (duty_seeded) return;
+  duty_seeded = true;" "  duty_seeded = true;
+  return;" sim/tests/test_duty_cycle.py::test_reboots_do_not_reset_the_hour
+mutate dutycycle_room_server_floor_missing examples/simple_room_server/MyMesh.h "    return radio_freq > 0;" "    return false;" sim/tests/test_duty_cycle.py::test_room_server_gets_the_floor_too
 build
 echo "RESTORED; final clean run:"
 sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3

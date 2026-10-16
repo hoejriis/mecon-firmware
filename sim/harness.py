@@ -17,6 +17,7 @@ BIN = {
     "repeater": os.path.join(REPO, ".pio/build/sim_repeater/program"),
     # same Companion code, but its app transport is classed as unauthenticated TCP (a _wifi build)
     "companion_wifi_usb": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb/program"),
+    "room_server": os.path.join(REPO, ".pio/build/sim_room_server/program"),
     "repeater_asan": os.path.join(REPO, ".pio/build/sim_repeater_asan/program"),
     "companion_asan": os.path.join(REPO, ".pio/build/sim_companion_asan/program"),
     "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
