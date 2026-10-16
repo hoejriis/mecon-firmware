@@ -2,6 +2,7 @@
 #include "CommonCLI.h"
 #include "AtomicFile.h"
 #include "AuditStore.h"
+#include "cli/CliEngine.h"
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
 #include "TxtDataHelpers.h"
@@ -176,11 +177,22 @@ uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
 }
 
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
+    // The privilege gate (src/helpers/cli/, docs/CLI.md). Repeater and room server have already run it in their front
+    // door; running it here as well covers every other role that hands commands to the common CLI, and a command
+    // the front door let through passes again. A remote caller reaches this point as an admin whose password is set.
+    {
+      const Cli::Context ctx = sender_timestamp != 0 ? Cli::Context(Cli::T_LORA, Cli::A_ADMIN, _prefs->posture)
+                                                     : Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs->posture);
+      if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, getRTCClock()->getCurrentTime(), reply, CLI_REPLY_MAX)) return;
+    }
     if (_prefs->getRadioPrefs()->handleCommand(command, sender_timestamp, reply)) {   // is a radio CLI command?
       if (_prefs->getRadioPrefs()->isDirty()) { savePrefs(); }
       return;
     }
-    // hook for variant-specific CLI processing
+    // MECON's own commands (`mecon.`), then the hook for variant-specific CLI processing
+    if (Cli::handleMecon(command, sender_timestamp != 0 ? Cli::Context(Cli::T_LORA, Cli::A_ADMIN, _prefs->posture)
+                                                        : Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs->posture),
+                         Cli::ROLE_REPEATER, reply, CLI_REPLY_MAX)) return;
     if (_board->handleCommand(command, sender_timestamp, reply)) {
       if (_prefs->isDirty()) { savePrefs(); }
       return;
@@ -514,12 +526,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     StrHelper::strncpy(_prefs->guest_password, &config[15], sizeof(_prefs->guest_password));
     savePrefs();
     strcpy(reply, "OK");
-  } else if (sender_timestamp != 0 && memcmp(config, "prv.key", 7) == 0) {
-    strcpy(reply, "ERR: prv.key can only be set from the local console");   // never echo the key back
-  } else if (memcmp(config, "prv.key", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {
-    Posture::recordRefusal(getRTCClock()->getCurrentTime(), Posture::CALLER_CABLE, Posture::W_KEY_IMPORT);
-    strcpy(reply, "ERR: key import is refused in hardened posture");
-  } else if (memcmp(config, "prv.key ", 8) == 0) {
+  } else if (memcmp(config, "prv.key ", 8) == 0) {   // local console, outside Hardened: the gate in handleCommand() saw to that
     uint8_t prv_key[PRV_KEY_SIZE];
     bool success = mesh::Utils::fromHex(prv_key, PRV_KEY_SIZE, &config[8]);
     // only allow rekey if key is valid
@@ -712,10 +719,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %d", ((uint32_t) _prefs->advert_interval) * 2);
   } else if (memcmp(config, "guest.password", 14) == 0) {
     sprintf(reply, "> %s", _prefs->guest_password);
-  } else if (sender_timestamp == 0 && memcmp(config, "prv.key", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {
-    Posture::recordRefusal(getRTCClock()->getCurrentTime(), Posture::CALLER_CABLE, Posture::W_KEY_EXPORT);
-    strcpy(reply, "ERR: key export is refused in hardened posture");
-  } else if (sender_timestamp == 0 && memcmp(config, "prv.key", 7) == 0) {  // from serial command line only
+  } else if (memcmp(config, "prv.key", 7) == 0) {  // from the local console, outside Hardened: the gate in handleCommand() saw to that
     uint8_t prv_key[PRV_KEY_SIZE];
     int len = _callbacks->getSelfId().writeTo(prv_key, PRV_KEY_SIZE);
     mesh::Utils::toHex(tmp, prv_key, len);

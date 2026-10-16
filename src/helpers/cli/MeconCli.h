@@ -1,0 +1,110 @@
+#pragma once
+
+// MECON's own commands of the command-line engine (docs/CLI.md). They are tried at the place where upstream calls
+// MainBoard::handleCommand(), before the board's own override, so a board that adds vendor commands keeps them and
+// no board class has to change. New names live under `mecon.`.
+//
+//   get mecon.cli.who             how the engine sees the caller: transport, authentication, posture, row of the table
+//   get mecon.cli.check <line>    what the table would say to <line> for this caller, without running it or auditing it
+//
+// Both are reads. Pure logic: runs in the native unit tests.
+
+#include <stdio.h>
+#include <string.h>
+#include "CliRegistry.h"
+
+namespace Cli {
+
+inline const char* transportName(uint8_t t) {
+  switch (t) {
+    case T_USB: return "usb";
+    case T_BLE: return "ble";
+    case T_TCP: return "tcp";
+    case T_MQTT: return "mqtt";
+    case T_LORA: return "lora";
+    case T_BUTTON: return "button";
+  }
+  return "none";
+}
+
+inline const char* authName(uint8_t a) {
+  switch (a) {
+    case A_CABLE: return "cable";
+    case A_PAIRED_PIN: return "paired-pin";
+    case A_PAIRED_DEFAULT_PIN: return "paired-default-pin";
+    case A_TLS_VERIFIED: return "tls-verified";
+    case A_TLS_UNVERIFIED: return "tls-unverified";
+    case A_ADMIN: return "admin";
+    case A_ADMIN_DEFAULT_PW: return "admin-default-password";
+    case A_GUEST: return "guest";
+    case A_CONTACT_FLAG: return "contact-flag";
+    case A_BUTTON: return "button";
+  }
+  return "none";
+}
+
+inline const char* principalName(uint8_t p) {
+  switch (p) {
+    case P_CABLE: return "cable";
+    case P_PAIRED: return "paired";
+    case P_ADMIN: return "remote-admin";
+    case P_ADMIN_DEFAULT: return "remote-admin-default-password";
+    case P_GUEST: return "guest";
+    case P_CONTACT: return "remote-cli";
+    case P_MQTT: return "mqtt";
+    case P_MQTT_UNVERIFIED: return "mqtt-unverified";
+    case P_BUTTON: return "button";
+  }
+  return "untrusted";
+}
+
+inline const char* className(uint8_t c) {
+  switch (c) {
+    case C_READ: return "read";
+    case C_WRITE: return "write";
+    case C_SECRET: return "secret";
+    case C_POSTURE: return "posture";
+    case C_DESTRUCTIVE: return "destructive";
+    case C_REBOOT: return "reboot";
+  }
+  return "?";
+}
+
+inline const char* reasonName(uint8_t r) {
+  switch (r) {
+    case R_ALLOW: return "allowed";
+    case R_NOT_PERMITTED: return "not-permitted";
+    case R_UNTRUSTED: return "untrusted-transport";
+    case R_REMOTE_LIMITED: return "remote-limited";
+    case R_HARDENED: return "hardened";
+    case R_CLI_OFF: return "remote-cli-off";
+    case R_DEFAULT_PW: return "default-password";
+    case R_KEY_HARDENED: return "key-hardened";
+    case R_LOCAL_ONLY: return "local-only";
+    case R_MQTT_UNVERIFIED: return "broker-not-verified";
+    case R_MQTT_READONLY: return "broker-read-only";
+  }
+  return "?";
+}
+
+// Returns true when `cmd` is one of the MECON commands and `reply` holds the answer.
+inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char* reply, size_t max) {
+  if (strcmp(cmd, "get mecon.cli.who") == 0) {
+    snprintf(reply, max, "> transport=%s auth=%s remote=%d posture=%s principal=%s%s", transportName(ctx.transport),
+             authName(ctx.auth), ctx.remote ? 1 : 0, ctx.posture ? "hardened" : "normal",
+             principalName(principalOf(ctx)), ctx.mgmt ? " mgmt=on" : "");
+    return true;
+  }
+  static const char CHECK[] = "get mecon.cli.check ";
+  if (memcmp(cmd, CHECK, sizeof(CHECK) - 1) == 0) {
+    const char* line = cmd + sizeof(CHECK) - 1;
+    while (*line == ' ') line++;
+    const Resolved r = resolve(line, role);
+    const Verdict v = decide(ctx, r.cls, r.flags);
+    snprintf(reply, max, "> class=%s %s", className(r.cls), v.allow ? "allowed" : reasonName(v.reason));
+    return true;
+  }
+  return false;
+}
+
+}  // namespace Cli

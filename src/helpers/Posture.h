@@ -22,7 +22,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include "AuditRing.h"
+#include "AuditLog.h"
+#include "cli/CliEngine.h"
+
+// Who may do what is decided by one table (cli/CliPolicy.h, docs/CLI.md). The functions below keep their names and
+// results for the code and the tests that call them, and each asks the table; none holds a rule of its own.
 
 namespace Posture {
 
@@ -38,10 +42,12 @@ inline bool bleMayStart(uint8_t posture, uint32_t active_pin) {
 inline bool tcpServerMayStart(uint8_t posture) { return !isHardened(posture); }
 
 // ---- per-command decisions
-inline bool keyTransferAllowed(uint8_t posture) { return !isHardened(posture); }
+inline bool keyTransferAllowed(uint8_t posture) {
+  return Cli::decide(Cli::contextForCaller(CALLER_CABLE, posture), Cli::C_SECRET).allow;
+}
 // Hardened: only a cable may factory-reset, so a paired phone cannot strip the posture.
 inline bool factoryResetAllowed(uint8_t posture, uint8_t caller) {
-  return !isHardened(posture) || caller == CALLER_CABLE;
+  return Cli::decide(Cli::contextForCaller(caller, posture), Cli::C_DESTRUCTIVE).allow;
 }
 
 // The admin password is "set" once it is neither empty nor the stock value. `build_default` is the build's
@@ -52,19 +58,9 @@ inline bool isDefaultAdminPassword(const char* pw, const char* build_default) {
 
 // What a remote admin may run in Hardened: reads and reboot. Anything else changes state or transmits.
 inline bool isRemoteReadOnly(const char* c) {
-  return memcmp(c, "get ", 4) == 0 || strcmp(c, "ver") == 0 || strcmp(c, "board") == 0 || strcmp(c, "reboot") == 0 ||
-         strcmp(c, "clock") == 0 || strcmp(c, "neighbors") == 0 || strcmp(c, "power") == 0 ||
-         strcmp(c, "powersaving") == 0 || strcmp(c, "region") == 0 || memcmp(c, "region get ", 11) == 0 ||
-         memcmp(c, "sensor get ", 11) == 0 || memcmp(c, "sensor list", 11) == 0 || strcmp(c, "gps") == 0;
+  const uint8_t cls = Cli::classify(c, Cli::ROLE_REPEATER);
+  return cls == Cli::C_READ || cls == Cli::C_REBOOT;
 }
-
-// ---- the audit log (one per device)
-inline AuditRing& audit() {
-  static AuditRing a;   // function-local: the examples construct their mesh object before main()
-  return a;
-}
-
-inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { audit().add(ts, EV_REFUSED, caller, what); }
 
 // ---- posture / audit commands (shared by all roles)
 // Handles "get posture", "get audit [n]" and "set posture ...". Returns false when `cmd` is none of them.
@@ -72,13 +68,13 @@ inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { audit().a
 // unauthenticated. `changed` is set when the stored posture changed and the prefs must be saved.
 inline bool handleCommand(const char* cmd, uint8_t caller, uint8_t& posture, uint32_t now, char* reply, size_t max,
                           bool& changed) {
-  bool local = caller == CALLER_CABLE || caller == CALLER_BLE;
+  const Cli::Context ctx = Cli::contextForCaller(caller, posture);
   if (strcmp(cmd, "get posture") == 0) {
     snprintf(reply, max, "> %s", isHardened(posture) ? "hardened" : "normal");
     return true;
   }
   if (strcmp(cmd, "get audit") == 0 || memcmp(cmd, "get audit ", 10) == 0) {
-    if (!local) {
+    if (!Cli::decide(ctx, Cli::C_POSTURE).allow) {
       recordRefusal(now, caller, W_AUDIT);
       snprintf(reply, max, "ERR: not permitted");
       return true;
@@ -101,7 +97,7 @@ inline bool handleCommand(const char* cmd, uint8_t caller, uint8_t& posture, uin
       return true;
     }
     // raising: any trusted local transport; lowering: a cable only. Remote callers can do neither.
-    bool allowed = to_hardened ? local : caller == CALLER_CABLE;
+    bool allowed = Cli::decide(ctx, Cli::C_POSTURE, to_hardened ? 0 : Cli::F_CABLE_ONLY).allow;
     if (!allowed) {
       recordRefusal(now, caller, W_POSTURE);
       snprintf(reply, max, "ERR: not permitted");
@@ -126,22 +122,16 @@ inline bool handleCommand(const char* cmd, uint8_t caller, uint8_t& posture, uin
 }
 
 // The front door of the Repeater and Room server command handler. Returns true when the command was answered
-// here (refused, or a posture / audit command). `remote` is a caller over the air (sender_timestamp != 0);
+// here (refused by the gate, or a posture / audit command). `remote` is a caller over the air (sender_timestamp != 0);
 // the local caller is the UART / USB console. `changed` is set when the prefs must be saved.
 inline bool adminFrontDoor(const char* command, bool remote, uint8_t& posture, const char* admin_pw,
                            const char* build_default, uint32_t now, char* reply, size_t max, bool& changed) {
   uint8_t caller = remote ? CALLER_REMOTE_ADMIN : CALLER_CABLE;
-  if (remote && isDefaultAdminPassword(admin_pw, build_default)) {   // a session that predates the rule, or none
-    recordRefusal(now, caller, W_DEFAULT_PASSWORD);
-    snprintf(reply, max, "ERR: remote admin is off until the admin password is set on the local console");
-    return true;
-  }
+  // a remote session that predates the rule, or none, is still "default password": the table refuses it
+  const Cli::Context ctx = remote ? Cli::Context(Cli::T_LORA, isDefaultAdminPassword(admin_pw, build_default) ? Cli::A_ADMIN_DEFAULT_PW : Cli::A_ADMIN, posture)
+                                  : Cli::Context(Cli::T_USB, Cli::A_CABLE, posture);
+  if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, now, reply, max)) return true;
   if (handleCommand(command, caller, posture, now, reply, max, changed)) return true;
-  if (remote && isHardened(posture) && !isRemoteReadOnly(command)) {
-    recordRefusal(now, caller, W_REMOTE_WRITE);
-    snprintf(reply, max, "ERR: not permitted in hardened posture");
-    return true;
-  }
   return false;
 }
 

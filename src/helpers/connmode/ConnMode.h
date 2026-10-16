@@ -36,7 +36,7 @@ inline bool pinIsDefault(uint32_t pin) { return pin == 0 || pin == 123456; }
 
 // ---- who may change the mode: the transports that authenticate the peer by possession
 inline bool callerMaySwitch(uint8_t caller) {
-  return caller == Posture::CALLER_CABLE || caller == Posture::CALLER_BLE || caller == Posture::CALLER_BUTTON;
+  return Cli::decide(Cli::contextForCaller(caller, Posture::NORMAL), Cli::C_POSTURE).allow;   // cli/CliPolicy.h
 }
 
 // Switch to `want` on behalf of `caller`. Returns true when the stored mode changed (the prefs must be saved and the
