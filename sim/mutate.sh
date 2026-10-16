@@ -257,6 +257,32 @@ mutate mqtt_cancelled_attempt_penalises_the_profile $MQ_CORE "void MqttCore::onC
   if (_state != MqttState::Connecting || _cur == NONE) return;" "void MqttCore::onConnectCancelled() {
   if (_state != MqttState::Connecting || _cur == NONE) return;
   failCurrent(0, MqttFail::Timeout, false);" unit:test_mqtt_core
+# --- CA-certificate anchors and SNI (docs/MQTT.md): undo each rule and its tests must go red
+MQ_CA_OTHER=$MQ_SIM::test_a_ca_anchor_rejects_a_certificate_from_another_ca
+mutate mqtt_ca_chain_not_verified $MQ_NET "      SSL_CTX_set_verify(_ctx, SSL_VERIFY_PEER, nullptr);" "      SSL_CTX_set_verify(_ctx, SSL_VERIFY_NONE, nullptr);" $MQ_CA_OTHER
+mutate mqtt_ca_host_name_not_checked $MQ_NET "      if (a.ca_b64) SSL_set1_host(_ssl, a.name);" "" $MQ_SIM::test_a_ca_anchor_rejects_a_wrong_host_name
+mutate mqtt_sni_not_sent $MQ_NET "      SSL_set_tlsext_host_name(_ssl, a.name);   // SNI, with every TLS profile that has a host name" "" $MQ_SIM::test_the_server_name_is_sent_with_every_tls_profile_that_has_a_host_name
+mutate mqtt_ca_refusal_not_reported_as_pin $MQ_NET "return refused ? fail(\"pin\", MqttOpen::Pin) : fail(\"tls\", MqttOpen::Tls);" "return fail(\"tls\", MqttOpen::Tls);" $MQ_CA_OTHER
+mutate mqtt_ca_not_passed_on $MQ_CTRL "  oa.ca_b64 = j.ca;" "  oa.ca_b64 = nullptr;" $MQ_CA_OTHER
+mutate mqtt_name_not_passed_on $MQ_CTRL "  oa.name = j.name[0] ? j.name : nullptr;" "  oa.name = nullptr;" $MQ_SIM::test_a_ca_anchor_rejects_a_wrong_host_name
+mutate mqtt_name_sent_for_an_address_literal $MQ_CTRL "    if (j.resolve) { strlcpy_(j.host, q.host, sizeof(j.host)); strlcpy_(j.name, q.host, sizeof(j.name)); }" "    strlcpy_(j.host, q.host, sizeof(j.host)); strlcpy_(j.name, q.host, sizeof(j.name)); " $MQ_SIM::test_a_ca_anchor_on_an_address_literal_checks_the_chain_only
+mutate mqtt_discovery_ca_not_a_usable_anchor $MQ_PROF_H "(validAnchor(q.anchor) || q.hasCa())" "validAnchor(q.anchor)" unit:test_mqtt_prefs
+mutate mqtt_discovery_ca_not_a_usable_anchor_sim $MQ_PROF_H "(validAnchor(q.anchor) || q.hasCa())" "validAnchor(q.anchor)" $MQ_SIM::test_a_discovery_ca_anchor_checks_the_chain_and_a_rogue_ca_is_refused
+mutate mqtt_ca_does_not_replace_the_fingerprint $MQ_PROF_C "  p[i].anchor[0] = 0;    // a profile has one anchor: the CA replaces a leaf fingerprint" "" unit:test_mqtt_prefs
+mutate mqtt_fingerprint_does_not_replace_the_ca $MQ_PROF_C "      else { pr.clearCa(idx); done(true, \"anchor updated\"); }" "      else { done(true, \"anchor updated\"); }" unit:test_mqtt_prefs
+mutate mqtt_anchor_clear_keeps_the_ca $MQ_PROF_C "{ q.anchor[0] = 0; pr.clearCa(idx); done(true, \"anchor cleared\"); }" "{ q.anchor[0] = 0; done(true, \"anchor cleared\"); }" unit:test_mqtt_prefs
+mutate mqtt_truncated_ca_accepted $MQ_PROF_C "  if (hdr + len != n) return -1;" "" unit:test_mqtt_prefs
+mutate mqtt_truncated_ca_accepted_sim $MQ_PROF_C "  if (hdr + len != n) return -1;" "" $MQ_SIM::test_a_damaged_ca_is_refused_at_ca_end_and_the_profile_keeps_its_anchor
+mutate mqtt_ca_add_saves_the_prefs $MQ_PROF_C "        pr.stage_len_ = (uint16_t)(pr.stage_len_ + n);
+" "        pr.stage_len_ = (uint16_t)(pr.stage_len_ + n);
+        change.changed = true;
+" unit:test_mqtt_prefs
+mutate mqtt_ca_one_character_too_many_accepted $MQ_PROF_C "if (pr.stage_len_ + n > MqttProfile::CA_B64_MAX) {" "if (pr.stage_len_ + n >= MqttProfile::CA_B64_MAX) {" unit:test_mqtt_prefs
+mutate mqtt_ca_not_persisted examples/companion_radio/NodePrefs.h "            if (!m.caChunk(i, n, piece)) break;" "            break;" unit:test_mqtt_prefs
+mutate mqtt_ca_not_persisted_sim examples/companion_radio/NodePrefs.h "            if (!m.caChunk(i, n, piece)) break;" "            break;" $MQ_SIM::test_a_ca_anchor_survives_the_broker_certificate_being_renewed
+mutate mqtt_ca_only_first_chunk_persisted examples/companion_radio/NodePrefs.h "        for (uint8_t n = 0; n < MqttProfile::CA_CHUNKS; n++) {" "        for (uint8_t n = 0; n < 1; n++) {" $MQ_SIM::test_the_largest_practical_ca_fits_and_is_accepted
+mutate mqtt_ca_listed_as_fingerprint $MQ_PROF_C 'const char* anchor = q.hasCa() ? "ca" : (q.anchor[0] ? "fingerprint" : "unset");' 'const char* anchor = (q.hasCa() || q.anchor[0]) ? "fingerprint" : "unset";' unit:test_mqtt_prefs
+mutate mqtt_ca_copy_not_made $MQ_CTRL "    strcpy(j.ca, q.ca);" "    j.ca[0] = 0;" $MQ_SIM::test_a_ca_anchor_survives_the_broker_certificate_being_renewed
 # --- connectivity mode and its screen (docs/CONNECTIVITY_MODE.md)
 CM_H=src/helpers/connmode/ConnMode.h
 CS_H=src/helpers/connmode/ConnStatus.h
