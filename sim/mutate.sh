@@ -1,14 +1,21 @@
 #!/bin/sh
 # Mutation check: break one thing per test group, rebuild, expect that group to go red, restore.
-# usage: sim/mutate.sh   (run from the repo root; needs a clean tree, restores with git checkout)
+# usage: sim/mutate.sh [name]   (run from the repo root; needs a clean tree, restores with git checkout)
+#   name: run only that mutant. Exits 1 if any mutant SURVIVES (its tests still pass).
+#   sim/mutate.sh --list prints the mutant names.
 set -u
 cd "$(dirname "$0")/.."
+mkdir -p .sim-logs
+ONLY="${1:-}"
+SURVIVED=0
+if [ "$ONLY" = "--list" ]; then grep -o "^mutate [a-z0-9_]*" "$0" | cut -d" " -f2; exit 0; fi
 
 build() { sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
 
 # name | file | old text | new text | pytest target
 mutate() {
   name="$1"; file="$2"; old="$3"; new="$4"; target="$5"
+  if [ -n "$ONLY" ] && [ "$ONLY" != "$name" ]; then return 0; fi
   python3 - "$file" "$old" "$new" <<'PY'
 import sys
 p, old, new = sys.argv[1:4]
@@ -21,7 +28,9 @@ PY
     unit:*) sim/run.sh pio test -e native -f "${target#unit:}" > ".sim-logs/mut_$name.log" 2>&1 ;;
     *) sim/run.sh python3 -m pytest $target -q -x -p no:cacheprovider > ".sim-logs/mut_$name.log" 2>&1 ;;
   esac
-  echo "MUTATION $name -> pytest exit $? : $(tail -1 ".sim-logs/mut_$name.log")"
+  rc=$?
+  echo "MUTATION $name -> exit $rc : $(tail -1 ".sim-logs/mut_$name.log")"
+  if [ $rc -eq 0 ]; then echo "SURVIVED: $name (its tests still pass with the code broken)"; SURVIVED=1; fi
   git checkout -q -- "$file"
 }
 
@@ -61,4 +70,6 @@ mutate dutycycle_hour_not_seeded_at_boot src/Dispatcher.cpp "  if (duty_seeded) 
 mutate dutycycle_room_server_floor_missing examples/simple_room_server/MyMesh.h "    return radio_freq > 0;" "    return false;" sim/tests/test_duty_cycle.py::test_room_server_gets_the_floor_too
 build
 echo "RESTORED; final clean run:"
-sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3
+if [ -z "$ONLY" ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
+
+exit $SURVIVED

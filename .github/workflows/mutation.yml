@@ -1,0 +1,49 @@
+name: Mutation check
+
+# Each job breaks one piece of code (sim/mutate.sh) and requires the tests that
+# guard it to go red. A mutant that survives means a test that cannot fail.
+
+on:
+  pull_request:
+    paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', '.github/workflows/mutation.yml']
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    outputs:
+      mutants: ${{ steps.list.outputs.mutants }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: echo "mutants=$(sh sim/mutate.sh --list | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+
+  mutant:
+    needs: list
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mutant: ${{ fromJson(needs.list.outputs.mutants) }}
+    env:
+      SIM_NO_DOCKER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache@v5
+        with:
+          path: ~/.platformio
+          key: pio-6.2.0-sim-${{ hashFiles('platformio.ini', 'variants/sim/**') }}
+          restore-keys: pio-6.2.0-sim-
+      - run: pip install "platformio==6.2.0" pytest
+      - name: Mutant ${{ matrix.mutant }} must be killed
+        run: sh sim/mutate.sh "${{ matrix.mutant }}"
+      - if: always()
+        run: cat .sim-logs/mut_${{ matrix.mutant }}.log 2>/dev/null | tail -30
