@@ -14,6 +14,8 @@ This register lists **every change this repository makes to a file that exists u
 | `.gitignore` | `.sim-logs/` added | Local logs from simulated-board runs. |
 | `src/helpers/BaseSerialInterface.h`, `MultiSerialInterface.h`, `wifi/SerialWifiInterface.h`, `ethernet/SerialEthernetInterface.h` | `isTrustedTransport()` added (default true; false on the TCP interfaces; the multiplexer reports the transport of the last frame) | Lets the Companion tell an authenticated transport (USB, paired BLE) from the unauthenticated TCP server. |
 | `examples/companion_radio/MyMesh.cpp` | `CMD_RUN_CLI_COMMAND`, export/import private key, set device PIN and factory reset are refused with `ERR_CODE_NOT_PERMITTED` (7) on an untrusted transport | Stock serves these to any client of the `_wifi` build's open TCP port. |
+| `src/helpers/CommonCLI.cpp` (`loadPrefs`, `savePrefs`), `examples/companion_radio/DataStore.cpp` (prefs, channel table), `src/helpers/IdentityStore.cpp`/`.h` | Saves go through `src/helpers/AtomicFile.h` (new): temp file, flush, read-back check of length and CRC, then swap; boot completes or drops an interrupted swap. A stored identity that cannot be read is renamed to `<file>.damaged` instead of being overwritten by a fresh one | Stock rewrites these files in place: a power cut leaves a truncated file that the loader accepts (settings silently revert), or loses the identity. |
+| `examples/simple_repeater/main.cpp` | Prints a warning when the identity file was damaged and kept aside | The repeater console is the only place that can report it. |
 | `src/helpers/CommonCLI.cpp` | `set prv.key` is refused unless `sender_timestamp == 0` (local console) | Stock lets a remote admin replace the repeater's or room server's identity; `get prv.key` and `erase` are already local-only. |
 | `examples/companion_radio/MyMesh.cpp` | `get wifi.pwd` answers "write-only" instead of the password | Stock returns the Wi-Fi password in clear text to any CLI caller. |
 | `examples/companion_radio/MyMesh.cpp` | A remote CLI caller (flagged contact, `sender_timestamp != 0`) may run `get ...`, `ver`, `board` and `reboot` only; a remote timestamp of 0 is raised to 1 so a peer cannot present as local | Stock runs any command, including `set pin`, `set wifi.*`, radio settings and `poweroff`, for a flagged contact. |
@@ -27,6 +29,19 @@ Generic fixes made here that would also benefit stock MeshCore, with whether the
 | Change | Offered upstream |
 |---|---|
 | Transport trust for Companion management commands (`isTrustedTransport()`, `ERR_CODE_NOT_PERMITTED`) | not yet offered |
+| Atomic prefs/identity/channel saves (`AtomicFile.h`) | not yet offered |
 | `set prv.key` local console only (repeater, room server, sensor) | not yet offered |
 | Remote Companion CLI limited to reads and `reboot` | not yet offered |
 | `get wifi.pwd` no longer reveals the Wi-Fi password | not yet offered |
+
+## Atomic saves: rename behaviour per file system
+
+`AtomicFile` swaps a verified temporary file over the live file. What the platforms are expected to do, from their library sources and documentation, **not yet verified on hardware**:
+
+| Family | File system | Rename over an existing file | What `AtomicFile` does |
+|---|---|---|---|
+| ESP32 | SPIFFS | Not assumed to replace the destination (SPIFFS reports a name conflict) | Two-step swap: temp file to `<path>.new`, remove `<path>`, `<path>.new` to `<path>`. There is a window with no `<path>`; boot completes the swap from the verified `<path>.new`. The simulated board refuses rename-over to hold the code to this. |
+| nRF52, STM32 | Adafruit LittleFS (littlefs) | Atomic replace (`lfs_rename`) | Direct rename over the live file. |
+| RP2040 | LittleFS (littlefs) | Atomic replace (`lfs_rename`) | Direct rename over the live file. |
+
+Not covered: contacts, blobs and the client ACL are still written in place.

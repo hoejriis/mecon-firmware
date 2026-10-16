@@ -22,7 +22,7 @@ BIN = {
 
 
 class Node:
-    def __init__(self, kind, name, workdir, ether_path=None, seed=1, time_scale=1.0, fault=None, rtc=None,
+    def __init__(self, kind, name, workdir, ether_path=None, seed=1, time_scale=1.0, fault=None, rtc=None, fault_before=None,
                  binary=None):
         self.kind, self.name = kind, name
         self.dir = os.path.join(str(workdir), name)
@@ -30,7 +30,7 @@ class Node:
         self.port_file = os.path.join(str(workdir), name + ".port")
         self.log_path = os.path.join(str(workdir), name + ".log")
         self.ether_path, self.seed, self.time_scale = ether_path, seed, time_scale
-        self.fault, self.rtc = fault, rtc
+        self.fault, self.rtc, self.fault_before = fault, rtc, fault_before
         self.binary = binary or BIN[kind]
         self.proc = None
         self.port = None
@@ -44,6 +44,8 @@ class Node:
             cmd += ["--ether", self.ether_path]
         if self.fault:
             cmd += ["--fault", self.fault]
+        if self.fault_before:
+            cmd += ["--fault-before", self.fault_before]
         if self.rtc:
             cmd += ["--rtc", str(self.rtc)]
         self.log = open(self.log_path, "ab")
@@ -121,6 +123,7 @@ CMD_FACTORY_RESET, CMD_RUN_CLI_COMMAND = 51, 66
 RESP_PRIVATE_KEY, RESP_CLI_REPLY = 14, 29
 ERR_NOT_PERMITTED = 7
 RESP_NO_MORE_MESSAGES = 10
+CMD_GET_CHANNEL, RESP_CHANNEL_INFO = 31, 18
 CMD_SEND_LOGIN, PUSH_LOGIN_SUCCESS, PUSH_LOGIN_FAIL = 26, 0x85, 0x86
 RESP_CONTACT_MSG_RECV_V3, RESP_CHANNEL_MSG_RECV_V3 = 16, 17
 PUSH_MSG_WAITING = 0x83
@@ -210,6 +213,14 @@ class CompanionClient:
     def send_cli_command(self, to_pub, text):
         """Remote CLI: a TXT_TYPE_CLI_COMMAND (3) text to a contact; the node stamps it with its own clock."""
         return self.request(bytes([CMD_SEND_TXT_MSG, 3, 0]) + struct.pack("<I", 0) + to_pub[:6] + text.encode())
+
+    def get_channel(self, idx):
+        """Returns (name, secret16) or None when the slot is empty/invalid."""
+        f = self.request(bytes([CMD_GET_CHANNEL, idx]))
+        if f[0] != RESP_CHANNEL_INFO:
+            return None
+        name = f[2:34].split(b"\0")[0].decode(errors="replace")
+        return (name, f[34:50]) if name else None
 
     def login(self, to_pub, password, timeout=30.0):
         """Log in to a repeater/room as an admin (or guest); True on PUSH_CODE_LOGIN_SUCCESS."""

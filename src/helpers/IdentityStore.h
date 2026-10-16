@@ -14,11 +14,15 @@
 class IdentityStore {
   FILESYSTEM* _fs;
   const char* _dir;
+  bool _damaged = false;
+  void keepDamaged(const char* filename);
 public:
   IdentityStore(FILESYSTEM& fs, const char* dir): _fs(&fs), _dir(dir) { }
 
   void begin() {
      if (_dir && _dir[0] == '/') { _fs->mkdir(_dir); } }
+  /** true if the most recent load() found a file it could not read, and kept it aside as <file>.damaged */
+  bool lastLoadFoundDamagedFile() const { return _damaged; }
   bool load(const char *name, mesh::LocalIdentity& id);
   bool load(const char *name, mesh::LocalIdentity& id, char display_name[], int max_name_sz);
   bool save(const char *name, const mesh::LocalIdentity& id);

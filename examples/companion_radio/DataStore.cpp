@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "DataStore.h"
+#include <helpers/AtomicFile.h>
 
 #if defined(EXTRAFS) || defined(QSPIFLASH)
   #define MAX_BLOBRECS 100
@@ -190,6 +191,7 @@ bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
 }
 
 void DataStore::loadPrefs(NodePrefs& prefs) {
+  AtomicFile::recover(_fs, "/prefs.json");   // finish or drop a save that was cut by a power loss
   if (_fs->exists("/prefs.json")) {
     File file = openRead(_fs, "/prefs.json");
     if (file) {
@@ -247,13 +249,8 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs) {
 }
 
 bool DataStore::savePrefs(NodePrefs& _prefs) {
-  File file = openWrite(_fs, "/prefs.json");
-  if (file) {
-    bool success = _prefs.saveSerial(file);
-    file.close();
-    return success;
-  }
-  return false;
+  // temp file + verify + swap: a power cut keeps the previous complete prefs
+  return AtomicFile::save(_fs, "/prefs.json", [&_prefs](Stream& s) { return _prefs.saveSerial(s); });
 }
 
 void DataStore::loadContacts(DataStoreHost* host) {
@@ -321,6 +318,7 @@ void DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactIn
 }
 
 void DataStore::loadChannels(DataStoreHost* host) {
+    AtomicFile::recover(_getContactsChannelsFS(), "/channels2");
     File file = openRead(_getContactsChannelsFS(), "/channels2");
     if (file) {
       bool full = false;
@@ -346,8 +344,8 @@ void DataStore::loadChannels(DataStoreHost* host) {
 }
 
 void DataStore::saveChannels(DataStoreHost* host) {
-  File file = openWrite(_getContactsChannelsFS(), "/channels2");
-  if (file) {
+  // temp file + verify + swap: a power cut keeps the previous complete channel table
+  AtomicFile::save(_getContactsChannelsFS(), "/channels2", [host](Stream& file) {
     uint8_t channel_idx = 0;
     ChannelDetails ch;
     uint8_t unused[4];
@@ -358,11 +356,11 @@ void DataStore::saveChannels(DataStoreHost* host) {
       success = success && (file.write((uint8_t *)ch.name, 32) == 32);
       success = success && (file.write((uint8_t *)ch.channel.secret, 32) == 32);
 
-      if (!success) break; // write failed
+      if (!success) return false; // write failed
       channel_idx++;
     }
-    file.close();
-  }
+    return true;
+  });
 }
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)

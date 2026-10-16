@@ -59,16 +59,16 @@ microseconds and exit). A node exits with status 75 on `reboot` and 0 on `powero
 * Not simulated: BLE, WiFi, displays, GPS/sensors, the real SX126x state machine, CAD,
   power saving, flash wear/latency.
 
-## Storage fault injection: observed outcome on stock 1.18
+## Storage fault injection
 
-`--fault /prefs.json:40` kills the process (status 99, nothing closed or flushed beyond
-what was written) after 40 bytes of the next save of that file. On the repeater, the
-upstream save path rewrites `/prefs.json` in place (open for write, stream the JSON). Cut
-after 40 bytes it leaves `{name:"After",pass:"password",guest:"",o` on "flash", the old
-484-byte file already gone. On the next boot the loader **accepts the truncated file**:
-the early field (`name`) has the new value and a field that lived in the lost tail (`tx`)
-silently reverts to its default. No error is reported. This is the stock behaviour and is
-asserted in `sim/tests/test_storage_fault.py` so a change in it is noticed.
+`--fault /path:BYTES` kills the process (status 99, nothing closed or flushed beyond what was written) after BYTES
+of the next write to that file. `--fault-before rename:/path` or `remove:/path` kills it just before that operation
+(the source path for a rename). SimFS refuses rename over an existing file, as ESP32 SPIFFS does.
+
+On stock 1.18 the prefs save rewrites `/prefs.json` in place: cut after 40 bytes it leaves a truncated file that the
+loader accepts, the early field (`name`) takes the new value and a field in the lost tail (`tx`) silently reverts to its
+default, with no error. With atomic saves the same cut lands in `/prefs.json.tmp`, and the previous complete prefs,
+identity and channel table survive a cut at any byte or between write and rename (`test_atomic_storage.py`).
 
 ## Test inventory
 
@@ -77,7 +77,11 @@ asserted in `sim/tests/test_storage_fault.py` so a change in it is noticed.
 * `test_repeater_cli.py` – `ver`, `get name`, `set name` and persistence across a restart.
 * `test_mesh.py` – two Companions that cannot hear each other exchange a direct message
   and a channel message through a Repeater; and nothing is delivered with no links.
-* `test_storage_fault.py` – the power-cut above, twice, with identical outcomes.
+* `test_atomic_storage.py` – power cuts in the temp file and between write and rename for repeater prefs, Companion identity and channel table; a damaged identity is kept aside.
+* `test_companion_transport.py` – management commands refused on the TCP-class transport, allowed on USB; messaging works on both.
+* `test_companion_cli_secrets.py` – `get wifi.pwd` does not reveal the password.
+* `test_companion_remote_cli.py` – remote Companion CLI limited to reads and `reboot`.
+* `test_repeater_prvkey.py` – `set prv.key` refused for a remote admin, allowed on the local console.
 
 ## Mutation check
 

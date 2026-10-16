@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
+#include "AtomicFile.h"
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
 #include "TxtDataHelpers.h"
@@ -28,6 +29,7 @@ static bool isValidName(const char *n) {
 }
 
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
+  AtomicFile::recover(fs, "/prefs.json");   // finish or drop a save that was cut by a power loss
   if (fs->exists("/prefs.json")) {
 #if defined(RP2040_PLATFORM)
     File file = fs->open("/prefs.json", "r");
@@ -141,20 +143,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {  // Legacy 
 }
 
 bool CommonCLI::savePrefs(FILESYSTEM* fs) {
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  fs->remove("/prefs.json");
-  File file = fs->open("/prefs.json", FILE_O_WRITE);
-#elif defined(RP2040_PLATFORM)
-  File file = fs->open("/prefs.json", "w");
-#else
-  File file = fs->open("/prefs.json", "w", true);
-#endif
-  if (file) {
-    bool success = _prefs->saveSerial(file);
-    file.close();
-    return success;
-  }
-  return false;
+  // written to a temp file, verified, then swapped in: a power cut keeps the previous complete prefs
+  return AtomicFile::save(fs, "/prefs.json", [this](Stream& s) { return _prefs->saveSerial(s); });
 }
 
 #define MIN_LOCAL_ADVERT_INTERVAL   60
