@@ -169,7 +169,7 @@ def test_key_export_and_import_are_refused_in_hardened_even_on_the_console(nodes
 def test_attempted_passwords_are_audited_but_never_kept(ether, nodes):
     rep, cli, c, pub = _setup(ether, nodes)
     cli.command("password " + PW)
-    wrong = "Wr0ng-Passw0rd-QQ7"
+    wrong = "Wr0ngPw-QQ7zK"           # at most 15 characters: the login request carries no more
     assert not c.login(pub, wrong, timeout=15)
     assert not c.login(pub, "password", timeout=15)
     entries = _wait_audit_file(rep, lambda e: any(x[1] == 3 for x in e))      # EV_LOGIN_FAILED reached the flash
