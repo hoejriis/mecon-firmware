@@ -13,6 +13,7 @@ class ArduinoSerialInterface : public BaseSerialInterface {
 
 public:
   bool isTrustedTransport() const override { return true; }   // a cable: physical possession
+  bool isCableTransport() const override { return true; }
   ArduinoSerialInterface() { _isEnabled = false; _state = 0; }
 
   void begin(Stream& serial) { 

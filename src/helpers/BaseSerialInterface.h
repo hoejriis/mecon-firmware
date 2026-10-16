@@ -23,6 +23,11 @@ public:
    *          last frame arrived on.
    */
   virtual bool isTrustedTransport() const { return false; }
+  /**
+   * \returns true only for a wired USB / UART link. A stricter class than isTrustedTransport(): the
+   *          Hardened posture lets only a cable factory-reset the device. Fails closed.
+   */
+  virtual bool isCableTransport() const { return false; }
   virtual void loop() {};
 
   virtual bool isWriteBusy() const = 0;
