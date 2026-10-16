@@ -579,9 +579,11 @@ def test_the_server_name_is_sent_with_every_tls_profile_that_has_a_host_name(nod
         wait_until(lambda: len(probe.names) > before and probe.names[-1] == "sni.test", "the pinned profile's ClientHello")
         # an address literal has no name to send
         c.cli("set mqtt.profile 0 host 127.0.0.6")
-        before_names, before_conns = len(probe.names), probe.connections
-        wait_until(lambda: probe.connections > before_conns, "a connection to the address literal")
-        assert len(probe.names) == before_names            # it connected, and sent no server name
+        before_names = len(probe.names)
+        # a client that sends no server name reaches the callback with None; an attempt still in flight from before the
+        # edit may add one more "sni.test", so wait for the None rather than counting entries
+        wait_until(lambda: None in probe.names[before_names:], "a connection to the address literal without a server name")
+        assert "127.0.0.6" not in probe.names               # and never the address text posing as a name
     finally:
         probe.stop()
 
