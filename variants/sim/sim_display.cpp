@@ -37,8 +37,18 @@ void SimDisplay::print(const char* str) {
 
 // Consecutive identical frames are written once: the screen refreshes every second or so, and the file would
 // grow without telling a test anything new.
+void SimDisplay::turnOn() {
+  if (!_on) fprintf(stderr, "SIMDISP on at=%lu\n", (unsigned long)millis());
+  _on = true;
+}
+void SimDisplay::turnOff() {
+  if (_on) fprintf(stderr, "SIMDISP off at=%lu\n", (unsigned long)millis());
+  _on = false;
+}
+
 void SimDisplay::endFrame() {
   FILE* f = frames_file();
+  if (f && _frame == _last) { static unsigned long same = 0; if ((++same % 50) == 1) fprintf(stderr, "SIMDISP same-frame x%lu at=%lu\n", same, (unsigned long)millis()); }
   if (!f || _frame == _last) return;
   _last = _frame;
   fprintf(f, "FRAME %lu t=%lu\n%sEND\n", ++_frames, (unsigned long)millis(), _frame.c_str());
