@@ -24,9 +24,50 @@ BIN = {
 }
 
 
+class WifiEnv:
+    """The simulated Wi-Fi environment of a node: the access points that exist, with SSID, password (empty = open),
+    RSSI and up/down state. The node re-reads the file whenever it changes, so a test can bring a network down or up,
+    change its password or its signal while the node runs. Lives next to the node's directory, not in it."""
+
+    def __init__(self, path):
+        self.path = str(path)
+        self.aps = {}
+        self._write()
+
+    def set(self, ssid, password="", rssi=-50, up=True):
+        self.aps[ssid] = (password, rssi, up)
+        self._write()
+
+    def down(self, ssid):
+        pw, rssi, _ = self.aps[ssid]
+        self.set(ssid, pw, rssi, False)
+
+    def up(self, ssid):
+        pw, rssi, _ = self.aps[ssid]
+        self.set(ssid, pw, rssi, True)
+
+    def _write(self):
+        tmp = self.path + ".tmp"
+        with open(tmp, "w") as f:
+            for ssid, (pw, rssi, up) in self.aps.items():
+                f.write("%s\t%s\t%d\t%d\n" % (ssid, pw, rssi, 1 if up else 0))
+        os.replace(tmp, self.path)
+
+
+def wifi_events(node):
+    """The simulated radio's transitions in the node's log, oldest first: [("join"|"up"|"fail"|"lost"|"leave", ssid)]."""
+    out = []
+    if os.path.exists(node.log_path):
+        for ln in open(node.log_path, errors="replace"):
+            if ln.startswith("SIMWIFI "):
+                parts = ln.split()
+                out.append((parts[1], parts[2].split("=", 1)[1]))
+    return out
+
+
 class Node:
     def __init__(self, kind, name, workdir, ether_path=None, seed=1, time_scale=1.0, fault=None, rtc=None, fault_before=None,
-                 binary=None):
+                 binary=None, wifi=None):
         self.kind, self.name = kind, name
         self.dir = os.path.join(str(workdir), name)
         os.makedirs(self.dir, exist_ok=True)
@@ -35,6 +76,11 @@ class Node:
         self.ether_path, self.seed, self.time_scale = ether_path, seed, time_scale
         self.fault, self.rtc, self.fault_before = fault, rtc, fault_before
         self.binary = binary or BIN[kind]
+        if wifi is None and kind == "companion_wifi":
+            # the build's compile-time default network, "sim" (open), exists unless the test defines its own environment
+            wifi = WifiEnv(os.path.join(str(workdir), name + ".wifi"))
+            wifi.set("sim")
+        self.wifi = wifi
         self.proc = None
         self.port = None
 
@@ -51,6 +97,8 @@ class Node:
             cmd += ["--fault-before", self.fault_before]
         if self.rtc:
             cmd += ["--rtc", str(self.rtc)]
+        if self.wifi:
+            cmd += ["--wifi-env", self.wifi.path]
         self.log = open(self.log_path, "ab")
         env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="print_stacktrace=1")
         self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=self.log, env=env)

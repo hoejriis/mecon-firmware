@@ -12,6 +12,7 @@ struct SimConfig {
   uint32_t seed = 1;          // seeds randomSeed() and identity generation
   double time_scale = 1.0;    // virtual ms per real ms (1.0 = real time)
   uint32_t rtc_epoch = 1760000000;  // RTC value at process start (unix seconds)
+  std::string wifi_env;       // file listing the simulated Wi-Fi access points (variants/sim/sim_wifi.cpp)
   std::string fault_path;     // fault injection: file path (as the app sees it) ...
   long fault_after = -1;      // ... and bytes after which the process is killed
   std::string fault_op;       // power cut just BEFORE a filesystem operation: "rename" or "remove" ...

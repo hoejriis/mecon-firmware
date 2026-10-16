@@ -3,6 +3,9 @@
 #include <helpers/ConfigSerializer.h>
 #include <helpers/CommonRadioPrefs.h>
 #include <helpers/DynamicConfigSerializer.h>
+#ifdef ENABLE_WIFI_INTERFACE
+  #include <helpers/wifi/WifiProfiles.h>
+#endif
 
 #define TELEM_MODE_DENY            0
 #define TELEM_MODE_ALLOW_FLAGS     1     // use contact.flags
@@ -53,11 +56,13 @@ public:
   #ifndef WIFI_SSID
     #define WIFI_SSID ""
   #endif
-  char wifi_ssid[33] = {0};   // if empty, the compile-time WIFI_SSID is used
-  char wifi_pwd[64] = {0};
-  uint8_t wifi_enabled = 1; // enabled by default to allow wifi only builds to work. wifi won't be started if ssid is empty
-  // use ssid from prefs, or fallback to ssid from build flags
-  const char* getWifiSSID() const { return wifi_ssid[0] ? wifi_ssid : WIFI_SSID; }
+  #ifndef WIFI_PWD
+    #define WIFI_PWD ""
+  #endif
+  // Wi-Fi profiles (src/helpers/wifi/WifiProfiles.h). Profile 0 is the stock wifi.ssid / wifi.pwd; if it has no
+  // stored SSID the compile-time WIFI_SSID / WIFI_PWD apply.
+  WifiProfiles wifi_profiles;
+  uint8_t wifi_enabled = 1; // enabled by default to allow wifi only builds to work. wifi won't be started if no profile is set
 #endif
 
 private:
@@ -180,9 +185,20 @@ private:
     NodePrefs* _parent;
   protected:
     void structure() override {
-      def("ssid", _parent->wifi_ssid, sizeof(_parent->wifi_ssid));
-      def("pwd", _parent->wifi_pwd, sizeof(_parent->wifi_pwd));
+      WifiProfiles& w = _parent->wifi_profiles;
+      def("ssid", w.ssid_[0], sizeof(w.ssid_[0]));   // profile 0 keeps the stock keys
+      def("pwd", w.pwd_[0], sizeof(w.pwd_[0]));
       def("enabled", _parent->wifi_enabled);
+      // Further profiles and every priority; a stock file without them loads with the defaults.
+      for (uint8_t i = 0; i < WifiProfiles::COUNT; i++) {
+        char key[4] = { 'p', (char)('0' + i), 0, 0 };
+        def(key, w.prio_[i]);
+        if (i == 0) continue;
+        key[0] = 's';
+        def(key, w.ssid_[i], sizeof(w.ssid_[i]));
+        key[0] = 'w';
+        def(key, w.pwd_[i], sizeof(w.pwd_[i]));
+      }
     }
   public:
     WiFiPrefs(NodePrefs* parent) : _parent(parent) { }
@@ -214,6 +230,10 @@ public:
 #endif
   {
     node_name[0] = 0;
+#ifdef ENABLE_WIFI_INTERFACE
+    wifi_profiles.build_ssid = WIFI_SSID;
+    wifi_profiles.build_pwd = WIFI_PWD;
+#endif
     default_scope_name[0] = 0;
     memset(default_scope_key, 0, sizeof(default_scope_key));
   }

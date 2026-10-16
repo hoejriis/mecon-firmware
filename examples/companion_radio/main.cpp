@@ -46,19 +46,10 @@ MultiSerialInterface interface_manager;
   #ifndef TCP_PORT
     #define TCP_PORT 5000
   #endif
-  #ifndef WIFI_RETRY_INTERVAL
-    #if defined(RP2040_PLATFORM)
-      #define WIFI_RETRY_INTERVAL 30000   // each attempt blocks loop(), so retry less often
-    #else
-      #define WIFI_RETRY_INTERVAL 10000   // millis between reconnect attempts
-    #endif
-  #endif
-  #ifndef WIFI_RETRY_TIMEOUT
-    #define WIFI_RETRY_TIMEOUT 5000     // RP2040: cap on how long one join may block loop()
-  #endif
   #if defined(ESP32) || defined(RP2040_PLATFORM)
     #include <helpers/wifi/SerialWifiInterface.h>
     SerialWifiInterface wifi_interface;
+    #include <helpers/wifi/WifiController.h>
   #else
     #error "SerialWifiInterface is not defined for this platform"
   #endif
@@ -122,14 +113,9 @@ void halt() {
   while (1) ;
 }
 
-/* WIFI RECONNECT TRACKERS */
+/* WIFI: the prioritised profile controller (helpers/wifi/WifiController.h) owns joining and rejoining */
 #ifdef ENABLE_WIFI_INTERFACE
-  bool wifi_needs_reconnect = false;
-  unsigned long last_wifi_reconnect_attempt = 0;
-  char wifi_ssid[33] = WIFI_SSID;   // replaced by stored prefs at boot, if set
-  char wifi_pwd[64] = WIFI_PWD;
-  bool wifi_was_connected = false;
-  bool wifi_enabled = false;   // set at boot from prefs; false also when the effective SSID is blank
+  bool wifi_enabled = false;   // set at boot from prefs; false also when no profile is configured
 #endif
 
 void setup() {
@@ -219,46 +205,19 @@ void setup() {
 
 // add wifi interface
 #ifdef ENABLE_WIFI_INTERFACE
-  // use wifi ssid and password from prefs if ssid is not empty, otherwise use the build flag defaults
-  if (the_mesh.getNodePrefs()->wifi_ssid[0]) {
-    strcpy(wifi_ssid, the_mesh.getNodePrefs()->wifi_ssid);
-    strcpy(wifi_pwd, the_mesh.getNodePrefs()->wifi_pwd);
-  }
-  // only start wifi if enabled and ssid is not empty
+  // only start wifi if enabled and at least one profile (or the build-time default network) is configured
   wifi_enabled = the_mesh.getNodePrefs()->wifi_enabled;
-  if (wifi_enabled && wifi_ssid[0] && !Posture::tcpServerMayStart(posture)) {
+  const bool wifi_has_profile = the_mesh.getNodePrefs()->wifi_profiles.configuredCount() > 0;
+  if (wifi_enabled && wifi_has_profile && !Posture::tcpServerMayStart(posture)) {
     // Hardened: the Wi-Fi link exists only to serve the TCP companion port, so neither is started
     wifi_enabled = false;
     Posture::audit().addOnce(rtc_clock.getCurrentTime(), Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_NET_START);
   }
-  if (wifi_enabled && wifi_ssid[0]) {
+  if (wifi_enabled && wifi_has_profile) {
 #if defined(ESP32)
     board.setInhibitSleep(true);   // prevent sleep when WiFi is active
-    WiFi.setAutoReconnect(true);
-
-    WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
-        if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-            WIFI_DEBUG_PRINTLN("WiFi disconnected (reason=%s). Flagging for reconnect...",
-              WiFi.disconnectReasonName((wifi_err_reason_t)info.wifi_sta_disconnected.reason));
-            wifi_needs_reconnect = true;
-        } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
-            WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
-            wifi_needs_reconnect = false;
-        }
-    });
 #endif
-
-    WIFI_DEBUG_PRINTLN("connecting to %s", wifi_ssid);
-
-#if defined(RP2040_PLATFORM)
-    // the join itself blocks inside the core (CYW43::begin busy-waits for the
-    // association), so every attempt stalls the mesh loop. beginNoBlock() only skips the
-    // extra DHCP wait. Give the first connect a full window, then bound the retries below.
-    WiFi.beginNoBlock(wifi_ssid, wifi_pwd);
-    last_wifi_reconnect_attempt = millis();   // let DHCP finish before the poll can retry
-#else
-    WiFi.begin(wifi_ssid, wifi_pwd);
-#endif
+    wifiController().begin(&the_mesh.getNodePrefs()->wifi_profiles);
     wifi_interface.begin(TCP_PORT);
     interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
   } else {
@@ -326,32 +285,7 @@ void loop() {
 
 #ifdef ENABLE_WIFI_INTERFACE
   if (wifi_enabled) {
-    // RP2040 has no WiFi event callbacks, so poll the link state instead
-  #if defined(RP2040_PLATFORM)
-      wifi_needs_reconnect = (WiFi.status() != WL_CONNECTED);
-      if (wifi_was_connected == wifi_needs_reconnect) {   // link state changed
-        wifi_was_connected = !wifi_needs_reconnect;
-        if (wifi_was_connected) {
-          WIFI_DEBUG_PRINTLN("connected, listening on %s:%d", WiFi.localIP().toString().c_str(), TCP_PORT);
-        } else {
-          WIFI_DEBUG_PRINTLN("link lost");
-        }
-      }
-  #endif
-
-    // Safely attempt to reconnect if flagged. On RP2040 each attempt blocks the mesh loop
-    // for up to WIFI_RETRY_TIMEOUT, so retry less often and cap how long a join may stall.
-    if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > WIFI_RETRY_INTERVAL)) {
-      WIFI_DEBUG_PRINTLN("Attempting manual WiFi reconnect to %s (status %d)...", wifi_ssid, WiFi.status());
-    #if defined(RP2040_PLATFORM)
-        WiFi.setTimeout(WIFI_RETRY_TIMEOUT);
-        WiFi.beginNoBlock(wifi_ssid, wifi_pwd);   // no reconnect() on this platform
-    #else
-        WiFi.disconnect();
-        WiFi.reconnect();
-    #endif
-      last_wifi_reconnect_attempt = millis();
-    }
+    wifiController().loop();
   }
 #endif
 }
