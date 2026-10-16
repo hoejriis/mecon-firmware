@@ -25,6 +25,7 @@ private:
   };
 
   bool _enabled = false;
+  const BaseSerialInterface* _last_rx = nullptr;   // interface the most recent frame came from
   RegisteredInterface _interfaces[MAX_INTERFACES] = {};
 
 public:
@@ -131,6 +132,10 @@ public:
     return false;
   }
 
+  bool isTrustedTransport() const override {
+    return _last_rx == nullptr || _last_rx->isTrustedTransport();
+  }
+
   // loop all interfaces
   void loop() override {
     for(auto iface : _interfaces){
@@ -188,6 +193,7 @@ public:
       if(iface.instance && iface.instance->isEnabled()){
         size_t frameSize = iface.instance->checkRecvFrame(dest);
         if(frameSize > 0){
+          _last_rx = iface.instance;
           return frameSize; 
         }
       }

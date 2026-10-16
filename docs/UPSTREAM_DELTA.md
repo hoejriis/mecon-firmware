@@ -12,9 +12,15 @@ This register lists **every change this repository makes to a file that exists u
 | `.github/workflows/build-companion-firmwares.yml`, `build-repeater-firmwares.yml`, `build-room-server-firmwares.yml` | Removed | Release builders triggered by upstream's tag names. This project's releases have their own workflow. |
 | `.github/FUNDING.yml`, `CNAME` | Removed | Upstream's funding link and documentation domain. |
 | `.gitignore` | `.sim-logs/` added | Local logs from simulated-board runs. |
+| `src/helpers/BaseSerialInterface.h`, `MultiSerialInterface.h`, `wifi/SerialWifiInterface.h`, `ethernet/SerialEthernetInterface.h` | `isTrustedTransport()` added (default true; false on the TCP interfaces; the multiplexer reports the transport of the last frame) | Lets the Companion tell an authenticated transport (USB, paired BLE) from the unauthenticated TCP server. |
+| `examples/companion_radio/MyMesh.cpp` | `CMD_RUN_CLI_COMMAND`, export/import private key, set device PIN and factory reset are refused with `ERR_CODE_NOT_PERMITTED` (7) on an untrusted transport | Stock serves these to any client of the `_wifi` build's open TCP port. |
 
 Upstream's `stale-bot.yml` is kept unchanged; it only runs in the upstream repository.
 
 ## Offered upstream
 
-Generic fixes made here that would also benefit stock MeshCore are listed in this section once they exist, with whether they have been offered upstream.
+Generic fixes made here that would also benefit stock MeshCore, with whether they have been offered upstream.
+
+| Change | Offered upstream |
+|---|---|
+| Transport trust for Companion management commands (`isTrustedTransport()`, `ERR_CODE_NOT_PERMITTED`) | not yet offered |

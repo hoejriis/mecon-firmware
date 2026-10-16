@@ -35,3 +35,6 @@ mesh::LocalIdentity radio_new_identity() {
   static SimRNG rng(g_sim.seed * 2654435761u + 12345u);   // deterministic per node seed
   return mesh::LocalIdentity(&rng);
 }
+
+#include <WiFi.h>
+SimWiFi WiFi;

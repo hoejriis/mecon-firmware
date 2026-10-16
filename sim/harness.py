@@ -15,6 +15,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = {
     "companion": os.path.join(REPO, ".pio/build/sim_companion/program"),
     "repeater": os.path.join(REPO, ".pio/build/sim_repeater/program"),
+    # same Companion code, but its app transport is classed as unauthenticated TCP (a _wifi build)
+    "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
 }
 
 
@@ -113,6 +115,10 @@ CMD_APP_START, CMD_SEND_TXT_MSG, CMD_SEND_CHANNEL_TXT_MSG = 1, 2, 3
 CMD_SET_DEVICE_TIME, CMD_ADD_UPDATE_CONTACT, CMD_SYNC_NEXT_MESSAGE = 6, 9, 10
 CMD_DEVICE_QUERY, CMD_SET_CHANNEL = 22, 32
 RESP_OK, RESP_ERR, RESP_SELF_INFO, RESP_SENT = 0, 1, 5, 6
+CMD_EXPORT_PRIVATE_KEY, CMD_IMPORT_PRIVATE_KEY, CMD_SET_DEVICE_PIN = 23, 24, 37
+CMD_FACTORY_RESET, CMD_RUN_CLI_COMMAND = 51, 66
+RESP_PRIVATE_KEY, RESP_CLI_REPLY = 14, 29
+ERR_NOT_PERMITTED = 7
 RESP_NO_MORE_MESSAGES = 10
 RESP_CONTACT_MSG_RECV_V3, RESP_CHANNEL_MSG_RECV_V3 = 16, 17
 PUSH_MSG_WAITING = 0x83

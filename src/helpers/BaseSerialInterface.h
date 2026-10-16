@@ -14,6 +14,13 @@ public:
   virtual bool isEnabled() const = 0;
 
   virtual bool isConnected() const = 0;
+
+  /**
+   * \returns false if this transport carries no authentication of the peer (a TCP server that
+   *          accepts any client). Management and secret-bearing commands are refused on such a
+   *          transport. For a multiplexed interface: the transport the last frame arrived on.
+   */
+  virtual bool isTrustedTransport() const { return true; }
   virtual void loop() {};
 
   virtual bool isWriteBusy() const = 0;

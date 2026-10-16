@@ -138,6 +138,7 @@
 #define ERR_CODE_BAD_STATE              4
 #define ERR_CODE_FILE_IO_ERROR          5
 #define ERR_CODE_ILLEGAL_ARG            6
+#define ERR_CODE_NOT_PERMITTED          7  // command refused on this transport (or for this caller)
 
 #define MAX_SIGN_DATA_LEN               (8 * 1024) // 8K
 
@@ -1052,7 +1053,19 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   serial.enable();
 }
 
+// Commands that manage the device or carry its secrets: only served over a transport that
+// authenticates the peer (USB cable, paired BLE), never over the plain TCP server of a _wifi build.
+static bool isTrustedTransportOnlyCmd(uint8_t cmd) {
+  return cmd == CMD_RUN_CLI_COMMAND || cmd == CMD_EXPORT_PRIVATE_KEY || cmd == CMD_IMPORT_PRIVATE_KEY ||
+         cmd == CMD_SET_DEVICE_PIN || cmd == CMD_FACTORY_RESET;
+}
+
 void MyMesh::handleCmdFrame(size_t len) {
+  if (_serial && !_serial->isTrustedTransport() && isTrustedTransportOnlyCmd(cmd_frame[0])) {
+    MESH_DEBUG_PRINTLN("command %d refused on an unauthenticated transport", (int)cmd_frame[0]);
+    writeErrFrame(ERR_CODE_NOT_PERMITTED);
+    return;
+  }
   if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2) { // sent when app establishes connection
     app_target_ver = cmd_frame[1];                    // which version of protocol does app understand
 
