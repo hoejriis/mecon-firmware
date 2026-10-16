@@ -182,7 +182,7 @@ def test_mqtt_cannot_do_what_only_a_local_caller_may(nodes, tmp_path, brokers):
     t = brokers("t", "127.0.0.2", TLS, tls=True)
     n, c, nid = boot(nodes, tmp_path, "loc", profile("127.0.0.2", TLS, anchor=t.fingerprint))
     wait_status(c, "tls=verified")
-    for line in ("get audit 0", "set posture normal confirm", "set posture   hardened", "set posture"):
+    for line in ("get audit 0", "set posture normal confirm", "set posture   hardened", "set posture", "set mqtt.profile 0 manage on"):
         resp = mq(t, nid, line)
         assert (resp["status"], resp["reply"]) == ("refused", "ERR: not permitted"), (line, resp)
     assert c.cli("get posture") == "> normal"
@@ -192,6 +192,8 @@ def test_mqtt_cannot_do_what_only_a_local_caller_may(nodes, tmp_path, brokers):
     log = audit(c)
     assert any(ln.endswith("refused mqtt posture x3") for ln in log), log
     assert any(ln.endswith("refused mqtt audit x1") for ln in log), log
+    assert any(ln.endswith("refused mqtt mgmt-flag x1") for ln in log), log
+    assert "manage=on" not in c.cli("get mqtt.profile 0")
 
 
 # ------------------------------------------------------------------ session trust

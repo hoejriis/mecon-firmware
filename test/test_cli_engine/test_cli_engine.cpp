@@ -199,6 +199,7 @@ TEST(Registry, CompanionClassification) {
     {"set wifi.pwd secret", C_WRITE}, {"set mqtt.profile 0 pwd secret", C_WRITE}, {"set mqtt.profile 0 host a.b", C_WRITE},
     {"set mqtt.enabled 1", C_WRITE}, {"rebootnow", C_WRITE}, {"reboot now", C_WRITE}, {"unknowncommand", C_WRITE},
     {"", C_WRITE}, {"set postures hardened", C_WRITE}, {"get auditx", C_READ},
+    {"clock", C_WRITE}, {"neighbors", C_WRITE}, {"gps", C_WRITE}, {"region", C_WRITE}, {"erase", C_WRITE},
   };
   for (auto& c : cases) EXPECT_EQ(classify(c.line, ROLE_COMPANION), c.cls) << c.line;
 }
