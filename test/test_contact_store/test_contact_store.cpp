@@ -186,6 +186,12 @@ TEST(ContactStore, FindsByFullKeyAndByPrefixAndSurvivesARestart) {
   EXPECT_EQ(23000, c->gps_lat);
   ASSERT_NE(nullptr, s.find(probe.id.pub_key, 6));
   ASSERT_NE(nullptr, s.find(probe.id.pub_key, 2));
+  uint8_t shorter[32];                                  // a two-byte prefix followed by bytes that are not the key's
+  memset(shorter, 0xEE, sizeof(shorter));
+  memcpy(shorter, probe.id.pub_key, 2);
+  ContactInfo* by_two = s.find(shorter, 2);
+  ASSERT_NE(nullptr, by_two) << "only the bytes of the prefix may be compared";
+  EXPECT_STREQ("contact-23", by_two->name);
   EXPECT_EQ(nullptr, s.find(mk(500).id.pub_key, 32));
 }
 
@@ -211,7 +217,7 @@ TEST(ContactStore, FindByHashReturnsEveryRecordWithThatFirstByte) {
   ContactStore s;
   ASSERT_TRUE(s.begin(&be, nullptr, cfg()));
   for (int i = 0; i < 20; i++) ASSERT_GE(add(s, mk(i * 256 + 7)), 0);   // all start with 0x07
-  for (int i = 0; i < 20; i++) ASSERT_GE(add(s, mk(i + 1000)), 0);
+  for (int i = 0; i < 15; i++) ASSERT_GE(add(s, mk(i + 1000)), 0);     // 1000.. start with other bytes
   uint8_t h = 7;
   int out[40];
   EXPECT_EQ(20, s.findByHash(&h, out, 40));
@@ -856,6 +862,29 @@ TEST(ContactStore, RecOfPtrNamesTheRecordOfAResidentContactOnly) {
   EXPECT_EQ(rec, s.recOfPtr(c));
   ContactInfo copy = *c;
   EXPECT_EQ(-1, s.recOfPtr(&copy));
+}
+
+TEST(ContactStore, AfterTheFileSystemIsErasedOnlyWhatIsInMemoryIsWrittenAgain) {
+  MemBackend be;
+  ContactStore s;
+  ASSERT_TRUE(s.begin(&be, nullptr, tight(be, 200, 16)));
+  for (int i = 0; i < 60; i++) add(s, mk(i));
+  ASSERT_TRUE(s.flush());
+  int resident = s.stats().cache_used;
+  ASSERT_GT(resident, 0);
+  ASSERT_LT(resident, 60);
+  be.files.clear();                                   // "rebuild" formats the file system
+  int lost = s.filesystemErased();
+  EXPECT_EQ(60 - resident, lost);
+  EXPECT_EQ(resident, s.count());
+  EXPECT_TRUE(s.flush());
+  ContactStore t;
+  ASSERT_TRUE(t.begin(&be, nullptr, tight(be, 200, 16)));
+  EXPECT_EQ(resident, t.count()) << "the contacts in memory must be on the file system again";
+  int cursor = 0, n = 0;
+  ContactInfo c;
+  while (t.next(cursor, c)) n++;
+  EXPECT_EQ(resident, n);
 }
 
 TEST(ContactStore, InvalidateSecretsDropsEveryCachedSharedSecret) {

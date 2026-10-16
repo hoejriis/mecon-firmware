@@ -196,6 +196,7 @@ public:
   // Contact memory (docs/CONTACTS.md). Without initContactStore() the contacts live in RAM only, MAX_CONTACTS of them.
   bool initContactStore(ContactBackend* backend, const ContactStoreConfig& cfg);
   bool flushContacts() { return cstore.flush(); }
+  int  contactsFilesystemErased() { return cstore.filesystemErased(); }   // after a format: returns the stored contacts that are gone
   int  getContactCapacity() const { return cstore.ready() ? cstore.capacity() : MAX_CONTACTS; }
   ContactStore& contactStore() { ensureContacts(); return cstore; }
   void invalidateContactSecrets();

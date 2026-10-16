@@ -594,6 +594,30 @@ void ContactStore::noteMessage(int rec, uint32_t now) {
   _idx[rec].last_msg = now;
 }
 
+// The rescue console's "rebuild" formats the file system and then writes what is in memory again. The contacts in
+// the cache are written again by the next flush; those that were only on the file system are gone, and leaving
+// them in the index would make the store claim contacts it cannot read.
+int ContactStore::filesystemErased() {
+  if (!_ready || !_persistent) return 0;
+  int lost = 0;
+  for (int r = 0; r < _cap; r++) {
+    Idx& e = _idx[r];
+    if (!(e.flags & F_USED)) continue;
+    if (e.slot == NOSLOT) {
+      memset(&e, 0, sizeof(Idx));
+      e.slot = NOSLOT;
+      _count--;
+      lost++;
+      if (r < _first_free) _first_free = r;
+    } else {
+      _slots[e.slot].prov = 1;                          // changed as far as the file system is concerned
+    }
+  }
+  _scratch_bucket = -1;
+  memset(_bdirty, 0, (_nbuckets + 7) / 8 + 1);
+  return lost;
+}
+
 // ---------------------------------------------------------------------------------------------- bulk import
 
 void ContactStore::importBegin() {

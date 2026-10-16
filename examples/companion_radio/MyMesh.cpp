@@ -2451,11 +2451,13 @@ void MyMesh::checkCLIRescueCmd() {
       if (success) {
         _store->saveMainIdentity(self_id);
         savePrefs();
+        int lost = contactsFilesystemErased();   // contacts only on the file system went with the format
         saveContacts();
         saveChannels();
         Posture::audit().markAllDirty();   // the format erased the audit file; the log is still in RAM
         auditStore().flush(millis());
         Serial.println("  > erase and rebuild done");
+        if (lost > 0) { Serial.print("  > "); Serial.print(lost); Serial.println(" stored contacts that were not in memory are gone"); }
       } else {
         Serial.println("  Error: erase failed");
       }

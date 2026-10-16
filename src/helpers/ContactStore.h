@@ -118,6 +118,7 @@ public:
   bool remove(int rec);
   void noteMessage(int rec, uint32_t now);                         // a direct message was sent or received
   void invalidateSecrets();
+  int  filesystemErased();                                         // the file system was formatted under the store; returns how many stored contacts are gone
   bool flush();                                                    // writes every changed resident record; false on a write error
 
   // --- bulk load (migration): records go straight to buckets, bypassing the cache

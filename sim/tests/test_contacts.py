@@ -317,8 +317,8 @@ def test_a_contact_that_wrote_to_us_outlives_advert_only_ones(ether, nodes):
     cb.add_contact_full(ca.pub_key, "alice")
     cb.send_direct(ca.pub_key, "it is me", RTC + 5)
     assert [m["text"] for m in ca.sync_messages(timeout=90, want=1)] == ["it is me"]
-    for k in range(2 * cap):
-        assert ca.add_contact_full(key(9000 + k), "s%d" % k, lastmod=RTC + 10)[0] == 0
+    for k in range(2 * cap):                          # strangers newer than anything the node's clock has shown
+        assert ca.add_contact_full(key(9000 + k), "s%d" % k, lastmod=RTC + 1000000)[0] == 0
     count, got = ca.get_contacts()
     assert cb.pub_key in {x["key"] for x in got}, "a contact that wrote to us was evicted before advert-only ones"
 
