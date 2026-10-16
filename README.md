@@ -6,6 +6,14 @@
 
 > **Status — 15 October 2026:** this public repository contains specifications and target contracts, **not firmware source or downloadable builds**. The first public firmware will be **mecon-firmware 0.8.0**, built on upstream MeshCore 1.18.0; no release date is announced. A separate private beta (the 0.9x reference firmware) informs the design. [Current capabilities and hardware maturity](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md).
 
+## Clean 1.18 refounding: standalone first
+
+The public firmware is a **fresh build on MeshCore 1.18.0**, not a port of the private beta. Its first milestone improves stock MeshCore independently of MECON services: platform performance and portability; Normal/Hardened security and duty-cycle enforcement; prioritized Wi-Fi profiles (target ten); multi-broker MQTT with **priority failover, not parallel connections**; device status UI with Wi-Fi/BLE mode switching and USB management; adaptive contact capacity protecting favourites; and one CLI exposed through USB, BLE, MQTT and LoRa, with `mecon_*` extensions through the upstream hook.
+
+The private MVP is inspiration, not the architectural baseline. Where a clean firmware design requires later Backend changes, the firmware design takes precedence. **MECON-specific enrollment, Deployment, signed management, connected observations, OTA and Backend/Reader integrations are later stages**, not prerequisites for the standalone foundation.
+
+See the [ranked standalone foundation and acceptance plan](docs/CLEAN_REFOUNDING_1_18.md). The rest of this README and the linked product contracts retain the broader MECON vision.
+
 ## What it adds
 
 - **Remote visibility:** feed radio observations and device health into a compatible Backend.
