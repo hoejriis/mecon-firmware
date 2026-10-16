@@ -8,6 +8,12 @@
 #define REC CONTACT_RECORD_SIZE
 #define BUCKET_BYTES (CONTACT_RECORD_BUCKET * CONTACT_RECORD_SIZE)
 
+#ifdef CONTACT_STORE_NATIVE_TEST
+// The native unit-test target does not link Identity.cpp (it needs the signature library); the store only needs the
+// default constructor, because it holds ContactInfo values.
+namespace mesh { Identity::Identity() { memset(pub_key, 0, sizeof(pub_key)); } }
+#endif
+
 #ifdef CONTACTS_STOCK_ARRAY
   // The stock fallback: the table is a static array of MAX_CONTACTS records, no heap, no filesystem.
   #ifndef MAX_CONTACTS

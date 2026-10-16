@@ -7,9 +7,6 @@
 
 #include "helpers/ContactStore.h"
 
-// Identity.cpp pulls in the signature library; the store only needs the default constructor.
-namespace mesh { Identity::Identity() { memset(pub_key, 0, sizeof(pub_key)); } }
-
 namespace {
 
 class MemBackend : public ContactBackend {
