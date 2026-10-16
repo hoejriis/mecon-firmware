@@ -46,4 +46,62 @@ jobs:
           key: pio-6.2.0-${{ matrix.env }}-${{ hashFiles('platformio.ini', 'variants/**/platformio.ini') }}
           restore-keys: pio-6.2.0-${{ matrix.env }}-
       - run: pip install "platformio==6.2.0"
-      - run: pio run -e ${{ matrix.env }}
+      - run: |
+          set -o pipefail   # a failed build must fail the step, not be hidden by tee
+          pio run -e ${{ matrix.env }} | tee build.log
+      - name: Record RAM and flash
+        run: |
+          python3 - "${{ matrix.env }}" <<'PY'
+          import json, re, sys
+          env = sys.argv[1]; log = open('build.log').read()
+          def used(kind):
+              m = re.search(kind + r':\s*\[[^\]]*\]\s*[\d.]+% \(used (\d+) bytes from (\d+) bytes\)', log)
+              return [int(m.group(1)), int(m.group(2))] if m else None
+          json.dump({'env': env, 'ram': used('RAM'), 'flash': used('Flash')}, open('memory.json', 'w'))
+          PY
+          cat memory.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memory-${{ matrix.env }}
+          path: memory.json
+
+  memory:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: memory-*
+          path: now
+      - name: Fetch the latest main run's figures for comparison
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow target-boards.yml --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId' || true)
+          mkdir -p base
+          if [ -n "$id" ]; then gh run download "$id" -R "$GITHUB_REPOSITORY" -p 'memory-*' -D base || true; fi
+      - name: Memory table
+        run: |
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import glob, json, os
+          def load(root):
+              out = {}
+              for f in glob.glob(root + '/*/memory.json'):
+                  d = json.load(open(f)); out[d['env']] = d
+              return out
+          now, base = load('now'), load('base')
+          def cell(d, b, k):
+              if not d.get(k): return 'n/a'
+              u, t = d[k]; s = f'{u:,} B ({100*u/t:.1f}%)'
+              if b and b.get(k): s += f' {u - b[k][0]:+,} B'
+              return s
+          print('| Environment | RAM (static) | Flash |')
+          print('|---|---|---|')
+          for env in sorted(now):
+              print(f'| {env} | {cell(now[env], base.get(env), "ram")} | {cell(now[env], base.get(env), "flash")} |')
+          print()
+          print('Differences are against the latest successful run on main. Static RAM only; heap at run time needs hardware.')
+          PY
