@@ -124,3 +124,7 @@ A fourth group breaks each MQTT rule (priority ignored, a tie to the higher numb
 `test_connmode` covers the connectivity-mode decision functions (one stack per stored byte for all 256 values, a damaged byte, who may switch, the audit of changes and refusals, the immediate audit flush, the file image) and the status-screen wording (each mode and posture, the default-PIN and unverified-TLS warnings, line lengths with the longest SSID and address).
 
 A fifth group breaks each connectivity-mode rule (a damaged byte read as Wi-Fi, BLE or Wi-Fi started in the wrong mode, a remote caller allowed to switch, a refusal or a change not audited, the mode not persisted, prefs written in place, no restart after a switch, a button switch with no confirmation, any key confirming, a confirmation that never times out, the Bluetooth page not skipped, a default PIN not flagged, the posture not shown, USB counted as a BLE phone, unverified TLS shown as verified, a Wi-Fi or MQTT password drawn) and expects the connectivity tests or the unit tests to go red.
+
+## Matching the target toolchains
+
+The simulated boards are compiled with `-funsigned-char`, because every target toolchain (Xtensa for ESP32, ARM for nRF52 and RP2040) treats plain `char` as unsigned, and x86-64 Linux treats it as signed. Without the flag, a UI key code at or above 0x80 (`KEY_NEXT` is `0xF1`) arrives as a negative `char` on an x86-64 CI runner and never matches. An aarch64 host happens to behave like the targets, which is how the difference went unnoticed until CI ran the UI tests.
