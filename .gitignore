@@ -18,3 +18,5 @@ compile_commands.json
 venv/
 platformio.local.ini
 .sim-logs/
+__pycache__/
+.pytest_cache/
