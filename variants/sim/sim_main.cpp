@@ -11,16 +11,17 @@
 void setup();
 void loop();
 
-// Main-loop gap probe: the real (wall-clock) time between two consecutive loop() starts. A gap above 50 ms is logged as
-// "SIMLOOP gap_ms=<n>", so a test can read the longest stall of the main loop from the node's log, independent of
+// Main-loop gap probe: the real (wall-clock) time between two consecutive loop() starts. Each new longest gap of at
+// least 5 ms is logged as "SIMLOOP gap_ms=<n>" (so the last line is the longest stall of the run), independent of
 // --time-scale. It lets a test show that a blocking call (the MQTT connect, once) no longer stalls the mesh.
 static void simLoopProbe() {
   using clk = std::chrono::steady_clock;
   static clk::time_point last = clk::now();
+  static long long longest = 4;
   clk::time_point now = clk::now();
   long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
   last = now;
-  if (ms > 50) { fprintf(stderr, "SIMLOOP gap_ms=%lld\n", ms); fflush(stderr); }
+  if (ms > longest) { longest = ms; fprintf(stderr, "SIMLOOP gap_ms=%lld\n", ms); fflush(stderr); }
 }
 
 int main(int argc, char** argv) {

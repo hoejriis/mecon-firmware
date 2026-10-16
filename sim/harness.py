@@ -183,7 +183,8 @@ def mqtt_events(node):
 
 
 def loop_gaps(node):
-    """Main-loop stalls above 50 ms the node logged (`SIMLOOP gap_ms=N`, wall-clock milliseconds), oldest first."""
+    """The node's running record of its longest main-loop gap (`SIMLOOP gap_ms=N`, wall-clock milliseconds, each new
+    maximum of at least 5 ms), oldest first; max() is the longest stall."""
     out = []
     if os.path.exists(node.log_path):
         for ln in open(node.log_path, errors="replace"):

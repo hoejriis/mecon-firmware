@@ -8,11 +8,21 @@ What is verified, and how: the decision rules by unit tests against a fake netwo
 
 `PubSubClient` 2.8.0 (`knolleary/PubSubClient`, MIT), pinned to that exact version in the Heltec V3 and V4 Wi-Fi builds and in the two simulated Companion builds.
 
-- **Heap.** One packet buffer allocated once (512 bytes since the command line over MQTT, 256 before); no other allocation, no task, no queue. The connection object belongs to the platform, so the TLS context exists only while a session is open.
+- **Heap.** One packet buffer allocated once (512 bytes since the command line over MQTT, 256 before) and, on ESP32, the connect worker's 10 KiB stack, allocated when the first connect attempt starts and kept (see "The connect runs on a worker"). No queue. The connection object belongs to the platform, so the TLS context exists only while a session is open.
 - **TLS and portability.** It speaks MQTT 3.1.1 through the Arduino `Client` interface, so the same code runs over `WiFiClient` and over `WiFiClientSecure` (mbedTLS) on ESP32, and compiles natively for the simulated board with three small shims (`Client.h`, `IPAddress.h`, two macros in `Arduino.h`) and a socket-and-OpenSSL `Client`. Nothing in the library knows about TLS, so the certificate check is ours and identical in the simulator and on the device.
 - **Maintenance.** The last release is 2.8 (2020). The library is small, stable and very widely deployed; its protocol subset (3.1.1, QoS 0 and 1, no MQTT 5) is all this stage needs. If it ever has to be replaced, the controller touches it in three calls (`connect`, `loop`, `publish`).
 - **Alternatives considered.** `esp-mqtt` (ESP-IDF) brings its own task, its own TLS stack and no native build, and does not exist on RP2040. `AsyncMqttClient` is ESP-only and depends on AsyncTCP. `arduino-mqtt` (lwmqtt) is comparable and more actively maintained, with a larger footprint and no advantage here.
-- **Known limits of the library.** `connect()` blocks until CONNACK or the socket timeout (6 s here); there is no MQTT 5; a received message above the packet buffer is dropped (512 bytes since the command line over MQTT; 256 before).
+- **Known limits of the library.** `connect()` blocks until CONNACK or the socket timeout (6 s here), which is why the controller runs it on a worker; there is no MQTT 5; a received message above the packet buffer is dropped (512 bytes since the command line over MQTT; 256 before).
+
+## The connect runs on a worker
+
+DNS, the TCP connect, the TLS handshake and the MQTT CONNECT/CONNACK wait are each bounded (about 6 s for the transport and 6 s for the CONNACK) and, run inline, held the main loop for the whole attempt: no mesh packet was processed and the console did not answer. They now run as one job on a worker the platform provides, and the main loop only starts the job, polls for it and takes its result.
+
+- **ESP32.** One FreeRTOS task (`mqttconn`), created when the first attempt starts and reused for every later one, pinned to the core that does not run the Arduino loop, priority 1 (the loop task's). It sleeps on a task notification between jobs. **Stack: 10,240 bytes**, an estimate, not a measurement: the same sequence ran before on the loop task's 8 KiB stack, the mbedTLS handshake is its deepest part and its large buffers are on the heap, so 8 KiB plus 25 %. The task's stack high-water mark is printed after every job in builds with `MESH_DEBUG` (`mqtt worker stack: N of 10240 bytes unused at its deepest`) so the hardware run can replace the estimate. The stack is internal heap taken at the first attempt and never freed; if the task cannot be created the attempt fails (cools down like a failed connect) and the next attempt tries again.
+- **Simulated board.** One thread with the same shape (created on first use, reused, one job at a time), so the asynchrony is testable ([Simulated-board test harness](SIMULATION.md)).
+- **Hand-over.** The job works on a copy of the profile taken when it starts (host, port, TLS, anchor, credentials), so a profile edited meanwhile is never read by it. While it runs it owns the transport, `PubSubClient` and the name lookup; the main loop touches none of them. It publishes its result through a release store that `MqttNet::asyncIdle()` reads with acquire. A successful job leaves the transport open and `PubSubClient` connected; the main loop then subscribes and publishes the status, and from then on `PubSubClient::loop()`, every publish and the command line over MQTT stay on the main loop as before. Never two attempts at once: nothing new is started while a job is unfinished.
+- **Cancellation.** A profile edit that changes credentials, a lost Wi-Fi link, `set mqtt.enabled 0` and a posture that now forbids the profile being connected all raise a flag; the job reads it between its steps (after the lookup, after the transport opens, before CONNECT), closes what it opened and stops. It is never interrupted inside a blocking call, so no client is freed under it and none is leaked, but a cancelled attempt can take up to the remaining time of the call it is in (about 6 s) to wind down, and nothing new starts until it has. A result nobody wants any more (the core has left Connecting, or the attempt was cancelled) is dropped, and a session it did open is closed with a clean DISCONNECT. A posture cancel costs the profile no cooldown.
+- **What is still blocking.** `WiFi.hostByName`, the TLS handshake and CONNECT block the worker, not the loop. The mDNS browse was already asynchronous. Publishing from the main loop to a broker that has stopped reading can still block on the socket write for the library's socket timeout; that was true before and is unchanged.
 
 ## Profiles
 
@@ -88,15 +98,15 @@ RAM is the static figure PlatformIO reports (data and bss): the profiles (1.5 KB
 
 ## Platforms
 
-- **ESP32 family** (Heltec V3 and V4 Wi-Fi builds): implemented in `MqttNetEsp32.cpp` over `WiFiClient` / `WiFiClientSecure` (the fingerprint is checked with `WiFiClientSecure::verify` after a handshake that skips chain validation) and the ESP-IDF `mdns_query_async_*` calls. Other ESP32 Wi-Fi builds opt in with `-D ENABLE_MQTT`, `+<helpers/mqtt/*.cpp>` and the library line.
+- **ESP32 family** (Heltec V3 and V4 Wi-Fi builds): implemented in `MqttNetEsp32.cpp` over `WiFiClient` / `WiFiClientSecure` (the fingerprint is checked with `WiFiClientSecure::verify` after a handshake that skips chain validation; the connect sequence runs on the worker task described above) and the ESP-IDF `mdns_query_async_*` calls. Other ESP32 Wi-Fi builds opt in with `-D ENABLE_MQTT`, `+<helpers/mqtt/*.cpp>` and the library line.
 - **RP2040: unsupported in this change.** The Companion builds for it keep working as before. The platform adapter would be a `MqttNet` over `WiFiClientSecure` (BearSSL, `setFingerprint`) and the core's LEAmDNS service query; neither is written, and the RP2040 mDNS responder cannot browse asynchronously the way this controller needs.
 - Simulated boards: `sim_companion_wifi` and `sim_companion_wifi_usb`.
 
 ## Known limits
 
-- A connect attempt (DNS, TCP, TLS handshake, CONNACK) blocks the main loop, each part bounded (about 6 s for the transport and 6 s for CONNACK). The mDNS browse never blocks.
+- A connect attempt (DNS, TCP, TLS handshake, CONNACK) takes up to about 12 s on the worker; the main loop is not blocked and `get mqtt.status` reads `connecting` meanwhile. Cancelling it (see above) waits for the worker to reach its next step.
 - IPv4 only. A discovery responder is identified by address and port; at most six candidates are tracked, so a LAN that advertises many responders with the right site ID can delay discovery (each failed candidate cools down alone) but cannot make the device connect to one whose certificate does not match.
 - A lost discovery responder is noticed by a browse, which runs only while a better discovery profile exists; on the best profile the session dropping is the signal.
 - No SNI is sent. No client certificates. No CA store.
 - Besides the retained status, the device subscribes to its own command-line request topic and answers on its response topic ([Command-line engine](CLI.md)); it subscribes to nothing else.
-- Hardware: nothing here has run on a board.
+- Hardware: nothing here has run on a board. In particular the worker task (its stack figure, its core pinning, the Wi-Fi and mbedTLS calls from a task other than the loop task) is verified only in the simulator.

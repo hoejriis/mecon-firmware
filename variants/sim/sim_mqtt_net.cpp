@@ -22,15 +22,20 @@
 #include <errno.h>
 #include <string>
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <strings.h>
 #include "sim_config.h"
 
 namespace {
 struct Row { std::string kind, a, b, c, d; };
 std::vector<Row> g_rows;
+std::mutex g_rows_mu;   // the name service is read by the connect worker (resolve) and the main loop (browse)
 long long g_sig_ns = -1, g_sig_size = -1, g_sig_ino = -1;
 
-void reload() {
+void reload() {   // callers hold g_rows_mu
   if (g_sim.mqtt_env.empty()) return;
   struct stat st;
   if (stat(g_sim.mqtt_env.c_str(), &st) != 0) return;
@@ -239,14 +244,66 @@ public:
   operator bool() override { return _fd >= 0; }
 };
 
+// The connect worker, modelled as on the device: one thread, created on the first job, reused, running one job at a
+// time while the main loop carries on. It is never joined (the node exits with the process).
+class SimWorker {
+  std::mutex _mu;
+  std::condition_variable _cv;
+  void (*_job)(void*) = nullptr;
+  void* _arg = nullptr;
+  bool _go = false;
+  std::atomic<bool> _busy{false};
+  bool _started = false;
+
+  void run() {
+    for (;;) {
+      void (*job)(void*);
+      void* arg;
+      {
+        std::unique_lock<std::mutex> l(_mu);
+        _cv.wait(l, [&] { return _go; });
+        _go = false;
+        job = _job;
+        arg = _arg;
+      }
+      job(arg);
+      _busy.store(false, std::memory_order_release);
+    }
+  }
+
+public:
+  bool start(void (*job)(void*), void* arg) {
+    if (_busy.load(std::memory_order_acquire)) return false;
+    if (!_started) {
+      _started = true;
+      std::thread([this] { run(); }).detach();
+    }
+    _busy.store(true, std::memory_order_relaxed);
+    {
+      std::lock_guard<std::mutex> l(_mu);
+      _job = job;
+      _arg = arg;
+      _go = true;
+    }
+    _cv.notify_one();
+    return true;
+  }
+  bool idle() const { return !_busy.load(std::memory_order_acquire); }
+};
+
 class SimNet : public MqttNet {
   SimClient _c;
+  SimWorker _w;
   bool _browsing = false;
   unsigned long _browse_at = 0;
 public:
+  bool asyncStart(void (*job)(void*), void* arg) override { return _w.start(job, arg); }
+  bool asyncIdle() override { return _w.idle(); }
+
   bool linkUp() override { return WiFi.status() == WL_CONNECTED; }
 
   bool resolve(const char* host, uint32_t& addr) override {
+    std::lock_guard<std::mutex> l(g_rows_mu);
     reload();
     for (auto& r : g_rows) {
       if (r.kind == "host" && r.a == host && parseAddr(r.b, addr)) {
@@ -271,6 +328,7 @@ public:
     if (!_browsing) return 0;
     if ((unsigned long)(millis() - _browse_at) < 200) return -1;   // a browse takes time and never blocks the loop
     _browsing = false;
+    std::lock_guard<std::mutex> l(g_rows_mu);
     reload();
     int n = 0;
     for (auto& r : g_rows) {
@@ -295,7 +353,9 @@ public:
 }  // namespace
 
 MqttNet& mqttPlatformNet() {
-  static SimNet n;
-  return n;
+  // Never destroyed: the worker thread sleeps on a condition variable, and exit() (reboot, poweroff) would destroy
+  // that variable under it, which blocks until the waiter leaves, that is forever.
+  static SimNet* n = new SimNet;
+  return *n;
 }
 #endif

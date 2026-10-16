@@ -6,8 +6,13 @@
 // what is the engine's table; this class only frames the exchange and says how the session was authenticated.
 // MECON services are separate work.
 //
-// A connect attempt blocks the main loop for as long as DNS, the TCP connect, the TLS handshake and the CONNACK take,
-// each bounded (about 6 s for the transport and 6 s for the CONNACK). The mDNS browse never blocks.
+// A connect attempt (DNS, the TCP connect, the TLS handshake, the MQTT CONNECT and its CONNACK; each bounded, about 6 s
+// for the transport and 6 s for the CONNACK) runs as a job on the platform's worker (MqttNet::asyncStart), never on the
+// main loop. The loop only starts it, polls for it and takes the result. While the job runs it owns the transport and
+// PubSubClient; the main loop touches neither, and a cancellation (profile edit, posture, link loss, disable) only
+// raises a flag that the job honours between its steps, so no client is freed under it and none is leaked. Once the
+// session is up, PubSubClient::loop() and every publish stay on the main loop. The mDNS browse never blocks.
+#include <atomic>
 #include <stddef.h>
 #include <stdint.h>
 #include "MqttCore.h"
@@ -53,6 +58,26 @@ private:
   bool _started = false;
   bool _enabled = false;
   bool _open = false;                // a transport is open and PubSubClient points at it
+
+  // One connect attempt. `req` is a copy of everything the job needs, taken on the main loop, so a profile edited while
+  // the job runs is not read by it. The job writes `result` and the main loop reads it after MqttNet::asyncIdle().
+  struct ConnectJob {
+    enum Result : uint8_t { Ok, Dns, Tcp, Tls, Pin, Auth, Timeout, Cancelled };
+    bool resolve;                       // `host` is a name to resolve now (every attempt), not an address
+    char host[MqttProfile::HOST_BUF];
+    uint32_t addr;                      // host order; the resolved address once the job has run
+    uint16_t port;
+    bool tls;
+    bool has_anchor;
+    char anchor[MqttProfile::ANCHOR_BUF];
+    char user[MqttProfile::USER_BUF];   // "" when none
+    char pwd[MqttProfile::PWD_BUF];
+    Result result;
+  };
+  ConnectJob _job;
+  bool _job_active = false;          // a job was started and its result has not been taken yet (main loop only)
+  uint8_t _job_profile = 0;          // the profile the job connects, for the posture check
+  std::atomic<bool> _job_cancel{false};   // set by the main loop, read by the job between its steps
   char _client_id[24] = {0};
   char _topic[32] = {0};
   char _req_topic[40] = {0};
@@ -64,6 +89,10 @@ private:
   uint32_t _next_status = 0;
   uint32_t _cli_open_at = 0;         // requests before this are ignored: a retained one is replayed to every new subscriber
   void attempt(const MqttAction& a);
+  void takeResult();
+  void cancelAttempt();
+  void runConnect();                 // the job body, on the worker
+  static void connectEntry(void* self);
   void closeSession();
   void dropTransport();
   void publishStatus();

@@ -403,6 +403,12 @@ void MqttCore::onConnectFailed(uint32_t now, MqttFail why) {
   _cur = _cur_cand = NONE;
 }
 
+void MqttCore::onConnectCancelled() {
+  if (_state != MqttState::Connecting || _cur == NONE) return;
+  _state = MqttState::Idle;
+  _cur = _cur_cand = NONE;
+}
+
 void MqttCore::onSessionLost(uint32_t now, MqttFail why) {
   if (_state != MqttState::Connected || _cur == NONE) return;
   failCurrent(now, why, true);

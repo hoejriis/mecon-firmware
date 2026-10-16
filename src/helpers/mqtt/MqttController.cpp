@@ -15,6 +15,13 @@ const uint16_t SOCKET_TIMEOUT_S = 6;           // CONNACK wait
 const uint32_t CLI_SETTLE_MS = 1500;           // after subscribing, requests are ignored: see onMessage()
 const uint16_t PACKET_BUFFER = 512;            // one request or response (docs/CLI.md); PubSubClient's default is 256
 
+void strlcpy_(char* dst, const char* src, size_t cap) {
+  size_t n = strlen(src);
+  if (n >= cap) n = cap - 1;
+  memcpy(dst, src, n);
+  dst[n] = 0;
+}
+
 bool parseIPv4(const char* s, uint32_t& out) {
   uint32_t v = 0;
   int parts = 0;
@@ -81,6 +88,10 @@ void MqttController::dropTransport() {
 }
 
 void MqttController::closeSession() {
+  if (_job_active) {   // the job owns the transport and PubSubClient: ask it to stop and let takeResult() tidy up
+    _job_cancel = true;
+    return;
+  }
   if (_open && _psc.connected()) _psc.disconnect();   // a clean DISCONNECT, so the broker does not publish the last will
   dropTransport();
 }
@@ -94,46 +105,111 @@ void MqttController::publishStatus() {
   _next_status = millis() + STATUS_REPUBLISH_MS;
 }
 
+// Start one connect attempt: copy what the job needs and hand it to the worker. Nothing here blocks.
 void MqttController::attempt(const MqttAction& a) {
   const uint32_t now = millis();
+  if (_job_active) return;   // never two attempts at once (the core does not ask for one)
   const MqttProfile& q = _profiles->p[a.profile];
-  uint32_t addr = 0;
-  uint16_t port = 0;
+  ConnectJob& j = _job;
+  memset(&j, 0, sizeof(j));
   if (q.kind == MqttProfile::Static) {
-    // Resolved on every attempt, so a dynamic-DNS name keeps working when its address changes.
-    if (!parseIPv4(q.host, addr) && !_net->resolve(q.host, addr)) {
-      _core.onConnectFailed(millis(), MqttFail::Dns);
-      return;
-    }
-    port = q.effectivePort();
+    // A name is resolved again on every attempt (by the job), so a dynamic-DNS name keeps working when its address
+    // changes. An address literal needs no lookup.
+    j.resolve = !parseIPv4(q.host, j.addr);
+    if (j.resolve) strlcpy_(j.host, q.host, sizeof(j.host));
+    j.port = q.effectivePort();
   } else {
     MqttCandidate c;
     if (!_core.candidate(a.cand, c)) { _core.onConnectFailed(now, MqttFail::Lost); return; }
-    addr = c.addr;
-    port = c.port;
+    j.addr = c.addr;
+    j.port = c.port;
   }
-  const bool tls = q.useTls();
-  const char* anchor = (tls && q.hasAnchor()) ? q.anchor : nullptr;
-  MqttOpen r = _net->open(tls, addr, port, anchor, OPEN_TIMEOUT_MS);
+  j.tls = q.useTls();
+  j.has_anchor = j.tls && q.hasAnchor();
+  if (j.has_anchor) strlcpy_(j.anchor, q.anchor, sizeof(j.anchor));
+  if (q.user[0]) {
+    strlcpy_(j.user, q.user, sizeof(j.user));
+    if (q.pwd[0]) strlcpy_(j.pwd, q.pwd, sizeof(j.pwd));
+  }
+  _job_cancel = false;
+  _job_profile = a.profile;
+  _job_active = true;
+  if (!_net->asyncStart(&MqttController::connectEntry, this)) {
+    // No worker (it could not be created, or the previous job is somehow still running): this attempt fails like a
+    // connect that could not open, and the profile cools down before the next try.
+    _job_active = false;
+    memset(&j, 0, sizeof(j));
+    _core.onConnectFailed(now, MqttFail::Tcp);
+  }
+}
+
+void MqttController::connectEntry(void* self) { static_cast<MqttController*>(self)->runConnect(); }
+
+// The job, on the worker: resolve, open the transport, MQTT CONNECT. It checks the cancel flag between the steps and
+// closes whatever it opened on every way out except success; on success the open transport and the connected
+// PubSubClient are handed to the main loop. It uses only the request copy in `_job`, the network and PubSubClient.
+void MqttController::runConnect() {
+  ConnectJob& j = _job;
+  if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }
+  if (_job_cancel) { j.result = ConnectJob::Cancelled; return; }
+  const MqttOpen r = _net->open(j.tls, j.addr, j.port, j.has_anchor ? j.anchor : nullptr, OPEN_TIMEOUT_MS);
   if (r != MqttOpen::Ok) {
-    dropTransport();
-    _core.onConnectFailed(millis(), r == MqttOpen::Pin ? MqttFail::Pin : (r == MqttOpen::Tls ? MqttFail::Tls : MqttFail::Tcp));
+    _net->close();
+    j.result = r == MqttOpen::Pin ? ConnectJob::Pin : (r == MqttOpen::Tls ? ConnectJob::Tls : ConnectJob::Tcp);
     return;
   }
-  _open = true;
+  if (_job_cancel) { _net->close(); j.result = ConnectJob::Cancelled; return; }
   _psc.setClient(_net->client());
-  const char* user = q.user[0] ? q.user : nullptr;
-  const char* pwd = (user && q.pwd[0]) ? q.pwd : nullptr;
+  const char* user = j.user[0] ? j.user : nullptr;
+  const char* pwd = (user && j.pwd[0]) ? j.pwd : nullptr;
   if (!_psc.connect(_client_id, user, pwd, _topic, 1, true, "{\"online\":false}")) {
-    int st = _psc.state();
-    dropTransport();
-    _core.onConnectFailed(millis(), (st == MQTT_CONNECT_BAD_CREDENTIALS || st == MQTT_CONNECT_UNAUTHORIZED) ? MqttFail::Auth
-                                    : (st == MQTT_CONNECTION_TIMEOUT ? MqttFail::Timeout : MqttFail::Tcp));
+    const int st = _psc.state();
+    _net->close();
+    j.result = (st == MQTT_CONNECT_BAD_CREDENTIALS || st == MQTT_CONNECT_UNAUTHORIZED) ? ConnectJob::Auth
+               : (st == MQTT_CONNECTION_TIMEOUT ? ConnectJob::Timeout : ConnectJob::Tcp);
     return;
   }
-  _cur_addr = addr;
-  _cur_port = port;
-  _core.onConnected(millis(), tls && anchor != nullptr);
+  j.result = ConnectJob::Ok;
+}
+
+// The attempt in flight is no longer wanted. The job is never interrupted: it notices the flag at its next step (the
+// blocking calls are each bounded) and takeResult() discards what it produced.
+void MqttController::cancelAttempt() { _job_cancel = true; }
+
+// The finished job's result, on the main loop. A result nobody wants any more (cancelled, or the core has since left
+// Connecting: profile edited, link lost, disabled) is dropped, closing the session if the job got that far.
+void MqttController::takeResult() {
+  _job_active = false;
+  ConnectJob& j = _job;
+  const MqttProfile& q = _profiles->p[_job_profile];
+  const bool wanted = !_job_cancel && _core.state() == MqttState::Connecting;
+  if (j.result == ConnectJob::Ok) {
+    _open = true;
+    if (!wanted) {
+      memset(j.pwd, 0, sizeof(j.pwd));
+      closeSession();
+      return;
+    }
+  } else if (!wanted) {
+    memset(j.pwd, 0, sizeof(j.pwd));
+    return;
+  }
+  memset(j.pwd, 0, sizeof(j.pwd));
+  const uint32_t now = millis();
+  switch (j.result) {
+    case ConnectJob::Ok: break;
+    case ConnectJob::Dns: _core.onConnectFailed(now, MqttFail::Dns); return;
+    case ConnectJob::Tcp: _core.onConnectFailed(now, MqttFail::Tcp); return;
+    case ConnectJob::Tls: _core.onConnectFailed(now, MqttFail::Tls); return;
+    case ConnectJob::Pin: _core.onConnectFailed(now, MqttFail::Pin); return;
+    case ConnectJob::Auth: _core.onConnectFailed(now, MqttFail::Auth); return;
+    case ConnectJob::Timeout: _core.onConnectFailed(now, MqttFail::Timeout); return;
+    case ConnectJob::Cancelled: _core.onConnectCancelled(); return;
+  }
+  _cur_addr = j.addr;
+  _cur_port = j.port;
+  _core.onConnected(now, j.tls && j.has_anchor);
+  if (!MqttProfiles::permitted(q, *_posture)) return;   // raised meanwhile: the core's next poll closes it, nothing is said on it
   if (_cli_fn) {
     _psc.subscribe(_req_topic);   // before the status, so a client that sees the status can send at once
     _cli_open_at = millis() + CLI_SETTLE_MS;
@@ -175,10 +251,19 @@ void MqttController::onMessage(const char* topic, const uint8_t* payload, unsign
 }
 
 void MqttController::loop() {
-  if (!_started || !_enabled) return;
+  if (!_started) return;
+  // A finished attempt is taken even while disabled: a cancelled one must still have its transport closed.
+  if (_job_active && _net->asyncIdle()) takeResult();
+  if (!_enabled) return;
   uint32_t now = millis();
   _core.setPosture(*_posture);
   _core.setLink(now, _net->linkUp());
+
+  if (_job_active && !_job_cancel && !MqttProfiles::permitted(_profiles->p[_job_profile], *_posture)) {
+    // The posture was raised and now forbids the profile being connected: stop that attempt, with no penalty.
+    cancelAttempt();
+    _core.onConnectCancelled();
+  }
 
   if (_core.state() == MqttState::Connected) {
     if (!_psc.loop()) {
@@ -198,6 +283,8 @@ void MqttController::loop() {
     }
   }
 
+  // While a cancelled job is still winding down, nothing new starts: its transport is not free yet.
+  if (_job_active && _job_cancel) return;
   MqttAction a = _core.poll(now);
   switch (a.kind) {
     case MqttAction::Browse:
@@ -207,7 +294,7 @@ void MqttController::loop() {
       attempt(a);
       break;
     case MqttAction::Disconnect:
-      closeSession();
+      closeSession();   // with an attempt in flight this cancels it
       break;
     default:
       break;

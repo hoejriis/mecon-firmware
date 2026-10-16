@@ -283,6 +283,37 @@ TEST(MqttCore, EditingTheProfileInUseReconnectsAtOnce) {
   EXPECT_EQ(2, r.connectsTo(0));
 }
 
+// The platform layer abandons an attempt (the posture now forbids the profile): no penalty, so the next choice is
+// immediate and the profile is not cooling when the posture is lowered again.
+TEST(MqttCore, ACancelledAttemptCostsTheProfileNothing) {
+  Rig r;
+  r.stat(0, "a.example", 90);
+  r.stat(1, "b.example", 50);
+  r.start();
+  MqttAction a = r.core.poll(r.now);
+  ASSERT_EQ(MqttAction::Connect, a.kind);
+  ASSERT_EQ(0, a.profile);
+  ASSERT_EQ(MqttState::Connecting, r.core.state());
+  r.core.onConnectCancelled();
+  EXPECT_EQ(MqttState::Idle, r.core.state());
+  EXPECT_EQ(MqttCore::NONE, r.cur());
+  EXPECT_EQ(MqttFail::None, r.core.lastFail(0));
+  a = r.core.poll(r.now);                       // not cooling: the same profile is chosen again at once
+  ASSERT_EQ(MqttAction::Connect, a.kind);
+  EXPECT_EQ(0, a.profile);
+}
+
+TEST(MqttCore, CancellingWhenNothingIsConnectingChangesNothing) {
+  Rig r;
+  r.stat(0, "a.example", 90);
+  r.start();
+  r.runUntilConnected();
+  ASSERT_EQ(MqttState::Connected, r.core.state());
+  r.core.onConnectCancelled();
+  EXPECT_EQ(MqttState::Connected, r.core.state());
+  EXPECT_EQ(0, r.cur());
+}
+
 TEST(MqttCore, AnEditForgetsTheCooldown) {
   Rig r;
   r.stat(0, "main", 90);
