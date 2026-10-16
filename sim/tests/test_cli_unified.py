@@ -341,3 +341,16 @@ def test_reboot_over_mqtt_runs_in_normal_and_the_node_comes_back(nodes, tmp_path
     n.start()
     c = _client(n)
     wait_status(c, "tls=verified")                                          # and it is back on its broker
+
+
+def test_mqtt_cannot_power_the_device_off_but_the_console_can(nodes, tmp_path, brokers):
+    t = brokers("t", "127.0.0.2", TLS, tls=True)
+    n, c, nid = boot(nodes, tmp_path, "pwr", profile("127.0.0.2", TLS, anchor=t.fingerprint, manage=True))
+    wait_status(c, "tls=verified")
+    for line in ("poweroff", "shutdown"):
+        resp = mq(t, nid, line)
+        assert (resp["status"], resp["reply"]) == ("refused", "ERR: not permitted"), resp
+    assert n.proc.poll() is None
+    assert any(ln.endswith("refused mqtt cli x1") or "refused mqtt cli" in ln for ln in audit(c)), audit(c)
+    c._send(bytes([harness.CMD_RUN_CLI_COMMAND]) + b"poweroff")
+    assert n.wait_exit(10) == 0

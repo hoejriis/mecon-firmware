@@ -195,7 +195,7 @@ TEST(Registry, CompanionClassification) {
     {"get audit", C_POSTURE}, {"get audit 4", C_POSTURE}, {"set posture hardened", C_POSTURE},
     {"set posture normal confirm", C_POSTURE}, {"set posture", C_POSTURE}, {"set connectivity.mode wifi", C_POSTURE},
     {"set mqtt.profile 2 manage on", C_POSTURE}, {"set mqtt.profile 2 manage", C_POSTURE},
-    {"set name x", C_WRITE}, {"set pin 123456", C_WRITE}, {"poweroff", C_WRITE}, {"shutdown", C_WRITE},
+    {"set name x", C_WRITE}, {"set pin 123456", C_WRITE}, {"poweroff", C_DESTRUCTIVE}, {"shutdown", C_DESTRUCTIVE},
     {"set wifi.pwd secret", C_WRITE}, {"set mqtt.profile 0 pwd secret", C_WRITE}, {"set mqtt.profile 0 host a.b", C_WRITE},
     {"set mqtt.enabled 1", C_WRITE}, {"rebootnow", C_WRITE}, {"reboot now", C_WRITE}, {"unknowncommand", C_WRITE},
     {"", C_WRITE}, {"set postures hardened", C_WRITE}, {"get auditx", C_READ},
@@ -214,7 +214,7 @@ TEST(Registry, RepeaterClassification) {
     {"get audit", C_POSTURE}, {"set posture normal confirm", C_POSTURE},
     {"set name x", C_WRITE}, {"password x", C_WRITE}, {"setperm aa 1", C_WRITE}, {"advert", C_WRITE}, {"advert.zerohop", C_WRITE},
     {"start ota", C_WRITE}, {"clock sync", C_WRITE}, {"discover.neighbors", C_WRITE}, {"tempradio 1,2,3,4,5", C_WRITE},
-    {"region load", C_WRITE}, {"region put a", C_WRITE}, {"poweroff", C_WRITE}, {"shutdown", C_WRITE}, {"log start", C_WRITE},
+    {"region load", C_WRITE}, {"region put a", C_WRITE}, {"poweroff", C_DESTRUCTIVE}, {"shutdown", C_DESTRUCTIVE}, {"log start", C_WRITE},
     {"sensor set a b", C_WRITE}, {"gps on", C_WRITE}, {"powersaving on", C_WRITE}, {"clear stats", C_WRITE},
     {"reboot now", C_WRITE}, {"time 5", C_WRITE}, {"neighbor.remove aa", C_WRITE},
     {"get connectivity.mode", C_READ},   // a read by prefix, as a Companion-only command it is unknown here
@@ -328,6 +328,19 @@ TEST_F(Gate, HardenedKeyRefusalsOnTheConsole) {
   bool a = true;
   run("get prv.key", Context(T_USB, A_CABLE, 0), ROLE_REPEATER, &a);
   EXPECT_FALSE(a);                                                           // Normal: the console may
+}
+
+TEST_F(Gate, NoRemoteCallerPowersTheDeviceOff) {
+  for (const Context& ctx : {Context(T_MQTT, A_TLS_VERIFIED, 0, true), Context(T_MQTT, A_TLS_VERIFIED, 1, true),
+                             Context(T_LORA, A_ADMIN, 0), Context(T_LORA, A_CONTACT_FLAG, 0)})
+    for (const char* line : {"poweroff", "shutdown"}) {
+      bool a = false;
+      run(line, ctx, ROLE_COMPANION, &a);
+      EXPECT_TRUE(a) << line;
+    }
+  bool a = true;
+  run("poweroff", Context(T_USB, A_CABLE, 0), ROLE_COMPANION, &a);
+  EXPECT_FALSE(a);
 }
 
 TEST_F(Gate, TheBrokerSession) {

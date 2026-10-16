@@ -70,6 +70,9 @@ inline const Entry* entries(size_t& count) {
     {"set prv.key",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_SECRET,      F_QUIET,      Posture::W_KEY_IMPORT, nullptr,                     "ERR: key import is refused in hardened posture",   "ERR: prv.key can only be set from the local console"},
     {"get wifi.pwd",           M_EXACT,   ROLE_COMPANION,                 C_READ,        0,            Posture::W_NONE,      "> wifi.pwd is write-only",   nullptr,                                            nullptr},
     {"erase",                  M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
+    // powering off needs someone on site to recover the device: no remote caller, broker or not
+    {"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
+    {"shutdown",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     // reads
     {"get ",                   M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_READ,        0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     {"ver",                    M_EXACT,   ROLE_COMPANION | ROLE_REPEATER, C_READ,        0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},

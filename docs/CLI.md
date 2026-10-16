@@ -25,10 +25,10 @@ A remote caller never inherits a local caller's privileges: a LoRa or MQTT calle
 | Class | Commands |
 |---|---|
 | `read` | `get ...`, `ver`, `board`; on a repeater or room server also `clock`, `neighbors`, `power`, `powersaving`, `region`, `region get`, `sensor get`, `sensor list`, `gps` |
-| `write` | everything else that changes a setting or transmits, including `set ...`, `password`, `advert`, `poweroff`; **also the class of any command nobody registered** |
+| `write` | everything else that changes a setting or transmits, including `set ...`, `password`, `advert`; **also the class of any command nobody registered** |
 | `secret` | private-key material: `get prv.key`, `set prv.key`; the Companion frames `CMD_EXPORT_PRIVATE_KEY` and `CMD_IMPORT_PRIVATE_KEY` |
 | `posture` | `set posture ...`, `get audit`, `set connectivity.mode`, `set mqtt.profile <n> manage ...` |
-| `destructive` | `erase`; the Companion frame `CMD_FACTORY_RESET` |
+| `destructive` | `erase`, `poweroff`, `shutdown`; the Companion frame `CMD_FACTORY_RESET` (a powered-off device needs someone on site, so no remote caller, a managing broker included, may) |
 | `reboot` | `reboot` (exactly; `reboot now` is a `write`) |
 
 The Companion frames that are not command lines are gated by the same table: `CMD_RUN_CLI_COMMAND` counts as `read` (may this caller reach the CLI at all), `CMD_SET_DEVICE_PIN` as `write`. Wi-Fi and MQTT passwords are `write` commands whose *read* is answered `> wifi.pwd is write-only` by the engine, or shows only `set` / `unset`: no reply on any transport carries a secret of this kind.
@@ -123,7 +123,6 @@ The registry and the table are `const` data in flash. Not in the static figure: 
 
 ## Known limits
 
-- `poweroff` and `shutdown` are `write`: a caller that may write may power the device off, as before. A broker that may manage a device (Normal, or Hardened with the flag) therefore can. Power the device off only where someone can press the button.
 - BLE with a default PIN and the TCP port are one *untrusted* row; the audit records both as `net`.
 - A remote `erase` or `get prv.key` on a repeater or room server used to fall through to an unknown-command reply and now gets `ERR: not permitted` and an audit entry. The only behavioural difference from before the engine; no test relied on the old reply.
 - The sensor example reaches the same gate through the common CLI. It had no front door before, so Hardened now applies its remote read-only rule there too. The sensor role is not verified on hardware or in the simulator.
