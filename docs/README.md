@@ -36,6 +36,7 @@ Firmware requirements belong here and in `contract/`. **Backend migration work c
 - [Connectivity and operating modes](CONNECTIVITY.md)
 - [Integration guide](INTEGRATION.md)
 - [Security model](SECURITY_MODEL.md)
+- [Standalone security postures](STANDALONE_POSTURES.md): Normal and Hardened without a Deployment
 - [Upstream and porting](UPSTREAM_AND_PORTING.md)
 - [Versioning and releases](VERSIONING_AND_RELEASES.md)
 

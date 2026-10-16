@@ -65,6 +65,7 @@ def test_refused_commands_leave_state_untouched_on_tcp(nodes):
     assert c.app_start()[4:36] == before[4:36]      # identity unchanged
 
 
+@pytest.mark.timescale(10)   # the first transmission after boot waits on the duty-cycle seed
 def test_messaging_still_works_over_tcp_class(ether, nodes):
     wa, a = _node(nodes, "companion_wifi", "wa", seed=11, ether_path=ether.path)
     ub, b = _node(nodes, "companion", "ub", seed=22, ether_path=ether.path)

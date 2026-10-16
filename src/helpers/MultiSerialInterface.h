@@ -136,6 +136,10 @@ public:
     return _last_rx == nullptr || _last_rx->isTrustedTransport();
   }
 
+  bool isCableTransport() const override {
+    return _last_rx != nullptr && _last_rx->isCableTransport();
+  }
+
   // loop all interfaces
   void loop() override {
     for(auto iface : _interfaces){

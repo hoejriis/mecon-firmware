@@ -68,6 +68,46 @@ mutate dutycycle_hour_not_seeded_at_boot src/Dispatcher.cpp "  if (duty_seeded) 
   duty_seeded = true;" "  duty_seeded = true;
   return;" sim/tests/test_duty_cycle.py::test_reboots_do_not_reset_the_hour
 mutate dutycycle_room_server_floor_missing examples/simple_room_server/MyMesh.h "    return radio_freq > 0;" "    return false;" sim/tests/test_duty_cycle.py::test_room_server_gets_the_floor_too
+# --- standalone postures: undo each rule and its tests must go red (docs/STANDALONE_POSTURES.md)
+mutate posture_damaged_value_fails_open src/helpers/Posture.h "inline bool isHardened(uint8_t posture) { return posture != NORMAL; }" "inline bool isHardened(uint8_t posture) { return posture == HARDENED; }" unit:test_posture
+mutate posture_ble_default_pin_starts src/helpers/Posture.h "return !isHardened(posture) || (active_pin != 0 && active_pin != 123456);" "return true;" unit:test_posture
+mutate posture_tcp_server_starts_unit src/helpers/Posture.h "inline bool tcpServerMayStart(uint8_t posture) { return !isHardened(posture); }" "inline bool tcpServerMayStart(uint8_t posture) { return true; }" unit:test_posture
+mutate posture_wifi_started_in_hardened examples/companion_radio/main.cpp "if (wifi_enabled && wifi_ssid[0] && !Posture::tcpServerMayStart(posture)) {" "if (false) {" sim/tests/test_postures_companion.py::test_hardened_wifi_companion_does_not_serve_the_tcp_port
+mutate posture_key_transfer_allowed_unit src/helpers/Posture.h "inline bool keyTransferAllowed(uint8_t posture) { return !isHardened(posture); }" "inline bool keyTransferAllowed(uint8_t posture) { return true; }" unit:test_posture
+mutate posture_companion_keys_allowed examples/companion_radio/MyMesh.cpp "!Posture::keyTransferAllowed(_prefs.posture)) ||" "false) ||" sim/tests/test_postures_companion.py::test_hardened_refuses_key_export_and_import_on_usb
+mutate posture_repeater_key_export_allowed src/helpers/CommonCLI.cpp "} else if (sender_timestamp == 0 && memcmp(config, \"prv.key\", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {" "} else if (false) {" sim/tests/test_postures_admin.py::test_key_export_and_import_are_refused_in_hardened_even_on_the_console
+mutate posture_repeater_key_import_allowed src/helpers/CommonCLI.cpp "} else if (memcmp(config, \"prv.key\", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {" "} else if (false) {" sim/tests/test_postures_admin.py::test_key_export_and_import_are_refused_in_hardened_even_on_the_console
+mutate posture_ble_factory_reset_allowed src/helpers/Posture.h "return !isHardened(posture) || caller == CALLER_CABLE;" "return true;" unit:test_posture
+mutate posture_remote_admin_writes_allowed src/helpers/Posture.h "if (remote && isHardened(posture) && !isRemoteReadOnly(command)) {" "if (false) {" sim/tests/test_postures_admin.py::test_hardened_remote_admin_is_read_only_plus_reboot
+mutate posture_remote_admin_list_unit src/helpers/Posture.h "strcmp(c, \"reboot\") == 0 ||
+         strcmp(c, \"clock\") == 0" "strcmp(c, \"reboot\") == 0 || memcmp(c, \"set \", 4) == 0 ||
+         strcmp(c, \"clock\") == 0" unit:test_posture
+mutate posture_default_password_login_allowed examples/simple_repeater/MyMesh.cpp "const bool admin_open = !Posture::isDefaultAdminPassword(_prefs.password, ADMIN_PASSWORD);" "const bool admin_open = true;" sim/tests/test_postures_admin.py::test_stock_default_password_does_not_open_remote_admin
+mutate posture_default_password_login_allowed_room examples/simple_room_server/MyMesh.cpp "const bool admin_open = !Posture::isDefaultAdminPassword(_prefs.password, ADMIN_PASSWORD);" "const bool admin_open = true;" sim/tests/test_postures_admin.py::test_stock_default_password_does_not_open_remote_admin
+mutate posture_stored_admin_relogin_allowed examples/simple_repeater/MyMesh.cpp "} else if (client->isAdmin() && !admin_open) {" "} else if (false) {" sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
+mutate posture_default_password_commands_allowed src/helpers/Posture.h "if (remote && isDefaultAdminPassword(admin_pw, build_default)) {" "if (false) {" sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
+mutate posture_empty_password_counts_as_set src/helpers/Posture.h "return pw[0] == 0 || strcmp(pw, \"password\") == 0" "return strcmp(pw, \"password\") == 0" unit:test_posture
+mutate posture_attempted_password_logged examples/simple_repeater/MyMesh.cpp "// never log or store the attempted password" "fprintf(stderr, \"bad login %s\\n\", (char *)data);" sim/tests/test_postures_admin.py::test_attempted_passwords_are_audited_but_never_kept
+mutate posture_remote_can_lower src/helpers/Posture.h "bool allowed = to_hardened ? local : caller == CALLER_CABLE;" "bool allowed = true;" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
+mutate posture_ble_can_lower src/helpers/Posture.h "bool allowed = to_hardened ? local : caller == CALLER_CABLE;" "bool allowed = local;" unit:test_posture
+mutate posture_lowering_without_confirm src/helpers/Posture.h "if (to_normal && strcmp(arg, \"normal confirm\") != 0) {" "if (false) {" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
+mutate posture_not_persisted_repeater src/helpers/CommonCLI.h "    def(\"posture\", posture);
+" "" sim/tests/test_postures_admin.py::test_posture_and_audit_survive_a_reboot
+mutate posture_not_persisted_companion examples/companion_radio/NodePrefs.h "    def(\"posture\", posture);
+" "" sim/tests/test_postures_companion.py::test_hardened_survives_a_reboot
+mutate posture_factory_reset_keeps_posture src/helpers/CommonCLI.cpp "_prefs->posture = Posture::NORMAL;" "" sim/tests/test_postures_admin.py::test_factory_reset_on_the_console_recovers_a_hardened_repeater
+mutate posture_audit_not_recorded src/helpers/Posture.h "inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { audit().add(ts, EV_REFUSED, caller, what); }" "inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { }" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
+mutate posture_audit_readable_remotely src/helpers/Posture.h "    if (!local) {
+      recordRefusal(now, caller, W_AUDIT);" "    if (false) {
+      recordRefusal(now, caller, W_AUDIT);" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
+mutate posture_audit_not_folded src/helpers/AuditRing.h "int at = find(event, caller, what);
+    AuditEntry rec" "int at = -1;
+    AuditEntry rec" unit:test_posture
+mutate posture_audit_flush_unbounded src/helpers/AuditRing.h "return _urgent || !_flushed_once || (uint32_t)(now_ms - _last_flush) >= (uint32_t)FLUSH_INTERVAL_MS;" "return true;" unit:test_posture
+mutate posture_audit_crc_unchecked src/helpers/AuditRing.h "if (crc32(in, FILE_SIZE - 4) != want) return false;" "" unit:test_posture
+mutate posture_remote_cli_stays_on_in_hardened examples/companion_radio/MyMesh.cpp "if (from.isRemoteCLIAllowed() && Posture::isHardened(_prefs.posture)) {" "if (false) {" sim/tests/test_postures_companion.py::test_hardened_turns_the_remote_cli_off
+mutate posture_untrusted_refusal_not_audited examples/companion_radio/MyMesh.cpp "Posture::recordRefusal(now, Posture::CALLER_NET, auditWhatForCmd(cmd_frame[0]));" "" sim/tests/test_postures_companion.py::test_untrusted_transport_refusals_are_audited
+mutate posture_companion_remote_lowering examples/companion_radio/MyMesh.cpp "const uint8_t caller = sender_timestamp != 0 ? Posture::CALLER_REMOTE_CLI : _cli_caller;" "const uint8_t caller = Posture::CALLER_CABLE;" sim/tests/test_postures_companion.py::test_remote_cli_cannot_change_the_posture_and_it_is_audited
 build
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi

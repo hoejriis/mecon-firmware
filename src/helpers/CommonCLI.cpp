@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
 #include "AtomicFile.h"
+#include "AuditStore.h"
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
 #include "TxtDataHelpers.h"
@@ -273,6 +274,11 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       handleSetCmd(sender_timestamp, command, reply);
     } else if (sender_timestamp == 0 && strcmp(command, "erase") == 0) {
       bool s = _callbacks->formatFileSystem();
+      if (s) {   // the factory reset: back to Normal, and the audit log (erased with the files) records it
+        _prefs->posture = Posture::NORMAL;
+        Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_FACTORY_RESET, Posture::CALLER_CABLE, Posture::W_NONE);
+        auditStore().flush(millis());
+      }
       sprintf(reply, "File system erase: %s", s ? "OK" : "Err");
     } else if (memcmp(command, "ver", 3) == 0) {
       sprintf(reply, "%s (Build: %s)", _callbacks->getFirmwareVer(), _callbacks->getBuildDate());
@@ -510,6 +516,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     strcpy(reply, "OK");
   } else if (sender_timestamp != 0 && memcmp(config, "prv.key", 7) == 0) {
     strcpy(reply, "ERR: prv.key can only be set from the local console");   // never echo the key back
+  } else if (memcmp(config, "prv.key", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {
+    Posture::recordRefusal(getRTCClock()->getCurrentTime(), Posture::CALLER_CABLE, Posture::W_KEY_IMPORT);
+    strcpy(reply, "ERR: key import is refused in hardened posture");
   } else if (memcmp(config, "prv.key ", 8) == 0) {
     uint8_t prv_key[PRV_KEY_SIZE];
     bool success = mesh::Utils::fromHex(prv_key, PRV_KEY_SIZE, &config[8]);
@@ -703,6 +712,9 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %d", ((uint32_t) _prefs->advert_interval) * 2);
   } else if (memcmp(config, "guest.password", 14) == 0) {
     sprintf(reply, "> %s", _prefs->guest_password);
+  } else if (sender_timestamp == 0 && memcmp(config, "prv.key", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {
+    Posture::recordRefusal(getRTCClock()->getCurrentTime(), Posture::CALLER_CABLE, Posture::W_KEY_EXPORT);
+    strcpy(reply, "ERR: key export is refused in hardened posture");
   } else if (sender_timestamp == 0 && memcmp(config, "prv.key", 7) == 0) {  // from serial command line only
     uint8_t prv_key[PRV_KEY_SIZE];
     int len = _callbacks->getSelfId().writeTo(prv_key, PRV_KEY_SIZE);

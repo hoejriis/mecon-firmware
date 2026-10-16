@@ -119,8 +119,72 @@ class CliClient:
             return text.split("  -> ", 1)[1].strip("\r\n ")
         return ""
 
+    def command_all(self, line, quiet=0.6, timeout=8.0):
+        """Like command(), but returns a multi-line reply whole: reads until the node has been quiet for ``quiet`` s."""
+        self.sock.sendall(line.encode() + b"\r")
+        buf = b""
+        end = time.time() + timeout
+        last = None
+        while time.time() < end:
+            try:
+                chunk = self.sock.recv(4096)
+            except socket.timeout:
+                chunk = b""
+            if chunk:
+                buf += chunk
+                last = time.time()
+            elif last is not None and b"  -> " in buf and time.time() - last > quiet:
+                break
+        text = buf.decode(errors="replace")
+        return text.split("  -> ", 1)[1].strip("\r\n ") if "  -> " in text else ""
+
     def close(self):
         self.sock.close()
+
+
+def audit_entries(read):
+    """All audit lines from ``get audit`` (newest first), paging through "... next:N". ``read`` runs one CLI command
+    and returns the reply text. Each entry is returned as the text "<ts> <event> <caller> <what> x<count>"."""
+    out, cmd = [], "get audit"
+    for _ in range(40):
+        text = read(cmd)
+        nxt = None
+        for ln in text.splitlines():
+            ln = ln.strip()
+            if ln.startswith("... next:"):
+                nxt = int(ln.split(":")[1])
+            elif ln and not ln.startswith(">"):
+                out.append(ln)
+        if nxt is None:
+            break
+        cmd = "get audit %d" % nxt
+    return out
+
+
+def audit_file(node):
+    """Parse the node's persisted /audit.bin: None when absent or invalid, else a list of
+    (ts, event, caller, what, count) oldest first. Checks magic, size and CRC32."""
+    import zlib
+    path = os.path.join(node.dir, "audit.bin")
+    if not os.path.exists(path):
+        return None
+    b = open(path, "rb").read()
+    if len(b) != 268 or b[:4] != b"AUD1" or zlib.crc32(b[:-4]) != struct.unpack("<I", b[-4:])[0]:
+        return None
+    return [struct.unpack_from("<IBBBB", b, 8 + i * 8) for i in range(b[4])]
+
+
+def files_containing(node, text):
+    """Every file in the node's data directory, and its stdout/stderr log, that contains ``text``."""
+    needle = text.encode()
+    hits = []
+    paths = [node.log_path]
+    for root, _, names in os.walk(node.dir):
+        paths += [os.path.join(root, n) for n in names]
+    for p in paths:
+        if os.path.exists(p) and needle in open(p, "rb").read():
+            hits.append(p)
+    return hits
 
 
 # ---- Companion protocol constants (examples/companion_radio/MyMesh.cpp) ----

@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/AuditStore.h>
 
 #include <Arduino.h> // needed for PlatformIO
 #ifdef ENABLE_WIFI_INTERFACE
@@ -539,7 +540,11 @@ void MyMesh::onCommandDataRecv(const ContactInfo &from, mesh::Packet *pkt, uint3
 void MyMesh::onCLICommandRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                                const char *text, char* reply) {
   markConnectionActive(from); // in case this is from a server, and we have a connection
-  if (from.isRemoteCLIAllowed()) {
+  if (from.isRemoteCLIAllowed() && Posture::isHardened(_prefs.posture)) {
+    // Hardened: the remote CLI is off, whatever the contact flag says
+    Posture::recordRefusal(getRTCClock()->getCurrentTime(), Posture::CALLER_REMOTE_CLI, Posture::W_REMOTE_CLI);
+    strcat(reply, "ERR: remote CLI is off in hardened posture");   // reply may have cmd prefix from 'text'
+  } else if (from.isRemoteCLIAllowed()) {
     // sender_timestamp == 0 means "local console" to handleCommand(), and the peer chooses this value:
     // never let a remote caller present as local.
     if (!handleCommand(text, sender_timestamp ? sender_timestamp : 1, reply)) {
@@ -981,6 +986,7 @@ void MyMesh::begin() {
 
   // load persisted prefs
   _store->loadPrefs(_prefs);
+  auditStore().begin(_store->getPrimaryFS());
   sensors.node_lat = _prefs.node_lat;
   sensors.node_lon = _prefs.node_lon;
 
@@ -1063,11 +1069,37 @@ static bool isTrustedTransportOnlyCmd(uint8_t cmd) {
          cmd == CMD_SET_DEVICE_PIN || cmd == CMD_FACTORY_RESET;
 }
 
+// The audit "what" for a command that is refused.
+static uint8_t auditWhatForCmd(uint8_t cmd) {
+  switch (cmd) {
+    case CMD_RUN_CLI_COMMAND: return Posture::W_CLI;
+    case CMD_EXPORT_PRIVATE_KEY: return Posture::W_KEY_EXPORT;
+    case CMD_IMPORT_PRIVATE_KEY: return Posture::W_KEY_IMPORT;
+    case CMD_SET_DEVICE_PIN: return Posture::W_SET_PIN;
+    case CMD_FACTORY_RESET: return Posture::W_FACTORY_RESET;
+  }
+  return Posture::W_NONE;
+}
+
 void MyMesh::handleCmdFrame(size_t len) {
+  const uint32_t now = getRTCClock()->getCurrentTime();
   if (_serial && !_serial->isTrustedTransport() && isTrustedTransportOnlyCmd(cmd_frame[0])) {
     MESH_DEBUG_PRINTLN("command %d refused on an unauthenticated transport", (int)cmd_frame[0]);
+    Posture::recordRefusal(now, Posture::CALLER_NET, auditWhatForCmd(cmd_frame[0]));
     writeErrFrame(ERR_CODE_NOT_PERMITTED);
     return;
+  }
+  // Hardened: the private key never leaves or enters the device, on any transport (USB included), and only
+  // a cable may factory-reset (a paired phone must not be able to strip the posture).
+  {
+    const uint8_t caller = (_serial && _serial->isCableTransport()) ? Posture::CALLER_CABLE : Posture::CALLER_BLE;
+    if (((cmd_frame[0] == CMD_EXPORT_PRIVATE_KEY || cmd_frame[0] == CMD_IMPORT_PRIVATE_KEY) &&
+         !Posture::keyTransferAllowed(_prefs.posture)) ||
+        (cmd_frame[0] == CMD_FACTORY_RESET && !Posture::factoryResetAllowed(_prefs.posture, caller))) {
+      Posture::recordRefusal(now, caller, auditWhatForCmd(cmd_frame[0]));
+      writeErrFrame(ERR_CODE_NOT_PERMITTED);
+      return;
+    }
   }
   if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2) { // sent when app establishes connection
     app_target_ver = cmd_frame[1];                    // which version of protocol does app understand
@@ -1138,6 +1170,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     text[tlen] = 0; // ensure null
 
     reply_buf[0] = 0;
+    _cli_caller = (_serial && _serial->isCableTransport()) ? Posture::CALLER_CABLE : Posture::CALLER_BLE;
     if (!handleCommand(text, 0, reply_buf)) {
       strcat(reply_buf, "Unknown command");   // reply_buf may have cmd prefix from 'text'
     }
@@ -1986,6 +2019,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     }
     bool success = _store->formatFileSystem();
     if (success) {
+      recordFactoryReset((_serial && _serial->isCableTransport()) ? Posture::CALLER_CABLE : Posture::CALLER_BLE);
       writeOKFrame();
       delay(1000);
       board.reboot();  // doesn't return
@@ -2087,6 +2121,14 @@ void MyMesh::saveContacts() {
   _store->saveContacts(this, save_filter);
 }
 
+// A factory reset returns the device to Normal; the audit log (erased with the files) is written again with
+// the reset on it, so the history of what happened before the reset is not itself a casualty of it.
+void MyMesh::recordFactoryReset(uint8_t caller) {
+  _prefs.posture = Posture::NORMAL;
+  Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_FACTORY_RESET, caller, Posture::W_NONE);
+  auditStore().flush(millis());
+}
+
 void MyMesh::enterCLIRescue() {
   _cli_rescue = true;
   cli_command[0] = 0;
@@ -2110,7 +2152,17 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     command += 3;
   }
 
+  {
+    bool changed = false;
+    const uint8_t caller = sender_timestamp != 0 ? Posture::CALLER_REMOTE_CLI : _cli_caller;
+    if (Posture::handleCommand(command, caller, _prefs.posture, getRTCClock()->getCurrentTime(), reply, 150, changed)) {
+      if (changed) { savePrefs(); auditStore().flush(millis()); }   // the posture and its audit entry reach flash together
+      return true;
+    }
+  }
+
   if (sender_timestamp != 0 && !isRemoteCommandAllowed(command)) {
+    Posture::recordRefusal(getRTCClock()->getCurrentTime(), Posture::CALLER_REMOTE_CLI, Posture::W_REMOTE_WRITE);
     strcpy(reply, "ERR: not permitted remotely");   // remote callers: reads and reboot only
     return true;
   }
@@ -2270,6 +2322,7 @@ void MyMesh::checkCLIRescueCmd() {
     cli_command[len - 1] = 0;  // replace newline with C string null terminator
 
     reply_buf[0] = 0;
+    _cli_caller = Posture::CALLER_CABLE;   // the rescue console is the USB / UART serial port
     if (handleCommand(cli_command, 0, reply_buf)) {
       // command was handled, print reply output
       Serial.print("  "); Serial.print(reply_buf); Serial.println();
@@ -2280,6 +2333,8 @@ void MyMesh::checkCLIRescueCmd() {
         savePrefs();
         saveContacts();
         saveChannels();
+        Posture::audit().markAllDirty();   // the format erased the audit file; the log is still in RAM
+        auditStore().flush(millis());
         Serial.println("  > erase and rebuild done");
       } else {
         Serial.println("  Error: erase failed");
@@ -2287,6 +2342,7 @@ void MyMesh::checkCLIRescueCmd() {
     } else if (strcmp(cli_command, "erase") == 0) {
       bool success = _store->formatFileSystem();
       if (success) {
+        recordFactoryReset(Posture::CALLER_CABLE);
         Serial.println("  > erase done");
       } else {
         Serial.println("  Error: erase failed");
@@ -2448,6 +2504,7 @@ void MyMesh::checkSerialInterface() {
 
 void MyMesh::loop() {
   BaseChatMesh::loop();
+  auditStore().service(millis());
 
   if (_cli_rescue) {
     checkCLIRescueCmd();
@@ -2484,5 +2541,5 @@ bool MyMesh::advert() {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
-  return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0;
+  return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0 || Posture::audit().dirty();
 }

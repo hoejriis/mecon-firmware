@@ -204,10 +204,17 @@ void setup() {
   the_mesh.setBLEPin(0);
 #endif
 
+  // Hardened posture: no BLE with a default PIN, no TCP servers (Wi-Fi, Ethernet). See helpers/Posture.h.
+  const uint8_t posture = the_mesh.getNodePrefs()->posture;
+
 // add bluetooth interface
 #if defined(BLE_PIN_CODE)
-  bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
-  interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
+  if (Posture::bleMayStart(posture, the_mesh.getBLEPin())) {
+    bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
+    interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
+  } else {
+    Posture::audit().addOnce(rtc_clock.getCurrentTime(), Posture::EV_REFUSED, Posture::CALLER_BLE, Posture::W_BLE_START);
+  }
 #endif
 
 // add wifi interface
@@ -219,6 +226,11 @@ void setup() {
   }
   // only start wifi if enabled and ssid is not empty
   wifi_enabled = the_mesh.getNodePrefs()->wifi_enabled;
+  if (wifi_enabled && wifi_ssid[0] && !Posture::tcpServerMayStart(posture)) {
+    // Hardened: the Wi-Fi link exists only to serve the TCP companion port, so neither is started
+    wifi_enabled = false;
+    Posture::audit().addOnce(rtc_clock.getCurrentTime(), Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_NET_START);
+  }
   if (wifi_enabled && wifi_ssid[0]) {
 #if defined(ESP32)
     board.setInhibitSleep(true);   // prevent sleep when WiFi is active
@@ -262,8 +274,12 @@ void setup() {
 
 // add ethernet interface
 #if defined(ETHERNET_ENABLED)
-  ethernet_interface.begin();
-  interface_manager.addInterface(InterfaceType::Ethernet, &ethernet_interface);
+  if (Posture::tcpServerMayStart(posture)) {
+    ethernet_interface.begin();
+    interface_manager.addInterface(InterfaceType::Ethernet, &ethernet_interface);
+  } else {
+    Posture::audit().addOnce(rtc_clock.getCurrentTime(), Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_NET_START);
+  }
 #endif
 
 // add hardware serial interface

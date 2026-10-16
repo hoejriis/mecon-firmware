@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/AuditStore.h>
 
 #define REPLY_DELAY_MILLIS          1500
 #define PUSH_NOTIFY_DELAY_MILLIS    2000
@@ -332,17 +333,23 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
     data[len] = 0;                                        // ensure null terminator
 
     ClientInfo* client = NULL;
+    // while the admin password is the stock default (or empty) nobody logs in as admin over the air
+    const bool admin_open = !Posture::isDefaultAdminPassword(_prefs.password, ADMIN_PASSWORD);
     if (data[8] == 0) {   // blank password, just check if sender is in ACL
       client = acl.getClient(sender.pub_key, PUB_KEY_SIZE);
       if (client == NULL) {
       #if MESH_DEBUG
         MESH_DEBUG_PRINTLN("Login, sender not in ACL");
       #endif
+      } else if (client->isAdmin() && !admin_open) {   // an admin entry from before the password was changed
+        Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_LOGIN_FAILED, Posture::CALLER_REMOTE_ADMIN, Posture::W_DEFAULT_PASSWORD);
+        return;
       }
     }
     if (client == NULL) {
       uint8_t perm;
-      if (strcmp((char *)&data[8], _prefs.password) == 0) { // check for valid admin password
+      const bool is_admin_pw = strcmp((char *)&data[8], _prefs.password) == 0;
+      if (is_admin_pw && admin_open) { // check for valid admin password
         perm = PERM_ACL_ADMIN;
       } else {
         if (strcmp((char *)&data[8], _prefs.guest_password) == 0) {   // check the room/public password
@@ -350,6 +357,9 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
         } else if (_prefs.allow_read_only) {
           perm = PERM_ACL_GUEST;
         } else {
+          // never log or store the attempted password
+          Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_LOGIN_FAILED, Posture::CALLER_REMOTE_ADMIN,
+                               is_admin_pw ? Posture::W_DEFAULT_PASSWORD : Posture::W_BAD_PASSWORD);
           MESH_DEBUG_PRINTLN("Incorrect room password");
           return; // no response. Client will timeout
         }
@@ -698,6 +708,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _fs = fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
+  auditStore().begin(_fs);
 
   acl.load(_fs, self_id);
   region_map.load(_fs);
@@ -941,6 +952,15 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     command += 3;
   }
 
+  {
+    bool changed = false;
+    if (Posture::adminFrontDoor(command, sender_timestamp != 0, _prefs.posture, _prefs.password, ADMIN_PASSWORD,
+                                getRTCClock()->getCurrentTime(), reply, 150, changed)) {
+      if (changed) { savePrefs(); auditStore().flush(millis()); }   // the posture and its audit entry reach flash together
+      return;
+    }
+  }
+
   // handle ACL related commands
   if (memcmp(command, "setperm ", 8) == 0) {   // format:  setperm {pubkey-hex} {permissions-int8}
     char* hex = &command[8];
@@ -999,6 +1019,7 @@ bool MyMesh::saveFilter(ClientInfo* client) {
 
 void MyMesh::loop() {
   mesh::Mesh::loop();
+  auditStore().service(millis());
 
   if (millisHasNowPassed(next_push) && acl.getNumClients() > 0) {
     // check for ACK timeouts
