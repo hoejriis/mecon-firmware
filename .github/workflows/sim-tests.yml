@@ -1,0 +1,31 @@
+name: Simulated boards
+
+# Builds the host-native sim variant from the real Companion and Repeater
+# sources and runs the simulated-board suite (docs/SIMULATION.md).
+# A pass is software verification on simulated boards, not a hardware claim.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache@v5
+        with:
+          path: ~/.platformio
+          key: pio-6.2.0-sim-${{ hashFiles('platformio.ini', 'variants/sim/**') }}
+          restore-keys: pio-6.2.0-sim-
+      - run: pip install "platformio==6.2.0" pytest
+      - run: pio run -e sim_companion -e sim_repeater
+      - run: python3 -m pytest sim/tests -v
