@@ -2156,7 +2156,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
   if (strcmp(command, "get wifi.pwd") == 0) {
-    sprintf(reply, "> %s", _prefs.wifi_pwd);
+    strcpy(reply, "> wifi.pwd is write-only");   // the password is never read back, on any transport
     return true;
   }
   if (strcmp(command, "set wifi.clear") == 0) {

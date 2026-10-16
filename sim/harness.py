@@ -16,6 +16,7 @@ BIN = {
     "companion": os.path.join(REPO, ".pio/build/sim_companion/program"),
     "repeater": os.path.join(REPO, ".pio/build/sim_repeater/program"),
     # same Companion code, but its app transport is classed as unauthenticated TCP (a _wifi build)
+    "companion_wifi_usb": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb/program"),
     "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
 }
 
@@ -198,6 +199,12 @@ class CompanionClient:
     def set_channel(self, idx, name, secret):
         assert len(secret) == 16
         return self.request(bytes([CMD_SET_CHANNEL, idx]) + name.encode().ljust(32, b"\0") + secret)
+
+    def cli(self, text):
+        """CMD_RUN_CLI_COMMAND; returns the reply text (USB/BLE class transports only)."""
+        f = self.request(bytes([CMD_RUN_CLI_COMMAND]) + text.encode())
+        assert f[0] == RESP_CLI_REPLY, f
+        return f[1:].decode(errors="replace")
 
     def send_direct(self, to_pub, text, ts):
         return self.request(bytes([CMD_SEND_TXT_MSG, 0, 0]) + struct.pack("<I", ts) + to_pub[:6] + text.encode())

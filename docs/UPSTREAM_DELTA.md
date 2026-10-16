@@ -14,6 +14,7 @@ This register lists **every change this repository makes to a file that exists u
 | `.gitignore` | `.sim-logs/` added | Local logs from simulated-board runs. |
 | `src/helpers/BaseSerialInterface.h`, `MultiSerialInterface.h`, `wifi/SerialWifiInterface.h`, `ethernet/SerialEthernetInterface.h` | `isTrustedTransport()` added (default true; false on the TCP interfaces; the multiplexer reports the transport of the last frame) | Lets the Companion tell an authenticated transport (USB, paired BLE) from the unauthenticated TCP server. |
 | `examples/companion_radio/MyMesh.cpp` | `CMD_RUN_CLI_COMMAND`, export/import private key, set device PIN and factory reset are refused with `ERR_CODE_NOT_PERMITTED` (7) on an untrusted transport | Stock serves these to any client of the `_wifi` build's open TCP port. |
+| `examples/companion_radio/MyMesh.cpp` | `get wifi.pwd` answers "write-only" instead of the password | Stock returns the Wi-Fi password in clear text to any CLI caller. |
 
 Upstream's `stale-bot.yml` is kept unchanged; it only runs in the upstream repository.
 
@@ -24,3 +25,4 @@ Generic fixes made here that would also benefit stock MeshCore, with whether the
 | Change | Offered upstream |
 |---|---|
 | Transport trust for Companion management commands (`isTrustedTransport()`, `ERR_CODE_NOT_PERMITTED`) | not yet offered |
+| `get wifi.pwd` no longer reveals the Wi-Fi password | not yet offered |
