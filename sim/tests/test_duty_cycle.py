@@ -235,7 +235,7 @@ def test_get_dutycycle_reports_band_limit_floor_and_use(tmp_path, nodes):
         m = BAND.match(c.cli("get dutycycle"))
         assert m, "unexpected reply"
         assert m.group(1) == "868.000-868.600" and m.group(2) == "1.00" and m.group(3) == "1.00%" and m.group(4) == "100.00"
-        assert m.group(5) == "0"
+        assert m.group(5) == "36000"          # the hour is seeded at the limit on boot: 1 % of 3600 s
         c.set_radio(869.525, 250, 10)                     # live: the answer follows at once
         m = BAND.match(c.cli("get dutycycle"))
         assert m.group(1) == "869.400-869.650" and m.group(2) == "10.00" and m.group(3) == "10.00%"
