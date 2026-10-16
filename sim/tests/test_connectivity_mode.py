@@ -76,8 +76,13 @@ def goto_connectivity(node):
         log = open(node.log_path, errors="replace").read()[-3000:]
     except OSError as e:
         log = repr(e)
+    try:
+        frm = open(node.ui.frames_path, errors="replace").read()[-4000:]
+    except OSError as e:
+        frm = repr(e)
     raise AssertionError("never reached the connectivity screen: " + node.ui.last_text()
-                         + "\n--- frames this boot: %d\n--- input file:\n%s\n--- node log tail:\n%s" % (len(node.ui.frames()), inp, log))
+                         + "\n--- frames this boot: %d\n--- input file:\n%s\n--- node log tail:\n%s\n--- frames file tail:\n%s"
+                         % (len(node.ui.frames()), inp, log, frm))
 
 
 def log_count(node, text):
