@@ -11,7 +11,7 @@ import pytest
 
 from sim import mqtt_broker
 from sim.harness import CompanionClient, MqttEnv, WifiEnv, loop_gaps, mqtt_events, node_log
-from sim.mqtt_broker import Broker, BlackHole, make_cert
+from sim.mqtt_broker import Broker, BlackHole, SlowProxy, make_cert
 from sim.tests.test_companion_mqtt import PLAIN, TLS, RTC, static, wait_status, wait_until, last
 
 SECRET = bytes(range(16))
@@ -164,3 +164,66 @@ def test_raising_the_posture_during_a_pending_connect_cancels_it(nodes, tmp_path
         assert n.proc.poll() is None
     finally:
         tls.stop()
+
+
+# A connect that succeeds *after* it was cancelled: the broker is reached through a proxy that holds the connection
+# for a while before relaying it. The attempt is cancelled while it waits for the CONNACK, then it completes.
+
+@pytest.fixture
+def slow(tmp_path):
+    made = []
+
+    def make(ip, port, target_ip, target_port, delay):
+        p = SlowProxy(ip, port, target_ip, target_port, delay).start()
+        made.append(p)
+        return p
+
+    yield make
+    for p in made:
+        p.stop()
+
+
+def test_a_connect_that_completes_after_it_was_cancelled_is_closed_cleanly(nodes, tmp_path, slow):
+    a = Broker(tmp_path, "a", "127.0.0.2", PLAIN).start()
+    b = Broker(tmp_path, "b", "127.0.0.3", PLAIN).start()
+    slow("127.0.0.8", PLAIN, "127.0.0.2", PLAIN, 3.0)
+    try:
+        n, c = _node(nodes, tmp_path, "late", "127.0.0.8", False, kind="companion_wifi_usb_asan")
+        c = _reboot(n, c)
+        wait_until(lambda: _opens(n) >= 1, "the connect attempt", 30)
+        assert c.cli("set mqtt.profile 0 host 127.0.0.3").startswith(">")        # cancelled: its broker is now B
+        s = wait_status(c, "connected", timeout=40)
+        assert "broker=127.0.0.3:%d" % PLAIN in s, s
+        assert wait_until(lambda: a.client_connects() == 1, "the late session to reach broker A", 20)
+        time.sleep(1.0)
+        # the late session was closed with a DISCONNECT (no last will), not left open or dropped
+        log = a.log()
+        assert "disconnected" in log.lower(), log
+        assert a.retained_status(2) is None                                      # it never published its status
+        assert _opens(n) - _count(n, "close") == 1, mqtt_events(n)               # only B's session is open
+        assert n.sanitizer_report() == "", n.sanitizer_report()
+    finally:
+        a.stop()
+        b.stop()
+
+
+def test_a_plain_connect_that_completes_after_the_posture_rose_says_nothing(nodes, tmp_path, slow):
+    a = Broker(tmp_path, "a", "127.0.0.2", PLAIN).start()
+    cert, key, _ = make_cert(str(tmp_path), "t", "127.0.0.4")
+    t = Broker(tmp_path, "t", "127.0.0.4", TLS, cert, key).start()
+    slow("127.0.0.8", PLAIN, "127.0.0.2", PLAIN, 3.0)
+    try:
+        n, c = _node(nodes, tmp_path, "latepost", "127.0.0.8", False, kind="companion_wifi_usb_asan",
+                     extra_cmds=static(1, "127.0.0.4", TLS, 50, tls=True))
+        c = _reboot(n, c)
+        wait_until(lambda: _opens(n) >= 1, "the connect attempt", 30)
+        assert "hardened" in c.cli("set posture hardened").lower()
+        s = wait_status(c, "connected", timeout=40)
+        assert "profile=1" in s, s
+        time.sleep(4.0)                                                          # the plain attempt completes meanwhile
+        assert a.retained_status(2) is None, "a plain session published its status under Hardened"
+        assert _opens(n) - _count(n, "close") == 1, mqtt_events(n)
+        assert n.sanitizer_report() == "", n.sanitizer_report()
+    finally:
+        a.stop()
+        t.stop()

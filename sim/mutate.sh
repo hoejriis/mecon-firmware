@@ -210,25 +210,20 @@ mutate mqtt_tcp_port_served_in_hardened examples/companion_radio/main.cpp "    i
       wifi_interface.begin(TCP_PORT);" "    if (true) {
       wifi_interface.begin(TCP_PORT);" $MQ_SIM::test_hardened_keeps_the_link_for_mqtt_but_never_serves_the_tcp_port
 mutate mqtt_pin_not_checked $MQ_NET "if (strcasecmp(hex, anchor) != 0) {" "if (false) {" $MQ_SIM::test_discovery_rejects_the_right_site_id_with_the_wrong_certificate
-mutate mqtt_anchor_not_passed_on $MQ_CTRL "const char* anchor = (tls && q.hasAnchor()) ? q.anchor : nullptr;" "const char* anchor = nullptr;" $MQ_SIM::test_discovery_rejects_the_right_site_id_with_the_wrong_certificate
-mutate mqtt_tls_dropped $MQ_CTRL "const bool tls = q.useTls();" "const bool tls = false;" $MQ_SIM::test_discovery_accepts_a_matching_site_id_with_a_matching_certificate
-mutate mqtt_unverified_reported_as_verified $MQ_CTRL "_core.onConnected(millis(), tls && anchor != nullptr);" "_core.onConnected(millis(), tls);" $MQ_SIM::test_a_tls_profile_without_an_anchor_is_encrypted_but_reported_unverified_and_a_wrong_anchor_is_refused
-mutate mqtt_name_resolved_once $MQ_CTRL "    if (!parseIPv4(q.host, addr) && !_net->resolve(q.host, addr)) {
-      _core.onConnectFailed(millis(), MqttFail::Dns);
-      return;
-    }" "    static uint32_t cached[MqttProfiles::COUNT];
-    if (cached[a.profile]) addr = cached[a.profile];
-    else if (!parseIPv4(q.host, addr) && !_net->resolve(q.host, addr)) {
-      _core.onConnectFailed(millis(), MqttFail::Dns);
-      return;
-    } else cached[a.profile] = addr;" $MQ_SIM::test_a_host_name_is_resolved_again_on_every_attempt
+mutate mqtt_anchor_not_passed_on $MQ_CTRL "j.has_anchor = j.tls && q.hasAnchor();" "j.has_anchor = false;" $MQ_SIM::test_discovery_rejects_the_right_site_id_with_the_wrong_certificate
+mutate mqtt_tls_dropped $MQ_CTRL "j.tls = q.useTls();" "j.tls = false;" $MQ_SIM::test_discovery_accepts_a_matching_site_id_with_a_matching_certificate
+mutate mqtt_unverified_reported_as_verified $MQ_CTRL "_core.onConnected(now, j.tls && j.has_anchor);" "_core.onConnected(now, j.tls);" $MQ_SIM::test_a_tls_profile_without_an_anchor_is_encrypted_but_reported_unverified_and_a_wrong_anchor_is_refused
+mutate mqtt_name_resolved_once $MQ_CTRL "  if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }" "  static uint32_t cached[MqttProfiles::COUNT];
+  if (j.resolve && cached[_job_profile]) j.addr = cached[_job_profile];
+  else if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }
+  else if (j.resolve) cached[_job_profile] = j.addr;" $MQ_SIM::test_a_host_name_is_resolved_again_on_every_attempt
 mutate mqtt_password_in_listing $MQ_PROF_C 'const char* pwd = q.pwd[0] ? "set" : "unset";' 'const char* pwd = q.pwd[0] ? q.pwd : "unset";' unit:test_mqtt_prefs
 mutate mqtt_password_in_listing_sim $MQ_PROF_C 'const char* pwd = q.pwd[0] ? "set" : "unset";' 'const char* pwd = q.pwd[0] ? q.pwd : "unset";' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
-mutate mqtt_password_logged $MQ_CTRL "  _open = true;
-  _psc.setClient(_net->client());" '  fprintf(stderr, "mqtt connect as %s\n", q.pwd);
-  _open = true;
-  _psc.setClient(_net->client());' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
-mutate mqtt_credentials_not_sent $MQ_CTRL "const char* user = q.user[0] ? q.user : nullptr;" "const char* user = nullptr;" $MQ_SIM::test_credentials_are_used_and_a_wrong_password_fails_over
+mutate mqtt_password_logged $MQ_CTRL "  _psc.setClient(_net->client());
+  const char* user = j.user[0]" '  fprintf(stderr, "mqtt connect as %s\n", j.pwd);
+  _psc.setClient(_net->client());
+  const char* user = j.user[0]' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
+mutate mqtt_credentials_not_sent $MQ_CTRL "const char* user = j.user[0] ? j.user : nullptr;" "const char* user = nullptr;" $MQ_SIM::test_credentials_are_used_and_a_wrong_password_fails_over
 mutate mqtt_profiles_not_persisted examples/companion_radio/NodePrefs.h "        key[0] = 'h'; def(key, q.host, sizeof(q.host));
 " "" unit:test_mqtt_prefs
 mutate mqtt_profiles_not_persisted_sim examples/companion_radio/NodePrefs.h "        key[0] = 'h'; def(key, q.host, sizeof(q.host));
@@ -236,6 +231,26 @@ mutate mqtt_profiles_not_persisted_sim examples/companion_radio/NodePrefs.h "   
 mutate mqtt_status_not_published $MQ_CTRL "  _psc.publish(_topic, payload, true);" "  (void)payload;" $MQ_SIM::test_status_topic_is_published_and_retained
 mutate mqtt_disable_ignored examples/companion_radio/MyMesh.cpp "    mqttController().setEnabled(_prefs.mqtt_enabled != 0);
 " "" $MQ_SIM::test_profiles_persist_across_a_reboot_and_can_be_disabled
+# --- the connect runs on a worker (docs/MQTT.md): undo each rule and its tests must go red
+MQ_NB=sim/tests/test_mqtt_nonblocking.py
+mutate mqtt_connect_runs_inline $MQ_CTRL "  if (!_net->asyncStart(&MqttController::connectEntry, this)) {" "  connectEntry(this);
+  if (false) {" $MQ_NB::test_a_connect_attempt_does_not_stall_the_main_loop
+mutate mqtt_connect_runs_inline_mesh $MQ_CTRL "  if (!_net->asyncStart(&MqttController::connectEntry, this)) {" "  connectEntry(this);
+  if (false) {" $MQ_NB::test_the_mesh_keeps_delivering_during_a_connect_attempt
+mutate mqtt_result_taken_before_the_job_ends $MQ_CTRL "if (_job_active && _net->asyncIdle()) takeResult();" "if (_job_active) takeResult();" $MQ_NB::test_a_connect_attempt_does_not_stall_the_main_loop
+mutate mqtt_cancelled_result_kept $MQ_CTRL "const bool wanted = !_job_cancel && _core.state() == MqttState::Connecting;" "const bool wanted = true;" $MQ_NB::test_a_connect_that_completes_after_it_was_cancelled_is_closed_cleanly
+mutate mqtt_cancel_does_not_wait_for_the_job $MQ_CTRL "  if (_job_active && _job_cancel) return;" "" $MQ_NB::test_a_profile_edit_during_a_pending_connect_is_applied_and_leaks_nothing
+mutate mqtt_posture_cancel_not_reported_to_the_core $MQ_CTRL "    cancelAttempt();
+    _core.onConnectCancelled();" "    cancelAttempt();" $MQ_NB::test_raising_the_posture_during_a_pending_connect_cancels_it
+mutate mqtt_late_plain_session_announced_in_hardened $MQ_CTRL "  if (!MqttProfiles::permitted(q, *_posture)) return;" "" $MQ_NB::test_a_plain_connect_that_completes_after_the_posture_rose_says_nothing
+mutate mqtt_close_ignores_a_running_job $MQ_CTRL "  if (_job_active) {   // the job owns the transport and PubSubClient: ask it to stop and let takeResult() tidy up
+    _job_cancel = true;
+    return;
+  }" "" $MQ_NB::test_a_profile_edit_during_a_pending_connect_is_applied_and_leaks_nothing
+mutate mqtt_cancelled_attempt_penalises_the_profile $MQ_CORE "void MqttCore::onConnectCancelled() {
+  if (_state != MqttState::Connecting || _cur == NONE) return;" "void MqttCore::onConnectCancelled() {
+  if (_state != MqttState::Connecting || _cur == NONE) return;
+  failCurrent(0, MqttFail::Timeout, false);" unit:test_mqtt_core
 # --- connectivity mode and its screen (docs/CONNECTIVITY_MODE.md)
 CM_H=src/helpers/connmode/ConnMode.h
 CS_H=src/helpers/connmode/ConnStatus.h
