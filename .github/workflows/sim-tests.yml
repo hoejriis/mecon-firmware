@@ -26,6 +26,11 @@ jobs:
           path: ~/.platformio
           key: pio-6.2.0-sim-${{ hashFiles('platformio.ini', 'variants/sim/**') }}
           restore-keys: pio-6.2.0-sim-
+      - name: Broker and TLS tools for the MQTT tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mosquitto mosquitto-clients openssl libssl-dev
+          sudo systemctl stop mosquitto || true   # the package starts a default broker; the tests start their own
       - run: pip install "platformio==6.2.0" pytest
       - name: Build every sim_* environment
         run: |

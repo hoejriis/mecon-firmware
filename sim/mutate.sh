@@ -23,6 +23,7 @@ s = open(p).read()
 assert old in s, "mutation target not found: " + old
 open(p, "w").write(s.replace(old, new, 1))
 PY
+  if [ $? -ne 0 ]; then echo "TARGET MISSING: $name (the code it mutates has changed; update the mutant)"; SURVIVED=1; return 0; fi
   build
   case "$target" in
     unit:*) sim/run.sh pio test -e native -f "${target#unit:}" > ".sim-logs/mut_$name.log" 2>&1 ;;
@@ -72,7 +73,6 @@ mutate dutycycle_room_server_floor_missing examples/simple_room_server/MyMesh.h 
 mutate posture_damaged_value_fails_open src/helpers/Posture.h "inline bool isHardened(uint8_t posture) { return posture != NORMAL; }" "inline bool isHardened(uint8_t posture) { return posture == HARDENED; }" unit:test_posture
 mutate posture_ble_default_pin_starts src/helpers/Posture.h "return !isHardened(posture) || (active_pin != 0 && active_pin != 123456);" "return true;" unit:test_posture
 mutate posture_tcp_server_starts_unit src/helpers/Posture.h "inline bool tcpServerMayStart(uint8_t posture) { return !isHardened(posture); }" "inline bool tcpServerMayStart(uint8_t posture) { return true; }" unit:test_posture
-mutate posture_wifi_started_in_hardened examples/companion_radio/main.cpp "if (wifi_enabled && wifi_has_profile && !Posture::tcpServerMayStart(posture)) {" "if (false) {" sim/tests/test_postures_companion.py::test_hardened_wifi_companion_does_not_serve_the_tcp_port
 mutate posture_key_transfer_allowed_unit src/helpers/Posture.h "inline bool keyTransferAllowed(uint8_t posture) { return !isHardened(posture); }" "inline bool keyTransferAllowed(uint8_t posture) { return true; }" unit:test_posture
 mutate posture_companion_keys_allowed examples/companion_radio/MyMesh.cpp "!Posture::keyTransferAllowed(_prefs.posture)) ||" "false) ||" sim/tests/test_postures_companion.py::test_hardened_refuses_key_export_and_import_on_usb
 mutate posture_repeater_key_export_allowed src/helpers/CommonCLI.cpp "} else if (sender_timestamp == 0 && memcmp(config, \"prv.key\", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {" "} else if (false) {" sim/tests/test_postures_admin.py::test_key_export_and_import_are_refused_in_hardened_even_on_the_console
@@ -155,7 +155,95 @@ mutate wifi_password_in_listing src/helpers/wifi/WifiProfiles.cpp 'pr.hasPwd(i) 
 mutate wifi_password_in_listing_sim src/helpers/wifi/WifiProfiles.cpp 'pr.hasPwd(i) ? "set" : "unset"' 'pr.hasPwd(i) ? pr.pwd(i) : "unset"' $WIFI_SIM::test_passwords_are_nowhere_but_the_prefs_file
 mutate wifi_password_logged src/helpers/wifi/WifiController.cpp '  WIFICTL_LOG("joining profile %u (%s)", (unsigned)i, _profiles->ssid(i));' '  fprintf(stderr, "joining with %s\n", _profiles->pwd(i));' $WIFI_SIM::test_passwords_are_nowhere_but_the_prefs_file
 mutate wifi_tcp_served_without_a_link variants/sim/sim_wifi_if.cpp "return WiFi.status() == WL_CONNECTED ? inner().checkRecvFrame(dest) : 0; }" "return inner().checkRecvFrame(dest); }" $WIFI_SIM::test_the_tcp_companion_server_serves_only_while_the_controller_has_a_link
-mutate wifi_started_in_hardened examples/companion_radio/main.cpp "if (wifi_enabled && wifi_has_profile && !Posture::tcpServerMayStart(posture)) {" "if (false) {" $WIFI_SIM::test_hardened_starts_no_wifi_at_all
+mutate wifi_started_in_hardened examples/companion_radio/main.cpp "if (wifi_enabled && wifi_has_profile && !tcp_may_start && !mqtt_may_run) {" "if (false) {" $WIFI_SIM::test_hardened_starts_no_wifi_at_all
+# --- MQTT controller rules (docs/MQTT.md): undo each rule and its tests must go red
+MQ_CORE=src/helpers/mqtt/MqttCore.cpp
+MQ_CTRL=src/helpers/mqtt/MqttController.cpp
+MQ_PROF_H=src/helpers/mqtt/MqttProfiles.h
+MQ_PROF_C=src/helpers/mqtt/MqttProfiles.cpp
+MQ_NET=variants/sim/sim_mqtt_net.cpp
+MQ_SIM=sim/tests/test_companion_mqtt.py
+mutate mqtt_priority_ignored $MQ_CORE "if (best == NONE || better(i, best)) { best = i; best_cand = a == STATIC_OK ? NONE : a; }" "if (best == NONE) { best = i; best_cand = a == STATIC_OK ? NONE : a; }" unit:test_mqtt_core
+mutate mqtt_priority_ignored_sim $MQ_CORE "if (best == NONE || better(i, best)) { best = i; best_cand = a == STATIC_OK ? NONE : a; }" "if (best == NONE) { best = i; best_cand = a == STATIC_OK ? NONE : a; }" $MQ_SIM::test_connects_to_the_highest_priority_broker_and_failover_follows
+mutate mqtt_tie_goes_to_the_higher_number $MQ_CORE "return pa > pb || (pa == pb && a < b);" "return pa > pb || (pa == pb && a > b);" unit:test_mqtt_core
+mutate mqtt_failed_connect_not_cooled $MQ_CORE "p.cool_until = now + escalate(_t.fail_cooldown_ms, _t.fail_cooldown_max_ms, p.fails);" "p.cool_until = now;" unit:test_mqtt_core
+mutate mqtt_cooldown_not_escalating $MQ_CORE "for (uint8_t k = 1; k < fails && ms < max; k++) ms *= 2;" "" unit:test_mqtt_core
+mutate mqtt_auth_failure_not_cooled $MQ_CORE "p.cool_until = now + escalate(_t.auth_cooldown_ms, _t.auth_cooldown_max_ms, p.fails);" "p.cool_until = now;" unit:test_mqtt_core
+mutate mqtt_dropped_session_not_failed_over $MQ_CTRL "if (!_psc.loop()) {" "if (false) {" $MQ_SIM::test_connects_to_the_highest_priority_broker_and_failover_follows
+mutate mqtt_session_age_ignored $MQ_CORE "if (hold && (uint32_t)(now - _connected_at) < _t.hold_down_ms) return NONE;" "" unit:test_mqtt_core
+mutate mqtt_session_age_ignored_sim $MQ_CORE "if (hold && (uint32_t)(now - _connected_at) < _t.hold_down_ms) return NONE;" "" $MQ_SIM::test_returns_to_the_better_broker_after_the_hold_down_without_flapping
+mutate mqtt_responder_hold_down_ignored $MQ_CORE "if (hold && (uint32_t)(now - c.vis_since) < _t.hold_down_ms) continue;" "" unit:test_mqtt_core
+mutate mqtt_responder_hold_down_ignored_sim $MQ_CORE "if (hold && (uint32_t)(now - c.vis_since) < _t.hold_down_ms) continue;" "" $MQ_SIM::test_a_responder_that_appears_later_is_taken_after_the_hold_down
+mutate mqtt_browse_on_the_best_profile $MQ_CORE "if (better(i, ref)) return true;" "return true;" unit:test_mqtt_core
+mutate mqtt_browse_on_the_best_profile_sim $MQ_CORE "if (better(i, ref)) return true;" "return true;" $MQ_SIM::test_discovery_browses_only_while_not_on_the_best_profile
+mutate mqtt_plain_responder_accepted $MQ_CORE "    if (!secure) {" "    if (false) {" unit:test_mqtt_core
+mutate mqtt_plain_responder_accepted_sim $MQ_CORE "    if (!secure) {" "    if (false) {" $MQ_SIM::test_a_discovered_broker_is_never_used_over_plain_mqtt
+mutate mqtt_site_not_compared $MQ_CORE "if (strcmp(q.site, site) != 0) continue;" "" unit:test_mqtt_core
+mutate mqtt_site_not_compared_sim $MQ_CORE "if (strcmp(q.site, site) != 0) continue;" "" $MQ_SIM::test_discovery_ignores_a_responder_with_another_site_id
+mutate mqtt_rogue_cools_the_whole_profile $MQ_CORE "    // The certificate is not the anchor: that one broker is wrong, not the whole profile.
+    if (cand) {" "    // The certificate is not the anchor: that one broker is wrong, not the whole profile.
+    if (false) {" unit:test_mqtt_core
+mutate mqtt_rogue_cools_the_whole_profile_sim $MQ_CORE "    // The certificate is not the anchor: that one broker is wrong, not the whole profile.
+    if (cand) {" "    // The certificate is not the anchor: that one broker is wrong, not the whole profile.
+    if (false) {" $MQ_SIM::test_a_rogue_does_not_shut_out_the_real_broker_that_carries_the_same_site_id
+mutate mqtt_rogue_not_cooled $MQ_CORE "c.cool_until = now + escalate(_t.pin_cooldown_ms, _t.pin_cooldown_max_ms, c.fails);" "c.cool_until = now;" unit:test_mqtt_core
+mutate mqtt_lost_responder_not_failed_over $MQ_CORE "      if (in_use) {" "      if (false) {" unit:test_mqtt_core
+mutate mqtt_edit_keeps_the_cooldown $MQ_CORE "  p.cooling = false;
+  p.fails = 0;
+  p.skip_hold = true;" "  p.fails = 0;
+  p.skip_hold = true;" unit:test_mqtt_core
+mutate mqtt_edit_keeps_the_cooldown_sim $MQ_CORE "  p.cooling = false;
+  p.fails = 0;
+  p.skip_hold = true;" "  p.fails = 0;
+  p.skip_hold = true;" $MQ_SIM::test_credentials_are_used_and_a_wrong_password_fails_over
+mutate mqtt_edit_keeps_the_session $MQ_CORE "if ((_state == MqttState::Connected || _state == MqttState::Connecting) && _cur == index && credentials) {" "if (false) {" unit:test_mqtt_core
+mutate mqtt_edit_waits_for_the_hold_down $MQ_CORE "  p.skip_hold = true;
+  dropCands(index);" "  dropCands(index);" unit:test_mqtt_core
+mutate mqtt_posture_change_keeps_plain_session $MQ_CORE "    if (!usable(_cur)) {" "    if (false) {" unit:test_mqtt_core
+mutate mqtt_posture_change_keeps_plain_session_sim $MQ_CORE "    if (!usable(_cur)) {" "    if (false) {" $MQ_SIM::test_raising_the_posture_ends_a_plain_session
+mutate mqtt_posture_not_passed_to_the_core $MQ_CTRL "  _core.setPosture(*_posture);
+  _core.setLink(now, _net->linkUp());" "  _core.setLink(now, _net->linkUp());" $MQ_SIM::test_raising_the_posture_ends_a_plain_session
+mutate mqtt_hardened_allows_plain $MQ_PROF_H "return q.kind != MqttProfile::Static || q.tls != 0 || !Posture::isHardened(posture);" "return true;" unit:test_mqtt_core
+mutate mqtt_hardened_allows_plain_sim $MQ_PROF_H "return q.kind != MqttProfile::Static || q.tls != 0 || !Posture::isHardened(posture);" "return true;" $MQ_SIM::test_hardened_never_connects_a_stored_plain_profile
+mutate mqtt_hardened_set_allows_plain $MQ_PROF_C "if (Posture::isHardened(posture))
+          snprintf" "if (false)
+          snprintf" unit:test_mqtt_prefs
+mutate mqtt_hardened_set_allows_plain_sim $MQ_PROF_C "if (Posture::isHardened(posture))
+          snprintf" "if (false)
+          snprintf" $MQ_SIM::test_hardened_refuses_plain_mqtt_at_the_command
+mutate mqtt_discovery_may_be_plain $MQ_PROF_H "bool useTls() const { return kind == Discovery || tls != 0; }" "bool useTls() const { return tls != 0; }" $MQ_SIM::test_a_discovery_profile_is_tls_even_if_the_slot_was_plain_before
+mutate mqtt_discovery_may_be_plain_unit $MQ_PROF_H "bool useTls() const { return kind == Discovery || tls != 0; }" "bool useTls() const { return tls != 0; }" unit:test_mqtt_prefs
+mutate mqtt_wifi_not_kept_for_mqtt_in_hardened examples/companion_radio/main.cpp "if (wifi_enabled && wifi_has_profile && !tcp_may_start && !mqtt_may_run) {" "if (wifi_enabled && wifi_has_profile && !tcp_may_start) {" $MQ_SIM::test_hardened_never_connects_a_stored_plain_profile
+mutate mqtt_tcp_port_served_in_hardened examples/companion_radio/main.cpp "    if (tcp_may_start) {
+      wifi_interface.begin(TCP_PORT);" "    if (true) {
+      wifi_interface.begin(TCP_PORT);" $MQ_SIM::test_hardened_keeps_the_link_for_mqtt_but_never_serves_the_tcp_port
+mutate mqtt_pin_not_checked $MQ_NET "if (strcasecmp(hex, anchor) != 0) {" "if (false) {" $MQ_SIM::test_discovery_rejects_the_right_site_id_with_the_wrong_certificate
+mutate mqtt_anchor_not_passed_on $MQ_CTRL "const char* anchor = (tls && q.hasAnchor()) ? q.anchor : nullptr;" "const char* anchor = nullptr;" $MQ_SIM::test_discovery_rejects_the_right_site_id_with_the_wrong_certificate
+mutate mqtt_tls_dropped $MQ_CTRL "const bool tls = q.useTls();" "const bool tls = false;" $MQ_SIM::test_discovery_accepts_a_matching_site_id_with_a_matching_certificate
+mutate mqtt_unverified_reported_as_verified $MQ_CTRL "_core.onConnected(millis(), tls && anchor != nullptr);" "_core.onConnected(millis(), tls);" $MQ_SIM::test_a_tls_profile_without_an_anchor_is_encrypted_but_reported_unverified_and_a_wrong_anchor_is_refused
+mutate mqtt_name_resolved_once $MQ_CTRL "    if (!parseIPv4(q.host, addr) && !_net->resolve(q.host, addr)) {
+      _core.onConnectFailed(millis(), MqttFail::Dns);
+      return;
+    }" "    static uint32_t cached[MqttProfiles::COUNT];
+    if (cached[a.profile]) addr = cached[a.profile];
+    else if (!parseIPv4(q.host, addr) && !_net->resolve(q.host, addr)) {
+      _core.onConnectFailed(millis(), MqttFail::Dns);
+      return;
+    } else cached[a.profile] = addr;" $MQ_SIM::test_a_host_name_is_resolved_again_on_every_attempt
+mutate mqtt_password_in_listing $MQ_PROF_C 'const char* pwd = q.pwd[0] ? "set" : "unset";' 'const char* pwd = q.pwd[0] ? q.pwd : "unset";' unit:test_mqtt_prefs
+mutate mqtt_password_in_listing_sim $MQ_PROF_C 'const char* pwd = q.pwd[0] ? "set" : "unset";' 'const char* pwd = q.pwd[0] ? q.pwd : "unset";' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
+mutate mqtt_password_logged $MQ_CTRL "  _open = true;
+  _psc.setClient(_net->client());" '  fprintf(stderr, "mqtt connect as %s\n", q.pwd);
+  _open = true;
+  _psc.setClient(_net->client());' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
+mutate mqtt_credentials_not_sent $MQ_CTRL "const char* user = q.user[0] ? q.user : nullptr;" "const char* user = nullptr;" $MQ_SIM::test_credentials_are_used_and_a_wrong_password_fails_over
+mutate mqtt_profiles_not_persisted examples/companion_radio/NodePrefs.h "        key[0] = 'h'; def(key, q.host, sizeof(q.host));
+" "" unit:test_mqtt_prefs
+mutate mqtt_profiles_not_persisted_sim examples/companion_radio/NodePrefs.h "        key[0] = 'h'; def(key, q.host, sizeof(q.host));
+" "" $MQ_SIM::test_profiles_persist_across_a_reboot_and_can_be_disabled
+mutate mqtt_status_not_published $MQ_CTRL "  _psc.publish(_topic, payload, true);" "  (void)payload;" $MQ_SIM::test_status_topic_is_published_and_retained
+mutate mqtt_disable_ignored examples/companion_radio/MyMesh.cpp "    mqttController().setEnabled(_prefs.mqtt_enabled != 0);
+" "" $MQ_SIM::test_profiles_persist_across_a_reboot_and_can_be_disabled
 build
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi

@@ -38,6 +38,7 @@ Firmware requirements belong here and in `contract/`. **Backend migration work c
 - [Security model](SECURITY_MODEL.md)
 - [Standalone security postures](STANDALONE_POSTURES.md): Normal and Hardened without a Deployment
 - [Wi-Fi profiles](WIFI.md): up to ten prioritised networks, failover and return without flapping
+- [MQTT broker profiles](MQTT.md): up to six brokers (static or discovered on the LAN), TLS with a pinned certificate, failover by priority
 - [Upstream and porting](UPSTREAM_AND_PORTING.md)
 - [Versioning and releases](VERSIONING_AND_RELEASES.md)
 

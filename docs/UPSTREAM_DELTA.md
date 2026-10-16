@@ -32,6 +32,11 @@ This register lists **every change this repository makes to a file that exists u
 | `examples/companion_radio/NodePrefs.h` | `wifi_ssid`, `wifi_pwd` and `getWifiSSID()` are replaced by a `WifiProfiles wifi_profiles` member (`src/helpers/wifi/WifiProfiles.h`); profile 0 is still saved under the stock `wifi` keys `ssid`, `pwd`, `enabled`, and the further profiles and the priorities are added as `s1`..`s9`, `w1`..`w9`, `p0`..`p9`; `WIFI_PWD` gets the same empty default `WIFI_SSID` has | Up to ten prioritised Wi-Fi profiles in the prefs, which keep their atomic save. A stock prefs file loads unchanged. |
 | `examples/companion_radio/MyMesh.cpp` | The `wifi.ssid`, `wifi.pwd` and `wifi.clear` commands act on profile 0; `set wifi.profile ...`, `get wifi.profile`, `get wifi.profiles` and a richer `get wifi.status` are added (handled in `src/helpers/wifi/WifiProfiles.cpp`); a profile edit is applied to the running controller, so the replies no longer say "reboot to apply" (`set wifi.enabled` still does) | The CLI of the Wi-Fi controller ([Wi-Fi profiles](WIFI.md)). |
 | `examples/companion_radio/main.cpp` | The single-network `WiFi.begin`, the disconnect event handler, the reconnect trackers and the `WIFI_RETRY_INTERVAL` / `WIFI_RETRY_TIMEOUT` retry logic are replaced by `wifiController().begin()` and `wifiController().loop()`; the Hardened rule that starts neither Wi-Fi nor the TCP server is unchanged | The controller owns joining, failover and rejoining; stock's retry loop only ever retried one network. |
+| `platformio.ini` | `[env:native]` also builds `src/helpers/mqtt/MqttCore.cpp` and `MqttProfiles.cpp` | Unit tests of the MQTT controller's decision logic and profile CLI. |
+| `variants/heltec_v3/platformio.ini`, `variants/heltec_v4/platformio.ini` | The Heltec V3 and V4 `_companion_radio_wifi` environments add `-D ENABLE_MQTT`, `+<helpers/mqtt/*.cpp>` and `knolleary/PubSubClient @ 2.8.0` | The MQTT controller ([MQTT broker profiles](MQTT.md)) is built into these Wi-Fi builds. |
+| `examples/companion_radio/NodePrefs.h` | With `ENABLE_MQTT`: an `MqttProfiles mqtt_profiles` member and `mqtt_enabled`, saved in an `mqtt` section (`en`, and `k`/`p`/`t`/`o`/`h`/`s`/`a`/`u`/`w` per profile); `ENABLE_MQTT` without `ENABLE_WIFI_INTERFACE` is a compile error | The broker profiles are saved with the prefs, through the same atomic save. |
+| `examples/companion_radio/MyMesh.cpp` | With `ENABLE_MQTT`: `set\|get mqtt.profile(s) ...`, `set\|get mqtt.enabled` and `get mqtt.status` (handled in `src/helpers/mqtt/MqttProfiles.cpp` and `MqttController.cpp`); a profile edit is applied to the running controller | The CLI of the MQTT controller; credentials are write-only in every reply. |
+| `examples/companion_radio/main.cpp` | Wi-Fi start-up now distinguishes the TCP server from the link: Hardened keeps the Wi-Fi link when MQTT has a profile Hardened permits and still never starts the TCP server; with `ENABLE_MQTT` the MQTT controller is started after the Wi-Fi controller and run from `loop()` | Hardened previously disabled Wi-Fi outright because the link existed only for the TCP server; MQTT over TLS is a legitimate second use. |
 
 Upstream's `stale-bot.yml` is kept unchanged; it only runs in the upstream repository.
 
@@ -50,6 +55,7 @@ Generic fixes made here that would also benefit stock MeshCore, with whether the
 | Sliding one-hour airtime window replacing the token bucket, with a regulatory sub-band floor (EU 863-870 MHz, 433 MHz) | not yet offered |
 | Admin login refused while the admin password is the compiled-in default; attempted password not logged (repeater, room server) | not yet offered |
 | Prioritised multi-profile Wi-Fi controller for the Companion `_wifi` builds (`src/helpers/wifi/WifiCore.*`, `WifiController.*`, `WifiProfiles.*`) | not yet offered |
+| Multi-broker MQTT controller for the Companion `_wifi` builds (`src/helpers/mqtt/`) | not yet offered |
 
 ## Duty-cycle enforcement: transmit paths
 
