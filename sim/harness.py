@@ -121,6 +121,7 @@ CMD_FACTORY_RESET, CMD_RUN_CLI_COMMAND = 51, 66
 RESP_PRIVATE_KEY, RESP_CLI_REPLY = 14, 29
 ERR_NOT_PERMITTED = 7
 RESP_NO_MORE_MESSAGES = 10
+CMD_SEND_LOGIN, PUSH_LOGIN_SUCCESS, PUSH_LOGIN_FAIL = 26, 0x85, 0x86
 RESP_CONTACT_MSG_RECV_V3, RESP_CHANNEL_MSG_RECV_V3 = 16, 17
 PUSH_MSG_WAITING = 0x83
 
@@ -191,8 +192,8 @@ class CompanionClient:
         self.pub_key = f[4:36]
         return f
 
-    def add_contact(self, pub_key, name, out_path_len=0xFF, flags=0):
-        f = (bytes([CMD_ADD_UPDATE_CONTACT]) + pub_key + bytes([1, flags, out_path_len]) + b"\0" * 64 +
+    def add_contact(self, pub_key, name, out_path_len=0xFF, flags=0, ctype=1):
+        f = (bytes([CMD_ADD_UPDATE_CONTACT]) + pub_key + bytes([ctype, flags, out_path_len]) + b"\0" * 64 +
              name.encode().ljust(32, b"\0") + struct.pack("<I", 0))
         return self.request(f)
 
@@ -209,6 +210,25 @@ class CompanionClient:
     def send_cli_command(self, to_pub, text):
         """Remote CLI: a TXT_TYPE_CLI_COMMAND (3) text to a contact; the node stamps it with its own clock."""
         return self.request(bytes([CMD_SEND_TXT_MSG, 3, 0]) + struct.pack("<I", 0) + to_pub[:6] + text.encode())
+
+    def login(self, to_pub, password, timeout=30.0):
+        """Log in to a repeater/room as an admin (or guest); True on PUSH_CODE_LOGIN_SUCCESS."""
+        f = self.request(bytes([CMD_SEND_LOGIN]) + to_pub + password.encode())
+        assert f[0] == RESP_SENT, f
+        return self.wait_push(PUSH_LOGIN_SUCCESS, timeout=timeout) is not None
+
+    def remote_admin(self, to_pub, text):
+        """Send a CLI line (TXT_TYPE_CLI_DATA) to a logged-in repeater and return its reply text."""
+        f = self.request(bytes([CMD_SEND_TXT_MSG, 1, 0]) + struct.pack("<I", 0) + to_pub[:6] + text.encode())
+        assert f[0] == RESP_SENT, f
+        msgs = self.sync_messages(timeout=60, want=1)
+        assert msgs, "no reply to %r" % text
+        return msgs[0]["text"]
+
+    def export_private_key(self):
+        f = self.request(bytes([CMD_EXPORT_PRIVATE_KEY]))
+        assert f[0] == RESP_PRIVATE_KEY, f
+        return f[1:65]
 
     def send_direct(self, to_pub, text, ts):
         return self.request(bytes([CMD_SEND_TXT_MSG, 0, 0]) + struct.pack("<I", ts) + to_pub[:6] + text.encode())
