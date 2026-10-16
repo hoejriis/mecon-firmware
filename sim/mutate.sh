@@ -406,7 +406,7 @@ mutate gate_frame_refusal_not_audited src/helpers/cli/CliEngine.h "if (!v.allow)
 mutate gate_canned_reply_dropped src/helpers/cli/CliEngine.h "  if (r.canned) {" "  if (false) {" unit:test_cli_engine
 mutate gate_refusal_what_is_wrong src/helpers/cli/CliEngine.h "    case R_CLI_OFF: return Posture::W_REMOTE_CLI;" "    case R_CLI_OFF: return Posture::W_REMOTE_WRITE;" sim/tests/test_postures_companion.py::test_hardened_turns_the_remote_cli_off
 mutate gate_not_run_by_the_companion examples/companion_radio/MyMesh.cpp "if (Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {" "if (false && Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {" sim/tests/test_companion_remote_cli.py
-mutate gate_not_run_by_the_front_door src/helpers/Posture.h "if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, now, reply, max)) return true;" "" sim/tests/test_postures_admin.py::test_stock_default_password_does_not_open_remote_admin sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
+mutate gate_not_run_by_the_front_door src/helpers/Posture.h "if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, now, reply, max)) return true;" "" sim/tests/test_postures_admin.py::test_stock_default_password_does_not_open_remote_admin unit:test_posture
 mutate gate_not_run_by_the_front_door_unit src/helpers/Posture.h "if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, now, reply, max)) return true;" "" unit:test_posture
 mutate gate_default_password_session_not_recognised src/helpers/Posture.h "isDefaultAdminPassword(admin_pw, build_default) ? Cli::A_ADMIN_DEFAULT_PW : Cli::A_ADMIN" "Cli::A_ADMIN" sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
 mutate frame_gate_skipped examples/companion_radio/MyMesh.cpp "if (frame != Cli::FR_NONE && !Cli::allowFrame(serialContext(), frame, now)) {" "if (false) {" sim/tests/test_companion_transport.py
@@ -440,7 +440,8 @@ mutate mqtt_profile_manage_accepts_anything src/helpers/mqtt/MqttProfiles.cpp "e
 mutate mqtt_parse_accepts_duplicate_keys src/helpers/cli/CliMqtt.h "      if (have_id) return false;
 " "" unit:test_cli_mqtt
 mutate mqtt_parse_accepts_control_characters src/helpers/cli/CliMqtt.h "    if (ch < 0x20 || ch == 0x7f) return false;   // a raw control character" "" unit:test_cli_mqtt
-mutate mqtt_parse_accepts_escaped_newlines src/helpers/cli/CliMqtt.h "        case 'b': case 'f': case 'n': case 'r': case 't': return false;   // a control character in a command line" "        case 'n': v = '\\n'; break;" unit:test_cli_mqtt
+mutate mqtt_parse_accepts_decoded_control_characters src/helpers/cli/CliMqtt.h "    if (ch < 0x20 || ch == 0x7f) return false;
+    if (ch < 0x80) {" "    if (ch < 0x80) {" unit:test_cli_mqtt
 mutate mqtt_parse_accepts_trailing_bytes src/helpers/cli/CliMqtt.h "  if (c.more()) return false;   // trailing bytes" "" unit:test_cli_mqtt
 mutate mqtt_parse_id_length_unbounded src/helpers/cli/CliMqtt.h "if (n == 0 || n > (size_t)ID_MAX) return false;" "if (n == 0) return false;" unit:test_cli_mqtt
 mutate mqtt_parse_id_characters_unchecked src/helpers/cli/CliMqtt.h "for (size_t i = 0; i < n; i++) if (!idChar(id[i])) return false;" "" unit:test_cli_mqtt
