@@ -69,7 +69,9 @@ private:
     uint16_t port;
     bool tls;
     bool has_anchor;
-    char anchor[MqttProfile::ANCHOR_BUF];
+    char anchor[MqttProfile::ANCHOR_BUF];   // leaf fingerprint, "" when the anchor is a CA
+    char* ca;                           // a private copy of the CA certificate (base64 DER), freed by takeResult()
+    char name[MqttProfile::HOST_BUF];   // the broker's host name for SNI and the name check, "" when it has none
     char user[MqttProfile::USER_BUF];   // "" when none
     char pwd[MqttProfile::PWD_BUF];
     Result result;

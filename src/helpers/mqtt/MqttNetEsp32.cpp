@@ -2,12 +2,15 @@
 // asynchronous query. Not exercised on hardware yet; compiled for the Heltec V3 and V4 Wi-Fi builds.
 #if defined(ESP32) && defined(ENABLE_MQTT)
 #include "MqttNet.h"
+#include "MqttProfiles.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ESPmDNS.h>
 #include <stdio.h>
 #include <string.h>
 #include <atomic>
+#include <time.h>
+#include <mbedtls/x509_crt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -75,9 +78,42 @@ public:
   uint32_t stackFree() const { return _stack_free.load(std::memory_order_relaxed); }
 };
 
+// WiFiClientSecure with two additions the library does not offer: connect to an address while presenting a host name
+// (SNI), and verify the peer's chain against one CA certificate after an unvalidated handshake, with or without a name.
+// The library's own CA validation cannot do either: it uses the host it connects to as the name to check, so a
+// connection to an address checks the address text, and a discovered broker has no name at all.
+class SecClient : public WiFiClientSecure {
+public:
+  int connectNamed(IPAddress ip, uint16_t port, const char* name, int32_t timeout_ms) {
+    _timeout = timeout_ms;
+    return WiFiClientSecure::connect(ip, port, name, nullptr, nullptr, nullptr);   // name may be null: the address text is sent
+  }
+  // True when the peer's certificate chains to the CA (base64 DER) and, when `name` is given, carries that name.
+  // A device whose clock has not been set (before 2025) cannot judge validity dates, so for it only the date flags are
+  // ignored; the chain, the signatures and the name are always checked.
+  bool chainsTo(const char* ca_b64, const char* name) {
+    const mbedtls_x509_crt* peer = getPeerCertificate();
+    uint8_t* der = (uint8_t*)malloc(MqttProfile::CA_B64_MAX / 4 * 3 + 3);   // heap: the worker's stack is sized for the handshake
+    if (!peer || !der) { free(der); return false; }
+    int n = mqttCaDecode(ca_b64, der, MqttProfile::CA_B64_MAX / 4 * 3 + 3);
+    mbedtls_x509_crt ca;
+    mbedtls_x509_crt_init(&ca);
+    bool ok = false;
+    if (n > 0 && mbedtls_x509_crt_parse_der(&ca, der, (size_t)n) == 0) {
+      uint32_t flags = 0;
+      mbedtls_x509_crt_verify(const_cast<mbedtls_x509_crt*>(peer), &ca, nullptr, name, &flags, nullptr, nullptr);
+      if (time(nullptr) < 1735689600) flags &= ~(uint32_t)(MBEDTLS_X509_BADCERT_EXPIRED | MBEDTLS_X509_BADCERT_FUTURE);
+      ok = flags == 0;
+    }
+    mbedtls_x509_crt_free(&ca);
+    free(der);
+    return ok;
+  }
+};
+
 class Esp32Net : public MqttNet {
   WiFiClient* _plain = nullptr;
-  WiFiClientSecure* _sec = nullptr;
+  SecClient* _sec = nullptr;
   WiFiClient _none;                   // handed out only when nothing is open
   Worker _worker;
   char _hostname[24] = {0};
@@ -151,23 +187,25 @@ public:
     return n;
   }
 
-  MqttOpen open(bool tls, uint32_t addr, uint16_t port, const char* anchor_hex, uint32_t timeout_ms) override {
+  MqttOpen open(const MqttOpenArgs& a) override {
     close();
-    IPAddress ip((addr >> 24) & 255, (addr >> 16) & 255, (addr >> 8) & 255, addr & 255);
-    if (tls) {
-      _sec = new WiFiClientSecure();
+    IPAddress ip((a.addr >> 24) & 255, (a.addr >> 16) & 255, (a.addr >> 8) & 255, a.addr & 255);
+    if (a.tls) {
+      _sec = new SecClient();
       if (!_sec) return MqttOpen::Tls;
-      // The chain is not validated against a CA: the broker is authenticated by the pinned fingerprint below. A TLS
+      // The handshake runs without the library's chain validation; the broker is authenticated afterwards by the
+      // anchor: a leaf fingerprint, or a chain to a CA certificate (and the host name, when the profile has one). A TLS
       // profile without an anchor is encrypted but unauthenticated, and the controller reports it as such.
       _sec->setInsecure();
-      _sec->setHandshakeTimeout((timeout_ms + 999) / 1000);
-      if (!_sec->connect(ip, port, (int32_t)timeout_ms)) return MqttOpen::Tls;
-      if (anchor_hex && !_sec->verify(anchor_hex, nullptr)) return MqttOpen::Pin;
+      _sec->setHandshakeTimeout((a.timeout_ms + 999) / 1000);
+      if (!_sec->connectNamed(ip, a.port, a.name, (int32_t)a.timeout_ms)) return MqttOpen::Tls;
+      if (a.ca_b64) return _sec->chainsTo(a.ca_b64, a.name) ? MqttOpen::Ok : MqttOpen::Pin;
+      if (a.anchor_hex && !_sec->verify(a.anchor_hex, nullptr)) return MqttOpen::Pin;
       return MqttOpen::Ok;
     }
     _plain = new WiFiClient();
     if (!_plain) return MqttOpen::Tcp;
-    return _plain->connect(ip, port, (int32_t)timeout_ms) ? MqttOpen::Ok : MqttOpen::Tcp;
+    return _plain->connect(ip, a.port, (int32_t)a.timeout_ms) ? MqttOpen::Ok : MqttOpen::Tcp;
   }
 
   Client& client() override {

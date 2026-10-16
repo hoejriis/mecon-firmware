@@ -1,5 +1,6 @@
 #include "MqttController.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 MqttController& mqttController() {
@@ -116,7 +117,7 @@ void MqttController::attempt(const MqttAction& a) {
     // A name is resolved again on every attempt (by the job), so a dynamic-DNS name keeps working when its address
     // changes. An address literal needs no lookup.
     j.resolve = !parseIPv4(q.host, j.addr);
-    if (j.resolve) strlcpy_(j.host, q.host, sizeof(j.host));
+    if (j.resolve) { strlcpy_(j.host, q.host, sizeof(j.host)); strlcpy_(j.name, q.host, sizeof(j.name)); }
     j.port = q.effectivePort();
   } else {
     MqttCandidate c;
@@ -126,7 +127,14 @@ void MqttController::attempt(const MqttAction& a) {
   }
   j.tls = q.useTls();
   j.has_anchor = j.tls && q.hasAnchor();
-  if (j.has_anchor) strlcpy_(j.anchor, q.anchor, sizeof(j.anchor));
+  if (j.tls && q.hasCa()) {
+    j.ca = (char*)malloc(strlen(q.ca) + 1);
+    if (!j.ca) { _core.onConnectFailed(now, MqttFail::Tls); return; }
+    strcpy(j.ca, q.ca);
+  } else if (j.has_anchor) {
+    strlcpy_(j.anchor, q.anchor, sizeof(j.anchor));
+  }
+  if (!j.tls) j.name[0] = 0;
   if (q.user[0]) {
     strlcpy_(j.user, q.user, sizeof(j.user));
     if (q.pwd[0]) strlcpy_(j.pwd, q.pwd, sizeof(j.pwd));
@@ -138,6 +146,7 @@ void MqttController::attempt(const MqttAction& a) {
     // No worker (it could not be created, or the previous job is somehow still running): this attempt fails like a
     // connect that could not open, and the profile cools down before the next try.
     _job_active = false;
+    free(j.ca);
     memset(&j, 0, sizeof(j));
     _core.onConnectFailed(now, MqttFail::Tcp);
   }
@@ -152,7 +161,15 @@ void MqttController::runConnect() {
   ConnectJob& j = _job;
   if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }
   if (_job_cancel) { j.result = ConnectJob::Cancelled; return; }
-  const MqttOpen r = _net->open(j.tls, j.addr, j.port, j.has_anchor ? j.anchor : nullptr, OPEN_TIMEOUT_MS);
+  MqttOpenArgs oa;
+  oa.tls = j.tls;
+  oa.addr = j.addr;
+  oa.port = j.port;
+  oa.anchor_hex = (j.has_anchor && !j.ca) ? j.anchor : nullptr;
+  oa.ca_b64 = j.ca;
+  oa.name = j.name[0] ? j.name : nullptr;
+  oa.timeout_ms = OPEN_TIMEOUT_MS;
+  const MqttOpen r = _net->open(oa);
   if (r != MqttOpen::Ok) {
     _net->close();
     j.result = r == MqttOpen::Pin ? ConnectJob::Pin : (r == MqttOpen::Tls ? ConnectJob::Tls : ConnectJob::Tcp);
@@ -181,6 +198,8 @@ void MqttController::cancelAttempt() { _job_cancel = true; }
 void MqttController::takeResult() {
   _job_active = false;
   ConnectJob& j = _job;
+  free(j.ca);   // the CA copy is the job's: nothing holds it once the job is over
+  j.ca = nullptr;
   const bool wanted = !_job_cancel && _core.state() == MqttState::Connecting;
   if (j.result == ConnectJob::Ok) {
     _open = true;

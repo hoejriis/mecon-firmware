@@ -6,6 +6,7 @@
 // Every transport event is logged with addresses only: the simulated network never prints a credential.
 #ifdef ENABLE_MQTT
 #include <helpers/mqtt/MqttNet.h>
+#include <helpers/mqtt/MqttProfiles.h>
 #include <WiFi.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -97,7 +98,11 @@ class SimClient : public Client {
 public:
   ~SimClient() { stop(); }
 
-  MqttOpen open(bool tls, uint32_t addr, uint16_t port, const char* anchor, uint32_t timeout_ms) {
+  MqttOpen open(const MqttOpenArgs& a) {
+    const bool tls = a.tls;
+    const uint32_t addr = a.addr, timeout_ms = a.timeout_ms;
+    const uint16_t port = a.port;
+    const char* anchor = a.anchor_hex;
     stop();
     _eof = false;
     fprintf(stderr, "SIMMQTT open addr=%s:%u tls=%d\n", addrStr(addr).c_str(), (unsigned)port, tls ? 1 : 0);
@@ -123,8 +128,28 @@ public:
 
     _ctx = SSL_CTX_new(TLS_client_method());
     if (!_ctx) { stop(); return fail("tls", MqttOpen::Tls); }
-    SSL_CTX_set_verify(_ctx, SSL_VERIFY_NONE, nullptr);   // authenticated by the pinned fingerprint below, as on the device
+    X509* ca = nullptr;
+    if (a.ca_b64) {
+      // A CA anchor: OpenSSL validates the chain to it during the handshake, and the host name when there is one.
+      unsigned char der[4096];
+      int dl = mqttCaDecode(a.ca_b64, der, sizeof der);
+      const unsigned char* dp = der;
+      if (dl > 0) ca = d2i_X509(nullptr, &dp, dl);
+      if (!ca || X509_STORE_add_cert(SSL_CTX_get_cert_store(_ctx), ca) != 1) {
+        if (ca) X509_free(ca);
+        stop();
+        return fail("pin", MqttOpen::Pin);
+      }
+      X509_free(ca);   // the store holds its own reference
+      SSL_CTX_set_verify(_ctx, SSL_VERIFY_PEER, nullptr);
+    } else {
+      SSL_CTX_set_verify(_ctx, SSL_VERIFY_NONE, nullptr);   // authenticated by the pinned fingerprint below, as on the device
+    }
     _ssl = SSL_new(_ctx);
+    if (a.name) {
+      SSL_set_tlsext_host_name(_ssl, a.name);   // SNI, with every TLS profile that has a host name
+      if (a.ca_b64) SSL_set1_host(_ssl, a.name);
+    }
     SSL_set_fd(_ssl, _fd);
     SSL_set_connect_state(_ssl);
     uint64_t t0 = (uint64_t)millis();
@@ -132,7 +157,12 @@ public:
       int r = SSL_connect(_ssl);
       if (r == 1) break;
       int e = SSL_get_error(_ssl, r);
-      if (e != SSL_ERROR_WANT_READ && e != SSL_ERROR_WANT_WRITE) { stop(); return fail("tls", MqttOpen::Tls); }
+      if (e != SSL_ERROR_WANT_READ && e != SSL_ERROR_WANT_WRITE) {
+        // With a CA anchor, a handshake that failed on the certificate is the anchor refusing the broker
+        const bool refused = a.ca_b64 && SSL_get_verify_result(_ssl) != X509_V_OK;
+        stop();
+        return refused ? fail("pin", MqttOpen::Pin) : fail("tls", MqttOpen::Tls);
+      }
       if ((uint64_t)millis() - t0 > timeout_ms) { stop(); return fail("tls", MqttOpen::Tls); }
       waitFd(e == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT, 100);
     }
@@ -151,7 +181,7 @@ public:
       if (cert) X509_free(cert);
       if (strcasecmp(hex, anchor) != 0) { stop(); return fail("pin", MqttOpen::Pin); }
     }
-    fprintf(stderr, "SIMMQTT up tls pinned=%d\n", anchor ? 1 : 0);
+    fprintf(stderr, "SIMMQTT up tls pinned=%d ca=%d name=%s\n", anchor ? 1 : 0, a.ca_b64 ? 1 : 0, a.name ? a.name : "-");
     fflush(stderr);
     return MqttOpen::Ok;
   }
@@ -344,9 +374,7 @@ public:
     return n;
   }
 
-  MqttOpen open(bool tls, uint32_t addr, uint16_t port, const char* anchor, uint32_t timeout_ms) override {
-    return _c.open(tls, addr, port, anchor, timeout_ms);
-  }
+  MqttOpen open(const MqttOpenArgs& a) override { return _c.open(a); }
   Client& client() override { return _c; }
   void close() override { _c.stop(); }
 };
