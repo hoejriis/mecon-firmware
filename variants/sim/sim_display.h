@@ -19,8 +19,8 @@ public:
   SimDisplay() : DisplayDriver(128, 64) {}
   bool begin() { return true; }
   bool isOn() override { return _on; }
-  void turnOn() override { _on = true; }
-  void turnOff() override { _on = false; }
+  void turnOn() override;
+  void turnOff() override;
   void clear() override {}
   void startFrame(ColorVal bkg = UIColor::window_bkg) override;
   void setTextSize(int sz) override { _size = sz; }
