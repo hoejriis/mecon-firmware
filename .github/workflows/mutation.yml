@@ -26,7 +26,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: list
-        run: echo "mutants=$(sh sim/mutate.sh --list | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+        # Mutants run in batches: GitHub allows at most 256 jobs per matrix, and the suite has more mutants than that
+        # (a matrix that is too large makes the whole run fail before any mutant job starts).
+        run: |
+          sh sim/mutate.sh --list > mutants.txt
+          echo "$(wc -l < mutants.txt) mutants"
+          batches=$(jq -R -s -c 'split("\n") | map(select(length > 0)) | [range(0; length; 4) as $i | .[$i:$i+4] | join(" ")]' mutants.txt)
+          n=$(echo "$batches" | jq length)
+          echo "$n batches"
+          # fail loudly here (a visible check) rather than let an oversized matrix fail the run with no check at all
+          if [ "$n" -gt 256 ]; then echo "::error::$n mutant batches exceed the 256-job matrix limit; raise the batch size"; exit 1; fi
+          echo "mutants=$batches" >> "$GITHUB_OUTPUT"
 
   mutant:
     needs: list
@@ -53,7 +63,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends mosquitto mosquitto-clients openssl libssl-dev
           sudo systemctl stop mosquitto || true   # the package starts a default broker; the tests start their own
       - run: pip install "platformio==6.2.0" pytest
-      - name: Mutant ${{ matrix.mutant }} must be killed
-        run: sh sim/mutate.sh "${{ matrix.mutant }}"
+      - name: Mutants ${{ matrix.mutant }} must all be killed
+        run: |
+          status=0
+          for m in ${{ matrix.mutant }}; do
+            sh sim/mutate.sh "$m" || status=1
+          done
+          exit $status
       - if: always()
-        run: cat .sim-logs/mut_${{ matrix.mutant }}.log 2>/dev/null | tail -30
+        run: for m in ${{ matrix.mutant }}; do echo "== $m"; tail -15 ".sim-logs/mut_$m.log" 2>/dev/null; done
