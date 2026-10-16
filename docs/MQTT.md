@@ -70,7 +70,7 @@ On every connect, and again every 5 minutes, the device publishes a retained mes
 
 ## Storage
 
-The profiles are saved in the Companion prefs file under `mqtt` (`en` and, per profile `i`, the keys `k<i>` kind, `p<i>` priority, `t<i>` TLS, `o<i>` port, `h<i>` host, `s<i>` site, `a<i>` anchor, `u<i>` user, `w<i>` password), so they use the same atomic save. A prefs file without them loads with no profile. RAM: 1,536 bytes for six profiles (256 bytes each) plus about 300 bytes for the controller state, in builds that have MQTT.
+The profiles are saved in the Companion prefs file under `mqtt` (`en` and, per profile `i`, the keys `k<i>` kind, `p<i>` priority, `t<i>` TLS, `o<i>` port, `h<i>` host, `s<i>` site, `a<i>` anchor, `u<i>` user, `w<i>` password), so they use the same atomic save. A prefs file without them loads with no profile. The whole prefs file is 925 bytes with no MQTT profile and 2,389 bytes with six profiles of the longest allowed host, site ID, anchor, user name and password (measured by the unit test). RAM: 1,536 bytes for six profiles (256 bytes each) plus about 300 bytes for the controller state, in builds that have MQTT.
 
 ## Memory
 
@@ -78,8 +78,8 @@ Measured by compiling the Heltec V3 and V4 Wi-Fi builds at this change and at it
 
 | Build | RAM before | RAM with MQTT | Flash before | Flash with MQTT |
 |---|---|---|---|---|
-| Heltec V3 (`Heltec_v3_companion_radio_wifi`) | 174,056 B | 179,360 B (+5,304 B) | 1,117,761 B | 1,284,273 B (+166,512 B, 38.4 % of the app partition) |
-| Heltec V4 (`heltec_v4_companion_radio_wifi`) | 174,020 B | 179,340 B (+5,320 B) | 1,116,089 B | 1,282,497 B (+166,408 B, 19.6 % of the app partition) |
+| Heltec V3 (`Heltec_v3_companion_radio_wifi`) | 174,056 B | 179,360 B (+5,304 B) | 1,117,761 B | 1,284,301 B (+166,540 B, 38.4 % of the app partition) |
+| Heltec V4 (`heltec_v4_companion_radio_wifi`) | 174,020 B | 179,340 B (+5,320 B) | 1,116,089 B | 1,282,541 B (+166,452 B, 19.6 % of the app partition) |
 
 RAM is the static figure PlatformIO reports (data and bss): the profiles (1.5 KB), the controller and PubSubClient, and mbedTLS' static state. Flash grows by about 163 KB, almost all of it the TLS client and the mDNS component, which the Wi-Fi builds did not link before.
 
