@@ -2464,20 +2464,32 @@ void MyMesh::checkCLIRescueCmd() {
       // command was handled, print reply output
       Serial.print("  "); Serial.print(reply_buf); Serial.println();
     } else if (strcmp(cli_command, "rebuild") == 0) {
+#ifndef CONTACTS_STOCK_ARRAY
+      // The contacts are rebuilt from the persistent store itself, so the file system is not formatted (that would
+      // erase the contacts that are not in the cache). The other files are written again from memory.
+      _store->saveMainIdentity(self_id);
+      savePrefs();
+      saveChannels();
+      Posture::audit().markAllDirty();
+      auditStore().flush(millis());
+      int damaged = 0, isolated = 0;
+      int kept = rebuildContacts(&damaged, &isolated);
+      Serial.print("  > rebuilt "); Serial.print(kept); Serial.print(" contacts, "); Serial.print(damaged); Serial.println(" damaged");
+      if (isolated > 0) { Serial.print("  > "); Serial.print(isolated); Serial.println(" damaged bucket(s) kept aside as /ct<N>.bad"); }
+#else
       bool success = _store->formatFileSystem();
       if (success) {
         _store->saveMainIdentity(self_id);
         savePrefs();
-        int lost = contactsFilesystemErased();   // contacts only on the file system went with the format
         saveContacts();
         saveChannels();
         Posture::audit().markAllDirty();   // the format erased the audit file; the log is still in RAM
         auditStore().flush(millis());
         Serial.println("  > erase and rebuild done");
-        if (lost > 0) { Serial.print("  > "); Serial.print(lost); Serial.println(" stored contacts that were not in memory are gone"); }
       } else {
         Serial.println("  Error: erase failed");
       }
+#endif
     } else if (strcmp(cli_command, "erase") == 0) {
       bool success = _store->formatFileSystem();
       if (success) {

@@ -422,6 +422,115 @@ def test_a_damaged_bucket_loses_only_what_is_in_it(nodes):
     assert c.contacts_line()["damaged"] == 1
 
 
+# ------------------------------------------------------------------------------------------------ rescue "rebuild"
+
+def _standalone(nodes, extra=None, fault=None, name="r"):
+    return start(nodes, name, kind="companion_standalone", extra=["--heap-budget", "50000"] + (extra or []), fault=fault)
+
+
+def _fill_and_reboot(node, count):
+    """count contacts through the app, then a clean reboot: they are on the file system, few of them in the cache."""
+    c = connect(node)
+    for i in range(count):
+        assert c.add_contact_full(key(i), "c%d" % i, lastmod=RTC + i)[0] == 0, i
+    reboot_and_wait(node, c)
+
+
+def _rescue(node, command="rebuild", timeout=20):
+    """Long press in the first 8 s of the UI opens the rescue console on the serial port; returns what `command` printed."""
+    s = node.connect()
+    s.settimeout(0.3)
+    node.ui.press("long")
+    buf = b""
+
+    def read_until(marker, secs):
+        nonlocal buf
+        end = time.time() + secs
+        while time.time() < end and marker not in buf:
+            try:
+                d = s.recv(4096)
+            except OSError:
+                continue
+            if d == b"":
+                break
+            buf += d
+        return marker in buf
+
+    assert read_until(b"CLI Rescue", 10), buf
+    buf = b""
+    s.sendall(command.encode() + b"\r")
+    read_until(b"damaged\n", timeout) or read_until(b"failed", 0.1)
+    out = buf.decode(errors="replace")
+    s.close()
+    return out
+
+
+def _count_after_restart(node):
+    node.stop()
+    node.start()
+    c = connect(node)
+    count, got = c.get_contacts()
+    return count, got, c
+
+
+def test_rebuild_keeps_every_stored_contact_beyond_the_cache(nodes):
+    node = _standalone(nodes).start()
+    _fill_and_reboot(node, 120)
+    node.start()
+    before = connect(node)
+    n_before, got_before = before.get_contacts()
+    line = before.contacts_line()
+    assert n_before == 120 and line["cache"][0] < 120 <= line["store"][0], line
+    node.stop()
+    node.start()
+    out = _rescue(node)
+    assert "rebuilt 120 contacts, 0 damaged" in out, out
+    n_after, got, c = _count_after_restart(node)
+    assert n_after == n_before == 120
+    assert {x["key"] for x in got} == {x["key"] for x in got_before}
+    assert by_key(got) == by_key(got_before), "every field of every contact is as before"
+    assert c.contacts_line()["damaged"] == 0
+    assert not [f for f in os.listdir(node.dir) if f.endswith(".bad")], "nothing was damaged, nothing is kept aside"
+
+
+def test_rebuild_isolates_a_damaged_record_and_keeps_all_the_others(nodes):
+    node = _standalone(nodes).start()
+    _fill_and_reboot(node, 100)
+    with open(p(node, "/ct3"), "r+b") as f:             # contact 3*8+2 = 26 (records are numbered in the order they were added)
+        f.seek(2 * 160 + 40)
+        b = f.read(1)
+        f.seek(2 * 160 + 40)
+        f.write(bytes([b[0] ^ 0xFF]))
+    found = open(p(node, "/ct3"), "rb").read()
+    node.start()
+    out = _rescue(node)
+    assert "rebuilt 99 contacts, 1 damaged" in out, out
+    assert "kept aside" in out, out
+    assert open(p(node, "/ct3.bad"), "rb").read() == found, "the bucket is kept as it was found"
+    count, got, c = _count_after_restart(node)
+    assert count == 99
+    assert {x["key"] for x in got} == {key(i) for i in range(100)} - {key(26)}
+    assert c.contacts_line()["damaged"] == 0, "the rewritten bucket is clean"
+    assert os.path.getsize(p(node, "/ct3")) == 1280
+
+
+def test_a_power_cut_during_rebuild_keeps_the_previous_buckets(nodes):
+    node = _standalone(nodes).start()
+    _fill_and_reboot(node, 100)
+    snapshot = {f: open(p(node, f), "rb").read() for f in os.listdir(node.dir) if f.startswith("ct")}
+    assert len(snapshot) == 13
+    node.fault = "/ct5.tmp:700"                          # the sixth bucket write is cut in its temp file
+    node.start()
+    out = _rescue(node)
+    assert node.wait_exit(15) == 99, "the rebuild never reached the injected fault: " + out
+    for f, data in snapshot.items():
+        assert open(p(node, f), "rb").read() == data, f   # every bucket as before (the clean ones were rewritten to the same bytes)
+    node.fault = None
+    count, got, c = _count_after_restart(node)
+    assert count == 100 and {x["key"] for x in got} == {key(i) for i in range(100)}
+    assert c.contacts_line()["damaged"] == 0
+
+
 # ------------------------------------------------------------------------------------------------ the opt-out
 
 def test_the_stock_array_build_is_ram_only_and_atomic_and_evicts_the_oldest(nodes):

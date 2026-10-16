@@ -40,6 +40,9 @@ public:
   virtual bool readBucket(uint16_t b, uint8_t* buf, uint32_t len) = 0;    // false when absent or short
   virtual bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len) = 0;   // atomic: old or new content, never a mix
   virtual bool removeBucket(uint16_t b) = 0;
+  // Keeps a copy of a damaged bucket's bytes under a separate name (never read back as a bucket) before it is rewritten.
+  // false = could not; the bucket is then left as it is. The default cannot, so a backend that wants repairs overrides it.
+  virtual bool keepAside(uint16_t b, const uint8_t* buf, uint32_t len) { (void)b; (void)buf; (void)len; return false; }
   virtual uint32_t freeBytes() = 0;                                       // free space on the contact filesystem
 };
 
@@ -118,7 +121,10 @@ public:
   bool remove(int rec);
   void noteMessage(int rec, uint32_t now);                         // a direct message was sent or received
   void invalidateSecrets();
-  int  filesystemErased();                                         // the file system was formatted under the store; returns how many stored contacts are gone
+  // Rescue console "rebuild": re-verifies every stored record, keeps every valid one (cached or not), drops and counts
+  // those whose CRC fails, keeps each damaged bucket aside, rewrites the buckets atomically and rebuilds the index.
+  // Returns the contacts kept.
+  int  rebuild(int* damaged_out, int* isolated_out);
   bool flush();                                                    // writes every changed resident record; false on a write error
 
   // --- bulk load (migration): records go straight to buckets, bypassing the cache

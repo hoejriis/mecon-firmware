@@ -30,6 +30,13 @@ public:
     return true;
   }
   bool removeBucket(uint16_t b) override { return files.erase(b) != 0; }
+  std::map<int, std::vector<uint8_t>> aside;
+  bool aside_fails = false;
+  bool keepAside(uint16_t b, const uint8_t* buf, uint32_t len) override {
+    if (aside_fails) return false;
+    aside[b] = std::vector<uint8_t>(buf, buf + len);
+    return true;
+  }
   uint32_t freeBytes() override {
     if (fs_total == 0xFFFFFFFFu) return fs_total;
     uint32_t used = 0;
@@ -861,27 +868,109 @@ TEST(ContactStore, RecOfPtrNamesTheRecordOfAResidentContactOnly) {
   EXPECT_EQ(-1, s.recOfPtr(&copy));
 }
 
-TEST(ContactStore, AfterTheFileSystemIsErasedOnlyWhatIsInMemoryIsWrittenAgain) {
+// "rebuild" works from the persistent store: more stored contacts than cache slots, all of them survive.
+TEST(ContactStore, RebuildKeepsEveryStoredContactNotOnlyTheCachedOnes) {
   MemBackend be;
   ContactStore s;
   ASSERT_TRUE(s.begin(&be, nullptr, tight(be, 200, 16)));
   for (int i = 0; i < 60; i++) add(s, mk(i));
   ASSERT_TRUE(s.flush());
-  int resident = s.stats().cache_used;
-  ASSERT_GT(resident, 0);
-  ASSERT_LT(resident, 60);
-  be.files.clear();                                   // "rebuild" formats the file system
-  int lost = s.filesystemErased();
-  EXPECT_EQ(60 - resident, lost);
-  EXPECT_EQ(resident, s.count());
-  EXPECT_TRUE(s.flush());
+  ASSERT_LT(s.stats().cache_used, 60);
+  int damaged = -1, isolated = -1;
+  EXPECT_EQ(60, s.rebuild(&damaged, &isolated));
+  EXPECT_EQ(0, damaged);
+  EXPECT_EQ(0, isolated);
+  EXPECT_EQ(60, s.count());
+  EXPECT_TRUE(be.aside.empty());
   ContactStore t;
   ASSERT_TRUE(t.begin(&be, nullptr, tight(be, 200, 16)));
-  EXPECT_EQ(resident, t.count()) << "the contacts in memory must be on the file system again";
   int cursor = 0, n = 0;
   ContactInfo c;
   while (t.next(cursor, c)) n++;
-  EXPECT_EQ(resident, n);
+  EXPECT_EQ(60, n);
+  for (int i = 0; i < 60; i++) ASSERT_NE(nullptr, t.find(mk(i).id.pub_key, 32)) << i;
+}
+
+TEST(ContactStore, RebuildWritesAChangedCachedRecordAndKeepsTheOthers) {
+  MemBackend be;
+  ContactStore s;
+  ASSERT_TRUE(s.begin(&be, nullptr, tight(be, 200, 16)));
+  for (int i = 0; i < 40; i++) add(s, mk(i));
+  ASSERT_TRUE(s.flush());
+  ContactInfo* c = s.find(mk(39).id.pub_key, 32);
+  ASSERT_NE(nullptr, c);
+  snprintf(c->name, sizeof(c->name), "changed");               // changed through the pointer, not yet flushed
+  int d, i;
+  EXPECT_EQ(40, s.rebuild(&d, &i));
+  ContactStore t;
+  ASSERT_TRUE(t.begin(&be, nullptr, tight(be, 200, 16)));
+  EXPECT_STREQ("changed", t.find(mk(39).id.pub_key, 32)->name);
+  EXPECT_EQ(40, t.count());
+}
+
+TEST(ContactStore, RebuildIsolatesADamagedRecordAndKeepsTheBucketAside) {
+  MemBackend be;
+  ContactStore s;
+  ASSERT_TRUE(s.begin(&be, nullptr, tight(be, 200, 16)));
+  for (int i = 0; i < 40; i++) add(s, mk(i));
+  ASSERT_TRUE(s.flush());
+  std::vector<uint8_t> before = be.files[1];
+  be.files[1][2 * CONTACT_RECORD_SIZE + 10] ^= 0xFF;           // record 10: bucket 1, third record
+  std::vector<uint8_t> damaged_image = be.files[1];
+  s.end();
+  ASSERT_TRUE(s.begin(&be, nullptr, tight(be, 200, 16)));
+  EXPECT_EQ(39, s.count());
+  int d, i;
+  EXPECT_EQ(39, s.rebuild(&d, &i));
+  EXPECT_EQ(1, d);
+  EXPECT_EQ(1, i);
+  ASSERT_EQ(1u, be.aside.size());
+  EXPECT_EQ(damaged_image, be.aside[1]) << "the damaged bucket is kept as it was found";
+  ContactStore t;
+  ASSERT_TRUE(t.begin(&be, nullptr, tight(be, 200, 16)));
+  EXPECT_EQ(39, t.count());
+  EXPECT_EQ(0u, t.stats().damaged) << "the rewritten bucket is clean";
+  EXPECT_EQ(nullptr, t.find(mk(10).id.pub_key, 32));
+  for (int n = 0; n < 40; n++) if (n != 10) ASSERT_NE(nullptr, t.find(mk(n).id.pub_key, 32)) << n;
+  for (int j = 0; j < 8; j++) {                                // the other records of the bucket are byte for byte as before
+    if (j == 2) continue;
+    EXPECT_EQ(0, memcmp(&be.files[1][j * CONTACT_RECORD_SIZE], &before[j * CONTACT_RECORD_SIZE], CONTACT_RECORD_SIZE)) << j;
+  }
+}
+
+TEST(ContactStore, RebuildLeavesTheBucketAloneWhenItCannotBeKeptAside) {
+  MemBackend be;
+  ContactStore s;
+  ASSERT_TRUE(s.begin(&be, nullptr, tight(be, 200, 16)));
+  for (int i = 0; i < 24; i++) add(s, mk(i));
+  ASSERT_TRUE(s.flush());
+  be.files[0][5] ^= 0xFF;
+  std::vector<uint8_t> found = be.files[0];
+  be.aside_fails = true;
+  s.end();
+  ASSERT_TRUE(s.begin(&be, nullptr, tight(be, 200, 16)));
+  int d, i;
+  s.rebuild(&d, &i);
+  EXPECT_EQ(1, d);
+  EXPECT_EQ(0, i);
+  EXPECT_EQ(found, be.files[0]) << "no copy, no rewrite";
+}
+
+TEST(ContactStore, RebuildDropsAnIndexEntryWhoseRecordIsGone) {
+  MemBackend be;
+  ContactStore s;
+  ASSERT_TRUE(s.begin(&be, nullptr, tight(be, 200, 16)));
+  for (int i = 0; i < 40; i++) add(s, mk(i));
+  ASSERT_TRUE(s.flush());
+  be.files.erase(2);                                           // a whole bucket vanished under the store
+  int d, i;
+  int kept = s.rebuild(&d, &i);
+  EXPECT_LT(kept, 40);
+  EXPECT_EQ(kept, s.count());
+  int cursor = 0, n = 0;
+  ContactInfo c;
+  while (s.next(cursor, c)) n++;
+  EXPECT_EQ(kept, n);
 }
 
 TEST(ContactStore, InvalidateSecretsDropsEveryCachedSharedSecret) {

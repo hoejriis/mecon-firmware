@@ -325,9 +325,30 @@ mutate contacts_message_received_not_noted src/helpers/BaseChatMesh.cpp '      n
 mutate contacts_message_time_not_kept $CS '  _idx[rec].last_msg = now;' '' unit:test_contact_store
 mutate contacts_secrets_not_invalidated $CS '  for (int i = 0; i < _nslots; i++) if (_slots && _slots[i].rec >= 0) _slots[i].ci.shared_secret_valid = false;' '' unit:test_contact_store
 mutate contacts_bulk_import_writes_each_record src/helpers/ContactStore.cpp '  if (b != _import_bucket) {' '  if (true) {' unit:test_contact_store
-mutate contacts_erased_fs_resident_not_rewritten $CS '      _slots[e.slot].prov = 1;                          // changed as far as the file system is concerned' '' unit:test_contact_store
-mutate contacts_erased_fs_lost_contacts_kept_in_index $CS '      _count--;
-      lost++;' '      lost++;' unit:test_contact_store
+# rescue "rebuild" works from the store (docs/CONTACTS.md)
+CT_KEEP=$CT_SIM::test_rebuild_keeps_every_stored_contact_beyond_the_cache
+CT_ISO=$CT_SIM::test_rebuild_isolates_a_damaged_record_and_keeps_all_the_others
+CT_CUT=$CT_SIM::test_a_power_cut_during_rebuild_keeps_the_previous_buckets
+mutate contacts_rebuild_cache_only $CS '        if (!zero && decode(r, c, lm)) {' '        if (false) {' "$CT_KEEP $CT_ISO"
+mutate contacts_rebuild_cache_only_unit $CS '        if (!zero && decode(r, c, lm)) {' '        if (false) {' unit:test_contact_store
+mutate contacts_rebuild_damaged_bucket_not_kept_aside $CS '      if (!zero && !decode(r, c, lm)) any_bad = true;' '' "$CT_ISO"
+mutate contacts_rebuild_damaged_bucket_not_kept_aside_unit $CS '      if (!zero && !decode(r, c, lm)) any_bad = true;' '' unit:test_contact_store
+mutate contacts_rebuild_damaged_record_kept $CS '          if (e.flags & F_USED) { memset(&e, 0, sizeof(Idx)); e.slot = NOSLOT; _count--; }
+          memset(r, 0, REC);' '          if (e.flags & F_USED) { memset(&e, 0, sizeof(Idx)); e.slot = NOSLOT; _count--; }' "$CT_ISO"
+mutate contacts_rebuild_damaged_record_kept_unit $CS '          if (e.flags & F_USED) { memset(&e, 0, sizeof(Idx)); e.slot = NOSLOT; _count--; }
+          memset(r, 0, REC);' '          if (e.flags & F_USED) { memset(&e, 0, sizeof(Idx)); e.slot = NOSLOT; _count--; }' unit:test_contact_store
+mutate contacts_rebuild_rewritten_after_remove $CS '    if (any) ok = _be->writeBucket((uint16_t)b, _scratch, BUCKET_BYTES);
+    else ok = have ? _be->removeBucket((uint16_t)b) : true;
+    if (!ok) { _write_errors++; continue; }' '    _be->removeBucket((uint16_t)b);
+    if (any) ok = _be->writeBucket((uint16_t)b, _scratch, BUCKET_BYTES);
+    else ok = have ? _be->removeBucket((uint16_t)b) : true;
+    if (!ok) { _write_errors++; continue; }' "$CT_CUT"
+mutate contacts_rebuild_formats_filesystem examples/companion_radio/MyMesh.cpp '      int damaged = 0, isolated = 0;' '      _store->formatFileSystem();
+      int damaged = 0, isolated = 0;' "$CT_KEEP $CT_ISO"
+mutate contacts_rebuild_damaged_not_reported $CS '  if (damaged_out) *damaged_out = damaged;
+  if (isolated_out)' '  if (isolated_out)' "$CT_ISO"
+mutate contacts_rebuild_damaged_not_reported_unit $CS '  if (damaged_out) *damaged_out = damaged;
+  if (isolated_out)' '  if (isolated_out)' unit:test_contact_store
 mutate contacts_device_query_wraps examples/companion_radio/MyMesh.cpp '      out_frame[i++] = half > 255 ? 255 : half;   // v3+' '      out_frame[i++] = half;   // v3+' $CT_SIM::test_device_query_reports_half_the_capacity_capped_at_one_byte
 
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi

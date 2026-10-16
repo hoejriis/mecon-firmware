@@ -362,6 +362,12 @@ bool DataStore::removeBucket(uint16_t b) {
   return _getContactsChannelsFS()->remove(path);
 }
 
+bool DataStore::keepAside(uint16_t b, const uint8_t* buf, uint32_t len) {
+  char path[24];
+  snprintf(path, sizeof(path), "/ct%u.bad", (unsigned)b);
+  return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; });
+}
+
 uint32_t DataStore::freeBytes() {
   uint32_t total = getStorageTotalKb();
   if (total == 0) return 0xFFFFFFFFu;           // this platform cannot say
