@@ -20,6 +20,7 @@ BIN = {
     "room_server": os.path.join(REPO, ".pio/build/sim_room_server/program"),
     "repeater_asan": os.path.join(REPO, ".pio/build/sim_repeater_asan/program"),
     "companion_asan": os.path.join(REPO, ".pio/build/sim_companion_asan/program"),
+    "companion_wifi_usb_asan": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb_asan/program"),
     "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
     # the standalone Companion: connectivity-mode switching, the real ui-new screens on a recording display
     "companion_standalone": os.path.join(REPO, ".pio/build/sim_companion_standalone/program"),
@@ -178,6 +179,16 @@ def mqtt_events(node):
         for ln in open(node.log_path, errors="replace"):
             if ln.startswith("SIMMQTT "):
                 out.append(ln[8:].strip())
+    return out
+
+
+def loop_gaps(node):
+    """Main-loop stalls above 50 ms the node logged (`SIMLOOP gap_ms=N`, wall-clock milliseconds), oldest first."""
+    out = []
+    if os.path.exists(node.log_path):
+        for ln in open(node.log_path, errors="replace"):
+            if ln.startswith("SIMLOOP gap_ms="):
+                out.append(int(ln.split("=", 1)[1]))
     return out
 
 
@@ -527,9 +538,9 @@ class CompanionClient:
         assert f[0] == RESP_OK, f
         return f
 
-    def cli(self, text):
+    def cli(self, text, timeout=5.0):
         """CMD_RUN_CLI_COMMAND; returns the reply text (USB/BLE class transports only)."""
-        f = self.request(bytes([CMD_RUN_CLI_COMMAND]) + text.encode())
+        f = self.request(bytes([CMD_RUN_CLI_COMMAND]) + text.encode(), timeout=timeout)
         assert f[0] == RESP_CLI_REPLY, f
         return f[1:].decode(errors="replace")
 

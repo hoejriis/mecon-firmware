@@ -3,12 +3,25 @@
 #include <Arduino.h>
 #include <unistd.h>
 #include <signal.h>
+#include <chrono>
 #include "sim_config.h"
 #include "sim_clock.h"
 #include "sim_toa.h"
 
 void setup();
 void loop();
+
+// Main-loop gap probe: the real (wall-clock) time between two consecutive loop() starts. A gap above 50 ms is logged as
+// "SIMLOOP gap_ms=<n>", so a test can read the longest stall of the main loop from the node's log, independent of
+// --time-scale. It lets a test show that a blocking call (the MQTT connect, once) no longer stalls the mesh.
+static void simLoopProbe() {
+  using clk = std::chrono::steady_clock;
+  static clk::time_point last = clk::now();
+  clk::time_point now = clk::now();
+  long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
+  last = now;
+  if (ms > 50) { fprintf(stderr, "SIMLOOP gap_ms=%lld\n", ms); fflush(stderr); }
+}
 
 int main(int argc, char** argv) {
   signal(SIGPIPE, SIG_IGN);
@@ -49,6 +62,7 @@ int main(int argc, char** argv) {
   randomSeed(g_sim.seed);
   setup();
   for (;;) {
+    simLoopProbe();
     loop();
     sim_poll();
     usleep(200);
