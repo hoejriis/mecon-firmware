@@ -78,3 +78,10 @@ asserted in `sim/tests/test_storage_fault.py` so a change in it is noticed.
 * `test_mesh.py` – two Companions that cannot hear each other exchange a direct message
   and a channel message through a Repeater; and nothing is delivered with no links.
 * `test_storage_fault.py` – the power-cut above, twice, with identical outcomes.
+
+## Mutation check
+
+`sim/mutate.sh` breaks one thing per test group (a time-on-air constant, SimRadio dropping
+every packet, SimFS discarding writes, the fault hook disabled), rebuilds, expects that
+group to go red, restores the file with `git checkout` and finishes with a clean full run.
+Run it on a clean tree.
