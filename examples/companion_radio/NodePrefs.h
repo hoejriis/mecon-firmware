@@ -13,6 +13,14 @@
   #include <helpers/mqtt/MqttProfiles.h>
 #endif
 
+#ifdef ENABLE_CONNMODE
+  // Connectivity-mode switching (src/helpers/connmode/ConnMode.h): BLE or Wi-Fi, one at a time, USB always.
+  #if !defined(ENABLE_WIFI_INTERFACE) || !defined(BLE_PIN_CODE) || !defined(ENABLE_USB_INTERFACE)
+    #error "ENABLE_CONNMODE needs ENABLE_WIFI_INTERFACE, BLE_PIN_CODE and ENABLE_USB_INTERFACE: both radios plus the cable"
+  #endif
+  #include <helpers/connmode/ConnMode.h>
+#endif
+
 #define TELEM_MODE_DENY            0
 #define TELEM_MODE_ALLOW_FLAGS     1     // use contact.flags
 #define TELEM_MODE_ALLOW_ALL       2
@@ -58,6 +66,9 @@ public:
   uint8_t default_scope_key[16];
   int8_t tz_offset = 0;
   uint8_t posture = 0;           // Posture::NORMAL / HARDENED (src/helpers/Posture.h)
+#ifdef ENABLE_CONNMODE
+  uint8_t connectivity_mode = 0; // ConnMode::BLE / WIFI; any other stored value starts BLE
+#endif
 #ifdef ENABLE_WIFI_INTERFACE
   #ifndef WIFI_SSID
     #define WIFI_SSID ""
@@ -183,6 +194,9 @@ private:
       def("tel_loc", _parent->telemetry_mode_loc);
       def("tel_env", _parent->telemetry_mode_env);
       def("tz_offset", _parent->tz_offset);
+#ifdef ENABLE_CONNMODE
+      def("conn_mode", _parent->connectivity_mode);
+#endif
     }
   public:
     CompanionPrefs(NodePrefs* parent) : _parent(parent) { }

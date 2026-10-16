@@ -121,6 +121,13 @@ public:
   void setBLEPin(uint32_t active_pin);
 
   void loop();
+#ifdef ENABLE_CONNMODE
+  // Connectivity mode (ConnMode.h): the mode the device booted into, and a switch asked for by the device button.
+  // The switch saves the prefs and restarts shortly after, so the BLE and Wi-Fi stacks are never both up.
+  uint8_t getConnectivityMode() { return ConnMode::sanitize(_prefs.connectivity_mode); }
+  bool requestConnectivityMode(uint8_t want, uint8_t caller);
+  bool connectivityRestartPending() const { return _connmode_restart_at != 0; }
+#endif
   void handleCmdFrame(size_t len);
   bool advert();
   void enterCLIRescue();
@@ -262,6 +269,10 @@ private:
   bool _cli_rescue;
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
+#ifdef ENABLE_CONNMODE
+  uint32_t _connmode_restart_at = 0;   // millis() deadline of the restart after a mode switch (0 = none)
+  void scheduleConnectivityRestart();
+#endif
   uint8_t _cli_caller = Posture::CALLER_NET;   // who is behind a local (timestamp 0) handleCommand(); set by each caller, fails closed
   void recordFactoryReset(uint8_t caller);
   char reply_buf[166];

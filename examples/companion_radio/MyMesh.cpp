@@ -2165,6 +2165,21 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     }
   }
 
+#ifdef ENABLE_CONNMODE
+  {
+    bool changed = false;
+    const uint8_t caller = sender_timestamp != 0 ? Posture::CALLER_REMOTE_CLI : _cli_caller;
+    if (ConnMode::handleCommand(command, caller, _prefs.connectivity_mode, getRTCClock()->getCurrentTime(), reply, 150, changed)) {
+      if (changed) {
+        savePrefs();
+        auditStore().flush(millis());   // the new mode and its audit entry reach flash together
+        scheduleConnectivityRestart();
+      }
+      return true;
+    }
+  }
+#endif
+
   if (sender_timestamp != 0 && !isRemoteCommandAllowed(command)) {
     Posture::recordRefusal(getRTCClock()->getCurrentTime(), Posture::CALLER_REMOTE_CLI, Posture::W_REMOTE_WRITE);
     strcpy(reply, "ERR: not permitted remotely");   // remote callers: reads and reboot only
@@ -2551,9 +2566,31 @@ void MyMesh::checkSerialInterface() {
   }
 }
 
+#ifdef ENABLE_CONNMODE
+// The reply to the command (or the "restarting" screen) goes out first; the restart follows a moment later.
+void MyMesh::scheduleConnectivityRestart() {
+  _connmode_restart_at = millis() + 1500;
+  if (_connmode_restart_at == 0) _connmode_restart_at = 1;
+}
+
+bool MyMesh::requestConnectivityMode(uint8_t want, uint8_t caller) {
+  if (!ConnMode::requestSwitch(_prefs.connectivity_mode, want, caller, getRTCClock()->getCurrentTime())) return false;
+  savePrefs();
+  auditStore().flush(millis());
+  scheduleConnectivityRestart();
+  return true;
+}
+#endif
+
 void MyMesh::loop() {
   BaseChatMesh::loop();
   auditStore().service(millis());
+#ifdef ENABLE_CONNMODE
+  if (_connmode_restart_at != 0 && millisHasNowPassed(_connmode_restart_at)) {
+    _connmode_restart_at = 0;
+    board.reboot();   // starts the stack of the new mode; the mode is already saved
+  }
+#endif
 
   if (_cli_rescue) {
     checkCLIRescueCmd();
@@ -2590,5 +2627,9 @@ bool MyMesh::advert() {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
-  return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0 || Posture::audit().dirty();
+  return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0 || Posture::audit().dirty()
+#ifdef ENABLE_CONNMODE
+         || _connmode_restart_at != 0
+#endif
+      ;
 }

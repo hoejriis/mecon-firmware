@@ -132,6 +132,19 @@ public:
     return false;
   }
 
+  // is an interface of this type registered and connected (the status screen asks about BLE alone)
+  bool isInterfaceConnected(InterfaceType type) const {
+    if(!_enabled){
+      return false;
+    }
+    for(auto iface : _interfaces){
+      if(iface.instance && iface.type == type && iface.instance->isConnected()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool isTrustedTransport() const override {
     return _last_rx == nullptr || _last_rx->isTrustedTransport();
   }

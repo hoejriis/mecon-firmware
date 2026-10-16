@@ -32,6 +32,10 @@
 #endif
 
 #include "icons.h"
+#ifdef ENABLE_CONNMODE
+  #include "ConnStatusScreen.h"
+  #define CONNMODE_CONFIRM_MILLIS 10000   // an armed mode switch that is not confirmed in time is cancelled
+#endif
 
 class SplashScreen : public UIScreen {
   UITask* _task;
@@ -92,6 +96,9 @@ class HomeScreen : public UIScreen {
     RECENT,
     RADIO,
     BLUETOOTH,
+#ifdef ENABLE_CONNMODE
+    CONNECTIVITY,
+#endif
     ADVERT,
 #if ENV_INCLUDE_GPS == 1
     GPS,
@@ -114,6 +121,10 @@ class HomeScreen : public UIScreen {
   NodePrefs* _node_prefs;
   uint8_t _page;
   bool _shutdown_init;
+#ifdef ENABLE_CONNMODE
+  bool _sw_confirm = false;          // a connectivity-mode switch is armed and waits for the confirming press
+  unsigned long _sw_until = 0;
+#endif
   AdvertPath recent[UI_RECENT_LIST_SIZE];
 #if UI_DISCOVER_SCREEN
   DiscoveredNode discovered[DISCOVERED_NODES_TABLE_SIZE]; // not circular, latest discovered nodes are not kept
@@ -243,6 +254,9 @@ public:
 #endif
 
   void poll() override {
+#ifdef ENABLE_CONNMODE
+    if (_sw_confirm && (millis() > _sw_until || _page != HomePage::CONNECTIVITY)) _sw_confirm = false;   // not confirmed: nothing changes
+#endif
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
       _task->shutdown();
     }
@@ -303,7 +317,18 @@ public:
       sprintf(tmp, "%02d/%02d/%d", dt.day(), dt.month(), dt.year());
       display.drawTextCentered(display.width() / 2, 80, tmp);
       #endif
-      #ifdef ENABLE_WIFI_INTERFACE
+      #ifdef ENABLE_CONNMODE
+        {
+          // the status line: which mode, and the Wi-Fi address or the BLE PIN class
+          ConnMode::ConnStatus st;
+          fillConnStatus(st, _task, _node_prefs);
+          ConnMode::formatHome(st, tmp, sizeof(tmp));
+          display.setTextSize(1);
+          display.setColor(st.mode == ConnMode::BLE && st.ble_pin_default ? UIColor::warning_txt : UIColor::primary_txt);
+          display.drawTextCentered(display.width() / 2, 32, tmp);
+          display.setColor(UIColor::primary_txt);
+        }
+      #elif defined(ENABLE_WIFI_INTERFACE)
         IPAddress ip = WiFi.localIP();
         snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
         display.setTextSize(1);
@@ -317,7 +342,11 @@ public:
         #else
         display.drawTextCentered(display.width() / 2, 43, "< Connected >");
         #endif
-      } else if (the_mesh.getBLEPin() != 0) { // BT pin
+      } else if (the_mesh.getBLEPin() != 0
+      #ifdef ENABLE_CONNMODE
+                 && the_mesh.getConnectivityMode() == ConnMode::BLE   // no BLE, no pairing PIN to show
+      #endif
+                ) { // BT pin
         display.setColor(UIColor::warning_txt);
         sprintf(tmp, "Pin:%d", the_mesh.getBLEPin());
         #ifdef UI_SHOW_CLOCK
@@ -380,6 +409,34 @@ public:
       display.setColor(UIColor::secondary_txt);
       display.setTextSize(1);
       display.drawTextCentered(display.width() / 2, 64 - 11, "toggle: " PRESS_LABEL);
+#ifdef ENABLE_CONNMODE
+    } else if (_page == HomePage::CONNECTIVITY) {
+      ConnMode::ConnStatus st;
+      fillConnStatus(st, _task, _node_prefs);
+      display.setTextSize(1);
+      if (_sw_confirm) {
+        display.setColor(UIColor::warning_txt);
+        snprintf(tmp, sizeof(tmp), "Switch to %s?", ConnMode::switchTargetLabel(st.mode));
+        display.drawTextCentered(display.width() / 2, 22, tmp);
+        display.drawTextCentered(display.width() / 2, 33, "Device restarts");
+        display.setColor(UIColor::primary_txt);
+        display.drawTextCentered(display.width() / 2, 44, "yes: " PRESS_LABEL);
+        display.drawTextCentered(display.width() / 2, 55, "no: click");
+        return 500;
+      }
+      char lines[ConnMode::LINES][ConnMode::LINE_LEN];
+      bool warn[ConnMode::LINES];
+      int n = ConnMode::formatLines(st, lines, warn);
+      int ly = 19;
+      for (int i = 0; i < n; i++, ly += 9) {
+        display.setColor(warn[i] ? UIColor::warning_txt : UIColor::primary_txt);
+        display.drawTextEllipsized(0, ly, display.width(), lines[i]);
+      }
+      display.setColor(UIColor::secondary_txt);
+      snprintf(tmp, sizeof(tmp), "to %s: " PRESS_LABEL, ConnMode::switchTargetLabel(st.mode));
+      display.drawTextCentered(display.width() / 2, 55, tmp);
+      return 1000;
+#endif
     } else if (_page == HomePage::ADVERT) {
       display.setColor(UIColor::corp_blue);
       display.drawXbm((display.width() - 32) / 2, 18, advert_icon, 32, 32);
@@ -559,12 +616,36 @@ public:
   }
 
   bool handleInput(char c) override {
+#ifdef ENABLE_CONNMODE
+    if (_page == HomePage::CONNECTIVITY && _sw_confirm) {
+      // armed: the same long press confirms; anything else (click, double click, timeout) cancels and changes nothing
+      _sw_confirm = false;
+      if (c == KEY_ENTER) {
+        const uint8_t want = ConnMode::other(the_mesh.getConnectivityMode());
+        _task->showAlert(the_mesh.requestConnectivityMode(want, Posture::CALLER_BUTTON) ? "Restarting..." : "Not changed", 3000);
+      } else {
+        _task->showAlert("Cancelled", 800);
+      }
+      return true;
+    }
+    if (c == KEY_ENTER && _page == HomePage::CONNECTIVITY) {
+      _sw_confirm = true;
+      _sw_until = millis() + CONNMODE_CONFIRM_MILLIS;
+      return true;
+    }
+#endif
     if (c == KEY_LEFT || c == KEY_PREV) {
       _page = (_page + HomePage::Count - 1) % HomePage::Count;
+#ifdef ENABLE_CONNMODE
+      if (_page == HomePage::BLUETOOTH && the_mesh.getConnectivityMode() != ConnMode::BLE) _page = (_page + HomePage::Count - 1) % HomePage::Count;   // no BLE stack in Wi-Fi mode
+#endif
       return true;
     }
     if (c == KEY_NEXT || c == KEY_RIGHT) {
       _page = (_page + 1) % HomePage::Count;
+#ifdef ENABLE_CONNMODE
+      if (_page == HomePage::BLUETOOTH && the_mesh.getConnectivityMode() != ConnMode::BLE) _page = (_page + 1) % HomePage::Count;
+#endif
       if (_page == HomePage::RECENT) {
         _task->showAlert("Recent adverts", 800);
       }
