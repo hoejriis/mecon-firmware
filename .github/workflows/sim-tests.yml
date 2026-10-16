@@ -15,6 +15,11 @@ on:
         required: false
         default: ''
 
+# A newer push to the same branch makes this run obsolete: cancel it rather than queue behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
