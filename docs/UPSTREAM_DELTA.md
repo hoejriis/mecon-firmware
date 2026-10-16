@@ -18,3 +18,19 @@ Upstream's `stale-bot.yml` is kept unchanged; it only runs in the upstream repos
 ## Offered upstream
 
 Generic fixes made here that would also benefit stock MeshCore are listed in this section once they exist, with whether they have been offered upstream.
+
+## Known stock compile failures
+
+24 of the 618 PlatformIO environments in MeshCore 1.18.0 do not compile on stock upstream code. They are listed in `ci/known-upstream-failures.txt`. The all-boards workflow passes only when the failures equal that list, so a new failure, or a listed environment that starts compiling, turns it red. None of them is a board or role this project verifies on hardware.
+
+| Environments | Stock error |
+|---|---|
+| `*_kiss_modem` on Heltec E213, E290, T190, Tracker v2, LilyGo T-Beam 1W, Station G3 ESP32 (6) | `USBCDC` has no `setTxBufferSize` |
+| `Generic_E22_kiss_modem` | `LORA_TX_POWER` not declared |
+| `Generic_ESPNOW_*` (4), `SenseCapIndicator-ESPNow_comp_radio_usb` | `P_LORA_DIO_1` not declared |
+| `*_repeater_bridge_espnow` on Heltec CT62 and Tenstar C3 (3) | ESP-NOW receive callback signature mismatch |
+| `ThinkNode_M8_kiss_modem`, `_repeater`, `_room_server` | link error |
+| `Station_G2_companion_radio_ble`, `Station_G3_ESP32_companion_radio_ble` | image larger than the 1,310,720-byte app partition |
+| `Heltec_mesh_solar_companion_radio_ble`, `_usb` | vendor logger macros collide with the board library |
+| `MeshTracker_X1_kiss_modem` | `MicroNMEA.h` not found |
+| `ThinkNode_M5_companion_radio_serial` | `D6`/`D7` not declared |
