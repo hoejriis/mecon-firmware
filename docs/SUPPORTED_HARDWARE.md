@@ -2,7 +2,7 @@
 
 > **Public availability:** no firmware releases are published here yet. Read the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for the private beta versus public target distinction. Every table below describes the target, not accepted downloadable builds.
 
-The public line starts with **mecon-firmware 0.8.0**, built on released **MeshCore 1.18.0 from upstream `main`**. The public 0.8.x line and the private 0.9x reference line are separate lines; their version numbers do not order across each other. A target is called supported only after its derived build passes its real-hardware gate.
+The public line starts with **mecon-firmware 0.8.0**, built on released **MeshCore 1.18.0 from upstream `main`**. The public line (from 0.1.0) and the private 0.9x reference line are separate lines; their version numbers do not order across each other. A target is called supported only after its derived build passes its real-hardware gate.
 
 MECON uses capability profiles rather than defining the product as ESP32/Wi-Fi/MQTT firmware. The roles below are the **intended 0.8.0 set, subject to acceptance**; non-ESP boards implement portable MECON Core plus the transports/features their hardware actually provides.
 

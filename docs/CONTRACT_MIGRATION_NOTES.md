@@ -2,7 +2,7 @@
 
 This file is **non-normative engineering history**. It explains lessons from the private MVP and why MECON 1.0 differs. It is not the backend implementation checklist: all actionable changes required in MeshContinuum because of these differences belong in [`BACKEND_MIGRATION.md`](BACKEND_MIGRATION.md).
 
-The public line is rebuilt from **MeshCore 1.18.0**, released on upstream `main` on 2026-10-15; its first release will be mecon-firmware 0.8.0. The private implementation (the 0.9x reference firmware, described [below](#reference-firmware-today-09x-line)) is inspiration/evidence and a behavioural test oracle, not a code migration baseline.
+The public line is rebuilt from **MeshCore 1.18.0**, released on upstream `main` on 2026-10-15; its releases start at 0.1.0 (a standalone enhanced MeshCore), and the first fleet-serving version is planned as 0.8.0. The private implementation (the 0.9x reference firmware, described [below](#reference-firmware-today-09x-line)) is inspiration/evidence and a behavioural test oracle, not a code migration baseline.
 
 ## Foundational reset
 
@@ -68,7 +68,7 @@ This audit is necessary because the public documentation must be sufficient to i
 
 ## Reference firmware today (0.9x line)
 
-*Added 2026-10-15.* The private reference firmware is the 0.9x line. The 0.90 series is current: 0.90.5 is the latest promoted release at the time of writing, and later 0.90.x builds are still pre-releases. This section records what that firmware does today so the target documents can be read against it. It is a statement of shipped behaviour, not a requirement on the public line. The public 0.8.x line and the private 0.9x line are separate lines: version numbers do not order across them, and a lower public number is not a downgrade from a private build (or the reverse). The reference firmware is built on MeshCore 1.17.1; the public line starts on 1.18.0.
+*Added 2026-10-15.* The private reference firmware is the 0.9x line. The 0.90 series is current: 0.90.5 is the latest promoted release at the time of writing, and later 0.90.x builds are still pre-releases. This section records what that firmware does today so the target documents can be read against it. It is a statement of shipped behaviour, not a requirement on the public line. The public line (from 0.1.0) and the private 0.9x line are separate lines: version numbers do not order across them, and a lower public number is not a downgrade from a private build (or the reverse). The reference firmware is built on MeshCore 1.17.1; the public line starts on 1.18.0.
 
 **Builds.** Four roles ship in every release: a Companion gateway (ESP32, Heltec V3 and V4), a Repeater Observer (ESP32, Heltec V3), a BLE Companion (nRF52, SenseCAP T1000-E) and an RF repeater (nRF52, Seeed Wio Tracker L1). There is no Heltec V4 repeater build. The ESP32 builds use Arduino-ESP32 2.x / ESP-IDF 4.4 with NimBLE-Arduino 2.5.1.
 
@@ -108,7 +108,7 @@ This audit is necessary because the public documentation must be sufficient to i
 
 A review of the public documents against the private 0.9x reference firmware corrected these substantive points. Everything else in this change is added context.
 
-- **Versions and plan.** The old milestone names (0.8.1, 0.9.1, 1.0.1) are replaced: the first public firmware is mecon-firmware 0.8.0, built on MeshCore 1.18.0 (released 2026-10-15), and the public 0.8.x and private 0.9x lines are separate, so numbers do not order across them. The "wait for 1.18" gate is open.
+- **Versions and plan.** The old milestone names (0.8.1, 0.9.1, 1.0.1) are replaced: public releases start at 0.1.0 on MeshCore 1.18.0 (released 2026-10-15), the first fleet-serving version is planned as 0.8.0, and the public and private 0.9x lines are separate, so numbers do not order across them. The "wait for 1.18" gate is open.
 - **Hardware.** The T1000-E is built and hardware-proven in limited scope, not "planned"; the Wio Tracker L1 RF repeater and the ESP32 Repeater Observer are part of the set; no Heltec V4 repeater build exists; contact capacity is 50 on Heltec V3/V4 and 350 on the T1000-E; Beta boards now cites 0.90.5 and the Wio's tested state.
 - **Over-the-air update.** LoRa-relayed update is shipped, not absent; BLE DFU is compiled out of the nRF52 builds, not a supported mechanism.
 - **Connectivity.** Single-session broker selection (local, primary, secondary) has shipped since 0.51.0, not "post-P3"; `Both` mode is not available on the Heltec V3; the multi-broker audit row is already retired in firmware; security posture ships on the repeater roles since 0.90.0.

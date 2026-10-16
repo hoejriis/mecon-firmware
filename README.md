@@ -4,7 +4,7 @@
 
 **mecon-firmware** is the planned open firmware distribution for MeshContinuum (MECON). It extends MeshCore Companion and Repeater roles with observations, configuration and messaging through the transports each device supports.
 
-> **Status — 15 October 2026:** this public repository contains specifications and target contracts, **not firmware source or downloadable builds**. The first public firmware will be **mecon-firmware 0.8.0**, built on upstream MeshCore 1.18.0; no release date is announced. A separate private beta (the 0.9x reference firmware) informs the design. [Current capabilities and hardware maturity](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md).
+> **Status — 16 October 2026:** this repository carries the pinned upstream **MeshCore 1.18.0** source as its baseline, together with MECON specifications and target contracts. **There are no MECON releases or downloadable builds yet.** Public releases start at **0.1.0**, a standalone enhanced MeshCore verified on simulated boards; the first version to serve a MECON fleet is planned as 0.8.0. No release dates are announced. A separate private beta (the 0.9x reference firmware) informs the design. [Current capabilities and hardware maturity](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md).
 
 ## Clean 1.18 refounding: standalone first
 
@@ -31,11 +31,11 @@ For the web Reader and overall product, start with **[MeshContinuum](https://git
 
 ## Hardware and release path
 
-The first public release, **mecon-firmware 0.8.0**, is planned to ship four roles on upstream MeshCore 1.18.0 (released 15 October 2026): the Heltec V3 and V4 Companion Gateway, the SenseCAP T1000-E BLE Companion, the Seeed Wio Tracker L1 RF repeater and the ESP32 Repeater Observer (Heltec V3 and V4; the V4 build is new in 0.8.0). Support is granted per board/revision, role and build after hardware acceptance, and the T1000-E and Wio roles are limited in scope. Broader portability remains experimental.
+The first fleet-serving release, **mecon-firmware 0.8.0**, is planned to ship four roles on upstream MeshCore 1.18.0 (released 15 October 2026): the Heltec V3 and V4 Companion Gateway, the SenseCAP T1000-E BLE Companion, the Seeed Wio Tracker L1 RF repeater and the ESP32 Repeater Observer (Heltec V3 and V4; the V4 build is new in 0.8.0). Support is granted per board/revision, role and build after hardware acceptance, and the T1000-E and Wio roles are limited in scope. Broader portability remains experimental.
 
 The public implementation is gated on a pinned revision of MeshCore 1.18.0 and the existing firmware-first migration programme. [Roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md) · [Hardware target](docs/SUPPORTED_HARDWARE.md).
 
-The public 0.8.x line and the private 0.9x line are **separate lines**: version numbers do not order across them, so a lower public number is not a downgrade from a private build.
+The public line (from 0.1.0) and the private 0.9x line are **separate lines**: version numbers do not order across them, so a lower public number is not a downgrade from a private build.
 
 **What the private beta does today (0.90 series):** Deployment-signed management on every transport; Normal and Hardened security posture; signed over-the-air updates for the Heltec gateways, including relay over a LoRa hop, and a staged LoRa image on the Wio repeater; signed uplink from the gateways; 50-contact Heltec gateways; a signed status beacon; and duty-cycle limits on transmit airtime. It speaks the legacy wire vocabulary (`gateway_id`, `deimos/gw/…`); the vocabulary in this repository's contracts is the target. See [Current-to-target adjustments](docs/CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
 
