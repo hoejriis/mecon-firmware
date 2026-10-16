@@ -49,12 +49,13 @@ static int formatProfile(const MqttProfiles& pr, const MqttCore* core, uint8_t i
   const char* user = q.user[0] ? "set" : "unset";
   const char* pwd = q.pwd[0] ? "set" : "unset";
   const char* anchor = q.hasAnchor() ? "set" : "unset";
+  const char* manage = q.manage ? " manage=on" : "";   // shown only when on, so the listing of a profile that does not manage is as it was
   if (q.kind == MqttProfile::Discovery) {
-    return snprintf(out, cap, "%u: discovery site=%s anchor=%s prio=%u user=%s pwd=%s last=%s", (unsigned)i, q.site,
-                    anchor, (unsigned)q.prio, user, pwd, last);
+    return snprintf(out, cap, "%u: discovery site=%s anchor=%s prio=%u user=%s pwd=%s%s last=%s", (unsigned)i, q.site,
+                    anchor, (unsigned)q.prio, user, pwd, manage, last);
   }
-  return snprintf(out, cap, "%u: static %s:%u tls=%s anchor=%s prio=%u user=%s pwd=%s last=%s", (unsigned)i, q.host,
-                  (unsigned)q.effectivePort(), q.tls ? "on" : "off", anchor, (unsigned)q.prio, user, pwd, last);
+  return snprintf(out, cap, "%u: static %s:%u tls=%s anchor=%s prio=%u user=%s pwd=%s%s last=%s", (unsigned)i, q.host,
+                  (unsigned)q.effectivePort(), q.tls ? "on" : "off", anchor, (unsigned)q.prio, user, pwd, manage, last);
 }
 
 bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture, const char* command, char* reply,
@@ -122,6 +123,11 @@ bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture,
       const char* v = p[3] ? p + 4 : "";
       if (strlen(v) >= MqttProfile::PWD_BUF) snprintf(reply, cap, "ERR: password is at most 63 characters");
       else { setText(q.pwd, sizeof(q.pwd), v); done(true, *v ? "pwd updated" : "pwd cleared"); }
+    } else if (memcmp(p, "manage ", 7) == 0) {
+      const char* v = p + 7;
+      if (strcmp(v, "on") == 0) { q.manage = 1; done(false, "may be managed over MQTT"); }
+      else if (strcmp(v, "off") == 0) { q.manage = 0; done(false, "is read-only over MQTT in Hardened"); }
+      else snprintf(reply, cap, "ERR: manage is on or off");
     } else if (memcmp(p, "priority ", 9) == 0) {
       const char* v = p + 9;
       unsigned n = 0;
@@ -136,7 +142,7 @@ bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture,
         snprintf(reply, cap, "> profile %u priority is now %u", (unsigned)idx, n);
       }
     } else {
-      snprintf(reply, cap, "ERR: set mqtt.profile <n> type|host|port|tls|anchor|site|user|pwd|priority <value> | clear");
+      snprintf(reply, cap, "ERR: set mqtt.profile <n> type|host|port|tls|anchor|site|user|pwd|priority|manage <value> | clear");
     }
     return true;
   }

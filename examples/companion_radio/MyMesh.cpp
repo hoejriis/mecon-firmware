@@ -544,16 +544,15 @@ void MyMesh::onCommandDataRecv(const ContactInfo &from, mesh::Packet *pkt, uint3
 void MyMesh::onCLICommandRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                                const char *text, char* reply) {
   markConnectionActive(from); // in case this is from a server, and we have a connection
-  if (from.isRemoteCLIAllowed() && Posture::isHardened(_prefs.posture)) {
-    // Hardened: the remote CLI is off, whatever the contact flag says
-    Posture::recordRefusal(getRTCClock()->getCurrentTime(), Posture::CALLER_REMOTE_CLI, Posture::W_REMOTE_CLI);
-    strcat(reply, "ERR: remote CLI is off in hardened posture");   // reply may have cmd prefix from 'text'
-  } else if (from.isRemoteCLIAllowed()) {
-    // sender_timestamp == 0 means "local console" to handleCommand(), and the peer chooses this value:
-    // never let a remote caller present as local.
+  if (from.isRemoteCLIAllowed()) {
+    // The flag makes the contact a remote CLI caller; what it may then run (reads and reboot, nothing at all in
+    // Hardened) is the engine's table. sender_timestamp == 0 means "local console" to handleCommand(), and the
+    // peer chooses this value: never let a remote caller present as local.
+    setCliCaller(Cli::Context(Cli::T_LORA, Cli::A_CONTACT_FLAG, _prefs.posture), Posture::CALLER_REMOTE_CLI);
     if (!handleCommand(text, sender_timestamp ? sender_timestamp : 1, reply)) {
       strcat(reply, "Unknown command");   // reply may have cmd prefix from 'text'
     }
+    setCliCaller(Cli::Context(), Posture::CALLER_NET);
   } else {
     queueMessage(from, TXT_TYPE_CLI_COMMAND, pkt, sender_timestamp, NULL, 0, text);
   }
@@ -1064,41 +1063,39 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   serial.enable();
 }
 
-// Commands that manage the device or carry its secrets: only served over a transport that
-// authenticates the peer (USB cable, paired BLE), never over the plain TCP server of a _wifi build.
-static bool isTrustedTransportOnlyCmd(uint8_t cmd) {
-  return cmd == CMD_RUN_CLI_COMMAND || cmd == CMD_EXPORT_PRIVATE_KEY || cmd == CMD_IMPORT_PRIVATE_KEY ||
-         cmd == CMD_SET_DEVICE_PIN || cmd == CMD_FACTORY_RESET;
+// The Companion frames the engine gates (src/helpers/cli/): the ones that run the CLI, move the private key, set the
+// BLE PIN or factory-reset the device. The table decides who may send them; see docs/CLI.md.
+static uint8_t gatedFrame(uint8_t cmd) {
+  switch (cmd) {
+    case CMD_RUN_CLI_COMMAND: return Cli::FR_CLI;
+    case CMD_EXPORT_PRIVATE_KEY: return Cli::FR_KEY_EXPORT;
+    case CMD_IMPORT_PRIVATE_KEY: return Cli::FR_KEY_IMPORT;
+    case CMD_SET_DEVICE_PIN: return Cli::FR_SET_PIN;
+    case CMD_FACTORY_RESET: return Cli::FR_FACTORY_RESET;
+  }
+  return Cli::FR_NONE;
 }
 
-// The audit "what" for a command that is refused.
-static uint8_t auditWhatForCmd(uint8_t cmd) {
-  switch (cmd) {
-    case CMD_RUN_CLI_COMMAND: return Posture::W_CLI;
-    case CMD_EXPORT_PRIVATE_KEY: return Posture::W_KEY_EXPORT;
-    case CMD_IMPORT_PRIVATE_KEY: return Posture::W_KEY_IMPORT;
-    case CMD_SET_DEVICE_PIN: return Posture::W_SET_PIN;
-    case CMD_FACTORY_RESET: return Posture::W_FACTORY_RESET;
-  }
-  return Posture::W_NONE;
+// The caller context of a frame that arrived over the serial interface: a cable is trusted by possession, BLE paired
+// with a PIN of the device's own is trusted, and everything else (the open TCP port, BLE with a default PIN, an
+// interface that did not say) authenticates nobody.
+Cli::Context MyMesh::serialContext() const {
+  if (_serial && _serial->isCableTransport()) return Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture);
+  if (_serial && _serial->isTrustedTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);
+  return Cli::Context(Cli::T_TCP, Cli::A_NONE, _prefs.posture);
+}
+
+void MyMesh::setCliCaller(const Cli::Context& ctx, uint8_t caller) {
+  _cli_ctx = ctx;
+  _cli_caller = caller;
 }
 
 void MyMesh::handleCmdFrame(size_t len) {
   const uint32_t now = getRTCClock()->getCurrentTime();
-  if (_serial && !_serial->isTrustedTransport() && isTrustedTransportOnlyCmd(cmd_frame[0])) {
-    MESH_DEBUG_PRINTLN("command %d refused on an unauthenticated transport", (int)cmd_frame[0]);
-    Posture::recordRefusal(now, Posture::CALLER_NET, auditWhatForCmd(cmd_frame[0]));
-    writeErrFrame(ERR_CODE_NOT_PERMITTED);
-    return;
-  }
-  // Hardened: the private key never leaves or enters the device, on any transport (USB included), and only
-  // a cable may factory-reset (a paired phone must not be able to strip the posture).
   {
-    const uint8_t caller = (_serial && _serial->isCableTransport()) ? Posture::CALLER_CABLE : Posture::CALLER_BLE;
-    if (((cmd_frame[0] == CMD_EXPORT_PRIVATE_KEY || cmd_frame[0] == CMD_IMPORT_PRIVATE_KEY) &&
-         !Posture::keyTransferAllowed(_prefs.posture)) ||
-        (cmd_frame[0] == CMD_FACTORY_RESET && !Posture::factoryResetAllowed(_prefs.posture, caller))) {
-      Posture::recordRefusal(now, caller, auditWhatForCmd(cmd_frame[0]));
+    const uint8_t frame = gatedFrame(cmd_frame[0]);
+    if (frame != Cli::FR_NONE && !Cli::allowFrame(serialContext(), frame, now)) {
+      MESH_DEBUG_PRINTLN("command %d refused for this caller", (int)cmd_frame[0]);
       writeErrFrame(ERR_CODE_NOT_PERMITTED);
       return;
     }
@@ -1175,7 +1172,10 @@ void MyMesh::handleCmdFrame(size_t len) {
     text[tlen] = 0; // ensure null
 
     reply_buf[0] = 0;
-    _cli_caller = (_serial && _serial->isCableTransport()) ? Posture::CALLER_CABLE : Posture::CALLER_BLE;
+    {
+      const Cli::Context ctx = serialContext();
+      setCliCaller(ctx, ctx.transport == Cli::T_USB ? Posture::CALLER_CABLE : Posture::CALLER_BLE);
+    }
     if (!handleCommand(text, 0, reply_buf)) {
       strcat(reply_buf, "Unknown command");   // reply_buf may have cmd prefix from 'text'
     }
@@ -2176,6 +2176,19 @@ void MyMesh::reloadContactSecrets() {
 #endif
 }
 
+// The command line over MQTT: the controller built the context from the broker session, the gate inside
+// handleCommand() decides, and a refusal is a reply. A remote caller always has a non-zero timestamp.
+uint8_t MyMesh::runMqttCli(const Cli::Context& ctx, const char* cmd, char* reply, size_t cap) {
+  reply_buf[0] = 0;
+  setCliCaller(ctx, Posture::CALLER_MQTT);
+  const bool known = handleCommand(cmd, 1, reply_buf);
+  setCliCaller(Cli::Context(), Posture::CALLER_NET);
+  if (!known) strcat(reply_buf, "Unknown command");   // reply_buf may hold a reflected prefix
+  snprintf(reply, cap, "%s", reply_buf);
+  if (_cli_refused) return Cli::Mqtt::S_REFUSED;
+  return known ? Cli::Mqtt::S_OK : Cli::Mqtt::S_UNKNOWN;
+}
+
 // A factory reset returns the device to Normal; the audit log (erased with the files) is written again with
 // the reset on it, so the history of what happened before the reset is not itself a casualty of it.
 void MyMesh::recordFactoryReset(uint8_t caller) {
@@ -2190,13 +2203,6 @@ void MyMesh::enterCLIRescue() {
   Serial.println("========= CLI Rescue =========");
 }
 
-// What a remote caller (sender_timestamp != 0) may run on a Companion: reads and a reboot.
-// Settings changes, poweroff and anything else stay with the local console and the app cable.
-static bool isRemoteCommandAllowed(const char* command) {
-  return memcmp(command, "get ", 4) == 0 || strcmp(command, "ver") == 0 || strcmp(command, "board") == 0 ||
-         strcmp(command, "reboot") == 0;
-}
-
 bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char* reply) {
   while (*command == ' ') command++; // skip leading spaces
 
@@ -2207,9 +2213,24 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     command += 3;
   }
 
+  // The engine's gate (src/helpers/cli/, docs/CLI.md): who may run which class of command. The adapter that carried
+  // the line set the context (setCliCaller); a remote caller always arrives with a non-zero timestamp, and a context
+  // that disagrees with the timestamp is treated as untrusted.
+  _cli_refused = false;
+  {
+    Cli::Context ctx = _cli_ctx;
+    ctx.posture = _prefs.posture;
+    ctx.remote = sender_timestamp != 0;
+    Cli::Outcome outcome;
+    if (Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {
+      _cli_refused = !outcome.allowed;
+      return true;
+    }
+  }
+
   {
     bool changed = false;
-    const uint8_t caller = sender_timestamp != 0 ? Posture::CALLER_REMOTE_CLI : _cli_caller;
+    const uint8_t caller = _cli_caller;
     if (Posture::handleCommand(command, caller, _prefs.posture, getRTCClock()->getCurrentTime(), reply, 150, changed)) {
       if (changed) { savePrefs(); auditStore().flush(millis()); }   // the posture and its audit entry reach flash together
       return true;
@@ -2219,7 +2240,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
 #ifdef ENABLE_CONNMODE
   {
     bool changed = false;
-    const uint8_t caller = sender_timestamp != 0 ? Posture::CALLER_REMOTE_CLI : _cli_caller;
+    const uint8_t caller = _cli_caller;
     if (ConnMode::handleCommand(command, caller, _prefs.connectivity_mode, getRTCClock()->getCurrentTime(), reply, 150, changed)) {
       if (changed) {
         savePrefs();
@@ -2230,12 +2251,6 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     }
   }
 #endif
-
-  if (sender_timestamp != 0 && !isRemoteCommandAllowed(command)) {
-    Posture::recordRefusal(getRTCClock()->getCurrentTime(), Posture::CALLER_REMOTE_CLI, Posture::W_REMOTE_WRITE);
-    strcpy(reply, "ERR: not permitted remotely");   // remote callers: reads and reboot only
-    return true;
-  }
 
   if (strcmp(command, "get dutycycle") == 0) {
     formatDutyCycleReply(reply);
@@ -2252,7 +2267,13 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
 
-  // hook for variant-specific CLI processing
+  // MECON's own commands (`mecon.`), then the hook for variant-specific CLI processing
+  {
+    Cli::Context ctx = _cli_ctx;
+    ctx.posture = _prefs.posture;
+    ctx.remote = sender_timestamp != 0;
+    if (Cli::handleMecon(command, ctx, Cli::ROLE_COMPANION, reply, 150)) return true;
+  }
   if (board.handleCommand(command, sender_timestamp, reply)) {
     if (_prefs.isDirty()) { savePrefs(); }
     return true;
@@ -2315,10 +2336,6 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     savePrefs();
     wifiController().profileChanged(0, true);
     strcpy(reply, "> wifi.pwd updated");
-    return true;
-  }
-  if (strcmp(command, "get wifi.pwd") == 0) {
-    strcpy(reply, "> wifi.pwd is write-only");   // the password is never read back, on any transport
     return true;
   }
   if (strcmp(command, "set wifi.clear") == 0) {
@@ -2442,7 +2459,7 @@ void MyMesh::checkCLIRescueCmd() {
     cli_command[len - 1] = 0;  // replace newline with C string null terminator
 
     reply_buf[0] = 0;
-    _cli_caller = Posture::CALLER_CABLE;   // the rescue console is the USB / UART serial port
+    setCliCaller(Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture), Posture::CALLER_CABLE);   // the rescue console is the USB / UART serial port
     if (handleCommand(cli_command, 0, reply_buf)) {
       // command was handled, print reply output
       Serial.print("  "); Serial.print(reply_buf); Serial.println();

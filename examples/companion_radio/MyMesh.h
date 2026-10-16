@@ -1,6 +1,7 @@
 #pragma once
 
 #include <helpers/Posture.h>
+#include <helpers/cli/CliMqtt.h>
 #include <helpers/ContactPlatform.h>
 #include <Arduino.h>
 #include <Mesh.h>
@@ -236,6 +237,10 @@ public:
   // To check if there is pending work
   bool hasPendingWork() const;
 
+  // One command line from the broker (docs/CLI.md). `ctx` says how the session was authenticated; the engine's table
+  // decides whether the line may run. Returns a Cli::Mqtt::Status.
+  uint8_t runMqttCli(const Cli::Context& ctx, const char* cmd, char* reply, size_t cap);
+
 private:
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);
@@ -281,7 +286,11 @@ private:
   uint32_t _connmode_restart_at = 0;   // millis() deadline of the restart after a mode switch (0 = none)
   void scheduleConnectivityRestart();
 #endif
-  uint8_t _cli_caller = Posture::CALLER_NET;   // who is behind a local (timestamp 0) handleCommand(); set by each caller, fails closed
+  uint8_t _cli_caller = Posture::CALLER_NET;   // who is behind a handleCommand(); set by each adapter, fails closed
+  Cli::Context _cli_ctx;                       // the same caller as a context for the engine's gate; T_NONE until an adapter sets it
+  bool _cli_refused = false;                   // the gate refused the last handleCommand()
+  Cli::Context serialContext() const;
+  void setCliCaller(const Cli::Context& ctx, uint8_t caller);
   void recordFactoryReset(uint8_t caller);
   char reply_buf[166];
   float _radio_freq = 0, _radio_bw = 0;

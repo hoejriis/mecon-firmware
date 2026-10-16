@@ -1,6 +1,6 @@
 # MQTT broker profiles
 
-The Companion `_wifi` builds can keep one MQTT session open to a broker. This is **Stage A**: transport and broker management only, standalone and independent of any MECON service. The controller sits on the Wi-Fi controller's link ([Wi-Fi profiles](WIFI.md)), holds up to **six broker profiles**, keeps **one session at a time**, fails over by priority and returns to a better profile without flapping. The only thing it publishes is a retained status message. The unified CLI over MQTT and the MECON topics ([MQTT/network contract](contract/MQTT_PROTOCOL.md)) are separate work.
+The Companion `_wifi` builds can keep one MQTT session open to a broker. This is **Stage A**: transport and broker management only, standalone and independent of any MECON service. The controller sits on the Wi-Fi controller's link ([Wi-Fi profiles](WIFI.md)), holds up to **six broker profiles**, keeps **one session at a time**, fails over by priority and returns to a better profile without flapping. It publishes a retained status message and carries the command line over MQTT ([Command-line engine](CLI.md)). The MECON topics ([MQTT/network contract](contract/MQTT_PROTOCOL.md)) are separate work.
 
 What is verified, and how: the decision rules by unit tests against a fake network and by the simulated-board suite against real Mosquitto brokers, plain and TLS, with a simulated mDNS responder and DNS ([Simulated-board test harness](SIMULATION.md)). **Not verified on hardware:** the ESP32 mDNS query, the `WiFiClientSecure` fingerprint check and the TLS heap figure below. They are written from the platform sources and compiled for the Heltec V3 and V4, but no board has joined a network and no real broker has been reached. **RP2040 is not supported** (see Platforms).
 
@@ -8,11 +8,11 @@ What is verified, and how: the decision rules by unit tests against a fake netwo
 
 `PubSubClient` 2.8.0 (`knolleary/PubSubClient`, MIT), pinned to that exact version in the Heltec V3 and V4 Wi-Fi builds and in the two simulated Companion builds.
 
-- **Heap.** One 256-byte packet buffer allocated once; no other allocation, no task, no queue. The connection object belongs to the platform, so the TLS context exists only while a session is open.
+- **Heap.** One packet buffer allocated once (512 bytes since the command line over MQTT, 256 before); no other allocation, no task, no queue. The connection object belongs to the platform, so the TLS context exists only while a session is open.
 - **TLS and portability.** It speaks MQTT 3.1.1 through the Arduino `Client` interface, so the same code runs over `WiFiClient` and over `WiFiClientSecure` (mbedTLS) on ESP32, and compiles natively for the simulated board with three small shims (`Client.h`, `IPAddress.h`, two macros in `Arduino.h`) and a socket-and-OpenSSL `Client`. Nothing in the library knows about TLS, so the certificate check is ours and identical in the simulator and on the device.
 - **Maintenance.** The last release is 2.8 (2020). The library is small, stable and very widely deployed; its protocol subset (3.1.1, QoS 0 and 1, no MQTT 5) is all this stage needs. If it ever has to be replaced, the controller touches it in three calls (`connect`, `loop`, `publish`).
 - **Alternatives considered.** `esp-mqtt` (ESP-IDF) brings its own task, its own TLS stack and no native build, and does not exist on RP2040. `AsyncMqttClient` is ESP-only and depends on AsyncTCP. `arduino-mqtt` (lwmqtt) is comparable and more actively maintained, with a larger footprint and no advantage here.
-- **Known limits of the library.** `connect()` blocks until CONNACK or the socket timeout (6 s here); there is no MQTT 5; a received message above the 256-byte buffer is dropped (nothing is subscribed in this stage).
+- **Known limits of the library.** `connect()` blocks until CONNACK or the socket timeout (6 s here); there is no MQTT 5; a received message above the packet buffer is dropped (512 bytes since the command line over MQTT; 256 before).
 
 ## Profiles
 
@@ -44,7 +44,7 @@ Timings are `MqttTiming` defaults in `MqttCore.h`.
 
 ## Commands
 
-All of them run on a trusted local transport; the TCP companion port refuses the CLI, and a remote CLI caller may run the `get` forms only.
+All of them run on a trusted local transport; the TCP companion port refuses the CLI, and a remote CLI caller may run the `get` forms only. A broker may run them over MQTT only as the [Command-line engine](CLI.md) allows.
 
 | Command | Effect |
 |---|---|
@@ -56,6 +56,7 @@ All of them run on a trusted local transport; the TCP companion port refuses the
 | `set mqtt.profile <n> site <id>` | discovery only; 1 to 23 characters |
 | `set mqtt.profile <n> user <name>` / `pwd <secret>` | with no value, cleared; write-only |
 | `set mqtt.profile <n> priority <0-255>` | higher is tried first |
+| `set mqtt.profile <n> manage on\|off` | lets this broker manage the device over MQTT even in Hardened ([Command-line engine](CLI.md)); only a local caller sets it, off by default, shown in the listing only when on |
 | `set mqtt.profile <n> clear` | removes the profile and its credentials |
 | `get mqtt.profile <n>` | `<n>: static <host>:<port> tls=on\|off anchor=set\|unset prio=<p> user=set\|unset pwd=set\|unset last=<reason>`, or the discovery form |
 | `get mqtt.profiles [from]` | every configured profile, paged with `... next:<n>` |
@@ -97,5 +98,5 @@ RAM is the static figure PlatformIO reports (data and bss): the profiles (1.5 KB
 - IPv4 only. A discovery responder is identified by address and port; at most six candidates are tracked, so a LAN that advertises many responders with the right site ID can delay discovery (each failed candidate cools down alone) but cannot make the device connect to one whose certificate does not match.
 - A lost discovery responder is noticed by a browse, which runs only while a better discovery profile exists; on the best profile the session dropping is the signal.
 - No SNI is sent. No client certificates. No CA store.
-- Only the retained status is published; nothing is subscribed.
+- Besides the retained status, the device subscribes to its own command-line request topic and answers on its response topic ([Command-line engine](CLI.md)); it subscribes to nothing else.
 - Hardware: nothing here has run on a board.

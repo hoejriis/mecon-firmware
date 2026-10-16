@@ -14,10 +14,13 @@ What the simulated-board suite checks here is software behaviour. BLE needs a ra
 | MQTT broker profiles (Wi-Fi) | plain or TLS static profiles, discovery profiles | plain static profiles refused (at the command and when used), TLS static and discovery profiles as in Normal |
 | Remote admin over RF (repeater, room server) | refused while the admin password is the default; otherwise as stock minus `set prv.key` | read-only plus `reboot`; no remote settings changes |
 | Remote CLI on a Companion (contact flag) | reads plus `reboot` | off |
+| Command line over MQTT (Companion, Wi-Fi) | TLS-verified broker session only: reads, settings and `reboot`; never the posture, the key or a factory reset | TLS-verified broker session only: reads; settings and `reboot` only when the broker profile is flagged for management (`set mqtt.profile <n> manage on`, set locally) |
 | Private key export / import | trusted local transports | refused on every transport, USB included |
 | Factory reset | trusted local transports | USB / UART only; always works there and returns the device to Normal |
 
 In both postures, while the admin password is the stock default (`password`, the build's own `ADMIN_PASSWORD`, or empty), a remote admin login is refused and so is every remote admin command, even from a session that was opened before. A password set on the local console opens remote admin in Normal; in Hardened it opens a read-only session. Guest access is as stock in both postures (it is read-only by design). The Hardened column is a refusal with an explicit reply (a Companion frame answers `ERR_CODE_NOT_PERMITTED`, 7), never a silent drop, and each refusal is audited.
+
+Every row of the two tables above is a cell of one privilege table, shared by all the ways a command reaches the device: see [Command-line engine](CLI.md).
 
 An attempted password is never logged or stored: stock's debug print of it is removed.
 
@@ -45,7 +48,7 @@ Factory reset over USB / UART works in both postures: the Companion's `CMD_FACTO
 A persistent ring of 32 security events, readable with `get audit` on a trusted local transport. It records:
 
 - posture changes (the new posture),
-- refused commands: the command class and who asked (cable, BLE, network, remote admin, remote CLI),
+- refused commands: the command class and who asked (cable, BLE, network, remote admin, remote CLI, MQTT),
 - failed admin logins (wrong password, or the default password) and logins refused because the password is the default,
 - factory resets,
 - a transport that Hardened did not start (BLE, TCP server).

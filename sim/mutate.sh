@@ -8,6 +8,8 @@ cd "$(dirname "$0")/.."
 mkdir -p .sim-logs
 ONLY="${1:-}"
 SURVIVED=0
+DRY=0
+if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; fi   # --dry: only check that every mutant's target text exists (no build, no tests)
 if [ "$ONLY" = "--list" ]; then grep -o "^mutate [a-z0-9_]*" "$0" | cut -d" " -f2; exit 0; fi
 
 build() { sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
@@ -16,6 +18,19 @@ build() { sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-lo
 mutate() {
   name="$1"; file="$2"; old="$3"; new="$4"; target="$5"
   if [ -n "$ONLY" ] && [ "$ONLY" != "$name" ]; then return 0; fi
+  if [ "$DRY" = 1 ]; then
+    python3 - "$file" "$old" "$new" <<'PY'
+import sys
+p, old, new = sys.argv[1:4]
+s = open(p).read()
+if old not in s:
+    print("TARGET MISSING: %s in %s" % (sys.argv[0], p)); sys.exit(1)
+if old == new:
+    print("NO-OP MUTANT in %s" % p); sys.exit(1)
+PY
+    if [ $? -ne 0 ]; then echo "  -> $name"; SURVIVED=1; fi
+    return 0
+  fi
   python3 - "$file" "$old" "$new" <<'PY'
 import sys
 p, old, new = sys.argv[1:4]
@@ -40,10 +55,6 @@ mutate radio_drops_all variants/sim/sim_radio.cpp "if (_i->rxq.empty() || _i->tx
 mutate fs_write_discarded variants/sim/sim_fs.cpp "size_t w = fwrite(buf, 1, n, _p->fp);" "size_t w = n;" sim/tests/test_repeater_cli.py
 mutate fault_hook_disabled variants/sim/sim_fs.cpp "if (g_sim.fault_after >= 0 && _p->fs_path == g_sim.fault_path) {" "if (false) {" sim/tests/test_atomic_storage.py::test_prefs_cut_in_temp_file_keeps_previous_prefs
 # --- the stock-gap fixes: undo each fix and its test must go red
-mutate transport_guard_removed examples/companion_radio/MyMesh.cpp "if (_serial && !_serial->isTrustedTransport() &&" "if (false && _serial && !_serial->isTrustedTransport() &&" sim/tests/test_companion_transport.py
-mutate wifi_password_readable examples/companion_radio/MyMesh.cpp 'strcpy(reply, "> wifi.pwd is write-only");   // the password is never read back, on any transport' 'sprintf(reply, "> %s", _prefs.wifi_profiles.pwd_[0]);' sim/tests/test_companion_cli_secrets.py
-mutate remote_cli_unrestricted examples/companion_radio/MyMesh.cpp "if (sender_timestamp != 0 && !isRemoteCommandAllowed(command)) {" "if (false && !isRemoteCommandAllowed(command)) {" sim/tests/test_companion_remote_cli.py
-mutate prvkey_remote_allowed src/helpers/CommonCLI.cpp '} else if (sender_timestamp != 0 && memcmp(config, "prv.key", 7) == 0) {' '} else if (false && memcmp(config, "prv.key", 7) == 0) {' sim/tests/test_repeater_prvkey.py
 mutate swap_not_recovered src/helpers/AtomicFile.h "  if (fs->exists(nw)) {
     if (!fs->exists(path)) fs->rename(nw, path);" "  if (false) {
     if (!fs->exists(path)) fs->rename(nw, path);" sim/tests/test_atomic_storage.py
@@ -73,41 +84,22 @@ mutate dutycycle_room_server_floor_missing examples/simple_room_server/MyMesh.h 
 mutate posture_damaged_value_fails_open src/helpers/Posture.h "inline bool isHardened(uint8_t posture) { return posture != NORMAL; }" "inline bool isHardened(uint8_t posture) { return posture == HARDENED; }" unit:test_posture
 mutate posture_ble_default_pin_starts src/helpers/Posture.h "return !isHardened(posture) || (active_pin != 0 && active_pin != 123456);" "return true;" unit:test_posture
 mutate posture_tcp_server_starts_unit src/helpers/Posture.h "inline bool tcpServerMayStart(uint8_t posture) { return !isHardened(posture); }" "inline bool tcpServerMayStart(uint8_t posture) { return true; }" unit:test_posture
-mutate posture_key_transfer_allowed_unit src/helpers/Posture.h "inline bool keyTransferAllowed(uint8_t posture) { return !isHardened(posture); }" "inline bool keyTransferAllowed(uint8_t posture) { return true; }" unit:test_posture
-mutate posture_companion_keys_allowed examples/companion_radio/MyMesh.cpp "!Posture::keyTransferAllowed(_prefs.posture)) ||" "false) ||" sim/tests/test_postures_companion.py::test_hardened_refuses_key_export_and_import_on_usb
-mutate posture_repeater_key_export_allowed src/helpers/CommonCLI.cpp "} else if (sender_timestamp == 0 && memcmp(config, \"prv.key\", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {" "} else if (false) {" sim/tests/test_postures_admin.py::test_key_export_and_import_are_refused_in_hardened_even_on_the_console
-mutate posture_repeater_key_import_allowed src/helpers/CommonCLI.cpp "} else if (memcmp(config, \"prv.key\", 7) == 0 && !Posture::keyTransferAllowed(_prefs->posture)) {" "} else if (false) {" sim/tests/test_postures_admin.py::test_key_export_and_import_are_refused_in_hardened_even_on_the_console
-mutate posture_ble_factory_reset_allowed src/helpers/Posture.h "return !isHardened(posture) || caller == CALLER_CABLE;" "return true;" unit:test_posture
-mutate posture_remote_admin_writes_allowed src/helpers/Posture.h "if (remote && isHardened(posture) && !isRemoteReadOnly(command)) {" "if (false) {" sim/tests/test_postures_admin.py::test_hardened_remote_admin_is_read_only_plus_reboot
-mutate posture_remote_admin_list_unit src/helpers/Posture.h "strcmp(c, \"reboot\") == 0 ||
-         strcmp(c, \"clock\") == 0" "strcmp(c, \"reboot\") == 0 || memcmp(c, \"set \", 4) == 0 ||
-         strcmp(c, \"clock\") == 0" unit:test_posture
 mutate posture_default_password_login_allowed examples/simple_repeater/MyMesh.cpp "const bool admin_open = !Posture::isDefaultAdminPassword(_prefs.password, ADMIN_PASSWORD);" "const bool admin_open = true;" sim/tests/test_postures_admin.py::test_stock_default_password_does_not_open_remote_admin
 mutate posture_default_password_login_allowed_room examples/simple_room_server/MyMesh.cpp "const bool admin_open = !Posture::isDefaultAdminPassword(_prefs.password, ADMIN_PASSWORD);" "const bool admin_open = true;" sim/tests/test_postures_admin.py::test_stock_default_password_does_not_open_remote_admin
 mutate posture_stored_admin_relogin_allowed examples/simple_repeater/MyMesh.cpp "} else if (client->isAdmin() && !admin_open) {" "} else if (false) {" sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
-mutate posture_default_password_commands_allowed src/helpers/Posture.h "if (remote && isDefaultAdminPassword(admin_pw, build_default)) {" "if (false) {" sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
 mutate posture_empty_password_counts_as_set src/helpers/Posture.h "return pw[0] == 0 || strcmp(pw, \"password\") == 0" "return strcmp(pw, \"password\") == 0" unit:test_posture
 mutate posture_attempted_password_logged examples/simple_repeater/MyMesh.cpp "// never log or store the attempted password" "fprintf(stderr, \"bad login %s\\n\", (char *)data);" sim/tests/test_postures_admin.py::test_attempted_passwords_are_audited_but_never_kept
-mutate posture_remote_can_lower src/helpers/Posture.h "bool allowed = to_hardened ? local : caller == CALLER_CABLE;" "bool allowed = true;" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
-mutate posture_ble_can_lower src/helpers/Posture.h "bool allowed = to_hardened ? local : caller == CALLER_CABLE;" "bool allowed = local;" unit:test_posture
 mutate posture_lowering_without_confirm src/helpers/Posture.h "if (to_normal && strcmp(arg, \"normal confirm\") != 0) {" "if (false) {" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
 mutate posture_not_persisted_repeater src/helpers/CommonCLI.h "    def(\"posture\", posture);
 " "" sim/tests/test_postures_admin.py::test_posture_and_audit_survive_a_reboot
 mutate posture_not_persisted_companion examples/companion_radio/NodePrefs.h "    def(\"posture\", posture);
 " "" sim/tests/test_postures_companion.py::test_hardened_survives_a_reboot
 mutate posture_factory_reset_keeps_posture src/helpers/CommonCLI.cpp "_prefs->posture = Posture::NORMAL;" "" sim/tests/test_postures_admin.py::test_factory_reset_on_the_console_recovers_a_hardened_repeater
-mutate posture_audit_not_recorded src/helpers/Posture.h "inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { audit().add(ts, EV_REFUSED, caller, what); }" "inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { }" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
-mutate posture_audit_readable_remotely src/helpers/Posture.h "    if (!local) {
-      recordRefusal(now, caller, W_AUDIT);" "    if (false) {
-      recordRefusal(now, caller, W_AUDIT);" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
 mutate posture_audit_not_folded src/helpers/AuditRing.h "int at = find(event, caller, what);
     AuditEntry rec" "int at = -1;
     AuditEntry rec" unit:test_posture
 mutate posture_audit_flush_unbounded src/helpers/AuditRing.h "return _urgent || !_flushed_once || (uint32_t)(now_ms - _last_flush) >= (uint32_t)FLUSH_INTERVAL_MS;" "return true;" unit:test_posture
 mutate posture_audit_crc_unchecked src/helpers/AuditRing.h "if (crc32(in, FILE_SIZE - 4) != want) return false;" "" unit:test_posture
-mutate posture_remote_cli_stays_on_in_hardened examples/companion_radio/MyMesh.cpp "if (from.isRemoteCLIAllowed() && Posture::isHardened(_prefs.posture)) {" "if (false) {" sim/tests/test_postures_companion.py::test_hardened_turns_the_remote_cli_off
-mutate posture_untrusted_refusal_not_audited examples/companion_radio/MyMesh.cpp "Posture::recordRefusal(now, Posture::CALLER_NET, auditWhatForCmd(cmd_frame[0]));" "" sim/tests/test_postures_companion.py::test_untrusted_transport_refusals_are_audited
-mutate posture_companion_remote_lowering examples/companion_radio/MyMesh.cpp "const uint8_t caller = sender_timestamp != 0 ? Posture::CALLER_REMOTE_CLI : _cli_caller;" "const uint8_t caller = Posture::CALLER_CABLE;" sim/tests/test_postures_companion.py::test_remote_cli_cannot_change_the_posture_and_it_is_audited
 # --- Wi-Fi controller rules (docs/WIFI.md): undo each rule and its tests must go red
 WIFI_CORE=src/helpers/wifi/WifiCore.cpp
 WIFI_SIM=sim/tests/test_companion_wifi.py
@@ -253,12 +245,8 @@ mutate connmode_damaged_byte_starts_wifi $CM_H "inline uint8_t sanitize(uint8_t 
 mutate connmode_ble_may_always_start $CM_H "inline bool bleMayStart(uint8_t mode) { return sanitize(mode) == BLE; }" "inline bool bleMayStart(uint8_t mode) { return true; }" unit:test_connmode
 mutate connmode_ble_started_in_wifi_mode examples/companion_radio/main.cpp "if (!ConnMode::bleMayStart(conn_mode)) {" "if (false) {" $CM_SIM::test_wifi_mode_starts_only_the_wifi_stack_and_persists
 mutate connmode_wifi_started_in_ble_mode examples/companion_radio/main.cpp "if (!ConnMode::wifiMayStart(conn_mode)) wifi_enabled = false;" "if (false) wifi_enabled = false;" $CM_SIM::test_the_default_mode_is_ble_and_only_the_ble_stack_starts
-mutate connmode_remote_may_switch $CM_H "return caller == Posture::CALLER_CABLE || caller == Posture::CALLER_BLE || caller == Posture::CALLER_BUTTON;" "return caller == Posture::CALLER_CABLE || caller == Posture::CALLER_BLE || caller == Posture::CALLER_BUTTON || caller == Posture::CALLER_REMOTE_CLI;" unit:test_connmode
-mutate connmode_remote_may_switch_sim $CM_H "return caller == Posture::CALLER_CABLE || caller == Posture::CALLER_BLE || caller == Posture::CALLER_BUTTON;" "return caller == Posture::CALLER_CABLE || caller == Posture::CALLER_BLE || caller == Posture::CALLER_BUTTON || caller == Posture::CALLER_REMOTE_CLI;" $CM_SIM::test_a_remote_switch_is_refused_and_audited
 mutate connmode_remote_refusal_not_audited $CM_H "    Posture::recordRefusal(now, caller, Posture::W_CONNMODE);
     snprintf(reply, max, \"ERR: not permitted\");" "    snprintf(reply, max, \"ERR: not permitted\");" unit:test_connmode
-mutate connmode_remote_refusal_not_audited_sim $CM_H "    Posture::recordRefusal(now, caller, Posture::W_CONNMODE);
-    snprintf(reply, max, \"ERR: not permitted\");" "    snprintf(reply, max, \"ERR: not permitted\");" $CM_SIM::test_a_remote_switch_is_refused_and_audited
 mutate connmode_change_not_audited $CM_H "  Posture::audit().add(now, Posture::EV_MODE_SET, caller, want);" "  (void)now;" unit:test_connmode
 mutate connmode_change_not_audited_sim $CM_H "  Posture::audit().add(now, Posture::EV_MODE_SET, caller, want);" "  (void)now;" $CM_SIM::test_the_cable_switch_is_audited
 mutate connmode_not_persisted examples/companion_radio/NodePrefs.h "      def(\"conn_mode\", _parent->connectivity_mode);" "" $CM_SIM::test_wifi_mode_starts_only_the_wifi_stack_and_persists
@@ -342,8 +330,132 @@ mutate contacts_erased_fs_lost_contacts_kept_in_index $CS '      _count--;
       lost++;' '      lost++;' unit:test_contact_store
 mutate contacts_device_query_wraps examples/companion_radio/MyMesh.cpp '      out_frame[i++] = half > 255 ? 255 : half;   // v3+' '      out_frame[i++] = half;   // v3+' $CT_SIM::test_device_query_reports_half_the_capacity_capped_at_one_byte
 
+if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
+# --- the unified command-line engine (docs/CLI.md): one mutant per rule of the privilege table, one per rule of the
+# --- registry and the adapters. The rules that used to sit in the paths below (transport trust, the remote CLI limits, the
+# --- postures, the default-password rule, set prv.key, the write-only secrets) now live in the table; each mutant breaks
+# --- the moved rule at its new place and points at the tests that can see it.
+CLI_P=src/helpers/cli/CliPolicy.h
+CLI_R=src/helpers/cli/CliRegistry.h
+CLI_E=src/helpers/cli/CliEngine.h
+CLI_M=src/helpers/cli/CliMqtt.h
+CLI_UNIT=unit:test_cli_engine
+# table rows: a cell or a whole row loosened
+mutate table_untrusted_row_open src/helpers/cli/CliPolicy.h "/* untrusted      N */ { CLI_ROW(UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED)," "/* untrusted      N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW)," sim/tests/test_companion_transport.py sim/tests/test_postures_companion.py::test_untrusted_transport_refusals_are_audited
+mutate table_untrusted_row_open_unit src/helpers/cli/CliPolicy.h "/* untrusted      N */ { CLI_ROW(UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED)," "/* untrusted      N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW)," unit:test_cli_engine
+mutate table_cable_key_in_hardened src/helpers/cli/CliPolicy.h "/* cable          H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           ALLOW,           ALLOW) }," "/* cable          H */   CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW) }," sim/tests/test_postures_companion.py::test_hardened_refuses_key_export_and_import_on_usb sim/tests/test_postures_admin.py::test_key_export_and_import_are_refused_in_hardened_even_on_the_console
+mutate table_cable_key_in_hardened_unit src/helpers/cli/CliPolicy.h "/* cable          H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           ALLOW,           ALLOW) }," "/* cable          H */   CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW) }," unit:test_cli_engine
+mutate table_paired_factory_reset_in_hardened src/helpers/cli/CliPolicy.h "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           NOT_PERMITTED,   ALLOW) }," "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           ALLOW,           ALLOW) }," unit:test_cli_engine
+mutate table_paired_key_in_hardened src/helpers/cli/CliPolicy.h "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           NOT_PERMITTED,   ALLOW) }," "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW) }," unit:test_cli_engine
+mutate table_remote_admin_prvkey_allowed src/helpers/cli/CliPolicy.h "/* remote admin   N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW)," "/* remote admin   N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           NOT_PERMITTED,   LOCAL_ONLY,      ALLOW)," sim/tests/test_repeater_prvkey.py::test_remote_admin_cannot_replace_identity
+mutate table_remote_admin_posture_allowed src/helpers/cli/CliPolicy.h "/* remote admin   N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW)," "/* remote admin   N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      ALLOW,           LOCAL_ONLY,      ALLOW)," sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
+mutate table_remote_admin_writes_in_hardened src/helpers/cli/CliPolicy.h "/* remote admin   H */   CLI_ROW(ALLOW,           HARDENED,        HARDENED,        NOT_PERMITTED,   HARDENED,        ALLOW) }," "/* remote admin   H */   CLI_ROW(ALLOW,           ALLOW,           HARDENED,        NOT_PERMITTED,   HARDENED,        ALLOW) }," sim/tests/test_postures_admin.py::test_hardened_remote_admin_is_read_only_plus_reboot
+mutate table_remote_admin_destructive_in_hardened src/helpers/cli/CliPolicy.h "/* remote admin   H */   CLI_ROW(ALLOW,           HARDENED,        HARDENED,        NOT_PERMITTED,   HARDENED,        ALLOW) }," "/* remote admin   H */   CLI_ROW(ALLOW,           HARDENED,        HARDENED,        NOT_PERMITTED,   ALLOW,           ALLOW) }," unit:test_posture
+mutate table_remote_admin_reboot_refused src/helpers/cli/CliPolicy.h "/* remote admin   H */   CLI_ROW(ALLOW,           HARDENED,        HARDENED,        NOT_PERMITTED,   HARDENED,        ALLOW) }," "/* remote admin   H */   CLI_ROW(ALLOW,           HARDENED,        HARDENED,        NOT_PERMITTED,   HARDENED,        HARDENED) }," sim/tests/test_postures_admin.py::test_hardened_remote_admin_is_read_only_plus_reboot
+mutate table_default_password_row_open src/helpers/cli/CliPolicy.h "/* admin, default N */ { CLI_ROW(DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW)," "/* admin, default N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW)," sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
+mutate table_guest_row_open src/helpers/cli/CliPolicy.h "/* guest          N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED)," "/* guest          N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW)," unit:test_cli_engine
+mutate table_contact_writes_allowed src/helpers/cli/CliPolicy.h "/* flagged contact N */ { CLI_ROW(ALLOW,           REMOTE_LIMITED,  REMOTE_LIMITED,  NOT_PERMITTED,   REMOTE_LIMITED,  ALLOW)," "/* flagged contact N */ { CLI_ROW(ALLOW,           ALLOW,           REMOTE_LIMITED,  NOT_PERMITTED,   REMOTE_LIMITED,  ALLOW)," sim/tests/test_companion_remote_cli.py
+mutate table_contact_secret_allowed src/helpers/cli/CliPolicy.h "/* flagged contact N */ { CLI_ROW(ALLOW,           REMOTE_LIMITED,  REMOTE_LIMITED,  NOT_PERMITTED,   REMOTE_LIMITED,  ALLOW)," "/* flagged contact N */ { CLI_ROW(ALLOW,           REMOTE_LIMITED,  ALLOW,           NOT_PERMITTED,   REMOTE_LIMITED,  ALLOW)," unit:test_cli_engine
+mutate table_contact_posture_allowed src/helpers/cli/CliPolicy.h "/* flagged contact N */ { CLI_ROW(ALLOW,           REMOTE_LIMITED,  REMOTE_LIMITED,  NOT_PERMITTED,   REMOTE_LIMITED,  ALLOW)," "/* flagged contact N */ { CLI_ROW(ALLOW,           REMOTE_LIMITED,  REMOTE_LIMITED,  ALLOW,           REMOTE_LIMITED,  ALLOW)," sim/tests/test_postures_companion.py::test_remote_cli_cannot_change_the_posture_and_it_is_audited
+mutate table_contact_switches_the_mode src/helpers/cli/CliPolicy.h "/* flagged contact N */ { CLI_ROW(ALLOW,           REMOTE_LIMITED,  REMOTE_LIMITED,  NOT_PERMITTED,   REMOTE_LIMITED,  ALLOW)," "/* flagged contact N */ { CLI_ROW(ALLOW,           REMOTE_LIMITED,  REMOTE_LIMITED,  ALLOW,           REMOTE_LIMITED,  ALLOW)," sim/tests/test_connectivity_mode.py::test_a_remote_switch_is_refused_and_audited
+mutate table_contact_cli_stays_on_in_hardened src/helpers/cli/CliPolicy.h "/* flagged contact H */   CLI_ROW(CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF) }," "/* flagged contact H */   CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW) }," sim/tests/test_postures_companion.py::test_hardened_turns_the_remote_cli_off
+mutate table_contact_reads_in_hardened src/helpers/cli/CliPolicy.h "/* flagged contact H */   CLI_ROW(CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF) }," "/* flagged contact H */   CLI_ROW(ALLOW,           CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF) }," sim/tests/test_postures_companion.py::test_hardened_turns_the_remote_cli_off
+mutate table_mqtt_posture_allowed src/helpers/cli/CliPolicy.h "/* MQTT verified  N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW)," "/* MQTT verified  N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW)," sim/tests/test_cli_unified.py::test_mqtt_cannot_do_what_only_a_local_caller_may
+mutate table_mqtt_secret_allowed src/helpers/cli/CliPolicy.h "/* MQTT verified  N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW)," "/* MQTT verified  N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   ALLOW)," unit:test_cli_engine
+mutate table_mqtt_destructive_allowed src/helpers/cli/CliPolicy.h "/* MQTT verified  N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW)," "/* MQTT verified  N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           ALLOW)," unit:test_cli_engine
+mutate table_mqtt_hardened_writes_always src/helpers/cli/CliPolicy.h "/* MQTT verified  H */   CLI_ROW(ALLOW,           NEEDS_FLAG,      NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NEEDS_FLAG) }," "/* MQTT verified  H */   CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NEEDS_FLAG) }," sim/tests/test_cli_unified.py::test_hardened_mqtt_is_read_only_unless_the_profile_is_flagged_for_management
+mutate table_mqtt_hardened_reboot_always src/helpers/cli/CliPolicy.h "/* MQTT verified  H */   CLI_ROW(ALLOW,           NEEDS_FLAG,      NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NEEDS_FLAG) }," "/* MQTT verified  H */   CLI_ROW(ALLOW,           NEEDS_FLAG,      NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW) }," unit:test_cli_engine
+mutate table_mqtt_hardened_reads_refused src/helpers/cli/CliPolicy.h "/* MQTT verified  H */   CLI_ROW(ALLOW,           NEEDS_FLAG,      NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NEEDS_FLAG) }," "/* MQTT verified  H */   CLI_ROW(NOT_PERMITTED,   NEEDS_FLAG,      NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NEEDS_FLAG) }," sim/tests/test_cli_unified.py::test_hardened_mqtt_is_read_only_unless_the_profile_is_flagged_for_management
+mutate table_mqtt_normal_writes_refused src/helpers/cli/CliPolicy.h "/* MQTT verified  N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW)," "/* MQTT verified  N */ { CLI_ROW(ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW)," sim/tests/test_cli_unified.py::test_the_same_command_over_usb_lora_and_mqtt
+mutate table_mqtt_unverified_row_open src/helpers/cli/CliPolicy.h "/* MQTT unverified N */ { CLI_ROW(MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED)," "/* MQTT unverified N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW)," sim/tests/test_cli_unified.py::test_mqtt_is_refused_on_plain_and_on_unverified_tls_and_audited
+mutate table_button_cannot_switch src/helpers/cli/CliPolicy.h "/* button         N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED)," "/* button         N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED)," unit:test_connmode
+mutate table_button_runs_commands src/helpers/cli/CliPolicy.h "/* button         N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED)," "/* button         N */ { CLI_ROW(NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED)," unit:test_cli_engine
+# the rules around the table
+mutate policy_flag_ignored_for_the_lowering_rule src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" unit:test_posture
+mutate policy_flag_ignored_for_the_lowering_rule_unit src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" unit:test_cli_engine
+mutate policy_management_flag_ignored src/helpers/cli/CliPolicy.h "if (r == R_NEEDS_FLAG) r = c.mgmt ? R_ALLOW : R_MQTT_READONLY;" "if (r == R_NEEDS_FLAG) r = R_ALLOW;" unit:test_cli_engine
+mutate policy_hardened_byte_fails_open src/helpers/cli/CliPolicy.h "tableCell(p, c.posture != 0, cls)" "tableCell(p, c.posture == 1, cls)" unit:test_cli_engine
+mutate policy_inconsistent_context_trusted src/helpers/cli/CliPolicy.h "if (c.remote != wire_remote) return P_UNTRUSTED;" "" unit:test_cli_engine
+mutate policy_unset_context_trusted src/helpers/cli/CliPolicy.h "    default: return P_UNTRUSTED;   // T_TCP, T_NONE, anything else" "    default: return P_CABLE;" unit:test_cli_engine
+mutate policy_default_pin_ble_is_paired src/helpers/cli/CliPolicy.h "case T_BLE: return c.auth == A_PAIRED_PIN ? P_PAIRED : P_UNTRUSTED;" "case T_BLE: return (c.auth == A_PAIRED_PIN || c.auth == A_PAIRED_DEFAULT_PIN) ? P_PAIRED : P_UNTRUSTED;" unit:test_cli_engine
+mutate policy_unverified_session_is_verified src/helpers/cli/CliMqtt.h "return Context(T_MQTT, tls_verified ? A_TLS_VERIFIED : A_TLS_UNVERIFIED, posture, profile_manages);" "return Context(T_MQTT, A_TLS_VERIFIED, posture, profile_manages);" unit:test_cli_mqtt
+mutate policy_unknown_class_allowed src/helpers/cli/CliPolicy.h "if (p >= P_COUNT || cls >= C_COUNT) return R_NOT_PERMITTED;" "if (p >= P_COUNT || cls >= C_COUNT) return R_ALLOW;" unit:test_cli_engine
+# the registry
+mutate registry_unregistered_command_is_a_read src/helpers/cli/CliRegistry.h "  uint8_t cls = C_WRITE;" "  uint8_t cls = C_READ;"  sim/tests/test_companion_remote_cli.py
+mutate registry_unregistered_command_is_a_read_unit src/helpers/cli/CliRegistry.h "  uint8_t cls = C_WRITE;" "  uint8_t cls = C_READ;" unit:test_cli_engine
+mutate registry_get_prvkey_is_a_read src/helpers/cli/CliRegistry.h "{\"get prv.key\",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_SECRET," "{\"get prv.key\",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_READ,  " sim/tests/test_postures_admin.py::test_key_export_and_import_are_refused_in_hardened_even_on_the_console
+mutate registry_set_prvkey_is_a_write src/helpers/cli/CliRegistry.h "{\"set prv.key\",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_SECRET," "{\"set prv.key\",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_WRITE, " sim/tests/test_repeater_prvkey.py::test_remote_admin_cannot_replace_identity
+mutate registry_prvkey_import_refusal_is_audited src/helpers/cli/CliRegistry.h "{\"set prv.key\",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_SECRET,      F_QUIET," "{\"set prv.key\",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_SECRET,      0,       " unit:test_cli_engine
+mutate registry_wifi_password_readable src/helpers/cli/CliRegistry.h "{\"get wifi.pwd\",           M_EXACT," "{\"get wifi.pwdX\",          M_EXACT," sim/tests/test_cli_unified.py::test_get_wifi_pwd_is_answered_write_only_by_the_engine
+mutate registry_wifi_password_readable_unit src/helpers/cli/CliRegistry.h "{\"get wifi.pwd\",           M_EXACT," "{\"get wifi.pwdX\",          M_EXACT," unit:test_cli_engine
+mutate registry_audit_is_a_read src/helpers/cli/CliRegistry.h "{\"get audit\",              M_WORD,    ROLE_COMPANION | ROLE_REPEATER, C_POSTURE," "{\"get audit\",              M_WORD,    ROLE_COMPANION | ROLE_REPEATER, C_READ,   " unit:test_cli_engine
+mutate registry_poweroff_is_a_write src/helpers/cli/CliRegistry.h '{"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE,' '{"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_WRITE,      ' sim/tests/test_cli_unified.py::test_mqtt_cannot_power_the_device_off_but_the_console_can
+mutate registry_poweroff_is_a_write_unit src/helpers/cli/CliRegistry.h '{"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE,' '{"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_WRITE,      ' unit:test_cli_engine
+mutate registry_reboot_is_a_prefix src/helpers/cli/CliRegistry.h "{\"reboot\",                 M_EXACT," "{\"reboot\",                 M_PREFIX," unit:test_cli_engine
+mutate registry_erase_is_a_write src/helpers/cli/CliRegistry.h "{\"erase\",                  M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE," "{\"erase\",                  M_EXACT,   ROLE_REPEATER,                  C_WRITE,      " unit:test_cli_engine
+mutate registry_set_posture_lowering_not_cable_only src/helpers/cli/CliRegistry.h "if (strcmp(arg, \"hardened\") != 0) r.flags = F_CABLE_ONLY;" "r.flags = 0;" unit:test_cli_engine
+mutate registry_mgmt_flag_is_a_write src/helpers/cli/CliRegistry.h "if (role == ROLE_COMPANION && isMgmtFlag(cmd)) {" "if (false) {" sim/tests/test_cli_unified.py::test_mqtt_cannot_do_what_only_a_local_caller_may sim/tests/test_cli_unified.py::test_mqtt_cannot_do_what_only_a_local_caller_may
+mutate registry_remote_read_list_has_clock_for_companions src/helpers/cli/CliRegistry.h "{\"clock\",                  M_EXACT,   ROLE_REPEATER," "{\"clock\",                  M_EXACT,   ROLE_COMPANION | ROLE_REPEATER," unit:test_cli_engine
+mutate registry_frame_key_export_ungated src/helpers/cli/CliRegistry.h "case FR_KEY_EXPORT: r.cls = C_SECRET;" "case FR_KEY_EXPORT: r.cls = C_READ;" sim/tests/test_postures_companion.py::test_hardened_refuses_key_export_and_import_on_usb
+mutate registry_frame_key_import_ungated src/helpers/cli/CliRegistry.h "case FR_KEY_IMPORT: r.cls = C_SECRET;" "case FR_KEY_IMPORT: r.cls = C_READ;" sim/tests/test_postures_companion.py::test_hardened_refuses_key_export_and_import_on_usb
+mutate registry_frame_cli_ungated src/helpers/cli/CliRegistry.h "case FR_CLI: r.cls = C_READ;" "case FR_CLI: r.cls = C_READ; r.cls = C_REBOOT;" unit:test_cli_engine
+mutate registry_frame_factory_reset_is_a_write src/helpers/cli/CliRegistry.h "case FR_FACTORY_RESET: r.cls = C_DESTRUCTIVE;" "case FR_FACTORY_RESET: r.cls = C_WRITE;" unit:test_cli_engine
+# the gate
+mutate gate_refusal_not_audited src/helpers/cli/CliEngine.h "if (refusalAudited(v, r)) Posture::recordRefusal(now, v.caller, auditWhat(v.reason, r));" "(void)now;" sim/tests/test_postures_companion.py::test_remote_cli_cannot_change_the_posture_and_it_is_audited sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited
+mutate gate_refusal_not_audited_unit src/helpers/cli/CliEngine.h "if (refusalAudited(v, r)) Posture::recordRefusal(now, v.caller, auditWhat(v.reason, r));" "(void)now;" unit:test_cli_engine
+mutate gate_connmode_refusal_not_audited_sim src/helpers/cli/CliEngine.h "if (refusalAudited(v, r)) Posture::recordRefusal(now, v.caller, auditWhat(v.reason, r));" "(void)now;" sim/tests/test_connectivity_mode.py::test_a_remote_switch_is_refused_and_audited
+mutate gate_frame_refusal_not_audited src/helpers/cli/CliEngine.h "if (!v.allow) Posture::recordRefusal(now, v.caller, auditWhat(v.reason, r));" "(void)now;" sim/tests/test_postures_companion.py::test_untrusted_transport_refusals_are_audited
+mutate gate_canned_reply_dropped src/helpers/cli/CliEngine.h "  if (r.canned) {" "  if (false) {" unit:test_cli_engine
+mutate gate_refusal_what_is_wrong src/helpers/cli/CliEngine.h "    case R_CLI_OFF: return Posture::W_REMOTE_CLI;" "    case R_CLI_OFF: return Posture::W_REMOTE_WRITE;" sim/tests/test_postures_companion.py::test_hardened_turns_the_remote_cli_off
+mutate gate_not_run_by_the_companion examples/companion_radio/MyMesh.cpp "if (Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {" "if (false && Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {" sim/tests/test_companion_remote_cli.py
+mutate gate_not_run_by_the_front_door_unit src/helpers/Posture.h "if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, now, reply, max)) return true;" "" unit:test_posture
+mutate gate_default_password_session_not_recognised src/helpers/Posture.h "isDefaultAdminPassword(admin_pw, build_default) ? Cli::A_ADMIN_DEFAULT_PW : Cli::A_ADMIN" "Cli::A_ADMIN" sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
+mutate frame_gate_skipped examples/companion_radio/MyMesh.cpp "if (frame != Cli::FR_NONE && !Cli::allowFrame(serialContext(), frame, now)) {" "if (false) {" sim/tests/test_companion_transport.py
+mutate frame_context_trusts_every_interface examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isTrustedTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" "if (_serial) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" sim/tests/test_companion_transport.py
+mutate frame_context_cable_is_not_a_cable examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isCableTransport()) return Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture);" "if (_serial && _serial->isCableTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" sim/tests/test_postures_companion.py::test_usb_factory_reset_recovers_a_hardened_companion
+mutate contact_context_is_a_cable examples/companion_radio/MyMesh.cpp "setCliCaller(Cli::Context(Cli::T_LORA, Cli::A_CONTACT_FLAG, _prefs.posture), Posture::CALLER_REMOTE_CLI);" "setCliCaller(Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture), Posture::CALLER_CABLE);" sim/tests/test_companion_remote_cli.py
+# facades: the older entry points ask the table
+mutate facade_key_transfer_ignores_the_table src/helpers/Posture.h "return Cli::decide(Cli::contextForCaller(CALLER_CABLE, posture), Cli::C_SECRET).allow;" "return true;" unit:test_posture
+mutate facade_factory_reset_ignores_the_table src/helpers/Posture.h "return Cli::decide(Cli::contextForCaller(caller, posture), Cli::C_DESTRUCTIVE).allow;" "return true;" unit:test_posture
+mutate facade_remote_read_only_list_has_writes src/helpers/Posture.h "return cls == Cli::C_READ || cls == Cli::C_REBOOT;" "return cls == Cli::C_READ || cls == Cli::C_REBOOT || cls == Cli::C_WRITE;" unit:test_posture
+mutate facade_ble_can_lower src/helpers/Posture.h "bool allowed = Cli::decide(ctx, Cli::C_POSTURE, to_hardened ? 0 : Cli::F_CABLE_ONLY).allow;" "bool allowed = Cli::decide(ctx, Cli::C_POSTURE, 0).allow;" unit:test_posture
+mutate facade_remote_can_change_the_posture src/helpers/Posture.h "bool allowed = Cli::decide(ctx, Cli::C_POSTURE, to_hardened ? 0 : Cli::F_CABLE_ONLY).allow;" "bool allowed = true;" unit:test_posture
+mutate facade_audit_readable_remotely src/helpers/Posture.h "if (!Cli::decide(ctx, Cli::C_POSTURE).allow) {
+      recordRefusal(now, caller, W_AUDIT);" "if (false) {
+      recordRefusal(now, caller, W_AUDIT);" unit:test_posture
+mutate facade_posture_refusal_not_audited src/helpers/AuditLog.h "inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { audit().add(ts, EV_REFUSED, caller, what); }" "inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { }" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited sim/tests/test_postures_companion.py::test_untrusted_transport_refusals_are_audited
+mutate facade_connmode_remote_may_switch src/helpers/connmode/ConnMode.h "return Cli::decide(Cli::contextForCaller(caller, Posture::NORMAL), Cli::C_POSTURE).allow;   // cli/CliPolicy.h" "return Cli::decide(Cli::contextForCaller(caller, Posture::NORMAL), Cli::C_POSTURE).allow || caller == Posture::CALLER_REMOTE_CLI;" unit:test_connmode
+# MQTT adapter
+mutate mqtt_cli_session_always_verified src/helpers/mqtt/MqttController.cpp "Cli::Mqtt::sessionContext(_core.verified(), *_posture, manages)" "Cli::Mqtt::sessionContext(true, *_posture, manages)" sim/tests/test_cli_unified.py::test_mqtt_is_refused_on_plain_and_on_unverified_tls_and_audited
+mutate mqtt_cli_profile_always_manages src/helpers/mqtt/MqttController.cpp "const bool manages = cur != MqttCore::NONE && _profiles->p[cur].manage != 0;" "const bool manages = true;" sim/tests/test_cli_unified.py::test_hardened_mqtt_is_read_only_unless_the_profile_is_flagged_for_management
+mutate mqtt_cli_retained_request_replayed src/helpers/mqtt/MqttController.cpp "if ((int32_t)(millis() - _cli_open_at) < 0) return;" "" sim/tests/test_cli_unified.py::test_a_retained_request_is_not_replayed_to_a_reconnecting_node
+mutate mqtt_cli_correlation_id_not_echoed src/helpers/mqtt/MqttController.cpp "n = Cli::Mqtt::formatResponse(out, sizeof(out), req.id, status, reply);" "n = Cli::Mqtt::formatResponse(out, sizeof(out), \"\", status, reply);" sim/tests/test_cli_unified.py::test_malformed_requests_get_an_answer_and_run_nothing
+mutate mqtt_cli_bad_request_runs_something src/helpers/mqtt/MqttController.cpp "if (!Cli::Mqtt::parseRequest(payload, len, req)) {" "if (false) {" sim/tests/test_cli_unified.py::test_malformed_requests_get_an_answer_and_run_nothing
+mutate mqtt_cli_no_subscription src/helpers/mqtt/MqttController.cpp "    _psc.subscribe(_req_topic);   // before the status" "    // no subscription: before the status" sim/tests/test_cli_unified.py::test_reboot_over_mqtt_runs_in_normal_and_the_node_comes_back
+mutate mqtt_cli_refusal_reported_as_ok examples/companion_radio/MyMesh.cpp "if (_cli_refused) return Cli::Mqtt::S_REFUSED;" "" sim/tests/test_cli_unified.py::test_mqtt_cannot_do_what_only_a_local_caller_may
+mutate mqtt_cli_flag_not_persisted examples/companion_radio/NodePrefs.h "        key[0] = 'g'; def(key, q.manage);
+" "" sim/tests/test_cli_unified.py::test_the_management_flag_survives_a_reboot_and_is_off_by_default
+mutate mqtt_cli_flag_settable_by_a_remote_caller_unit src/helpers/cli/CliRegistry.h "  return memcmp(q, \"manage\", 6) == 0 && (q[6] == 0 || q[6] == ' ');" "  return false;" unit:test_cli_engine
+mutate mqtt_profile_manage_listing_always src/helpers/mqtt/MqttProfiles.cpp "const char* manage = q.manage ? \" manage=on\" : \"\";" "const char* manage = \" manage=off\";" sim/tests/test_cli_unified.py::test_the_management_flag_survives_a_reboot_and_is_off_by_default sim/tests/test_companion_mqtt.py::test_credentials_are_nowhere_but_the_prefs_file
+mutate mqtt_profile_manage_accepts_anything src/helpers/mqtt/MqttProfiles.cpp "else snprintf(reply, cap, \"ERR: manage is on or off\");" "else { q.manage = 1; done(false, \"?\"); }" sim/tests/test_cli_unified.py::test_the_management_flag_survives_a_reboot_and_is_off_by_default
+mutate mqtt_parse_accepts_duplicate_keys src/helpers/cli/CliMqtt.h "      if (have_id) return false;
+" "" unit:test_cli_mqtt
+mutate mqtt_parse_accepts_control_characters src/helpers/cli/CliMqtt.h "    if (ch < 0x20 || ch == 0x7f) return false;   // a raw control character" "" unit:test_cli_mqtt
+mutate mqtt_parse_accepts_decoded_control_characters src/helpers/cli/CliMqtt.h "    if (ch < 0x20 || ch == 0x7f) return false;
+    if (ch < 0x80) {" "    if (ch < 0x80) {" unit:test_cli_mqtt
+mutate mqtt_parse_accepts_trailing_bytes src/helpers/cli/CliMqtt.h "  if (c.more()) return false;   // trailing bytes" "" unit:test_cli_mqtt
+mutate mqtt_parse_id_length_unbounded src/helpers/cli/CliMqtt.h "if (n == 0 || n > (size_t)ID_MAX) return false;" "if (n == 0) return false;" unit:test_cli_mqtt
+mutate mqtt_parse_id_characters_unchecked src/helpers/cli/CliMqtt.h "for (size_t i = 0; i < n; i++) if (!idChar(id[i])) return false;" "" unit:test_cli_mqtt
+mutate mqtt_format_reply_not_escaped src/helpers/cli/CliMqtt.h "if (ch == '\"' || ch == '\\\\') { esc[0] = '\\\\'; esc[1] = (char)ch; el = 2; }" "if (false) { }" unit:test_cli_mqtt
+mutate mqtt_format_truncation_not_flagged src/helpers/cli/CliMqtt.h "const char* tail = cut ? TAIL_CUT : TAIL_OK;" "const char* tail = TAIL_OK;" unit:test_cli_mqtt
+mutate mqtt_format_cuts_inside_a_character src/helpers/cli/CliMqtt.h "if (n + k + reserve >= cap) { cut = true; break; }   // keeps room for the tail and the NUL" "if (n + 1 + reserve >= cap) { cut = true; break; } if (n + k + reserve >= cap) { k = 1; used = 1; }" unit:test_cli_mqtt
+mutate mqtt_topic_is_not_per_device src/helpers/cli/CliMqtt.h "snprintf(out, cap, \"mecon/%s/cli/req\", node_id);" "snprintf(out, cap, \"mecon/cli/req\");" unit:test_cli_mqtt
+# MECON commands
+mutate mecon_check_always_allows src/helpers/cli/MeconCli.h "v.allow ? \"allowed\" : reasonName(v.reason)" "\"allowed\"" unit:test_cli_engine
+mutate mecon_who_hides_the_principal src/helpers/cli/MeconCli.h "principalName(principalOf(ctx)), ctx.mgmt ? \" mgmt=on\" : \"\");" "\"cable\", ctx.mgmt ? \" mgmt=on\" : \"\");" unit:test_cli_engine
+
 build
 echo "RESTORED; final clean run:"
-if [ -z "$ONLY" ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
+if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 
 exit $SURVIVED

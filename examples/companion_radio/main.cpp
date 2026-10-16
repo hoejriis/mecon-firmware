@@ -114,6 +114,13 @@ StdRNG fast_rng;
 SimpleMeshTables tables;
 MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store);
 
+#ifdef ENABLE_MQTT
+// The MQTT controller hands each request from the broker here (docs/CLI.md).
+static uint8_t mqttCliRun(void* user, const Cli::Context& ctx, const char* cmd, char* reply, size_t cap) {
+  return static_cast<MyMesh*>(user)->runMqttCli(ctx, cmd, reply, cap);
+}
+#endif
+
 /* END GLOBAL OBJECTS */
 
 void halt() {
@@ -254,6 +261,7 @@ void setup() {
     if (the_mesh.getNodePrefs()->mqtt_enabled) {
       char node_id[9];
       for (int k = 0; k < 4; k++) sprintf(&node_id[k * 2], "%02x", the_mesh.self_id.pub_key[k]);
+      mqttController().setCliHandler(&mqttCliRun, &the_mesh);   // the command line over MQTT (docs/CLI.md)
       mqttController().begin(&the_mesh.getNodePrefs()->mqtt_profiles, &mqttPlatformNet(),
                              &the_mesh.getNodePrefs()->posture, node_id);
     }

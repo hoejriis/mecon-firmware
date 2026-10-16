@@ -22,7 +22,7 @@ If profile 0 has no stored SSID the compile-time `WIFI_SSID` / `WIFI_PWD` build 
 
 ## Commands
 
-All of them run on a trusted local transport (USB console, or BLE with a non-default PIN); the TCP companion port refuses the CLI, and a remote CLI caller may run the `get` forms only.
+All of them run on a trusted local transport (USB console, or BLE with a non-default PIN); the TCP companion port refuses the CLI, and a remote CLI caller may run the `get` forms only. A broker may run them over MQTT only as the [Command-line engine](CLI.md) allows.
 
 | Command | Effect |
 |---|---|
