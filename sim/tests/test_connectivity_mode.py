@@ -567,6 +567,7 @@ def test_no_secret_is_ever_drawn(nodes, tmp_path, brokers):
     time.sleep(0.5)
     shown = n.ui.all_text()
     assert shown.count("Mode:") > 4, "the tour drew too little to prove anything"
+    assert "s3cret" not in shown       # a long line is cut with "...": a leaked password may show only as a prefix
     for secret in (WIFI_PW, WIFI_PW2, MQTT_PW, MQTT_USER):
         assert secret not in shown, secret
         assert files_containing(n, secret) == [os.path.join(n.dir, "prefs.json")], secret
