@@ -51,11 +51,8 @@ int SimButton::check(bool) {
   _next_poll = now + 20;
   FILE* f = fopen(g_sim.ui_input.c_str(), "r");
   if (!f) return BUTTON_EVENT_NONE;
-  if (!_started) {   // gestures from before this boot belong to the previous process
-    _started = true;
-    fseek(f, 0, SEEK_END);
-    _off = (size_t)ftell(f);
-  }
+  // The harness empties the input file before each boot, so the whole file belongs to this process. (Skipping to
+  // the end on the first poll lost any gesture the test wrote before that poll, which a slow runner made common.)
   fseek(f, (long)_off, SEEK_SET);
   char line[32];
   int ev = BUTTON_EVENT_NONE;

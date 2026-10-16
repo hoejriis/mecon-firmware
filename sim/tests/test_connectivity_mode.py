@@ -60,14 +60,14 @@ def home_settled(node):
 
 def goto_connectivity(node):
     """Click through the home pages to the connectivity status screen; returns the number of clicks."""
-    for clicks in range(10):
-        if "Mode:" in node.ui.last_text():
+    for clicks in range(12):
+        text = node.ui.last_text()
+        if "Mode:" in text:
             return clicks
-        before = len(node.ui.frames())
         node.ui.press("click")
-        end = time.time() + 5
-        while time.time() < end and len(node.ui.frames()) == before:
-            time.sleep(0.02)
+        end = time.time() + 15   # wait for the page to change, not merely for a redraw of the same page
+        while time.time() < end and node.ui.last_text() == text:
+            time.sleep(0.05)
     raise AssertionError("never reached the connectivity screen: " + node.ui.last_text())
 
 
