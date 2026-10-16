@@ -37,6 +37,7 @@ Firmware requirements belong here and in `contract/`. **Backend migration work c
 - [Integration guide](INTEGRATION.md)
 - [Security model](SECURITY_MODEL.md)
 - [Standalone security postures](STANDALONE_POSTURES.md): Normal and Hardened without a Deployment
+- [Wi-Fi profiles](WIFI.md): up to ten prioritised networks, failover and return without flapping
 - [Upstream and porting](UPSTREAM_AND_PORTING.md)
 - [Versioning and releases](VERSIONING_AND_RELEASES.md)
 

@@ -27,6 +27,7 @@ WifiDrop dropFromReason(uint8_t r) {
 }
 }  // namespace
 
+#if defined(ESP32)
 // Runs in the Wi-Fi task on ESP32: only sets flags, loop() does the rest.
 struct WifiControllerEvents {
   static void onEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -39,13 +40,14 @@ struct WifiControllerEvents {
     }
   }
 };
+#endif
 
 void WifiController::begin(WifiProfiles* profiles, const WifiTiming& timing) {
   _profiles = profiles;
   _core.configure(profiles, timing);
   WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(false);   // the controller decides which network to rejoin
 #if defined(ESP32)
+  WiFi.setAutoReconnect(false);   // the controller decides which network to rejoin
   WiFi.persistent(false);         // do not keep a second copy of the password in the radio's own flash store
   WiFi.onEvent(WifiControllerEvents::onEvent);
 #endif
@@ -62,6 +64,7 @@ void WifiController::doConnect(uint8_t i) {
   WIFICTL_LOG("joining profile %u (%s)", (unsigned)i, _profiles->ssid(i));
   if (WiFi.status() == WL_CONNECTED) WiFi.disconnect(false);
 #if defined(RP2040_PLATFORM)
+  WiFi.setTimeout(5000);   // the join blocks inside the core: cap how long one attempt may stall the mesh loop
   WiFi.beginNoBlock(_profiles->ssid(i), _profiles->pwd(i));   // the join itself still blocks inside the core
 #else
   WiFi.begin(_profiles->ssid(i), _profiles->pwd(i));
