@@ -85,6 +85,9 @@ void setup() {
   #error "need to define filesystem"
 #endif
   if (!store.load("_main", the_mesh.self_id)) {
+    if (store.lastLoadFoundDamagedFile()) {
+      Serial.println("WARNING: identity file was damaged and has been kept as /identity/_main.id.damaged; generating a new identity");
+    }
     MESH_DEBUG_PRINTLN("Generating new keypair");
     the_mesh.self_id = radio_new_identity();   // create new random identity
     int count = 0;

@@ -12,6 +12,7 @@ class ArduinoSerialInterface : public BaseSerialInterface {
   uint8_t rx_buf[MAX_FRAME_SIZE];
 
 public:
+  bool isTrustedTransport() const override { return true; }   // a cable: physical possession
   ArduinoSerialInterface() { _isEnabled = false; _state = 0; }
 
   void begin(Stream& serial) { 

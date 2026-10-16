@@ -14,6 +14,8 @@ struct SimConfig {
   uint32_t rtc_epoch = 1760000000;  // RTC value at process start (unix seconds)
   std::string fault_path;     // fault injection: file path (as the app sees it) ...
   long fault_after = -1;      // ... and bytes after which the process is killed
+  std::string fault_op;       // power cut just BEFORE a filesystem operation: "rename" or "remove" ...
+  std::string fault_op_path;  // ... on this path (the source path for a rename)
 };
 // Function-local static so it is safe to touch from other translation units' static
 // initialisers (the examples build their global mesh object before main()).

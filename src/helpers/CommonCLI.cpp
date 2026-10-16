@@ -1,9 +1,14 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
+#include "AtomicFile.h"
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
 #include "TxtDataHelpers.h"
 #include <RTClib.h>
+
+// Longest reply that may echo caller-supplied text. Reply buffers are 160 bytes at the console and
+// 161 for a remote caller, and a "xx|" prefix (3 bytes) is reflected in front of the reply.
+#define CLI_REPLY_MAX  150
 
 #ifndef BRIDGE_MAX_BAUD
 #define BRIDGE_MAX_BAUD 115200
@@ -28,6 +33,7 @@ static bool isValidName(const char *n) {
 }
 
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
+  AtomicFile::recover(fs, "/prefs.json");   // finish or drop a save that was cut by a power loss
   if (fs->exists("/prefs.json")) {
 #if defined(RP2040_PLATFORM)
     File file = fs->open("/prefs.json", "r");
@@ -141,20 +147,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {  // Legacy 
 }
 
 bool CommonCLI::savePrefs(FILESYSTEM* fs) {
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  fs->remove("/prefs.json");
-  File file = fs->open("/prefs.json", FILE_O_WRITE);
-#elif defined(RP2040_PLATFORM)
-  File file = fs->open("/prefs.json", "w");
-#else
-  File file = fs->open("/prefs.json", "w", true);
-#endif
-  if (file) {
-    bool success = _prefs->saveSerial(file);
-    file.close();
-    return success;
-  }
-  return false;
+  // written to a temp file, verified, then swapped in: a power cut keeps the previous complete prefs
+  return AtomicFile::save(fs, "/prefs.json", [this](Stream& s) { return _prefs->saveSerial(s); });
 }
 
 #define MIN_LOCAL_ADVERT_INTERVAL   60
@@ -250,7 +244,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "ERR: bad pubkey");
       }
     } else if (memcmp(command, "tempradio ", 10) == 0) {
-      strcpy(tmp, &command[10]);
+      StrHelper::strncpy(tmp, &command[10], sizeof(tmp));
       const char *parts[5];
       int num = mesh::Utils::parseTextParts(tmp, parts, 5);
       float freq  = num > 0 ? strtof(parts[0], nullptr) : 0.0f;
@@ -306,7 +300,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "null");
       }
     } else if (memcmp(command, "sensor set ", 11) == 0) {
-      strcpy(tmp, &command[11]);
+      StrHelper::strncpy(tmp, &command[11], sizeof(tmp));
       const char *parts[2];
       int num = mesh::Utils::parseTextParts(tmp, parts, 2, ' ');
       const char *key = (num > 0) ? parts[0] : "";
@@ -514,6 +508,8 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     StrHelper::strncpy(_prefs->guest_password, &config[15], sizeof(_prefs->guest_password));
     savePrefs();
     strcpy(reply, "OK");
+  } else if (sender_timestamp != 0 && memcmp(config, "prv.key", 7) == 0) {
+    strcpy(reply, "ERR: prv.key can only be set from the local console");   // never echo the key back
   } else if (memcmp(config, "prv.key ", 8) == 0) {
     uint8_t prv_key[PRV_KEY_SIZE];
     bool success = mesh::Utils::fromHex(prv_key, PRV_KEY_SIZE, &config[8]);
@@ -672,7 +668,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     };
   #if defined(USE_LR2021)
   } else if (memcmp(config, "extra.sf ", 9) == 0) {
-    strcpy(tmp, &config[9]);
+    StrHelper::strncpy(tmp, &config[9], sizeof(tmp));
     const char *parts[4];
     uint8_t sideDetSFs[4];
     int num = mesh::Utils::parseTextParts(tmp, parts, 4);
@@ -693,8 +689,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
   #endif
   } else {
-    strcpy(reply, "unknown config: ");
-    StrHelper::strncpy(&reply[16], config, 160-17);
+    snprintf(reply, CLI_REPLY_MAX, "unknown config: %s", config);
   }
 }
 
@@ -830,7 +825,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "No extra SF configured");
     }
   } else {
-    sprintf(reply, "??: %s", config);
+    snprintf(reply, CLI_REPLY_MAX, "??: %s", config);   // config is caller-supplied and can be as long as the reply buffer
   }
 }
 

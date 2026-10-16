@@ -32,6 +32,10 @@ int main(int argc, char** argv) {
       std::string v = next(); size_t c = v.rfind(':');
       if (c != std::string::npos) { g_sim.fault_path = v.substr(0, c); g_sim.fault_after = atol(v.c_str() + c + 1); }
     }
+    else if (a == "--fault-before") {   // --fault-before rename:/path | remove:/path
+      std::string v = next(); size_t c = v.find(':');
+      if (c != std::string::npos) { g_sim.fault_op = v.substr(0, c); g_sim.fault_op_path = v.substr(c + 1); }
+    }
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
   }
   if (g_sim.dir.empty()) { fprintf(stderr, "--dir is required\n"); return 2; }

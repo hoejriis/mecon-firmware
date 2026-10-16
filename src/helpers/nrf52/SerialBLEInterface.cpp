@@ -125,6 +125,7 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
 
 void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code) {
   instance = this;
+  _pin_code = pin_code;
 
   char charpin[20];
   snprintf(charpin, sizeof(charpin), "%lu", (unsigned long)pin_code);

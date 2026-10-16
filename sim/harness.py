@@ -15,11 +15,16 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = {
     "companion": os.path.join(REPO, ".pio/build/sim_companion/program"),
     "repeater": os.path.join(REPO, ".pio/build/sim_repeater/program"),
+    # same Companion code, but its app transport is classed as unauthenticated TCP (a _wifi build)
+    "companion_wifi_usb": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb/program"),
+    "repeater_asan": os.path.join(REPO, ".pio/build/sim_repeater_asan/program"),
+    "companion_asan": os.path.join(REPO, ".pio/build/sim_companion_asan/program"),
+    "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
 }
 
 
 class Node:
-    def __init__(self, kind, name, workdir, ether_path=None, seed=1, time_scale=1.0, fault=None, rtc=None,
+    def __init__(self, kind, name, workdir, ether_path=None, seed=1, time_scale=1.0, fault=None, rtc=None, fault_before=None,
                  binary=None):
         self.kind, self.name = kind, name
         self.dir = os.path.join(str(workdir), name)
@@ -27,7 +32,7 @@ class Node:
         self.port_file = os.path.join(str(workdir), name + ".port")
         self.log_path = os.path.join(str(workdir), name + ".log")
         self.ether_path, self.seed, self.time_scale = ether_path, seed, time_scale
-        self.fault, self.rtc = fault, rtc
+        self.fault, self.rtc, self.fault_before = fault, rtc, fault_before
         self.binary = binary or BIN[kind]
         self.proc = None
         self.port = None
@@ -41,10 +46,13 @@ class Node:
             cmd += ["--ether", self.ether_path]
         if self.fault:
             cmd += ["--fault", self.fault]
+        if self.fault_before:
+            cmd += ["--fault-before", self.fault_before]
         if self.rtc:
             cmd += ["--rtc", str(self.rtc)]
         self.log = open(self.log_path, "ab")
-        self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=self.log)
+        env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="print_stacktrace=1")
+        self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=self.log, env=env)
         end = time.time() + 10
         while time.time() < end:
             if os.path.exists(self.port_file):
@@ -54,6 +62,12 @@ class Node:
                 raise RuntimeError("%s exited early (%s); see %s" % (self.name, self.proc.returncode, self.log_path))
             time.sleep(0.02)
         raise RuntimeError("%s did not publish a serial port" % self.name)
+
+    def sanitizer_report(self):
+        """Text of any AddressSanitizer/UBSan report this node printed (empty when clean)."""
+        self.log.flush()
+        text = open(self.log_path, errors="replace").read()
+        return text if ("AddressSanitizer" in text or "runtime error" in text) else ""
 
     def stop(self):
         if self.proc and self.proc.poll() is None:
@@ -113,7 +127,13 @@ CMD_APP_START, CMD_SEND_TXT_MSG, CMD_SEND_CHANNEL_TXT_MSG = 1, 2, 3
 CMD_SET_DEVICE_TIME, CMD_ADD_UPDATE_CONTACT, CMD_SYNC_NEXT_MESSAGE = 6, 9, 10
 CMD_DEVICE_QUERY, CMD_SET_CHANNEL = 22, 32
 RESP_OK, RESP_ERR, RESP_SELF_INFO, RESP_SENT = 0, 1, 5, 6
+CMD_EXPORT_PRIVATE_KEY, CMD_IMPORT_PRIVATE_KEY, CMD_SET_DEVICE_PIN = 23, 24, 37
+CMD_FACTORY_RESET, CMD_RUN_CLI_COMMAND = 51, 66
+RESP_PRIVATE_KEY, RESP_CLI_REPLY = 14, 29
+ERR_NOT_PERMITTED = 7
 RESP_NO_MORE_MESSAGES = 10
+CMD_GET_CHANNEL, RESP_CHANNEL_INFO = 31, 18
+CMD_SEND_LOGIN, PUSH_LOGIN_SUCCESS, PUSH_LOGIN_FAIL = 26, 0x85, 0x86
 RESP_CONTACT_MSG_RECV_V3, RESP_CHANNEL_MSG_RECV_V3 = 16, 17
 PUSH_MSG_WAITING = 0x83
 
@@ -184,14 +204,51 @@ class CompanionClient:
         self.pub_key = f[4:36]
         return f
 
-    def add_contact(self, pub_key, name, out_path_len=0xFF):
-        f = (bytes([CMD_ADD_UPDATE_CONTACT]) + pub_key + bytes([1, 0, out_path_len]) + b"\0" * 64 +
+    def add_contact(self, pub_key, name, out_path_len=0xFF, flags=0, ctype=1):
+        f = (bytes([CMD_ADD_UPDATE_CONTACT]) + pub_key + bytes([ctype, flags, out_path_len]) + b"\0" * 64 +
              name.encode().ljust(32, b"\0") + struct.pack("<I", 0))
         return self.request(f)
 
     def set_channel(self, idx, name, secret):
         assert len(secret) == 16
         return self.request(bytes([CMD_SET_CHANNEL, idx]) + name.encode().ljust(32, b"\0") + secret)
+
+    def cli(self, text):
+        """CMD_RUN_CLI_COMMAND; returns the reply text (USB/BLE class transports only)."""
+        f = self.request(bytes([CMD_RUN_CLI_COMMAND]) + text.encode())
+        assert f[0] == RESP_CLI_REPLY, f
+        return f[1:].decode(errors="replace")
+
+    def send_cli_command(self, to_pub, text):
+        """Remote CLI: a TXT_TYPE_CLI_COMMAND (3) text to a contact; the node stamps it with its own clock."""
+        return self.request(bytes([CMD_SEND_TXT_MSG, 3, 0]) + struct.pack("<I", 0) + to_pub[:6] + text.encode())
+
+    def get_channel(self, idx):
+        """Returns (name, secret16) or None when the slot is empty/invalid."""
+        f = self.request(bytes([CMD_GET_CHANNEL, idx]))
+        if f[0] != RESP_CHANNEL_INFO:
+            return None
+        name = f[2:34].split(b"\0")[0].decode(errors="replace")
+        return (name, f[34:50]) if name else None
+
+    def login(self, to_pub, password, timeout=30.0):
+        """Log in to a repeater/room as an admin (or guest); True on PUSH_CODE_LOGIN_SUCCESS."""
+        f = self.request(bytes([CMD_SEND_LOGIN]) + to_pub + password.encode())
+        assert f[0] == RESP_SENT, f
+        return self.wait_push(PUSH_LOGIN_SUCCESS, timeout=timeout) is not None
+
+    def remote_admin(self, to_pub, text):
+        """Send a CLI line (TXT_TYPE_CLI_DATA) to a logged-in repeater and return its reply text."""
+        f = self.request(bytes([CMD_SEND_TXT_MSG, 1, 0]) + struct.pack("<I", 0) + to_pub[:6] + text.encode())
+        assert f[0] == RESP_SENT, f
+        msgs = self.sync_messages(timeout=60, want=1)
+        assert msgs, "no reply to %r" % text
+        return msgs[0]["text"]
+
+    def export_private_key(self):
+        f = self.request(bytes([CMD_EXPORT_PRIVATE_KEY]))
+        assert f[0] == RESP_PRIVATE_KEY, f
+        return f[1:65]
 
     def send_direct(self, to_pub, text, ts):
         return self.request(bytes([CMD_SEND_TXT_MSG, 0, 0]) + struct.pack("<I", ts) + to_pub[:6] + text.encode())

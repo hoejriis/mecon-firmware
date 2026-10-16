@@ -95,6 +95,13 @@ class Ether:
                 if k in self.links:
                     self.links[k].loss = loss
 
+    def inject(self, dst, data, rssi=-80.0, snr=8.0):
+        """Deliver raw bytes to node `dst` as if they had just been received over the air (no sender, no
+        airtime, no collisions). For hand-built or malformed packets."""
+        with self.lock:
+            c = self._conns[dst]
+            self._send(c, "R", struct.pack("<ff", rssi, snr) + bytes(data))
+
     def now_us(self):
         return (time.monotonic() - self._t0) * 1e6 * self.scale
 

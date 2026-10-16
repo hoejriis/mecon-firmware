@@ -138,6 +138,7 @@
 #define ERR_CODE_BAD_STATE              4
 #define ERR_CODE_FILE_IO_ERROR          5
 #define ERR_CODE_ILLEGAL_ARG            6
+#define ERR_CODE_NOT_PERMITTED          7  // command refused on this transport (or for this caller)
 
 #define MAX_SIGN_DATA_LEN               (8 * 1024) // 8K
 
@@ -539,7 +540,9 @@ void MyMesh::onCLICommandRecv(const ContactInfo &from, mesh::Packet *pkt, uint32
                                const char *text, char* reply) {
   markConnectionActive(from); // in case this is from a server, and we have a connection
   if (from.isRemoteCLIAllowed()) {
-    if (!handleCommand(text, sender_timestamp, reply)) {
+    // sender_timestamp == 0 means "local console" to handleCommand(), and the peer chooses this value:
+    // never let a remote caller present as local.
+    if (!handleCommand(text, sender_timestamp ? sender_timestamp : 1, reply)) {
       strcat(reply, "Unknown command");   // reply may have cmd prefix from 'text'
     }
   } else {
@@ -1052,7 +1055,19 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   serial.enable();
 }
 
+// Commands that manage the device or carry its secrets: only served over a transport that
+// authenticates the peer (USB cable, paired BLE), never over the plain TCP server of a _wifi build.
+static bool isTrustedTransportOnlyCmd(uint8_t cmd) {
+  return cmd == CMD_RUN_CLI_COMMAND || cmd == CMD_EXPORT_PRIVATE_KEY || cmd == CMD_IMPORT_PRIVATE_KEY ||
+         cmd == CMD_SET_DEVICE_PIN || cmd == CMD_FACTORY_RESET;
+}
+
 void MyMesh::handleCmdFrame(size_t len) {
+  if (_serial && !_serial->isTrustedTransport() && isTrustedTransportOnlyCmd(cmd_frame[0])) {
+    MESH_DEBUG_PRINTLN("command %d refused on an unauthenticated transport", (int)cmd_frame[0]);
+    writeErrFrame(ERR_CODE_NOT_PERMITTED);
+    return;
+  }
   if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2) { // sent when app establishes connection
     app_target_ver = cmd_frame[1];                    // which version of protocol does app understand
 
@@ -2076,6 +2091,13 @@ void MyMesh::enterCLIRescue() {
   Serial.println("========= CLI Rescue =========");
 }
 
+// What a remote caller (sender_timestamp != 0) may run on a Companion: reads and a reboot.
+// Settings changes, poweroff and anything else stay with the local console and the app cable.
+static bool isRemoteCommandAllowed(const char* command) {
+  return memcmp(command, "get ", 4) == 0 || strcmp(command, "ver") == 0 || strcmp(command, "board") == 0 ||
+         strcmp(command, "reboot") == 0;
+}
+
 bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char* reply) {
   while (*command == ' ') command++; // skip leading spaces
 
@@ -2084,6 +2106,11 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     reply += 3;
     *reply = 0;
     command += 3;
+  }
+
+  if (sender_timestamp != 0 && !isRemoteCommandAllowed(command)) {
+    strcpy(reply, "ERR: not permitted remotely");   // remote callers: reads and reboot only
+    return true;
   }
 
   if (_prefs.getRadioPrefs()->handleCommand(command, sender_timestamp, reply)) {  // is radio CLI command?
@@ -2143,7 +2170,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
   if (strcmp(command, "get wifi.pwd") == 0) {
-    sprintf(reply, "> %s", _prefs.wifi_pwd);
+    strcpy(reply, "> wifi.pwd is write-only");   // the password is never read back, on any transport
     return true;
   }
   if (strcmp(command, "set wifi.clear") == 0) {

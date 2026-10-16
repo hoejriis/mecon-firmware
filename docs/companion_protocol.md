@@ -843,6 +843,9 @@ Bytes 1-6: ACK Code (6 bytes, hex)
 | 4    | `ERR_CODE_BAD_STATE`       | Operation not valid in current device state (e.g. iterator already running)  |
 | 5    | `ERR_CODE_FILE_IO_ERROR`   | Filesystem or storage I/O failure                                            |
 | 6    | `ERR_CODE_ILLEGAL_ARG`     | Invalid argument (bad length, out-of-range value, reserved field, etc.)      |
+| 7    | `ERR_CODE_NOT_PERMITTED`   | MECON addition: the command is refused on this transport (see below)         |
+
+`ERR_CODE_NOT_PERMITTED` is returned for `CMD_RUN_CLI_COMMAND`, `CMD_EXPORT_PRIVATE_KEY`, `CMD_IMPORT_PRIVATE_KEY`, `CMD_SET_DEVICE_PIN` and `CMD_FACTORY_RESET` when they arrive over the unauthenticated TCP transport (`_wifi` and Ethernet builds). USB serial and paired BLE serve them as before.
 
 **Note**: Error codes may vary by firmware version. Always check byte 1 of `PACKET_ERROR` response, and treat unknown codes as generic errors.
 

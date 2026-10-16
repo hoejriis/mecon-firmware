@@ -44,7 +44,10 @@ class SerialBLEInterface : public BaseSerialInterface, BLEService, BLEServerCall
   void onConnect(BLEServer* s) override;
   void onDisconnect(BLEServer* s) override;
 
+  uint32_t _pin_code = 0;
 public:
+  // Paired BLE authenticates the peer only when the PIN is not the well-known default (123456).
+  bool isTrustedTransport() const override { return _pin_code != 0 && _pin_code != 123456; }
   SerialBLEInterface();
 
   /**

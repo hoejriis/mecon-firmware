@@ -55,8 +55,24 @@ File FS::open(const char* path, const char* mode, const bool create) {
 }
 
 bool FS::exists(const char* path) { struct stat st; return stat(hostPath(path).c_str(), &st) == 0; }
-bool FS::remove(const char* path) { return ::unlink(hostPath(path).c_str()) == 0; }
-bool FS::rename(const char* a, const char* b) { std::string hb = hostPath(b); mkdirs(hb); return ::rename(hostPath(a).c_str(), hb.c_str()) == 0; }
+// Power cut just before a filesystem operation (--fault-before OP:PATH).
+static void fault_before(const char* op, const char* path) {
+  if (!g_sim.fault_op.empty() && g_sim.fault_op == op && g_sim.fault_op_path == (path ? path : "")) {
+    fprintf(stderr, "SIM_FAULT: power cut before %s of %s\n", op, path);
+    _exit(99);
+  }
+}
+bool FS::remove(const char* path) { fault_before("remove", path); return ::unlink(hostPath(path).c_str()) == 0; }
+// Like ESP32 SPIFFS (not like POSIX or littlefs), rename does not replace an existing destination:
+// the simulated board must not let firmware rely on rename-over.
+bool FS::rename(const char* a, const char* b) {
+  fault_before("rename", a);
+  std::string hb = hostPath(b);
+  struct stat st;
+  if (stat(hb.c_str(), &st) == 0) return false;
+  mkdirs(hb);
+  return ::rename(hostPath(a).c_str(), hb.c_str()) == 0;
+}
 bool FS::mkdir(const char* path) { std::string h = hostPath(path); mkdirs(h); return ::mkdir(h.c_str(), 0777) == 0 || errno == EEXIST; }
 bool FS::rmdir(const char* path) { return ::rmdir(hostPath(path).c_str()) == 0; }
 
