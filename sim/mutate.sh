@@ -283,6 +283,11 @@ mutate mqtt_ca_not_persisted_sim examples/companion_radio/NodePrefs.h "         
 mutate mqtt_ca_only_first_chunk_persisted examples/companion_radio/NodePrefs.h "        for (uint8_t n = 0; n < MqttProfile::CA_CHUNKS; n++) {" "        for (uint8_t n = 0; n < 1; n++) {" $MQ_SIM::test_the_largest_practical_ca_fits_and_is_accepted
 mutate mqtt_ca_listed_as_fingerprint $MQ_PROF_C 'const char* anchor = q.hasCa() ? "ca" : (q.anchor[0] ? "fingerprint" : "unset");' 'const char* anchor = (q.hasCa() || q.anchor[0]) ? "fingerprint" : "unset";' unit:test_mqtt_prefs
 mutate mqtt_ca_copy_not_made $MQ_CTRL "    strcpy(j.ca, q.ca);" "    j.ca[0] = 0;" $MQ_SIM::test_a_ca_anchor_survives_the_broker_certificate_being_renewed
+mutate mqtt_damaged_anchor_connects_anyway src/helpers/mqtt/MqttController.cpp "  if (q.useTls() && !MqttProfiles::anchorUsable(q)) {" "  if (false) {" "$MQ_SIM::test_a_damaged_stored_ca_fails_closed_and_never_connects_unverified"
+mutate mqtt_damaged_anchor_unit src/helpers/mqtt/MqttProfiles.cpp "  return q.anchor[0] == 0 || validAnchor(q.anchor);" "  return true;" unit:test_mqtt_prefs
+mutate mqtt_damaged_ca_dropped_at_load src/helpers/mqtt/MqttProfiles.cpp "    poisonCa(p[i]);    // a gap" "    clearCa(i);    // a gap" unit:test_mqtt_prefs
+mutate mqtt_damaged_ca_dropped_at_load_sim src/helpers/mqtt/MqttProfiles.cpp "    poisonCa(p[i]);    // a gap" "    clearCa(i);    // a gap" "$MQ_SIM::test_a_damaged_stored_ca_fails_closed_and_never_connects_unverified"
+mutate mqtt_damaged_anchor_not_audited src/helpers/mqtt/MqttController.cpp "    Posture::audit().addOnce(_audit_now" "    (void)(_audit_now" "$MQ_SIM::test_a_damaged_stored_ca_fails_closed_and_never_connects_unverified"
 # --- connectivity mode and its screen (docs/CONNECTIVITY_MODE.md)
 CM_H=src/helpers/connmode/ConnMode.h
 CS_H=src/helpers/connmode/ConnStatus.h

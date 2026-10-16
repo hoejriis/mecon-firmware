@@ -583,7 +583,7 @@ TEST(MqttCaPrefs, TheFileSizeWithoutACaIsUnchangedAndSixLargeOnesAreMeasured) {
   EXPECT_LT(with6.text().size() - base.text().size(), 6u * 2100u);
 }
 
-TEST(MqttCaPrefs, ACaWithAGapIsDroppedNotHalfLoaded) {
+TEST(MqttCaPrefs, ACaWithAGapIsKeptAsAnUnusableAnchorNotDroppedToNoAnchor) {
   NodePrefs a;
   sendCa(a.mqtt_profiles, 0, fakeCaB64(450));
   CaptureStream out;
@@ -596,7 +596,44 @@ TEST(MqttCaPrefs, ACaWithAGapIsDroppedNotHalfLoaded) {
   NodePrefs b;
   ReplayStream in(text.c_str());
   ASSERT_TRUE(b.loadSerial(in));
-  EXPECT_FALSE(b.mqtt_profiles.p[0].hasCa());
+  // Dropping it would turn a pinned profile into an unanchored one that connects unverified: it stays, and fails closed.
+  EXPECT_TRUE(b.mqtt_profiles.p[0].hasCa());
+  EXPECT_FALSE(MqttProfiles::anchorUsable(b.mqtt_profiles.p[0]));
+}
+
+TEST(MqttCaPrefs, AMissingFirstPieceAndACorruptedPieceAreUnusableToo) {
+  NodePrefs a;
+  sendCa(a.mqtt_profiles, 0, fakeCaB64(450));
+  CaptureStream out;
+  ASSERT_TRUE(a.saveSerial(out));
+  std::string noFirst = out.text();
+  size_t k = noFirst.find("c000:");
+  ASSERT_NE(std::string::npos, k);
+  size_t e = noFirst.find('"', noFirst.find('"', k) + 1);
+  noFirst.erase(k, e + 2 - k);
+  NodePrefs b;
+  ReplayStream in(noFirst.c_str());
+  ASSERT_TRUE(b.loadSerial(in));
+  EXPECT_TRUE(b.mqtt_profiles.p[0].hasCa());
+  EXPECT_FALSE(MqttProfiles::anchorUsable(b.mqtt_profiles.p[0]));
+  std::string bad = out.text();
+  size_t q = bad.find("c001:\"") + 6;
+  bad[q] = '*';
+  NodePrefs c;
+  ReplayStream in2(bad.c_str());
+  ASSERT_TRUE(c.loadSerial(in2));
+  EXPECT_FALSE(MqttProfiles::anchorUsable(c.mqtt_profiles.p[0]));
+  EXPECT_TRUE(MqttProfiles::anchorUsable(a.mqtt_profiles.p[0]));
+}
+
+TEST(MqttCaPrefs, AMalformedFingerprintIsUnusableAndNoAnchorIsFine) {
+  MqttProfile q;
+  memset(&q, 0, sizeof(q));
+  EXPECT_TRUE(MqttProfiles::anchorUsable(q));
+  strcpy(q.anchor, "00112233");
+  EXPECT_FALSE(MqttProfiles::anchorUsable(q));
+  strcpy(q.anchor, ANCHOR);
+  EXPECT_TRUE(MqttProfiles::anchorUsable(q));
 }
 
 int main(int argc, char** argv) {

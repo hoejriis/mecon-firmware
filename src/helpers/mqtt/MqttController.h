@@ -43,6 +43,8 @@ public:
   // Without a handler nothing is subscribed.
   void setCliHandler(Cli::Mqtt::RunFn fn, void* user) { _cli_fn = fn; _cli_user = user; }
   const MqttCore* core() const { return &_core; }
+  // Seconds clock for the audit entry of a refused profile (a stored anchor that cannot be used); without one, 0.
+  void setAuditClock(uint32_t (*now)()) { _audit_now = now; }
 
   // One status line: state, profile, broker address, TLS state, time connected. Never contains a credential.
   void formatStatus(char* out, size_t cap);
@@ -86,6 +88,7 @@ private:
   char _resp_topic[40] = {0};
   Cli::Mqtt::RunFn _cli_fn = nullptr;
   void* _cli_user = nullptr;
+  uint32_t (*_audit_now)() = nullptr;
   uint32_t _cur_addr = 0;
   uint16_t _cur_port = 0;
   uint32_t _next_status = 0;

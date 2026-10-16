@@ -86,6 +86,9 @@ struct MqttProfiles {
   bool loadCaChunk(uint8_t i, uint8_t n, const char* chunk);
   // Prefs saving: chunk `n` of profile i's CA into `out` (CA_CHUNK + 1 bytes); false when there is no such chunk.
   bool caChunk(uint8_t i, uint8_t n, char* out) const;
+  // False when the profile's anchor is stored but cannot be used: a CA that is not one complete DER certificate (a
+  // damaged prefs file), or a fingerprint that is not 64 hex digits. Such a profile must never connect: it fails closed.
+  static bool anchorUsable(const MqttProfile& q);
 
   // A profile is usable when its kind is set and everything that kind needs is present.
   bool configured(uint8_t i) const {

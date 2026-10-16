@@ -117,17 +117,33 @@ void MqttProfiles::clearCa(uint8_t i) {
   p[i].ca = nullptr;
 }
 
+bool MqttProfiles::anchorUsable(const MqttProfile& q) {
+  if (q.hasCa()) {
+    uint8_t der[MqttProfile::CA_B64_MAX / 4 * 3 + 3];
+    return mqttCaDecode(q.ca, der, sizeof(der)) > 0;
+  }
+  return q.anchor[0] == 0 || validAnchor(q.anchor);
+}
+
+// A damaged CA must not disappear: a profile with no anchor connects unverified. A marker that is not base64 stays in
+// its place, so the profile still has a CA, the CA does not decode, and the profile fails closed.
+static void poisonCa(MqttProfile& q) {
+  free(q.ca);
+  q.ca = (char*)malloc(2);
+  if (q.ca) { q.ca[0] = '!'; q.ca[1] = 0; }
+}
+
 bool MqttProfiles::loadCaChunk(uint8_t i, uint8_t n, const char* chunk) {
   if (i >= COUNT || n >= MqttProfile::CA_CHUNKS) return false;
   if (n == 0) clearCa(i);   // a file loaded over a profile that already had a CA replaces it
   size_t have = p[i].ca ? strlen(p[i].ca) : 0;
   size_t cl = strlen(chunk);
   if (have != (size_t)n * MqttProfile::CA_CHUNK || cl == 0 || cl > MqttProfile::CA_CHUNK) {
-    clearCa(i);    // a gap or an out-of-order chunk: a damaged CA is no CA
+    poisonCa(p[i]);    // a gap or an out-of-order chunk: the CA is damaged, and a damaged anchor is not "no anchor"
     return false;
   }
   char* grown = (char*)realloc(p[i].ca, have + cl + 1);
-  if (!grown) { clearCa(i); return false; }
+  if (!grown) { poisonCa(p[i]); return false; }
   memcpy(grown + have, chunk, cl + 1);
   p[i].ca = grown;
   return true;

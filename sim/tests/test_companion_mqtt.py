@@ -623,3 +623,36 @@ def test_a_damaged_ca_is_refused_at_ca_end_and_the_profile_keeps_its_anchor(node
     assert c.cli(damaged[-1]).startswith("ERR: ca is not one complete")
     assert "anchor=fingerprint" in c.cli("get mqtt.profile 0")
     assert "tls=verified" in wait_status(c, "connected")
+
+
+@pytest.mark.parametrize("damage", ["flipped", "first_piece_missing"])
+def test_a_damaged_stored_ca_fails_closed_and_never_connects_unverified(nodes, tmp_path, ca_brokers, damage):
+    ca = make_ca(str(tmp_path), "ca")
+    b = ca_brokers("b", "127.0.0.4", ca, dns="broker.test")
+    menv = MqttEnv(str(tmp_path / ("dmgp-%s.mqtt" % damage)))
+    menv.host("broker.test", "127.0.0.4")
+    name = "dmgp" + damage[:3]
+    n, c, _ = boot(nodes, tmp_path, name, ca_static(0, "broker.test", 90, ca), menv=menv)
+    assert "tls=verified" in wait_status(c, "connected")
+    sessions, tcp = b.client_connects(), b.connections()
+    n.stop()
+    path = os.path.join(n.dir, "prefs.json")
+    text = open(path).read()
+    if damage == "flipped":
+        k = text.index("c001:\"") + 6
+        text = text[:k] + "*" + text[k + 1:]            # a character that is not base64
+    else:
+        k = text.index("c000:")
+        e = text.index('"', text.index('"', k) + 1)
+        text = text[:k] + text[e + 2:]                  # the first piece is gone
+    open(path, "w").write(text)
+    n.start()
+    c = _client(n)
+    wait_until(lambda: last(c, 0) == "pin", "the damaged anchor to be refused")
+    time.sleep(1.0)
+    s = c.cli("get mqtt.status")
+    assert "tls=unverified" not in s and "connected" not in s, s
+    assert "anchor=ca" in c.cli("get mqtt.profile 0")        # still a pinned profile, not an unanchored one
+    assert b.client_connects() == sessions                    # the broker's own log: no new session ...
+    assert b.connections() == tcp                             # ... and not even a TCP connection: closed before the network
+    assert any("mqtt-session" in e for e in harness.audit_entries(c.cli)), "no refusal in the audit log"

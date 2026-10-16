@@ -111,6 +111,13 @@ void MqttController::attempt(const MqttAction& a) {
   const uint32_t now = millis();
   if (_job_active) return;   // never two attempts at once (the core does not ask for one)
   const MqttProfile& q = _profiles->p[a.profile];
+  if (q.useTls() && !MqttProfiles::anchorUsable(q)) {
+    // The profile is pinned but its anchor is damaged (a CA that no longer decodes, a malformed fingerprint). Connecting
+    // anyway would be the unverified TLS the anchor exists to prevent: fail closed, without touching the network.
+    Posture::audit().addOnce(_audit_now ? _audit_now() : 0, Posture::EV_REFUSED, Posture::CALLER_MQTT, Posture::W_MQTT_SESSION);
+    _core.onConnectFailed(now, MqttFail::Pin);
+    return;
+  }
   ConnectJob& j = _job;
   memset(&j, 0, sizeof(j));
   if (q.kind == MqttProfile::Static) {
