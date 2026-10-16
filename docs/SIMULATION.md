@@ -81,6 +81,7 @@ identity and channel table survive a cut at any byte or between write and rename
 * `test_companion_transport.py` – management commands refused on the TCP-class transport, allowed on USB; messaging works on both.
 * `test_companion_cli_secrets.py` – `get wifi.pwd` does not reveal the password.
 * `test_companion_remote_cli.py` – remote Companion CLI limited to reads and `reboot`.
+* `test_malformed_input.py` – runs the `sim_*_asan` sanitizer builds: hand-built truncated TRACE packets injected through the ether broker (`Ether.inject`) and over-long CLI arguments must not crash the node; a well-formed TRACE is still forwarded / delivered.
 * `test_repeater_prvkey.py` – `set prv.key` refused for a remote admin, allowed on the local console.
 
 ## Mutation check

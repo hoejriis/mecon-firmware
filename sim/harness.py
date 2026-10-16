@@ -17,6 +17,8 @@ BIN = {
     "repeater": os.path.join(REPO, ".pio/build/sim_repeater/program"),
     # same Companion code, but its app transport is classed as unauthenticated TCP (a _wifi build)
     "companion_wifi_usb": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb/program"),
+    "repeater_asan": os.path.join(REPO, ".pio/build/sim_repeater_asan/program"),
+    "companion_asan": os.path.join(REPO, ".pio/build/sim_companion_asan/program"),
     "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
 }
 
@@ -49,7 +51,8 @@ class Node:
         if self.rtc:
             cmd += ["--rtc", str(self.rtc)]
         self.log = open(self.log_path, "ab")
-        self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=self.log)
+        env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="print_stacktrace=1")
+        self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=self.log, env=env)
         end = time.time() + 10
         while time.time() < end:
             if os.path.exists(self.port_file):
@@ -59,6 +62,12 @@ class Node:
                 raise RuntimeError("%s exited early (%s); see %s" % (self.name, self.proc.returncode, self.log_path))
             time.sleep(0.02)
         raise RuntimeError("%s did not publish a serial port" % self.name)
+
+    def sanitizer_report(self):
+        """Text of any AddressSanitizer/UBSan report this node printed (empty when clean)."""
+        self.log.flush()
+        text = open(self.log_path, errors="replace").read()
+        return text if ("AddressSanitizer" in text or "runtime error" in text) else ""
 
     def stop(self):
         if self.proc and self.proc.poll() is None:

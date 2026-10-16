@@ -6,6 +6,10 @@
 #include "TxtDataHelpers.h"
 #include <RTClib.h>
 
+// Longest reply that may echo caller-supplied text. Reply buffers are 160 bytes at the console and
+// 161 for a remote caller, and a "xx|" prefix (3 bytes) is reflected in front of the reply.
+#define CLI_REPLY_MAX  150
+
 #ifndef BRIDGE_MAX_BAUD
 #define BRIDGE_MAX_BAUD 115200
 #endif
@@ -240,7 +244,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "ERR: bad pubkey");
       }
     } else if (memcmp(command, "tempradio ", 10) == 0) {
-      strcpy(tmp, &command[10]);
+      StrHelper::strncpy(tmp, &command[10], sizeof(tmp));
       const char *parts[5];
       int num = mesh::Utils::parseTextParts(tmp, parts, 5);
       float freq  = num > 0 ? strtof(parts[0], nullptr) : 0.0f;
@@ -296,7 +300,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "null");
       }
     } else if (memcmp(command, "sensor set ", 11) == 0) {
-      strcpy(tmp, &command[11]);
+      StrHelper::strncpy(tmp, &command[11], sizeof(tmp));
       const char *parts[2];
       int num = mesh::Utils::parseTextParts(tmp, parts, 2, ' ');
       const char *key = (num > 0) ? parts[0] : "";
@@ -664,7 +668,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     };
   #if defined(USE_LR2021)
   } else if (memcmp(config, "extra.sf ", 9) == 0) {
-    strcpy(tmp, &config[9]);
+    StrHelper::strncpy(tmp, &config[9], sizeof(tmp));
     const char *parts[4];
     uint8_t sideDetSFs[4];
     int num = mesh::Utils::parseTextParts(tmp, parts, 4);
@@ -685,8 +689,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
   #endif
   } else {
-    strcpy(reply, "unknown config: ");
-    StrHelper::strncpy(&reply[16], config, 160-17);
+    snprintf(reply, CLI_REPLY_MAX, "unknown config: %s", config);
   }
 }
 
@@ -822,7 +825,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "No extra SF configured");
     }
   } else {
-    sprintf(reply, "??: %s", config);
+    snprintf(reply, CLI_REPLY_MAX, "??: %s", config);   // config is caller-supplied and can be as long as the reply buffer
   }
 }
 
