@@ -1,0 +1,27 @@
+# Environments that fail to compile on stock upstream MeshCore 1.18.0 (81dbae5).
+# The all-boards workflow passes only when the failures equal this list.
+# Remove a line when the environment compiles; add one only with the stock error in docs/UPSTREAM_DELTA.md.
+Generic_E22_kiss_modem
+Generic_ESPNOW_comp_radio_usb
+Generic_ESPNOW_repeatr
+Generic_ESPNOW_room_svr
+Generic_ESPNOW_terminal_chat
+Heltec_E213_kiss_modem
+Heltec_E290_kiss_modem
+Heltec_T190_kiss_modem
+Heltec_ct62_repeater_bridge_espnow
+Heltec_mesh_solar_companion_radio_ble
+Heltec_mesh_solar_companion_radio_usb
+LilyGo_TBeam_1W_kiss_modem
+MeshTracker_X1_kiss_modem
+SenseCapIndicator-ESPNow_comp_radio_usb
+Station_G2_companion_radio_ble
+Station_G3_ESP32_companion_radio_ble
+Station_G3_ESP32_kiss_modem
+Tenstar_C3_sx1262_repeater_bridge_espnow
+Tenstar_C3_sx1268_repeater_bridge_espnow
+ThinkNode_M5_companion_radio_serial
+ThinkNode_M8_kiss_modem
+ThinkNode_M8_repeater
+ThinkNode_M8_room_server
+heltec_tracker_v2_kiss_modem

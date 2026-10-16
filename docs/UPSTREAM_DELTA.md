@@ -12,7 +12,7 @@ This register lists **every change this repository makes to a file that exists u
 | `.github/workflows/build-companion-firmwares.yml`, `build-repeater-firmwares.yml`, `build-room-server-firmwares.yml` | Removed | Release builders triggered by upstream's tag names. This project's releases have their own workflow. |
 | `.github/FUNDING.yml`, `CNAME` | Removed | Upstream's funding link and documentation domain. |
 | `.gitignore` | `.sim-logs/` added | Local logs from simulated-board runs. |
-| `src/helpers/BaseSerialInterface.h`, `MultiSerialInterface.h`, `wifi/SerialWifiInterface.h`, `ethernet/SerialEthernetInterface.h` | `isTrustedTransport()` added (default true; false on the TCP interfaces; the multiplexer reports the transport of the last frame) | Lets the Companion tell an authenticated transport (USB, paired BLE) from the unauthenticated TCP server. |
+| `src/helpers/BaseSerialInterface.h`, `MultiSerialInterface.h`, `ArduinoSerialInterface.h`, `wifi/SerialWifiInterface.h`, `ethernet/SerialEthernetInterface.h`, `esp32/`, `nrf52/` and `rp2040/SerialBLEInterface.*` | `isTrustedTransport()` added. It **defaults to false (fail closed)**. USB/UART serial is trusted. BLE is trusted only when paired with a PIN other than 0 or the default 123456. The TCP interfaces are untrusted. The multiplexer reports the transport of the last frame. | Lets the Companion tell an authenticated transport from an unauthenticated one. A PIN anyone can look up does not authenticate, so on default-PIN boards management stays on USB. |
 | `examples/companion_radio/MyMesh.cpp` | `CMD_RUN_CLI_COMMAND`, export/import private key, set device PIN and factory reset are refused with `ERR_CODE_NOT_PERMITTED` (7) on an untrusted transport | Stock serves these to any client of the `_wifi` build's open TCP port. |
 | `src/helpers/CommonCLI.cpp` (`loadPrefs`, `savePrefs`), `examples/companion_radio/DataStore.cpp` (prefs, channel table), `src/helpers/IdentityStore.cpp`/`.h` | Saves go through `src/helpers/AtomicFile.h` (new): temp file, flush, read-back check of length and CRC, then swap; boot completes or drops an interrupted swap. A stored identity that cannot be read is renamed to `<file>.damaged` instead of being overwritten by a fresh one | Stock rewrites these files in place: a power cut leaves a truncated file that the loader accepts (settings silently revert), or loses the identity. |
 | `examples/simple_repeater/main.cpp` | Prints a warning when the identity file was damaged and kept aside | The repeater console is the only place that can report it. |
@@ -48,3 +48,19 @@ Generic fixes made here that would also benefit stock MeshCore, with whether the
 | RP2040 | LittleFS (littlefs) | Atomic replace (`lfs_rename`) | Direct rename over the live file. |
 
 Not covered: contacts, blobs and the client ACL are still written in place.
+
+## Known stock compile failures
+
+24 of the 618 PlatformIO environments in MeshCore 1.18.0 do not compile on stock upstream code. They are listed in `ci/known-upstream-failures.txt`. The all-boards workflow passes only when the failures equal that list, so a new failure, or a listed environment that starts compiling, turns it red. None of them is a board or role this project verifies on hardware.
+
+| Environments | Stock error |
+|---|---|
+| `*_kiss_modem` on Heltec E213, E290, T190, Tracker v2, LilyGo T-Beam 1W, Station G3 ESP32 (6) | `USBCDC` has no `setTxBufferSize` |
+| `Generic_E22_kiss_modem` | `LORA_TX_POWER` not declared |
+| `Generic_ESPNOW_*` (4), `SenseCapIndicator-ESPNow_comp_radio_usb` | `P_LORA_DIO_1` not declared |
+| `*_repeater_bridge_espnow` on Heltec CT62 and Tenstar C3 (3) | ESP-NOW receive callback signature mismatch |
+| `ThinkNode_M8_kiss_modem`, `_repeater`, `_room_server` | link error |
+| `Station_G2_companion_radio_ble`, `Station_G3_ESP32_companion_radio_ble` | image larger than the 1,310,720-byte app partition |
+| `Heltec_mesh_solar_companion_radio_ble`, `_usb` | vendor logger macros collide with the board library |
+| `MeshTracker_X1_kiss_modem` | `MicroNMEA.h` not found |
+| `ThinkNode_M5_companion_radio_serial` | `D6`/`D7` not declared |

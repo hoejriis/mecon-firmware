@@ -74,9 +74,32 @@ jobs:
             echo "::endgroup::"
           done
           cat results.txt
-          if [ ${#failed[@]} -gt 0 ]; then echo "Failed: ${failed[*]}"; exit 1; fi
+          # The verdict job decides pass/fail against ci/known-upstream-failures.txt.
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: results-shard-${{ matrix.shard.id }}
           path: results.txt
+
+  verdict:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+      - name: Compare with the known upstream failures
+        run: |
+          cat results/*/results.txt > all.txt
+          total=$(wc -l < all.txt)
+          grep '^FAIL ' all.txt | awk '{print $2}' | sort > failed.txt
+          grep -v '^#' ci/known-upstream-failures.txt | grep . | sort > known.txt
+          echo "Compiled: $(grep -c '^OK ' all.txt) of $total environments"
+          new=$(comm -23 failed.txt known.txt); fixed=$(comm -13 failed.txt known.txt)
+          status=0
+          if [ -n "$new" ]; then echo "::error::New compile failures (not in ci/known-upstream-failures.txt):"; echo "$new"; status=1; fi
+          if [ -n "$fixed" ]; then echo "::error::Listed as failing but now compiles (remove from ci/known-upstream-failures.txt):"; echo "$fixed"; status=1; fi
+          if [ "${{ needs.build.result }}" != "success" ]; then echo "::error::A shard did not complete (${{ needs.build.result }})"; status=1; fi
+          exit $status
