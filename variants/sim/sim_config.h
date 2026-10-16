@@ -14,6 +14,9 @@ struct SimConfig {
   uint32_t rtc_epoch = 1760000000;  // RTC value at process start (unix seconds)
   std::string wifi_env;       // file listing the simulated Wi-Fi access points (variants/sim/sim_wifi.cpp)
   std::string mqtt_env;       // file with the simulated DNS names and mDNS responders (variants/sim/sim_mqtt_net.cpp)
+  std::string ui_frames;      // file the recording display appends its frames to (variants/sim/sim_display.cpp)
+  std::string ui_input;       // file of button gestures the node replays, one word per line (click|long|double|triple)
+  std::string ble_env;        // file whose content "connected" makes the stubbed BLE interface report a connected phone
   std::string fault_path;     // fault injection: file path (as the app sees it) ...
   long fault_after = -1;      // ... and bytes after which the process is killed
   std::string fault_op;       // power cut just BEFORE a filesystem operation: "rename" or "remove" ...

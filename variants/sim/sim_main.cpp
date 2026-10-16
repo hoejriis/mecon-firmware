@@ -29,6 +29,9 @@ int main(int argc, char** argv) {
     else if (a == "--time-scale") g_sim.time_scale = atof(next());
     else if (a == "--wifi-env") g_sim.wifi_env = next();
     else if (a == "--mqtt-env") g_sim.mqtt_env = next();
+    else if (a == "--ui-frames") g_sim.ui_frames = next();
+    else if (a == "--ui-input") g_sim.ui_input = next();
+    else if (a == "--ble-env") g_sim.ble_env = next();
     else if (a == "--rtc") g_sim.rtc_epoch = strtoul(next(), nullptr, 10);
     else if (a == "--fault") {   // --fault /path:BYTES
       std::string v = next(); size_t c = v.rfind(':');

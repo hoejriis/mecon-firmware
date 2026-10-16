@@ -21,6 +21,8 @@ BIN = {
     "repeater_asan": os.path.join(REPO, ".pio/build/sim_repeater_asan/program"),
     "companion_asan": os.path.join(REPO, ".pio/build/sim_companion_asan/program"),
     "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
+    # the standalone Companion: connectivity-mode switching, the real ui-new screens on a recording display
+    "companion_standalone": os.path.join(REPO, ".pio/build/sim_companion_standalone/program"),
 }
 
 
@@ -87,6 +89,86 @@ class MqttEnv:
         os.replace(tmp, self.path)
 
 
+class UiProbe:
+    """The standalone Companion's screen and button. The node's recording display appends every distinct frame to a
+    file; the button replays the gestures written to another. A frame is the list of (x, y, size, text) it drew."""
+
+    def __init__(self, workdir, name):
+        self.frames_path = os.path.join(str(workdir), name + ".frames")
+        self.input_path = os.path.join(str(workdir), name + ".input")
+        self.ble_path = os.path.join(str(workdir), name + ".ble")
+        open(self.input_path, "w").close()
+
+    def press(self, kind):
+        """One gesture: click | long | double | triple."""
+        assert kind in ("click", "long", "double", "triple")
+        with open(self.input_path, "a") as f:
+            f.write(kind + "\n")
+
+    def phone(self, connected):
+        """Tell the stubbed BLE interface a phone is (not) connected."""
+        with open(self.ble_path, "w") as f:
+            f.write("connected" if connected else "none")
+
+    def frames(self, since_boot=True):
+        """All frames written so far (of the latest boot by default), oldest first: [[(x, y, size, text)]]."""
+        out, cur, boots = [], None, 0
+        if not os.path.exists(self.frames_path):
+            return out
+        for ln in open(self.frames_path, errors="replace"):
+            ln = ln.rstrip("\n")
+            if ln.startswith("BOOT "):
+                if since_boot:
+                    out = []
+                boots += 1
+            elif ln.startswith("FRAME "):
+                cur = []
+            elif ln == "END":
+                if cur is not None:
+                    out.append(cur)
+                cur = None
+            elif ln.startswith("T ") and cur is not None:
+                parts = ln.split(" ", 4)
+                cur.append((int(parts[1]), int(parts[2]), int(parts[3]), parts[4] if len(parts) > 4 else ""))
+        return out
+
+    @staticmethod
+    def text(frame):
+        return "\n".join(t[3] for t in frame)
+
+    def last_text(self):
+        fr = self.frames()
+        return self.text(fr[-1]) if fr else ""
+
+    def all_text(self):
+        """Every line drawn in any frame of every boot, as one string (for the "never a secret" checks)."""
+        return "\n".join(self.text(f) for f in self.frames(since_boot=False))
+
+    def wait_text(self, needle, timeout=15.0):
+        """Wait until the newest frame shows ``needle``; returns that frame's text (or None on timeout)."""
+        end = time.time() + timeout
+        while time.time() < end:
+            t = self.last_text()
+            if needle in t:
+                return t
+            time.sleep(0.05)
+        return None
+
+    def wait_gone(self, needle, timeout=15.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            t = self.last_text()
+            if t and needle not in t:
+                return t
+            time.sleep(0.05)
+        return None
+
+
+def node_log(node):
+    node.log.flush()
+    return open(node.log_path, errors="replace").read()
+
+
 def mqtt_events(node):
     """The simulated network's lines in the node's log, oldest first, as the text after "SIMMQTT "."""
     out = []
@@ -125,6 +207,7 @@ class Node:
             wifi.set("sim")
         self.wifi = wifi
         self.mqtt = mqtt
+        self.ui = UiProbe(workdir, name) if kind == "companion_standalone" else None
         self.proc = None
         self.port = None
 
@@ -145,6 +228,8 @@ class Node:
             cmd += ["--wifi-env", self.wifi.path]
         if self.mqtt:
             cmd += ["--mqtt-env", self.mqtt.path]
+        if self.ui:
+            cmd += ["--ui-frames", self.ui.frames_path, "--ui-input", self.ui.input_path, "--ble-env", self.ui.ble_path]
         self.log = open(self.log_path, "ab")
         env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="print_stacktrace=1")
         self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=self.log, env=env)
