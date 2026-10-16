@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
     else if (a == "--port-file") g_sim.port_file = next();
     else if (a == "--seed") g_sim.seed = strtoul(next(), nullptr, 10);
     else if (a == "--time-scale") g_sim.time_scale = atof(next());
+    else if (a == "--wifi-env") g_sim.wifi_env = next();
     else if (a == "--rtc") g_sim.rtc_epoch = strtoul(next(), nullptr, 10);
     else if (a == "--fault") {   // --fault /path:BYTES
       std::string v = next(); size_t c = v.rfind(':');

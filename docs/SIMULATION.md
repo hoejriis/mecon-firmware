@@ -31,11 +31,12 @@ attached. For long jobs run it detached with output redirected to a file under
 | Ether broker | `sim/ether.py` | decides who hears whom, per-link RSSI/SNR/loss, holds the channel busy for the packet's time on air, delivers at end of airtime, destroys overlapping receptions |
 | Time on air | `variants/sim/sim_toa.h` | Semtech formula (explicit header, CRC on, low-data-rate optimisation when Tsym > 16 ms) |
 | Clock | `variants/sim/sim_clock.h` | `SimClock` interface behind `millis()`/`micros()`/`delay()` and the RTC |
+| Wi-Fi | `variants/sim/sim_wifi.cpp`, `shims/WiFi.h` | the ESP32 `WiFi` API subset the Wi-Fi controller uses, over access points the test defines (`WifiEnv` in `sim/harness.py`: SSID, password, RSSI, up/down at run time, in a file the node re-reads); scans take 0.3 s and joins 0.4 s of node time; failures use the ESP32 reasons; every transition is logged with the SSID only |
 | SimFS | `variants/sim/sim_fs.cpp` | the ESP32 SPIFFS API (`fs::FS`, `File`) over a per-node host directory, with a power-cut fault hook |
 | Serial | `variants/sim/sim_runtime.cpp` | the USB serial port is a loopback TCP listener; Companion frames and the repeater CLI pass through unchanged |
 | Runner | `sim/harness.py`, `sim/tests/` | starts the broker and N nodes (each in its own temp dir) and drives them with a small Companion client and a CLI client |
 
-Node command line: `--dir`, `--ether`, `--name`, `--port-file`, `--seed`, `--time-scale`,
+Node command line: `--dir`, `--ether`, `--wifi-env`, `--name`, `--port-file`, `--seed`, `--time-scale`,
 `--rtc`, `--fault /path:BYTES`, and `--toa SF BW CR PREAMBLE LEN` (print time on air in
 microseconds and exit). A node exits with status 75 on `reboot` and 0 on `poweroff`.
 
@@ -56,7 +57,7 @@ microseconds and exit). A node exits with status 75 on `reboot` and 0 on `powero
   SF and have a link hear it; two overlapping receptions at one node, or a node that
   transmits during a reception, lose the packet. There is no capture effect and no noise
   floor model; RSSI/SNR are whatever the link says.
-* Not simulated: BLE, WiFi, displays, GPS/sensors, the real SX126x state machine, CAD,
+* Not simulated: BLE, the Wi-Fi radio itself (association timing, roaming, DHCP; only the access-point model above), displays, GPS/sensors, the real SX126x state machine, CAD,
   power saving, flash wear/latency.
 
 ## Storage fault injection
@@ -89,9 +90,13 @@ Tests that wait on a node's first transmission after a boot are marked `@pytest.
 * `test_postures_admin.py` – the standalone postures on a Repeater and a Room server ([Standalone security postures](STANDALONE_POSTURES.md)): the stock default password opens nothing in either posture (blank-password re-login of a stored admin entry included) and a set password opens remote admin (read-only in Hardened); Hardened remote admin is read-only plus `reboot` with every refusal an explicit reply; a remote caller can neither raise nor lower the posture or read the audit log, and each attempt is audited; key export and import are refused on the console in Hardened; an attempted password appears in no file of the node directory and not in its log; posture and audit survive a reboot; a power cut while lowering leaves the device Hardened and a cut while raising keeps the previous prefs (three cut points each); `erase` recovers a Hardened device and the audit log keeps its history through the reset; repeats fold into one audit entry with a count.
 * `test_postures_companion.py` – the same on a Companion: key export and import refused over USB in Hardened and allowed again after `set posture normal confirm`; the remote CLI off in Hardened and back on in Normal; a remote CLI caller cannot change the posture or read the audit log; a Wi-Fi-class build with a stored Hardened posture does not serve its TCP port (the same build in Normal does); untrusted-transport refusals are audited in the file; the USB factory-reset frame recovers Hardened and keeps the audit history; posture survives a reboot and a power cut while lowering. BLE is not simulated: its rules are in the unit tests.
 
+* `test_companion_wifi.py` – the prioritised Wi-Fi controller ([Wi-Fi profiles](WIFI.md)) on `companion_wifi_usb` (profiles set over the USB console, the controller runs after a reboot; in that build the TCP side is inert) and `companion_wifi` on the same node directory, at time scale 20: the highest-priority visible profile is joined with no detour; a higher profile that is absent is skipped; failover when the network disappears and on a wrong password (`last=auth` in the listing); return to the better network only after the hold-down and exactly one switch (joins counted in the node log); a failed switch up is not hammered; backoff and joining when the network appears later; a live profile edit rejoins without a reboot; ten profiles persist across a reboot and a stop; a power cut at four points of the prefs save keeps all ten; each password appears in no reply and in no file or log but `prefs.json`; the stock `wifi.ssid` / `wifi.pwd` / `wifi.clear` commands and a stock-format prefs file; the TCP companion server answers only while the controller holds a link; Hardened starts no Wi-Fi.
+
 ## Unit tests (`pio test -e native`)
 
 `test_posture` covers the pure decision functions (posture byte, BLE start with a default PIN, TCP server start, key transfer, who may factory-reset, default-password test, the Hardened read-only list, the posture / audit commands for every caller, the Repeater / Room server front door) and the audit ring (folding, eviction, file image and its CRC against any single flipped byte, the flush policy and its millisecond wrap, paging). These are the only checks of the BLE rule and of the BLE factory-reset refusal, because the simulator has no BLE.
+
+`test_wifi_core` drives the Wi-Fi decision core with a fake radio and a virtual clock (selection and tie-break, failover on wrong password, not-found, join timeout and quick drops, the escalating cooldown, hold-down return and its reset by a missed scan, no scans on the best profile, backoff growth and reset, profile edits, ten profiles, the 32-bit clock wrap). `test_wifi_prefs` covers the profile store in the real `NodePrefs` serializer (a stock-format file, ten full-length profiles round-trip, the prefs size) and the profile CLI (bad input changes nothing, paging through ten profiles, last failure shown, no reply ever carries a password).
 
 ## Mutation check
 
@@ -99,3 +104,5 @@ Tests that wait on a node's first transmission after a boot are marked `@pytest.
 every packet, SimFS discarding writes, the fault hook disabled), rebuilds, expects that
 group to go red, restores the file with `git checkout` and finishes with a clean full run.
 Run it on a clean tree. It also breaks each duty-cycle rule (sliding window turned into a bucket, floor ignored, floor clamped at the CLI's 10 %, a straddling channel judged by its centre, a frequency change not applied) and expects the load tests and the unit tests to go red; those mutants take about 2.5 minutes each. A second group breaks each posture rule (a damaged posture byte read as Normal, BLE started with a default PIN, TCP servers started in Hardened, key transfer allowed, remote admin not read-only, default password accepted, an attempted password logged, remote lowering allowed, lowering without the confirm token, posture not persisted, a factory reset keeping the posture, refusals not audited, the audit readable remotely, repeats not folded, the flush limit off, the audit CRC unchecked, remote CLI left on in Hardened) and expects the posture tests or the unit tests to go red.
+
+A third group breaks each Wi-Fi controller rule (priority ignored, tie to the higher number, a wrong password or a not-found retried at once, no escalation, no join timeout, drops not counted or never forgiven, a lost network not failed over, no hold-down, a missed scan not restarting it, scans on the best profile, backoff not growing or not reset, an edit that keeps the link or the cooldown, the radio's own leave counted as a failure, an unmapped auth reason, the stock keys or commands changed, priorities or further profiles not persisted, a password in a listing or in the log, the TCP server served without a link, Wi-Fi started in Hardened) and expects the Wi-Fi tests or the unit tests to go red.

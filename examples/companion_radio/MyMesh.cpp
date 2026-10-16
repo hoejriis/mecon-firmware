@@ -4,6 +4,7 @@
 #include <Arduino.h> // needed for PlatformIO
 #ifdef ENABLE_WIFI_INTERFACE
 #include <WiFi.h>
+#include <helpers/wifi/WifiController.h>
 #endif
 #include <Mesh.h>
 
@@ -2216,16 +2217,30 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
 
 #ifdef ENABLE_WIFI_INTERFACE
+  // Wi-Fi profiles: `set|get wifi.profile(s) ...`; the stock wifi.ssid / wifi.pwd / wifi.clear are profile 0.
+  // A password is write-only: no reply below ever carries one.
+  {
+    WifiProfileChange change;
+    if (wifiProfileCommand(_prefs.wifi_profiles, wifiController().core(), command, reply, 150, change)) {
+      if (change.changed) {
+        savePrefs();
+        wifiController().profileChanged(change.index, change.credentials);
+      }
+      return true;
+    }
+  }
   if (memcmp(command, "set wifi.ssid ", 14) == 0) {
-    StrHelper::strncpy(_prefs.wifi_ssid, &command[14], sizeof(_prefs.wifi_ssid));
+    StrHelper::strncpy(_prefs.wifi_profiles.ssid_[0], &command[14], sizeof(_prefs.wifi_profiles.ssid_[0]));
     savePrefs();
-    sprintf(reply, "> wifi.ssid is now %s (set wifi.pwd too, then reboot)", _prefs.wifi_ssid);
+    wifiController().profileChanged(0, true);
+    sprintf(reply, "> wifi.ssid is now %s (set wifi.pwd too)", _prefs.wifi_profiles.ssid(0));
     return true;
   }
   if (memcmp(command, "set wifi.pwd ", 13) == 0) {
-    StrHelper::strncpy(_prefs.wifi_pwd, &command[13], sizeof(_prefs.wifi_pwd));
+    StrHelper::strncpy(_prefs.wifi_profiles.pwd_[0], &command[13], sizeof(_prefs.wifi_profiles.pwd_[0]));
     savePrefs();
-    strcpy(reply, "> wifi.pwd updated (reboot to apply)");
+    wifiController().profileChanged(0, true);
+    strcpy(reply, "> wifi.pwd updated");
     return true;
   }
   if (strcmp(command, "get wifi.pwd") == 0) {
@@ -2233,14 +2248,15 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
   if (strcmp(command, "set wifi.clear") == 0) {
-    _prefs.wifi_ssid[0] = 0;
-    _prefs.wifi_pwd[0] = 0;
+    _prefs.wifi_profiles.ssid_[0][0] = 0;
+    _prefs.wifi_profiles.pwd_[0][0] = 0;
     savePrefs();
-    strcpy(reply, "> wifi config cleared (reboot to apply)");
+    wifiController().profileChanged(0, true);
+    strcpy(reply, "> wifi config cleared");
     return true;
   }
   if (strcmp(command, "get wifi.ssid") == 0) {
-    sprintf(reply, "> %s", _prefs.getWifiSSID()[0] ? _prefs.getWifiSSID() : "(not set)");
+    sprintf(reply, "> %s", _prefs.wifi_profiles.ssid(0)[0] ? _prefs.wifi_profiles.ssid(0) : "(not set)");
     return true;
   }
   if (memcmp(command, "set wifi.enabled ", 17) == 0) {
@@ -2254,12 +2270,14 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
   if (strcmp(command, "get wifi.status") == 0) {
-    strcpy(reply, WiFi.status() == WL_CONNECTED ? "> connected" : "> disconnected");
+    wifiController().formatStatus(reply, 150);
     return true;
   }
   if (strcmp(command, "get wifi.ip") == 0) {
-    if (WiFi.status() == WL_CONNECTED) {
-      sprintf(reply, "> %s", WiFi.localIP().toString().c_str());
+    char ip[20];
+    wifiController().formatIp(ip, sizeof(ip));
+    if (ip[0]) {
+      sprintf(reply, "> %s", ip);
     } else {
       strcpy(reply, "> (not connected)");
     }

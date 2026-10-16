@@ -36,5 +36,3 @@ mesh::LocalIdentity radio_new_identity() {
   return mesh::LocalIdentity(&rng);
 }
 
-#include <WiFi.h>
-SimWiFi WiFi;

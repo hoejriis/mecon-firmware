@@ -109,4 +109,5 @@ int SimSerial::peek() { serial_pump(); return g_rx_pos < g_rx_len ? g_rx[g_rx_po
 SimSerial Serial;
 
 void sim_radio_poll();
-void sim_poll() { serial_pump(); sim_radio_poll(); }
+void sim_wifi_poll();
+void sim_poll() { serial_pump(); sim_radio_poll(); sim_wifi_poll(); }
