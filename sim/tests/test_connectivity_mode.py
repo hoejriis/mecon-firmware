@@ -68,7 +68,16 @@ def goto_connectivity(node):
         end = time.time() + 15   # wait for the page to change, not merely for a redraw of the same page
         while time.time() < end and node.ui.last_text() == text:
             time.sleep(0.05)
-    raise AssertionError("never reached the connectivity screen: " + node.ui.last_text())
+    try:
+        inp = open(node.ui.input_path).read()
+    except OSError as e:
+        inp = repr(e)
+    try:
+        log = open(node.log_path, errors="replace").read()[-3000:]
+    except OSError as e:
+        log = repr(e)
+    raise AssertionError("never reached the connectivity screen: " + node.ui.last_text()
+                         + "\n--- frames this boot: %d\n--- input file:\n%s\n--- node log tail:\n%s" % (len(node.ui.frames()), inp, log))
 
 
 def log_count(node, text):

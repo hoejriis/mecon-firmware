@@ -9,6 +9,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      pytest_args:
+        description: 'Extra pytest arguments, e.g. a file or -k expression'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -37,4 +42,4 @@ jobs:
           envs=$(pio project config --json-output | python3 -c "import json,sys; print(' '.join('-e '+s[0][4:] for s in json.load(sys.stdin) if s[0].startswith('env:sim_')))")
           echo "$envs"
           pio run $envs
-      - run: python3 -m pytest sim/tests -v
+      - run: python3 -m pytest ${{ github.event.inputs.pytest_args || 'sim/tests' }} -v

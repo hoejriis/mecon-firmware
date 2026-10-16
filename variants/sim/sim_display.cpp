@@ -67,6 +67,9 @@ int SimButton::check(bool) {
     }
   }
   fclose(f);
-  if (ev != BUTTON_EVENT_NONE) _next_poll = 0;
+  if (ev != BUTTON_EVENT_NONE) {
+    _next_poll = 0;
+    fprintf(stderr, "SIMBTN ev=%d at=%lu off=%lu\n", ev, (unsigned long)millis(), (unsigned long)_off);
+  }
   return ev;
 }
