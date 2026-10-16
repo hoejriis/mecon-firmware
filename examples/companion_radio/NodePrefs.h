@@ -6,6 +6,12 @@
 #ifdef ENABLE_WIFI_INTERFACE
   #include <helpers/wifi/WifiProfiles.h>
 #endif
+#ifdef ENABLE_MQTT
+  #ifndef ENABLE_WIFI_INTERFACE
+    #error "ENABLE_MQTT needs ENABLE_WIFI_INTERFACE: the MQTT controller rides on the Wi-Fi link"
+  #endif
+  #include <helpers/mqtt/MqttProfiles.h>
+#endif
 
 #define TELEM_MODE_DENY            0
 #define TELEM_MODE_ALLOW_FLAGS     1     // use contact.flags
@@ -63,6 +69,11 @@ public:
   // stored SSID the compile-time WIFI_SSID / WIFI_PWD apply.
   WifiProfiles wifi_profiles;
   uint8_t wifi_enabled = 1; // enabled by default to allow wifi only builds to work. wifi won't be started if no profile is set
+#endif
+#ifdef ENABLE_MQTT
+  // MQTT broker profiles (src/helpers/mqtt/MqttProfiles.h); credentials are write-only.
+  MqttProfiles mqtt_profiles;
+  uint8_t mqtt_enabled = 1;   // nothing happens without a configured profile and a Wi-Fi link
 #endif
 
 private:
@@ -206,6 +217,33 @@ private:
   WiFiPrefs wifi;
 #endif
 
+#ifdef ENABLE_MQTT
+  class MqttPrefs : public ConfigSerializer {
+    NodePrefs* _parent;
+  protected:
+    void structure() override {
+      MqttProfiles& m = _parent->mqtt_profiles;
+      def("en", _parent->mqtt_enabled);
+      for (uint8_t i = 0; i < MqttProfiles::COUNT; i++) {
+        MqttProfile& q = m.p[i];
+        char key[4] = { 'k', (char)('0' + i), 0, 0 };
+        def(key, q.kind);
+        key[0] = 'p'; def(key, q.prio);
+        key[0] = 't'; def(key, q.tls);
+        key[0] = 'o'; def(key, q.port);
+        key[0] = 'h'; def(key, q.host, sizeof(q.host));
+        key[0] = 's'; def(key, q.site, sizeof(q.site));
+        key[0] = 'a'; def(key, q.anchor, sizeof(q.anchor));
+        key[0] = 'u'; def(key, q.user, sizeof(q.user));
+        key[0] = 'w'; def(key, q.pwd, sizeof(q.pwd));
+      }
+    }
+  public:
+    MqttPrefs(NodePrefs* parent) : _parent(parent) { }
+  };
+  MqttPrefs mqtt;
+#endif
+
 protected:
   void structure() override {
     def("name", node_name, sizeof(node_name));
@@ -222,11 +260,17 @@ protected:
 #ifdef ENABLE_WIFI_INTERFACE
     def("wifi", wifi);
 #endif
+#ifdef ENABLE_MQTT
+    def("mqtt", mqtt);
+#endif
   }
 public:
   NodePrefs() : radio(this), gps(this), companion(this), custom(&radio)
 #ifdef ENABLE_WIFI_INTERFACE
     , wifi(this)
+#endif
+#ifdef ENABLE_MQTT
+    , mqtt(this)
 #endif
   {
     node_name[0] = 0;

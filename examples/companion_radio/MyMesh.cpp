@@ -5,6 +5,9 @@
 #ifdef ENABLE_WIFI_INTERFACE
 #include <WiFi.h>
 #include <helpers/wifi/WifiController.h>
+#ifdef ENABLE_MQTT
+#include <helpers/mqtt/MqttController.h>
+#endif
 #endif
 #include <Mesh.h>
 
@@ -2283,6 +2286,34 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     }
     return true;
   }
+#ifdef ENABLE_MQTT
+  // MQTT broker profiles: `set|get mqtt.profile(s) ...`. Credentials are write-only: no reply carries one.
+  {
+    MqttProfileChange change;
+    if (mqttProfileCommand(_prefs.mqtt_profiles, mqttController().started() ? mqttController().core() : nullptr, _prefs.posture, command, reply, 150, change)) {
+      if (change.changed) {
+        savePrefs();
+        mqttController().profileChanged(change.index, change.credentials);
+      }
+      return true;
+    }
+  }
+  if (memcmp(command, "set mqtt.enabled ", 17) == 0) {
+    _prefs.mqtt_enabled = atoi(&command[17]) ? 1 : 0;
+    savePrefs();
+    mqttController().setEnabled(_prefs.mqtt_enabled != 0);
+    sprintf(reply, "> mqtt.enabled is now %d%s", _prefs.mqtt_enabled, mqttController().started() ? "" : " (reboot to apply)");
+    return true;
+  }
+  if (strcmp(command, "get mqtt.enabled") == 0) {
+    sprintf(reply, "> %d", _prefs.mqtt_enabled);
+    return true;
+  }
+  if (strcmp(command, "get mqtt.status") == 0) {
+    mqttController().formatStatus(reply, 150);
+    return true;
+  }
+#endif
 #endif
 
   if (strcmp(command, "board") == 0) {

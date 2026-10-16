@@ -53,6 +53,9 @@ MultiSerialInterface interface_manager;
   #else
     #error "SerialWifiInterface is not defined for this platform"
   #endif
+  #ifdef ENABLE_MQTT
+    #include <helpers/mqtt/MqttController.h>
+  #endif
 #endif
 
 // include usb interface
@@ -208,7 +211,13 @@ void setup() {
   // only start wifi if enabled and at least one profile (or the build-time default network) is configured
   wifi_enabled = the_mesh.getNodePrefs()->wifi_enabled;
   const bool wifi_has_profile = the_mesh.getNodePrefs()->wifi_profiles.configuredCount() > 0;
-  if (wifi_enabled && wifi_has_profile && !Posture::tcpServerMayStart(posture)) {
+  const bool tcp_may_start = Posture::tcpServerMayStart(posture);
+  // Hardened keeps the Wi-Fi link only for MQTT with a profile Hardened permits (TLS); the TCP server stays off.
+  bool mqtt_may_run = false;
+#ifdef ENABLE_MQTT
+  mqtt_may_run = the_mesh.getNodePrefs()->mqtt_enabled && the_mesh.getNodePrefs()->mqtt_profiles.anyPermitted(posture);
+#endif
+  if (wifi_enabled && wifi_has_profile && !tcp_may_start && !mqtt_may_run) {
     // Hardened: the Wi-Fi link exists only to serve the TCP companion port, so neither is started
     wifi_enabled = false;
     Posture::audit().addOnce(rtc_clock.getCurrentTime(), Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_NET_START);
@@ -218,8 +227,20 @@ void setup() {
     board.setInhibitSleep(true);   // prevent sleep when WiFi is active
 #endif
     wifiController().begin(&the_mesh.getNodePrefs()->wifi_profiles);
-    wifi_interface.begin(TCP_PORT);
-    interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
+    if (tcp_may_start) {
+      wifi_interface.begin(TCP_PORT);
+      interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
+    } else {
+      Posture::audit().addOnce(rtc_clock.getCurrentTime(), Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_NET_START);
+    }
+#ifdef ENABLE_MQTT
+    if (the_mesh.getNodePrefs()->mqtt_enabled) {
+      char node_id[9];
+      for (int k = 0; k < 4; k++) sprintf(&node_id[k * 2], "%02x", the_mesh.self_id.pub_key[k]);
+      mqttController().begin(&the_mesh.getNodePrefs()->mqtt_profiles, &mqttPlatformNet(),
+                             &the_mesh.getNodePrefs()->posture, node_id);
+    }
+#endif
   } else {
     WIFI_DEBUG_PRINTLN("wifi disabled");
   }
@@ -286,6 +307,9 @@ void loop() {
 #ifdef ENABLE_WIFI_INTERFACE
   if (wifi_enabled) {
     wifiController().loop();
+#ifdef ENABLE_MQTT
+    mqttController().loop();
+#endif
   }
 #endif
 }
