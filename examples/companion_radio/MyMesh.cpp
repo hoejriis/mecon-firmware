@@ -540,7 +540,9 @@ void MyMesh::onCLICommandRecv(const ContactInfo &from, mesh::Packet *pkt, uint32
                                const char *text, char* reply) {
   markConnectionActive(from); // in case this is from a server, and we have a connection
   if (from.isRemoteCLIAllowed()) {
-    if (!handleCommand(text, sender_timestamp, reply)) {
+    // sender_timestamp == 0 means "local console" to handleCommand(), and the peer chooses this value:
+    // never let a remote caller present as local.
+    if (!handleCommand(text, sender_timestamp ? sender_timestamp : 1, reply)) {
       strcat(reply, "Unknown command");   // reply may have cmd prefix from 'text'
     }
   } else {
@@ -2089,6 +2091,13 @@ void MyMesh::enterCLIRescue() {
   Serial.println("========= CLI Rescue =========");
 }
 
+// What a remote caller (sender_timestamp != 0) may run on a Companion: reads and a reboot.
+// Settings changes, poweroff and anything else stay with the local console and the app cable.
+static bool isRemoteCommandAllowed(const char* command) {
+  return memcmp(command, "get ", 4) == 0 || strcmp(command, "ver") == 0 || strcmp(command, "board") == 0 ||
+         strcmp(command, "reboot") == 0;
+}
+
 bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char* reply) {
   while (*command == ' ') command++; // skip leading spaces
 
@@ -2097,6 +2106,11 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     reply += 3;
     *reply = 0;
     command += 3;
+  }
+
+  if (sender_timestamp != 0 && !isRemoteCommandAllowed(command)) {
+    strcpy(reply, "ERR: not permitted remotely");   // remote callers: reads and reboot only
+    return true;
   }
 
   if (_prefs.getRadioPrefs()->handleCommand(command, sender_timestamp, reply)) {  // is radio CLI command?

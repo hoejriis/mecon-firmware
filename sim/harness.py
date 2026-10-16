@@ -191,8 +191,8 @@ class CompanionClient:
         self.pub_key = f[4:36]
         return f
 
-    def add_contact(self, pub_key, name, out_path_len=0xFF):
-        f = (bytes([CMD_ADD_UPDATE_CONTACT]) + pub_key + bytes([1, 0, out_path_len]) + b"\0" * 64 +
+    def add_contact(self, pub_key, name, out_path_len=0xFF, flags=0):
+        f = (bytes([CMD_ADD_UPDATE_CONTACT]) + pub_key + bytes([1, flags, out_path_len]) + b"\0" * 64 +
              name.encode().ljust(32, b"\0") + struct.pack("<I", 0))
         return self.request(f)
 
@@ -205,6 +205,10 @@ class CompanionClient:
         f = self.request(bytes([CMD_RUN_CLI_COMMAND]) + text.encode())
         assert f[0] == RESP_CLI_REPLY, f
         return f[1:].decode(errors="replace")
+
+    def send_cli_command(self, to_pub, text):
+        """Remote CLI: a TXT_TYPE_CLI_COMMAND (3) text to a contact; the node stamps it with its own clock."""
+        return self.request(bytes([CMD_SEND_TXT_MSG, 3, 0]) + struct.pack("<I", 0) + to_pub[:6] + text.encode())
 
     def send_direct(self, to_pub, text, ts):
         return self.request(bytes([CMD_SEND_TXT_MSG, 0, 0]) + struct.pack("<I", ts) + to_pub[:6] + text.encode())
