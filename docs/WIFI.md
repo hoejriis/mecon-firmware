@@ -16,7 +16,7 @@ The timings are `WifiTiming` defaults in `WifiCore.h`.
 
 ## Storage
 
-Profiles are stored with the other Companion prefs, so they use the same atomic save. Profile 0 keeps the stock keys (`ssid`, `pwd`, `enabled` in the `wifi` section), so a stock prefs file loads unchanged and the stock commands keep working. Profiles 1 to 9 are `s1`..`s9` (SSID) and `w1`..`w9` (password); every profile has a priority `p0`..`p9` (default 50). With the Wi-Fi section empty the prefs file grows by a few hundred bytes; ten profiles with the longest allowed SSID and password take about 1.4 KB. RAM: about 1 KB for the ten profiles (`MECON_WIFI_MAX_PROFILES`, default 10, never below 3).
+Profiles are stored with the other Companion prefs, so they use the same atomic save. Profile 0 keeps the stock keys (`ssid`, `pwd`, `enabled` in the `wifi` section), so a stock prefs file loads unchanged and the stock commands keep working. Profiles 1 to 9 are `s1`..`s9` (SSID) and `w1`..`w9` (password); every profile has a priority `p0`..`p9` (default 50). With the Wi-Fi section empty the prefs file grows by a few hundred bytes; the whole prefs file with ten profiles of the longest allowed SSID and password is about 1.5 KB. RAM: about 1 KB for the ten profiles (`MECON_WIFI_MAX_PROFILES`, default 10, never below 3).
 
 If profile 0 has no stored SSID the compile-time `WIFI_SSID` / `WIFI_PWD` build defaults apply to it, as in stock.
 
