@@ -8,6 +8,7 @@
 #define MAX_TEXT_LEN    (10*CIPHER_BLOCK_SIZE)  // must be LESS than (MAX_PACKET_PAYLOAD - 4 - CIPHER_MAC_SIZE - 1)
 
 #include "ContactInfo.h"
+#include "ContactStore.h"
 
 #define MAX_SEARCH_RESULTS   24
 
@@ -27,6 +28,8 @@ public:
 
 class BaseChatMesh;
 
+// Walks the stored contacts (not the transient anon slots) in record order. The cursor is a record id of the
+// contact store, so the walk survives contacts being added or removed between steps.
 class ContactsIterator {
   int next_idx;
 public:
@@ -61,10 +64,20 @@ class BaseChatMesh : public mesh::Mesh {
 
   friend class ContactsIterator;
 
-  ContactInfo contacts[MAX_CONTACTS+MAX_ANON_CONTACTS];
-  int num_contacts;
-  int sort_array[MAX_CONTACTS+MAX_ANON_CONTACTS];
+  // The first MAX_ANON_CONTACTS entries of stock's table: transient, never saved, used for anonymous requests.
+  ContactInfo anon[MAX_ANON_CONTACTS];
+  // Everything else lives in the contact store (src/helpers/ContactStore.h, docs/CONTACTS.md).
+  ContactStore cstore;
+  struct EvictAdapter : ContactStoreListener {
+    BaseChatMesh* mesh;
+    void onContactEvicted(const uint8_t* pub_key) override;
+  } evict_adapter;
+  // Handles for the three peer calls of one packet: 0..MAX_ANON_CONTACTS-1 is an anon slot, above that a record id.
   int matching_peer_indexes[MAX_SEARCH_RESULTS];
+  void ensureContacts();
+  ContactInfo* contactByHandle(int handle);
+  ContactInfo* findContactById(const mesh::Identity& id);
+  void noteDirectMessage(const ContactInfo& contact);
   unsigned long txt_send_timeout;
 #ifdef MAX_GROUP_CHANNELS
   ChannelDetails channels[MAX_GROUP_CHANNELS];
@@ -81,6 +94,7 @@ protected:
   BaseChatMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
       : mesh::Mesh(radio, ms, rng, rtc, mgr, tables)
   {
+    evict_adapter.mesh = this;
     resetContacts();
 
   #ifdef MAX_GROUP_CHANNELS
@@ -94,9 +108,10 @@ protected:
 
   void bootstrapRTCfromContacts();
 
+  // Clears the anon slots, and a RAM-only table. A persistent store is never cleared by this: it is the saved data.
   void resetContacts() {
-    memset(contacts, 0, sizeof(contacts[0])*MAX_ANON_CONTACTS);   // set all to have type = ADV_TYPE_NONE(0)
-    num_contacts = MAX_ANON_CONTACTS;  // seed the first contacts for anon requests
+    memset(anon, 0, sizeof(anon));   // set all to have type = ADV_TYPE_NONE(0)
+    if (cstore.ready() && !cstore.persistent()) cstore.clearAll();
   }
   void populateContactFromAdvert(ContactInfo& ci, const mesh::Identity& id, const AdvertDataParser& parser, uint32_t timestamp);
   ContactInfo* allocateContactSlot(bool transient_only=false); // helper to find slot for new contact
@@ -173,10 +188,18 @@ public:
   ContactInfo* lookupContactByPubKey(const uint8_t* pub_key, int prefix_len);
   bool  removeContact(ContactInfo& contact);
   bool  addContact(const ContactInfo& contact);
-  int getTotalContactSlots() const { return num_contacts; }
-  int getNumContacts() const { return num_contacts - MAX_ANON_CONTACTS; }  // don't include the reserved slots at start
-  bool getContactByIdx(uint32_t idx, ContactInfo& contact);
+  int getTotalContactSlots() const { return MAX_ANON_CONTACTS + cstore.count(); }
+  int getNumContacts() const { return cstore.count(); }  // stored contacts; the anon slots are not counted
+  bool getContactByIdx(uint32_t idx, ContactInfo& contact);   // 0..MAX_ANON_CONTACTS-1 anon, then stored contacts in record order
   ContactsIterator startContactsIterator();
+
+  // Contact memory (docs/CONTACTS.md). Without initContactStore() the contacts live in RAM only, MAX_CONTACTS of them.
+  bool initContactStore(ContactBackend* backend, const ContactStoreConfig& cfg);
+  bool flushContacts() { return cstore.flush(); }
+  int  contactsFilesystemErased() { return cstore.filesystemErased(); }   // after a format: returns the stored contacts that are gone
+  int  getContactCapacity() const { return cstore.ready() ? cstore.capacity() : MAX_CONTACTS; }
+  ContactStore& contactStore() { ensureContacts(); return cstore; }
+  void invalidateContactSecrets();
   ChannelDetails* addChannel(const char* name, const char* psk_base64);
   bool getChannel(int idx, ChannelDetails& dest);
   bool setChannel(int idx, const ChannelDetails& src);

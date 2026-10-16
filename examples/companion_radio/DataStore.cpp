@@ -254,7 +254,8 @@ bool DataStore::savePrefs(NodePrefs& _prefs) {
 }
 
 void DataStore::loadContacts(DataStoreHost* host) {
-File file = openRead(_getContactsChannelsFS(), "/contacts3");
+    AtomicFile::recover(_getContactsChannelsFS(), "/contacts3");   // finish or drop a save that was cut by a power loss
+    File file = openRead(_getContactsChannelsFS(), "/contacts3");
     if (file) {
       bool full = false;
       while (!full) {
@@ -285,8 +286,8 @@ File file = openRead(_getContactsChannelsFS(), "/contacts3");
 }
 
 void DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactInfo& c)) {
-  File file = openWrite(_getContactsChannelsFS(), "/contacts3");
-  if (file) {
+  // temp file + verify + swap: a power cut keeps the previous complete table
+  AtomicFile::save(_getContactsChannelsFS(), "/contacts3", [host, filter](Stream& s) {
     uint32_t idx = 0;
     ContactInfo c;
     uint8_t unused = 0;
@@ -296,25 +297,76 @@ void DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactIn
         idx++;  // advance to next contact
         continue;
       }
-      bool success = (file.write(c.id.pub_key, 32) == 32);
-      success = success && (file.write((uint8_t *)&c.name, 32) == 32);
-      success = success && (file.write(&c.type, 1) == 1);
-      success = success && (file.write(&c.flags, 1) == 1);
-      success = success && (file.write(&unused, 1) == 1);
-      success = success && (file.write((uint8_t *)&c.sync_since, 4) == 4);
-      success = success && (file.write((uint8_t *)&c.out_path_len, 1) == 1);
-      success = success && (file.write((uint8_t *)&c.last_advert_timestamp, 4) == 4);
-      success = success && (file.write(c.out_path, 64) == 64);
-      success = success && (file.write((uint8_t *)&c.lastmod, 4) == 4);
-      success = success && (file.write((uint8_t *)&c.gps_lat, 4) == 4);
-      success = success && (file.write((uint8_t *)&c.gps_lon, 4) == 4);
+      bool success = (s.write(c.id.pub_key, 32) == 32);
+      success = success && (s.write((uint8_t *)&c.name, 32) == 32);
+      success = success && (s.write(&c.type, 1) == 1);
+      success = success && (s.write(&c.flags, 1) == 1);
+      success = success && (s.write(&unused, 1) == 1);
+      success = success && (s.write((uint8_t *)&c.sync_since, 4) == 4);
+      success = success && (s.write((uint8_t *)&c.out_path_len, 1) == 1);
+      success = success && (s.write((uint8_t *)&c.last_advert_timestamp, 4) == 4);
+      success = success && (s.write(c.out_path, 64) == 64);
+      success = success && (s.write((uint8_t *)&c.lastmod, 4) == 4);
+      success = success && (s.write((uint8_t *)&c.gps_lat, 4) == 4);
+      success = success && (s.write((uint8_t *)&c.gps_lon, 4) == 4);
 
-      if (!success) break; // write failed
+      if (!success) return false; // write failed
 
       idx++;  // advance to next contact
     }
-    file.close();
-  }
+    return true;
+  });
+}
+
+bool DataStore::legacyContactsExist() {
+  AtomicFile::recover(_getContactsChannelsFS(), "/contacts3");
+  return _getContactsChannelsFS()->exists("/contacts3");
+}
+
+bool DataStore::removeLegacyContacts() {
+  return _getContactsChannelsFS()->remove("/contacts3");
+}
+
+// ---- contact store buckets (docs/CONTACTS.md): "/ct<N>", replaced through the same temp-verify-swap as prefs
+
+static void bucketPath(char* dst, size_t n, uint16_t b) {
+  snprintf(dst, n, "/ct%u", (unsigned)b);
+}
+
+bool DataStore::bucketExists(uint16_t b) {
+  char path[16];
+  bucketPath(path, sizeof(path), b);
+  AtomicFile::recover(_getContactsChannelsFS(), path);
+  return _getContactsChannelsFS()->exists(path);
+}
+
+bool DataStore::readBucket(uint16_t b, uint8_t* buf, uint32_t len) {
+  char path[16];
+  bucketPath(path, sizeof(path), b);
+  File file = openRead(_getContactsChannelsFS(), path);
+  if (!file) return false;
+  bool ok = file.read(buf, len) == (int)len;
+  file.close();
+  return ok;
+}
+
+bool DataStore::writeBucket(uint16_t b, const uint8_t* buf, uint32_t len) {
+  char path[16];
+  bucketPath(path, sizeof(path), b);
+  return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; });
+}
+
+bool DataStore::removeBucket(uint16_t b) {
+  char path[16];
+  bucketPath(path, sizeof(path), b);
+  return _getContactsChannelsFS()->remove(path);
+}
+
+uint32_t DataStore::freeBytes() {
+  uint32_t total = getStorageTotalKb();
+  if (total == 0) return 0xFFFFFFFFu;           // this platform cannot say
+  uint32_t used = getStorageUsedKb();
+  return total > used ? (total - used) * 1024 : 0;
 }
 
 void DataStore::loadChannels(DataStoreHost* host) {

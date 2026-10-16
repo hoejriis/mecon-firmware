@@ -44,6 +44,10 @@ This register lists **every change this repository makes to a file that exists u
 | `src/helpers/AuditRing.h` | `EV_MODE_SET`, `CALLER_BUTTON`, `W_CONNMODE`; a mode change is flushed at once | Audit of mode switches and refusals. |
 | `variants/heltec_v3/platformio.ini`, `variants/heltec_v4/platformio.ini` | New `*_companion_radio_standalone` environments | The BLE + Wi-Fi + MQTT + USB Companion. |
 | `.github/workflows/target-boards.yml` | The two standalone environments added | Compiled on every pull request with RAM and flash recorded. |
+| `src/helpers/BaseChatMesh.h`, `BaseChatMesh.cpp` | The static `contacts[]` array, `num_contacts` and `sort_array` are replaced by the 8 anon slots and a `ContactStore` ([Adaptive contact memory](CONTACTS.md)). `matching_peer_indexes[]` holds handles (anon slot, or record id plus 8) that the peer calls resolve when they are made; `allocateContactSlot()` takes a record from the store and, only when the store is full and `shouldOverwriteWhenFull()` allows it, evicts the lowest-scored non-favourite after `onContactOverwrite()`; `lookupContactByPubKey()`, `searchContactsByPrefix()`, `scanRecentContacts()`, `removeContact()`, `getContactByIdx()` and `ContactsIterator` work on the store; a text message sent or received is noted for the eviction score; `initContactStore()`, `flushContacts()`, `getContactCapacity()`, `contactStore()` and `invalidateContactSecrets()` added. Without `initContactStore()` the table is RAM-only with `MAX_CONTACTS` records, the stock behaviour. | Stock reserves about 64 KB of RAM for 350 contacts on the Heltec V3, T1000-E and Wio Tracker L1 builds whether used or not, evicts by `lastmod` alone, and cannot hold more than the compile-time count. |
+| `examples/companion_radio/DataStore.h`, `DataStore.cpp` | `DataStore` implements the contact store's backend (bucket files `/ct<N>`, each saved through `AtomicFile`, free space from the existing storage figures); `/contacts3` is read for the migration and saved atomically (the `CONTACTS_STOCK_ARRAY` opt-out); `legacyContactsExist()`, `removeLegacyContacts()` | A contact save no longer rewrites the live file in place: a power cut kept a truncated table. |
+| `examples/companion_radio/MyMesh.h`, `MyMesh.cpp` | Boot sets the contact store up from the free heap and file-system space and moves a stock `/contacts3` into it (bulk into an empty store, merge into a filled one, the old file removed after the last bucket is written); `saveContacts()` flushes changed buckets; `CMD_DEVICE_QUERY` reports `capacity / 2` (capped at 255) instead of `MAX_CONTACTS / 2`; `CMD_IMPORT_PRIVATE_KEY` invalidates cached shared secrets instead of reloading the table; `get contacts.capacity` | The Companion side of the adaptive contact memory. |
+| `platformio.ini` | `[env:native]` also builds `src/helpers/ContactStore.cpp` (with `-D CONTACT_STORE_NATIVE_TEST`, which supplies the `Identity` default constructor the target does not link) | Unit tests of the contact store. |
 
 Upstream's `stale-bot.yml` is kept unchanged; it only runs in the upstream repository.
 
@@ -55,6 +59,8 @@ Generic fixes made here that would also benefit stock MeshCore, with whether the
 |---|---|
 | Transport trust for Companion management commands (`isTrustedTransport()`, `ERR_CODE_NOT_PERMITTED`) | not yet offered |
 | Atomic prefs/identity/channel saves (`AtomicFile.h`) | not yet offered |
+| Atomic contact saves, in buckets that bound the temporary space of a save | not yet offered |
+| Adaptive contact memory: persistent contact store with a RAM cache sized from the free heap, favourites resident, eviction of the least meaningful non-favourite ([CONTACTS.md](CONTACTS.md)) | not yet offered |
 | Bounded TRACE parsing; bounded copies in CLI parsing | not yet offered |
 | `set prv.key` local console only (repeater, room server, sensor) | not yet offered |
 | Remote Companion CLI limited to reads and `reboot` | not yet offered |
