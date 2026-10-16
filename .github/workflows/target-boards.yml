@@ -9,6 +9,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A newer push to the same branch makes this run obsolete: cancel it rather than queue behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -22,11 +27,13 @@ jobs:
           - Heltec_v3_companion_radio_usb
           - Heltec_v3_companion_radio_ble
           - Heltec_v3_companion_radio_wifi
+          - Heltec_v3_companion_radio_standalone
           - Heltec_v3_repeater
           - Heltec_v3_room_server
           - heltec_v4_companion_radio_usb
           - heltec_v4_companion_radio_ble
           - heltec_v4_companion_radio_wifi
+          - heltec_v4_companion_radio_standalone
           - heltec_v4_repeater
           - heltec_v4_room_server
           - t1000e_companion_radio_usb

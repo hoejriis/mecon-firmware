@@ -25,12 +25,12 @@
 
 namespace Posture {
 
-enum Event : uint8_t { EV_POSTURE_SET = 1, EV_REFUSED = 2, EV_LOGIN_FAILED = 3, EV_FACTORY_RESET = 4 };
-enum Caller : uint8_t { CALLER_CABLE = 1, CALLER_BLE = 2, CALLER_NET = 3, CALLER_REMOTE_ADMIN = 4, CALLER_REMOTE_CLI = 5 };
+enum Event : uint8_t { EV_POSTURE_SET = 1, EV_REFUSED = 2, EV_LOGIN_FAILED = 3, EV_FACTORY_RESET = 4, EV_MODE_SET = 5 };
+enum Caller : uint8_t { CALLER_CABLE = 1, CALLER_BLE = 2, CALLER_NET = 3, CALLER_REMOTE_ADMIN = 4, CALLER_REMOTE_CLI = 5, CALLER_BUTTON = 6 };
 enum What : uint8_t {
   W_NONE = 0, W_CLI = 1, W_KEY_EXPORT = 2, W_KEY_IMPORT = 3, W_SET_PIN = 4, W_FACTORY_RESET = 5, W_POSTURE = 6,
   W_AUDIT = 7, W_REMOTE_WRITE = 8, W_REMOTE_CLI = 9, W_DEFAULT_PASSWORD = 10, W_BAD_PASSWORD = 11,
-  W_BLE_START = 12, W_NET_START = 13
+  W_BLE_START = 12, W_NET_START = 13, W_CONNMODE = 14
 };
 
 struct AuditEntry {
@@ -59,7 +59,7 @@ public:
   }
 
   // Record an event. A repeat of an entry already in the ring is folded into it (count + 1, new timestamp)
-  // and moved to the newest position. Posture changes and factory resets are flushed at once, the rest
+  // and moved to the newest position. Posture changes, connectivity-mode changes and factory resets are flushed at once, the rest
   // at most every FLUSH_INTERVAL_MS (the first one after a boot at once).
   void add(uint32_t ts, uint8_t event, uint8_t caller, uint8_t what) {
     int at = find(event, caller, what);
@@ -75,7 +75,7 @@ public:
     }
     e[n++] = rec;
     _dirty = true;
-    if (event == EV_POSTURE_SET || event == EV_FACTORY_RESET) _urgent = true;
+    if (event == EV_POSTURE_SET || event == EV_FACTORY_RESET || event == EV_MODE_SET) _urgent = true;
   }
 
   // Like add(), but only when this kind of event is not in the ring yet. For things that can repeat on
@@ -149,6 +149,7 @@ public:
       case EV_REFUSED: return "refused";
       case EV_LOGIN_FAILED: return "login-fail";
       case EV_FACTORY_RESET: return "reset";
+      case EV_MODE_SET: return "mode";
     }
     return "?";
   }
@@ -159,11 +160,13 @@ public:
       case CALLER_NET: return "net";
       case CALLER_REMOTE_ADMIN: return "remote-admin";
       case CALLER_REMOTE_CLI: return "remote-cli";
+      case CALLER_BUTTON: return "button";
     }
     return "?";
   }
   static const char* whatName(uint8_t event, uint8_t v) {
     if (event == EV_POSTURE_SET) return v == 0 ? "normal" : "hardened";
+    if (event == EV_MODE_SET) return v == 0 ? "ble" : "wifi";
     switch (v) {
       case W_NONE: return "-";
       case W_CLI: return "cli";
@@ -179,6 +182,7 @@ public:
       case W_BAD_PASSWORD: return "bad-password";
       case W_BLE_START: return "ble-start";
       case W_NET_START: return "net-start";
+      case W_CONNMODE: return "connectivity-mode";
     }
     return "?";
   }

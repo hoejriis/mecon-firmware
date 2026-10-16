@@ -20,7 +20,11 @@ MultiSerialInterface interface_manager;
 #if defined(BLE_PIN_CODE)
   #ifdef ESP32
     // include esp32 bluetooth interface
-    #include <helpers/esp32/SerialBLEInterface.h>
+    #ifdef SIM_BLE_STUB
+      #include "sim_ble.h"    // the simulated board has no BLE stack: a stub (variants/sim/sim_ble.h)
+    #else
+      #include <helpers/esp32/SerialBLEInterface.h>
+    #endif
     SerialBLEInterface bluetooth_interface;
   #elif defined(NRF52_PLATFORM)
     // include nrf52 bluetooth interface
@@ -196,8 +200,18 @@ void setup() {
   // Hardened posture: no BLE with a default PIN, no TCP servers (Wi-Fi, Ethernet). See helpers/Posture.h.
   const uint8_t posture = the_mesh.getNodePrefs()->posture;
 
+#ifdef ENABLE_CONNMODE
+  // Connectivity mode: exactly one of the BLE and the Wi-Fi stacks is brought up. USB (below) is up in both.
+  const uint8_t conn_mode = the_mesh.getConnectivityMode();
+#endif
+
 // add bluetooth interface
 #if defined(BLE_PIN_CODE)
+#ifdef ENABLE_CONNMODE
+  if (!ConnMode::bleMayStart(conn_mode)) {
+    // Wi-Fi mode: the BLE stack is never initialised
+  } else
+#endif
   if (Posture::bleMayStart(posture, the_mesh.getBLEPin())) {
     bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
     interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
@@ -210,6 +224,9 @@ void setup() {
 #ifdef ENABLE_WIFI_INTERFACE
   // only start wifi if enabled and at least one profile (or the build-time default network) is configured
   wifi_enabled = the_mesh.getNodePrefs()->wifi_enabled;
+#ifdef ENABLE_CONNMODE
+  if (!ConnMode::wifiMayStart(conn_mode)) wifi_enabled = false;   // BLE mode: the Wi-Fi stack is never initialised
+#endif
   const bool wifi_has_profile = the_mesh.getNodePrefs()->wifi_profiles.configuredCount() > 0;
   const bool tcp_may_start = Posture::tcpServerMayStart(posture);
   // Hardened keeps the Wi-Fi link only for MQTT with a profile Hardened permits (TLS); the TCP server stays off.

@@ -34,6 +34,7 @@ protected:
 public:
   bool hasConnection() const { return _interfaceManager->isConnected(); }
   uint16_t getBattMilliVolts() const { return _board->getBattMilliVolts(); }
+  bool isBleConnected() const { return _interfaceManager->isInterfaceConnected(InterfaceType::Bluetooth); }
   bool isBluetoothEnabled() const { return _interfaceManager->isBluetoothEnabled(); }
   void enableBluetooth() { _interfaceManager->enableBluetooth(); }
   void disableBluetooth() { _interfaceManager->disableBluetooth(); }

@@ -21,6 +21,8 @@ In both postures, while the admin password is the stock default (`password`, the
 
 An attempted password is never logged or stored: stock's debug print of it is removed.
 
+Connectivity-mode switching (BLE or Wi-Fi, [Connectivity mode](CONNECTIVITY_MODE.md)) is allowed from trusted local transports and the device button in both postures, refused for remote callers, and audited.
+
 ## Commands
 
 | Command | Who may run it |

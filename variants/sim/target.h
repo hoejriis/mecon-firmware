@@ -81,3 +81,9 @@ extern SensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();
+
+// The standalone Companion's user interface is compiled in (the real ui-new screens): a recording display and a
+// scriptable button stand in for the OLED and the PRG button.
+#ifdef DISPLAY_CLASS
+#include "sim_display.h"
+#endif

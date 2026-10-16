@@ -37,6 +37,13 @@ This register lists **every change this repository makes to a file that exists u
 | `examples/companion_radio/NodePrefs.h` | With `ENABLE_MQTT`: an `MqttProfiles mqtt_profiles` member and `mqtt_enabled`, saved in an `mqtt` section (`en`, and `k`/`p`/`t`/`o`/`h`/`s`/`a`/`u`/`w` per profile); `ENABLE_MQTT` without `ENABLE_WIFI_INTERFACE` is a compile error | The broker profiles are saved with the prefs, through the same atomic save. |
 | `examples/companion_radio/MyMesh.cpp` | With `ENABLE_MQTT`: `set\|get mqtt.profile(s) ...`, `set\|get mqtt.enabled` and `get mqtt.status` (handled in `src/helpers/mqtt/MqttProfiles.cpp` and `MqttController.cpp`); a profile edit is applied to the running controller | The CLI of the MQTT controller; credentials are write-only in every reply. |
 | `examples/companion_radio/main.cpp` | Wi-Fi start-up now distinguishes the TCP server from the link: Hardened keeps the Wi-Fi link when MQTT has a profile Hardened permits and still never starts the TCP server; with `ENABLE_MQTT` the MQTT controller is started after the Wi-Fi controller and run from `loop()` | Hardened previously disabled Wi-Fi outright because the link existed only for the TCP server; MQTT over TLS is a legitimate second use. |
+| `examples/companion_radio/NodePrefs.h`, `MyMesh.h`, `MyMesh.cpp` | With `ENABLE_CONNMODE`: `connectivity_mode` pref (`conn_mode` in the `comp` section); `set\|get connectivity.mode` run after the posture commands (a remote caller is refused and audited); `requestConnectivityMode()` for the button; the restart 1.5 s after a switch is done in `loop()`; `hasPendingWork()` covers it | Connectivity-mode switching ([Connectivity mode](CONNECTIVITY_MODE.md)). |
+| `examples/companion_radio/main.cpp` | With `ENABLE_CONNMODE`: BLE starts only in BLE mode and Wi-Fi/MQTT only in Wi-Fi mode; `SIM_BLE_STUB` selects the simulator's BLE stub instead of the ESP32 header | One radio stack at a time; the stub lets the simulator run the mode logic. |
+| `examples/companion_radio/AbstractUITask.h`, `src/helpers/MultiSerialInterface.h` | `isBleConnected()` / `isInterfaceConnected(type)` | The status screen asks about BLE alone, not any interface. |
+| `examples/companion_radio/ui-new/UITask.cpp` | With `ENABLE_CONNMODE`: a connectivity page after Bluetooth (long press arms, a second confirms, anything else or 10 s cancels), the home status line replaces the IP line, the pairing PIN is shown in BLE mode only, the Bluetooth page is skipped in Wi-Fi mode | The status screen and the button gesture. |
+| `src/helpers/AuditRing.h` | `EV_MODE_SET`, `CALLER_BUTTON`, `W_CONNMODE`; a mode change is flushed at once | Audit of mode switches and refusals. |
+| `variants/heltec_v3/platformio.ini`, `variants/heltec_v4/platformio.ini` | New `*_companion_radio_standalone` environments | The BLE + Wi-Fi + MQTT + USB Companion. |
+| `.github/workflows/target-boards.yml` | The two standalone environments added | Compiled on every pull request with RAM and flash recorded. |
 
 Upstream's `stale-bot.yml` is kept unchanged; it only runs in the upstream repository.
 
@@ -56,6 +63,7 @@ Generic fixes made here that would also benefit stock MeshCore, with whether the
 | Admin login refused while the admin password is the compiled-in default; attempted password not logged (repeater, room server) | not yet offered |
 | Prioritised multi-profile Wi-Fi controller for the Companion `_wifi` builds (`src/helpers/wifi/WifiCore.*`, `WifiController.*`, `WifiProfiles.*`) | not yet offered |
 | Multi-broker MQTT controller for the Companion `_wifi` builds (`src/helpers/mqtt/`) | not yet offered |
+| Connectivity-mode switching with a status screen (`src/helpers/connmode/`) | not yet offered |
 
 ## Duty-cycle enforcement: transmit paths
 
