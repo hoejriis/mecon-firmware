@@ -27,5 +27,9 @@ jobs:
           key: pio-6.2.0-sim-${{ hashFiles('platformio.ini', 'variants/sim/**') }}
           restore-keys: pio-6.2.0-sim-
       - run: pip install "platformio==6.2.0" pytest
-      - run: pio run -e sim_companion -e sim_repeater
+      - name: Build every sim_* environment
+        run: |
+          envs=$(pio project config --json-output | python3 -c "import json,sys; print(' '.join('-e '+s[0][4:] for s in json.load(sys.stdin) if s[0].startswith('env:sim_')))")
+          echo "$envs"
+          pio run $envs
       - run: python3 -m pytest sim/tests -v
