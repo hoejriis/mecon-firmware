@@ -16,11 +16,13 @@ public:
   virtual bool isConnected() const = 0;
 
   /**
-   * \returns false if this transport carries no authentication of the peer (a TCP server that
-   *          accepts any client). Management and secret-bearing commands are refused on such a
-   *          transport. For a multiplexed interface: the transport the last frame arrived on.
+   * \returns true only if this transport authenticates the peer: a cable (physical possession) or
+   *          BLE paired with a PIN that is not a well-known default. Management and secret-bearing
+   *          commands are refused on any other transport. Fails closed: an interface that does not
+   *          declare itself trusted is untrusted. For a multiplexed interface: the transport the
+   *          last frame arrived on.
    */
-  virtual bool isTrustedTransport() const { return true; }
+  virtual bool isTrustedTransport() const { return false; }
   virtual void loop() {};
 
   virtual bool isWriteBusy() const = 0;

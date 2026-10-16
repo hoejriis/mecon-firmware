@@ -42,7 +42,10 @@ class SerialBLEInterface : public BaseSerialInterface {
   static void onBLEEvent(ble_evt_t* evt);
   static void onBleUartRX(uint16_t conn_handle);
 
+  uint32_t _pin_code = 0;
 public:
+  // Paired BLE authenticates the peer only when the PIN is not the well-known default (123456).
+  bool isTrustedTransport() const override { return _pin_code != 0 && _pin_code != 123456; }
   SerialBLEInterface() {
     _isEnabled = false;
     _isDeviceConnected = false;

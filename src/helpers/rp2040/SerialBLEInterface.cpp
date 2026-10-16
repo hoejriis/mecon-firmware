@@ -32,6 +32,7 @@ SerialBLEInterface::SerialBLEInterface()
 }
 
 void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code) {
+  _pin_code = pin_code;
   // JustWorks here only makes the server request pairing on connect; caps are overridden below
   BLE.setSecurity(BLESecurityJustWorks);
   // adv data carries the 128-bit service UUID, leaving room for only 8 name chars;
