@@ -44,6 +44,7 @@ def test_truncated_trace_packets_do_not_crash_the_node(ether, nodes, kind):
         assert c.device_query()[0] != 1
 
 
+@pytest.mark.timescale(10)
 def test_wellformed_trace_is_still_forwarded_by_repeater(ether, nodes):
     n = nodes("repeater_asan", "rp", seed=3, rtc=RTC, ether_path=ether.path).start()
     other = nodes("repeater", "obs", seed=4, rtc=RTC, ether_path=ether.path).start()

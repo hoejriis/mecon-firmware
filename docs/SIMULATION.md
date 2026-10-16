@@ -70,6 +70,8 @@ loader accepts, the early field (`name`) takes the new value and a field in the 
 default, with no error. With atomic saves the same cut lands in `/prefs.json.tmp`, and the previous complete prefs,
 identity and channel table survive a cut at any byte or between write and rename (`test_atomic_storage.py`).
 
+Tests that wait on a node's first transmission after a boot are marked `@pytest.mark.timescale(10)`: the duty-cycle window is seeded at the limit on boot, so the first packet can wait for up to one 30 s bin of airtime to age out, and these tests run ten times faster than real time to keep that wait short.
+
 ## Test inventory
 
 * `test_toa.py` – node's time on air against an independent restatement of the Semtech
