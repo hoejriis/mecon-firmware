@@ -126,14 +126,16 @@ def _count(n, what):
 
 
 def test_a_profile_edit_during_a_pending_connect_is_applied_and_leaks_nothing(nodes, tmp_path, holes):
-    holes("127.0.0.7", PLAIN)
+    holes("127.0.0.7", TLS)   # TLS: the worker is inside the handshake, with its context allocated, when the edit lands
     good = Broker(tmp_path, "good", "127.0.0.2", PLAIN).start()
     try:
-        n, c = _node(nodes, tmp_path, "edit", "127.0.0.7", False, kind="companion_wifi_usb_asan")
+        n, c = _node(nodes, tmp_path, "edit", "127.0.0.7", True, kind="companion_wifi_usb_asan")
         c = _reboot(n, c)
         wait_until(lambda: _opens(n) >= 1, "the connect attempt", 30)
         assert "connecting" in c.cli("get mqtt.status")
         assert c.cli("set mqtt.profile 0 host 127.0.0.2").startswith(">")   # the profile being connected is edited
+        assert c.cli("set mqtt.profile 0 tls off").startswith(">")
+        assert c.cli("set mqtt.profile 0 port %d" % PLAIN).startswith(">")
         s = wait_status(c, "connected", timeout=40)
         assert "broker=127.0.0.2:%d" % PLAIN in s, s
         assert good.client_connects() == 1
@@ -227,3 +229,24 @@ def test_a_plain_connect_that_completes_after_the_posture_rose_says_nothing(node
     finally:
         a.stop()
         t.stop()
+
+
+def test_disabling_during_a_pending_connect_closes_the_late_session(nodes, tmp_path, slow):
+    a = Broker(tmp_path, "a", "127.0.0.2", PLAIN).start()
+    slow("127.0.0.8", PLAIN, "127.0.0.2", PLAIN, 3.0)
+    try:
+        n, c = _node(nodes, tmp_path, "dis", "127.0.0.8", False, kind="companion_wifi_usb_asan")
+        c = _reboot(n, c)
+        wait_until(lambda: _opens(n) >= 1, "the connect attempt", 30)
+        assert c.cli("set mqtt.enabled 0").startswith(">")
+        wait_until(lambda: a.client_connects() == 1, "the late session to reach the broker", 20)
+        time.sleep(1.5)
+        assert "disconnected" in a.log().lower(), a.log()                        # closed with a DISCONNECT
+        assert _opens(n) - _count(n, "close") == 0, mqtt_events(n)               # nothing left open
+        assert c.cli("get mqtt.status").strip() == "> off"
+        assert a.retained_status(2) is None
+        assert c.cli("set mqtt.enabled 1").startswith(">")                       # and it can start again
+        wait_status(c, "connect", timeout=20)
+        assert n.sanitizer_report() == "", n.sanitizer_report()
+    finally:
+        a.stop()

@@ -242,7 +242,13 @@ mutate mqtt_cancelled_result_kept $MQ_CTRL "const bool wanted = !_job_cancel && 
 mutate mqtt_cancel_does_not_wait_for_the_job $MQ_CTRL "  if (_job_active && _job_cancel) return;" "" $MQ_NB::test_a_profile_edit_during_a_pending_connect_is_applied_and_leaks_nothing
 mutate mqtt_posture_cancel_not_reported_to_the_core $MQ_CTRL "    cancelAttempt();
     _core.onConnectCancelled();" "    cancelAttempt();" $MQ_NB::test_raising_the_posture_during_a_pending_connect_cancels_it
-mutate mqtt_late_plain_session_announced_in_hardened $MQ_CTRL "  if (!MqttProfiles::permitted(q, *_posture)) return;" "" $MQ_NB::test_a_plain_connect_that_completes_after_the_posture_rose_says_nothing
+mutate mqtt_late_plain_session_announced_in_hardened $MQ_CTRL "    cancelAttempt();
+    _core.onConnectCancelled();
+  }
+  if (_job_active && _net->asyncIdle()) takeResult();" "  }
+  if (_job_active && _net->asyncIdle()) takeResult();" $MQ_NB::test_a_plain_connect_that_completes_after_the_posture_rose_says_nothing
+mutate mqtt_disabled_controller_never_takes_the_result $MQ_CTRL "    if (_job_active && _net->asyncIdle()) takeResult();
+    return;" "    return;" $MQ_NB::test_disabling_during_a_pending_connect_closes_the_late_session
 mutate mqtt_close_ignores_a_running_job $MQ_CTRL "  if (_job_active) {   // the job owns the transport and PubSubClient: ask it to stop and let takeResult() tidy up
     _job_cancel = true;
     return;

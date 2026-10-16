@@ -181,7 +181,6 @@ void MqttController::cancelAttempt() { _job_cancel = true; }
 void MqttController::takeResult() {
   _job_active = false;
   ConnectJob& j = _job;
-  const MqttProfile& q = _profiles->p[_job_profile];
   const bool wanted = !_job_cancel && _core.state() == MqttState::Connecting;
   if (j.result == ConnectJob::Ok) {
     _open = true;
@@ -209,7 +208,6 @@ void MqttController::takeResult() {
   _cur_addr = j.addr;
   _cur_port = j.port;
   _core.onConnected(now, j.tls && j.has_anchor);
-  if (!MqttProfiles::permitted(q, *_posture)) return;   // raised meanwhile: the core's next poll closes it, nothing is said on it
   if (_cli_fn) {
     _psc.subscribe(_req_topic);   // before the status, so a client that sees the status can send at once
     _cli_open_at = millis() + CLI_SETTLE_MS;
@@ -252,18 +250,23 @@ void MqttController::onMessage(const char* topic, const uint8_t* payload, unsign
 
 void MqttController::loop() {
   if (!_started) return;
-  // A finished attempt is taken even while disabled: a cancelled one must still have its transport closed.
-  if (_job_active && _net->asyncIdle()) takeResult();
-  if (!_enabled) return;
+  if (!_enabled) {
+    // A finished attempt is taken even while disabled: a cancelled one must still have its transport closed.
+    if (_job_active && _net->asyncIdle()) takeResult();
+    return;
+  }
   uint32_t now = millis();
   _core.setPosture(*_posture);
   _core.setLink(now, _net->linkUp());
 
+  // Before the result is taken, so an attempt that finishes in the same pass as the posture change is still dropped:
+  // a plain session is never announced under Hardened.
   if (_job_active && !_job_cancel && !MqttProfiles::permitted(_profiles->p[_job_profile], *_posture)) {
     // The posture was raised and now forbids the profile being connected: stop that attempt, with no penalty.
     cancelAttempt();
     _core.onConnectCancelled();
   }
+  if (_job_active && _net->asyncIdle()) takeResult();
 
   if (_core.state() == MqttState::Connected) {
     if (!_psc.loop()) {
