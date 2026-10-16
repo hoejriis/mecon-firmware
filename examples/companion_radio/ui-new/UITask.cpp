@@ -1087,9 +1087,6 @@ void UITask::loop() {
   }
 #endif
 
-#ifdef SIM_UI_TRACE
-  if (c != 0) fprintf(stderr, "SIMUI key=%d curr=%s at=%lu\n", (int)c, curr == home ? "home" : (curr ? "other" : "null"), (unsigned long)millis());
-#endif
   if (c != 0 && curr) {
     curr->handleInput(c);
     _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer

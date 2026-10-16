@@ -48,7 +48,6 @@ void SimDisplay::turnOff() {
 
 void SimDisplay::endFrame() {
   FILE* f = frames_file();
-  if (f && _frame == _last) { static unsigned long same = 0; if ((++same % 50) == 1) fprintf(stderr, "SIMDISP same-frame x%lu at=%lu\n", same, (unsigned long)millis()); }
   if (!f || _frame == _last) return;
   _last = _frame;
   fprintf(f, "FRAME %lu t=%lu\n%sEND\n", ++_frames, (unsigned long)millis(), _frame.c_str());
