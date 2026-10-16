@@ -19,7 +19,7 @@ For each difference below, the backend should support **old and new simultaneous
 
 Do not make the new firmware emit private legacy names merely to avoid backend work.
 
-*Open sequencing question:* the programme's first public release is exercised against the current Backend, which speaks only the legacy names (`gateway_id`, `deimos/gw/…`). Whether mecon-firmware 0.8.0 emits the legacy vocabulary, the v1 vocabulary below, or both is a roadmap decision that this document does not settle. Until it is made, v1 is the target and the legacy wire is shipped reference behaviour.
+*Sequencing:* the public firmware speaks the v1 vocabulary below only, and does not emit the legacy names (`gateway_id`, `deimos/gw/…`). The firmware's functionality comes first; a Backend adopts the v1 interfaces afterwards. Until then, the public firmware is verified against the conformance suite and simulated boards, not against a legacy Backend.
 
 ## Identity and naming
 

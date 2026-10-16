@@ -12,7 +12,7 @@ It is the sister project of [MeshContinuum](https://github.com/hoejriis/MeshCont
 
 **The public line depends on MeshCore 1.18.** MeshCore 1.18.0 was released on upstream `main` on 2026-10-15, so the baseline is no longer unresolved; the production implementation is based on a specific revision of it, which is not yet pinned. The `dev` branch remains for investigation and validation only.
 
-The first public firmware is **mecon-firmware 0.8.0**. The public 0.8.x line and the private 0.9x reference firmware are separate lines, and their version numbers do not order across each other.
+The first public firmware is **mecon-firmware 0.8.0**. The public line (from 0.1.0) and the private 0.9x reference firmware are separate lines, and their version numbers do not order across each other.
 
 This dependency is intentional. The 1.18 lineage contains substantial upstream work that overlaps areas MECON needs, including Wi-Fi infrastructure, runtime configuration, Companion/Repeater command handling, board-specific preferences, remote CLI/message primitives, scoping/subscription work, UI evolution and Heltec V3/V4 support. MECON should extend those upstream facilities rather than recreate their older 1.17-era equivalents from the private MVP.
 

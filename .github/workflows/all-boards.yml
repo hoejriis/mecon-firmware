@@ -1,0 +1,105 @@
+name: All boards
+
+# Compiles every PlatformIO environment in the repository (the full upstream
+# board set plus this project's additions), split into shards. Pull requests
+# run the smaller upstream PR build check; this workflow is the full software
+# verification, run nightly, on demand and before a release.
+#
+# Compiling is not a hardware-support claim.
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/all-boards.yml'
+
+permissions:
+  contents: read
+
+env:
+  PLATFORMIO_VERSION: '6.2.0'
+  SHARDS: 24
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - id: plan
+        run: |
+          pio project config --json-output > pio-config.json
+          python3 - <<'PY'
+          import json, os
+          envs = sorted(s[0][4:] for s in json.load(open('pio-config.json'))
+                        if s[0].startswith('env:') and not s[0].startswith('env:native'))
+          n = int(os.environ['SHARDS'])
+          shards = [{'id': i, 'envs': ' '.join(envs[i::n])} for i in range(n)]
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('shards=' + json.dumps(shards) + '\n')
+          print(f'{len(envs)} environments in {n} shards')
+          PY
+
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJson(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache@v5
+        with:
+          path: ~/.platformio
+          key: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-${{ hashFiles('platformio.ini', 'variants/**/platformio.ini') }}
+          restore-keys: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-
+      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - name: Build shard ${{ matrix.shard.id }}
+        run: |
+          failed=()
+          for env in ${{ matrix.shard.envs }}; do
+            echo "::group::$env"
+            if pio run -e "$env"; then echo "OK $env" >> results.txt; else echo "FAIL $env" >> results.txt; failed+=("$env"); fi
+            echo "::endgroup::"
+          done
+          cat results.txt
+          # The verdict job decides pass/fail against ci/known-upstream-failures.txt.
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-shard-${{ matrix.shard.id }}
+          path: results.txt
+
+  verdict:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+      - name: Compare with the known upstream failures
+        run: |
+          cat results/*/results.txt > all.txt
+          total=$(wc -l < all.txt)
+          grep '^FAIL ' all.txt | awk '{print $2}' | sort > failed.txt
+          grep -v '^#' ci/known-upstream-failures.txt | grep . | sort > known.txt
+          echo "Compiled: $(grep -c '^OK ' all.txt) of $total environments"
+          new=$(comm -23 failed.txt known.txt); fixed=$(comm -13 failed.txt known.txt)
+          status=0
+          if [ -n "$new" ]; then echo "::error::New compile failures (not in ci/known-upstream-failures.txt):"; echo "$new"; status=1; fi
+          if [ -n "$fixed" ]; then echo "::error::Listed as failing but now compiles (remove from ci/known-upstream-failures.txt):"; echo "$fixed"; status=1; fi
+          if [ "${{ needs.build.result }}" != "success" ]; then echo "::error::A shard did not complete (${{ needs.build.result }})"; status=1; fi
+          exit $status

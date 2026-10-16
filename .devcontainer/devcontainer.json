@@ -1,0 +1,10 @@
+{
+  "name": "mecon-firmware",
+  "build": { "dockerfile": "../Dockerfile", "context": ".." },
+  "workspaceFolder": "/workspaces/mecon-firmware",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/mecon-firmware,type=bind",
+  "mounts": [
+    "source=mecon-firmware-platformio,target=/home/dev/.platformio,type=volume"
+  ],
+  "remoteUser": "dev"
+}
