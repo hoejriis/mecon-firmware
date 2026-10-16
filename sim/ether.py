@@ -114,6 +114,43 @@ class Ether:
             time.sleep(0.01)
         return False
 
+    # ------------------------------------------------------------------ airtime instrument
+    # The channel, not the node, is the instrument: every figure below comes from the transmissions the
+    # broker saw, stamped with the broker's own (virtual) clock, never from a node's own counters.
+    def tx_of(self, node):
+        with self.lock:
+            return sorted((t for t in self.tx_log if t.src == node), key=lambda t: t.start_us)
+
+    def airtime_us(self, node, since_us=0.0):
+        """Total transmitted airtime (us) of `node` that started at or after `since_us`."""
+        return sum(t.toa_us for t in self.tx_of(node) if t.start_us >= since_us)
+
+    def max_airtime_in_window_us(self, node, window_us=3600e6, since_us=0.0):
+        """Largest airtime (us) of `node` inside any window of `window_us` (a sliding window, positioned
+        anywhere in time, partial overlaps counted pro rata). Only transmissions that started at or after
+        `since_us` are considered."""
+        import bisect
+        txs = [t for t in self.tx_of(node) if t.start_us >= since_us]
+        if not txs:
+            return 0.0
+        starts = [t.start_us for t in txs]
+        longest = max(t.toa_us for t in txs)
+        cands = set(starts) | {t.start_us + t.toa_us - window_us for t in txs}
+        best = 0.0
+        for a in cands:
+            b = a + window_us
+            lo = bisect.bisect_left(starts, a - longest)
+            hi = bisect.bisect_left(starts, b)
+            tot = 0.0
+            for t in txs[lo:hi]:
+                tot += max(0.0, min(t.start_us + t.toa_us, b) - max(t.start_us, a))
+            best = max(best, tot)
+        return best
+
+    def max_duty_in_any_hour(self, node, since_us=0.0):
+        """Largest fraction of any sliding hour (1.0 = 100 %) that `node` spent on the air."""
+        return self.max_airtime_in_window_us(node, 3600e6, since_us) / 3600e6
+
     # ------------------------------------------------------------------ lifecycle
     def start(self):
         if os.path.exists(self.path):

@@ -978,6 +978,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+  radio_freq = _prefs.freq; radio_bw = _prefs.bw;
   radio_driver.setTxPower(_prefs.tx_power_dbm);
 
   radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
@@ -1281,6 +1282,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       sendNodeDiscoverReq();
       strcpy(reply, "OK - Discover sent");
     }
+  } else if (strcmp(command, "get dutycycle") == 0) {
+    formatDutyCycleReply(reply);
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }
@@ -1310,12 +1313,14 @@ void MyMesh::loop() {
   if (set_radio_at && millisHasNowPassed(set_radio_at)) { // apply pending (temporary) radio params
     set_radio_at = 0;                                     // clear timer
     radio_driver.setParams(pending_freq, pending_bw, pending_sf, pending_cr);
+    radio_freq = pending_freq; radio_bw = pending_bw;
     MESH_DEBUG_PRINTLN("Temp radio params");
   }
 
   if (revert_radio_at && millisHasNowPassed(revert_radio_at)) { // revert radio params to orig
     revert_radio_at = 0;                                        // clear timer
     radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+    radio_freq = _prefs.freq; radio_bw = _prefs.bw;
     MESH_DEBUG_PRINTLN("Radio params restored");
   }
 

@@ -113,6 +113,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   RegionEntry* recv_pkt_region;
   TransportKey default_scope;
   unsigned long set_radio_at, revert_radio_at;
+  float radio_freq = 0, radio_bw = 0;   // as applied to the radio
   float pending_freq;
   float pending_bw;
   uint8_t pending_sf;
@@ -131,6 +132,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 protected:
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
+  }
+  // the channel last applied to the radio (not merely stored in prefs), for the regulatory duty-cycle floor
+  bool getRadioChannel(float& freq_mhz, float& bw_khz) const override {
+    freq_mhz = radio_freq; bw_khz = radio_bw;
+    return radio_freq > 0;
   }
 
   void logRxRaw(float snr, float rssi, const uint8_t raw[], int len) override;

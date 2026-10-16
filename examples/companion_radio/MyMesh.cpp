@@ -1006,6 +1006,7 @@ void MyMesh::begin() {
   _store->loadChannels(this);
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+  _radio_freq = _prefs.freq; _radio_bw = _prefs.bw;
   radio_driver.setTxPower(_prefs.tx_power_dbm);
   radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
 
@@ -1463,6 +1464,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       savePrefs();
 
       radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+      _radio_freq = _prefs.freq; _radio_bw = _prefs.bw;   // the duty-cycle floor follows at once
       MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d", freq, bw, (uint32_t)sf,
                          (uint32_t)cr);
 
@@ -2110,6 +2112,11 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
 
   if (sender_timestamp != 0 && !isRemoteCommandAllowed(command)) {
     strcpy(reply, "ERR: not permitted remotely");   // remote callers: reads and reboot only
+    return true;
+  }
+
+  if (strcmp(command, "get dutycycle") == 0) {
+    formatDutyCycleReply(reply);
     return true;
   }
 

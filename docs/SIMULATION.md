@@ -70,6 +70,8 @@ loader accepts, the early field (`name`) takes the new value and a field in the 
 default, with no error. With atomic saves the same cut lands in `/prefs.json.tmp`, and the previous complete prefs,
 identity and channel table survive a cut at any byte or between write and rename (`test_atomic_storage.py`).
 
+Tests that wait on a node's first transmission after a boot are marked `@pytest.mark.timescale(10)`: the duty-cycle window is seeded at the limit on boot, so the first packet can wait for up to one 30 s bin of airtime to age out, and these tests run ten times faster than real time to keep that wait short.
+
 ## Test inventory
 
 * `test_toa.py` – node's time on air against an independent restatement of the Semtech
@@ -82,6 +84,7 @@ identity and channel table survive a cut at any byte or between write and rename
 * `test_companion_cli_secrets.py` – `get wifi.pwd` does not reveal the password.
 * `test_companion_remote_cli.py` – remote Companion CLI limited to reads and `reboot`.
 * `test_malformed_input.py` – runs the `sim_*_asan` sanitizer builds: hand-built truncated TRACE packets injected through the ether broker (`Ether.inject`) and over-long CLI arguments must not crash the node; a well-formed TRACE is still forwarded / delivered.
+* `test_duty_cycle.py` – regulatory duty cycle, measured by the ether broker (`Ether.max_duty_in_any_hour`: the largest share of any sliding hour a node spent on the air, from the transmissions the broker saw, not from node counters). Seven nodes under sustained load for 1.25 virtual hours at time scale 60 (75 s): 869.525 MHz BW 250 (10 %), with a looser and with a stricter user setting, 868.1 MHz BW 125 (1 %, also with the CLI's strictest factor 9), a channel straddling two bands (0.1 %), 915 MHz (no floor; the user's 10 % rules) and a Repeater at 868.1 MHz; a Room Server at 868.1 MHz; a live frequency change on a Companion; two Companions power-cycled every 5 virtual minutes (15 times) that must stay within their limit across boots; the delay before the first advert after a boot; `get dutycycle` on both roles; and a self-test of the sliding-window instrument. Time scale 60 is coarse enough that the broker stamps a transmission up to a few real milliseconds (a fraction of a virtual second) late; the node's gate leaves more margin than that, but a limit needing sub-second exactness would need the virtual clock `sim_set_clock()` allows.
 * `test_repeater_prvkey.py` – `set prv.key` refused for a remote admin, allowed on the local console.
 
 ## Mutation check
@@ -89,4 +92,4 @@ identity and channel table survive a cut at any byte or between write and rename
 `sim/mutate.sh` breaks one thing per test group (a time-on-air constant, SimRadio dropping
 every packet, SimFS discarding writes, the fault hook disabled), rebuilds, expects that
 group to go red, restores the file with `git checkout` and finishes with a clean full run.
-Run it on a clean tree.
+Run it on a clean tree. It also breaks each duty-cycle rule (sliding window turned into a bucket, floor ignored, floor clamped at the CLI's 10 %, a straddling channel judged by its centre, a frequency change not applied) and expects the load tests and the unit tests to go red; those mutants take about 2.5 minutes each.

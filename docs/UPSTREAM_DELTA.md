@@ -21,6 +21,9 @@ This register lists **every change this repository makes to a file that exists u
 | `src/helpers/CommonCLI.cpp` | `set prv.key` is refused unless `sender_timestamp == 0` (local console) | Stock lets a remote admin replace the repeater's or room server's identity; `get prv.key` and `erase` are already local-only. |
 | `examples/companion_radio/MyMesh.cpp` | `get wifi.pwd` answers "write-only" instead of the password | Stock returns the Wi-Fi password in clear text to any CLI caller. |
 | `examples/companion_radio/MyMesh.cpp` | A remote CLI caller (flagged contact, `sender_timestamp != 0`) may run `get ...`, `ver`, `board` and `reboot` only; a remote timestamp of 0 is raised to 1 so a peer cannot present as local | Stock runs any command, including `set pin`, `set wifi.*`, radio settings and `poweroff`, for a flagged contact. |
+| `src/Dispatcher.h`, `src/Dispatcher.cpp` | The token bucket (full at boot, refilled continuously) is replaced by a **sliding one-hour airtime window**: airtime per completed transmission goes into 121 bins of 30 s (242 bytes of RAM), and a packet is sent only if the trailing hour plus its own time on air stays within the limit. The limit is the stricter of the user's airtime factor and the regulatory floor of `src/helpers/RegulatoryDutyCycle.*` for the channel reported by the new virtual `getRadioChannel()`. The check runs after the packet is dequeued (its length is only then known): a packet that does not fit is put back as the most urgent, scheduled for when enough airtime has aged out; a packet longer than the whole limit is dropped. `updateTxBudget()` and the virtual `getDutyCycleWindowMs()` are gone; `getRemainingTxBudget()` now reports limit minus trailing airtime. `formatDutyCycleReply()` added for the CLI. The window is seeded on first use after boot as if the previous hour had used exactly the limit, spread evenly over the bins, so reboots and crash loops cannot exceed the limit across boots (nothing is written to flash; the cost is a wait after boot for capacity to age in). | Stock's bucket lets a sliding hour carry almost twice the limit, the default limit is 100 %, and the strictest reachable limit is 10 %, so a 1 % or 0.1 % sub-band cannot be honoured. |
+| `examples/companion_radio/MyMesh.h`/`.cpp`, `examples/simple_repeater/MyMesh.h`/`.cpp`, `examples/simple_room_server/MyMesh.h`/`.cpp` | `getRadioChannel()` reports the frequency and bandwidth last applied to the radio (updated at each `setParams()`: boot, the Companion's set-radio command, the repeater's and room server's `tempradio` and its revert), so a frequency change is enforced at once. `get dutycycle` answers from the Dispatcher: band, limit, floor, user setting and trailing-hour airtime. | The floor must follow the radio, not the stored prefs (`set radio` only applies at the next boot). |
+| `platformio.ini` | `[env:native]` also builds `src/helpers/RegulatoryDutyCycle.cpp` | Unit tests of the sub-band table. |
 
 Upstream's `stale-bot.yml` is kept unchanged; it only runs in the upstream repository.
 
@@ -36,6 +39,21 @@ Generic fixes made here that would also benefit stock MeshCore, with whether the
 | `set prv.key` local console only (repeater, room server, sensor) | not yet offered |
 | Remote Companion CLI limited to reads and `reboot` | not yet offered |
 | `get wifi.pwd` no longer reveals the Wi-Fi password | not yet offered |
+| Sliding one-hour airtime window replacing the token bucket, with a regulatory sub-band floor (EU 863-870 MHz, 433 MHz) | not yet offered |
+
+## Duty-cycle enforcement: transmit paths
+
+Every LoRa transmission of the Companion and Repeater roles goes through `Dispatcher::checkSend()`, the only caller of `startSendRaw()` outside the KISS modem. Audit of every `startSendRaw`/`startTransmit` call site in `src/`, `examples/` and `variants/`:
+
+| Path | Gated by the window? | Handling |
+|---|---|---|
+| `Dispatcher::checkSend()`: every Mesh packet (adverts, messages, acks, forwards, discovery, bridge-injected packets, CLI replies) | yes | enforced for Companion and Repeater with the regulatory floor |
+| Room server | yes | enforced with the floor, like the Repeater |
+| Sensor, secure-chat examples | window yes, floor **no** | they do not report their channel, so only the user's airtime factor applies. Out of scope; they need the same `getRadioChannel()` override |
+| `examples/kiss_modem/KissModem.cpp` (`_radio.startSendRaw`) | **no** | the host controls timing and the modem is a different role. Out of scope; the host application owns the duty cycle |
+| `src/helpers/esp32/ESPNOWRadio.cpp` | no | 2.4 GHz ESP-NOW, not subject to the 863-870/433 MHz limits |
+
+Limits of the enforcement: the window lives in RAM and is not persisted; after a boot it is seeded at the limit (see above), which costs a delay before the first transmission: measured 152 s at 868.1 MHz BW 125 (1 %) and 32 s at 869.525 MHz BW 250 (10 %), each including the boot advert's own 16 s delay. A packet put back because it does not fit keeps its place only as "most urgent": the packet manager does not expose a packet's original priority. Airtime is charged as the larger of the estimated time on air and the measured send duration (capped at 1.5 times the estimate).
 
 ## Atomic saves: rename behaviour per file system
 

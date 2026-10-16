@@ -17,6 +17,7 @@ BIN = {
     "repeater": os.path.join(REPO, ".pio/build/sim_repeater/program"),
     # same Companion code, but its app transport is classed as unauthenticated TCP (a _wifi build)
     "companion_wifi_usb": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb/program"),
+    "room_server": os.path.join(REPO, ".pio/build/sim_room_server/program"),
     "repeater_asan": os.path.join(REPO, ".pio/build/sim_repeater_asan/program"),
     "companion_asan": os.path.join(REPO, ".pio/build/sim_companion_asan/program"),
     "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
@@ -126,6 +127,7 @@ class CliClient:
 CMD_APP_START, CMD_SEND_TXT_MSG, CMD_SEND_CHANNEL_TXT_MSG = 1, 2, 3
 CMD_SET_DEVICE_TIME, CMD_ADD_UPDATE_CONTACT, CMD_SYNC_NEXT_MESSAGE = 6, 9, 10
 CMD_DEVICE_QUERY, CMD_SET_CHANNEL = 22, 32
+CMD_SET_RADIO_PARAMS = 11
 RESP_OK, RESP_ERR, RESP_SELF_INFO, RESP_SENT = 0, 1, 5, 6
 CMD_EXPORT_PRIVATE_KEY, CMD_IMPORT_PRIVATE_KEY, CMD_SET_DEVICE_PIN = 23, 24, 37
 CMD_FACTORY_RESET, CMD_RUN_CLI_COMMAND = 51, 66
@@ -212,6 +214,13 @@ class CompanionClient:
     def set_channel(self, idx, name, secret):
         assert len(secret) == 16
         return self.request(bytes([CMD_SET_CHANNEL, idx]) + name.encode().ljust(32, b"\0") + secret)
+
+    def set_radio(self, freq_mhz, bw_khz, sf, cr=5):
+        """CMD_SET_RADIO_PARAMS: applied to the radio at once, no reboot."""
+        f = self.request(bytes([CMD_SET_RADIO_PARAMS]) + struct.pack("<II", round(freq_mhz * 1000), round(bw_khz * 1000)) +
+                         bytes([sf, cr]))
+        assert f[0] == RESP_OK, f
+        return f
 
     def cli(self, text):
         """CMD_RUN_CLI_COMMAND; returns the reply text (USB/BLE class transports only)."""

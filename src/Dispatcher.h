@@ -8,6 +8,16 @@
 
 namespace mesh {
 
+/*
+ * Sliding one-hour airtime window used to enforce the duty cycle.
+ * Transmitted airtime is kept in DUTY_NUM_BINS bins of DUTY_BIN_MS each: 121 x 30 s covers the hour plus
+ * the bin being filled, so everything younger than an hour is always counted (at most one bin of older
+ * airtime is counted too, which can only make the node more conservative).  Cost: 121 x 2 = 242 bytes.
+ */
+#define DUTY_WINDOW_MS   3600000UL
+#define DUTY_BIN_MS      30000UL
+#define DUTY_NUM_BINS    (DUTY_WINDOW_MS / DUTY_BIN_MS + 1)
+
 /**
  * \brief  Abstraction of local/volatile clock with Millisecond granularity.
 */
@@ -125,12 +135,18 @@ class Dispatcher {
   bool  prev_isrecv_mode;
   uint32_t n_sent_flood, n_sent_direct;
   uint32_t n_recv_flood, n_recv_direct;
-  unsigned long tx_budget_ms;
-  unsigned long last_budget_update;
-  unsigned long duty_cycle_window_ms;
+  uint16_t duty_bins[DUTY_NUM_BINS];   // airtime (ms) of each 30 s bin of the trailing hour, ring buffer
+  uint32_t duty_sum;                   // sum of duty_bins
+  bool     duty_seeded;                // the hour has been seeded at boot (see dutySeed())
+  uint8_t  duty_cur;                   // index of the bin being filled
+  unsigned long duty_cur_start;        // millis() at which that bin started
+  uint32_t outbound_est_ms;            // estimated airtime of the packet being transmitted
 
   void processRecvPacket(Packet* pkt);
-  void updateTxBudget();
+  void dutySeed();
+  void dutyAdvance(unsigned long now);
+  void dutyRecord(unsigned long now, uint32_t air_ms);
+  uint32_t dutyWaitMs(unsigned long now, uint32_t need_ms, uint32_t limit_ms) const;
 
 protected:
   PacketManager* _mgr;
@@ -149,9 +165,12 @@ protected:
     _err_flags = 0;
     radio_nonrx_start = 0;
     prev_isrecv_mode = true;
-    tx_budget_ms = 0;
-    last_budget_update = 0;
-    duty_cycle_window_ms = 3600000;
+    memset(duty_bins, 0, sizeof(duty_bins));
+    duty_sum = 0;
+    duty_seeded = false;
+    duty_cur = 0;
+    duty_cur_start = ms.getMillis();
+    outbound_est_ms = 0;
   }
 
   virtual DispatcherAction onRecvPacket(Packet* pkt) = 0;
@@ -164,13 +183,18 @@ protected:
   virtual const char* getLogDateTime() { return ""; }
 
   virtual float getAirtimeBudgetFactor() const;
+  /**
+   * \brief  The channel the radio is actually tuned to, so the regulatory duty-cycle floor can be derived from it.
+   * \returns false if unknown (then only the user's airtime factor limits transmission).
+   * Roles override this and report the parameters last applied to the radio, not merely stored in prefs.
+  */
+  virtual bool getRadioChannel(float& freq_mhz, float& bw_khz) const { return false; }
   virtual int calcRxDelay(float score, uint32_t air_time) const;
   virtual uint32_t getCADFailRetryDelay() const;
   virtual uint32_t getCADFailMaxDuration() const;
   virtual int getInterferenceThreshold() const { return 0; }    // disabled by default
   virtual bool getCADEnabled() const { return false; }    // hardware CAD disabled by default
   virtual int getAGCResetInterval() const { return 0; }    // disabled by default
-  virtual unsigned long getDutyCycleWindowMs() const { return 3600000; }
 
 public:
   void begin();
@@ -182,7 +206,13 @@ public:
 
   unsigned long getTotalAirTime() const { return total_air_time; }
   unsigned long getReceiveAirTime() const {return rx_air_time; }
-  unsigned long getRemainingTxBudget() const { return tx_budget_ms; }
+  /** Allowed share of any hour on the air, in 0.01 %: the stricter of the user's airtime factor and the regulatory floor. */
+  uint32_t getDutyLimitBp() const;
+  uint32_t getDutyLimitMs() const;          // the same, as airtime per hour
+  uint32_t getTrailingAirtimeMs();          // airtime used in the trailing hour
+  unsigned long getRemainingTxBudget();     // limit minus trailing airtime, ms
+  /** Writes the `get dutycycle` reply (band, limit, floor, user setting, trailing airtime). */
+  void formatDutyCycleReply(char* reply);
   uint32_t getNumSentFlood() const { return n_sent_flood; }
   uint32_t getNumSentDirect() const { return n_sent_direct; }
   uint32_t getNumRecvFlood() const { return n_recv_flood; }

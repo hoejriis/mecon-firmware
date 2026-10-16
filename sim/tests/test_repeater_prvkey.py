@@ -1,5 +1,7 @@
 """`set prv.key` replaces the node's identity. Like `get prv.key` and `erase` it is a local-console
 command: a remote admin (logged in over the air with the admin password) must be refused."""
+import pytest
+
 from sim.harness import CliClient, CompanionClient
 
 RTC = 1760000000
@@ -21,6 +23,7 @@ def _setup(ether, nodes):
     return rep, cli, c, bytes.fromhex(pub_hex)
 
 
+@pytest.mark.timescale(10)
 def test_remote_admin_cannot_replace_identity(ether, nodes):
     rep, cli, c, pub = _setup(ether, nodes)
     # positive: the remote admin session works for an ordinary command
@@ -34,6 +37,7 @@ def test_remote_admin_cannot_replace_identity(ether, nodes):
     assert cli.command("get public.key").lstrip("> ").strip().lower() == pub.hex()      # identity unchanged
 
 
+@pytest.mark.timescale(10)
 def test_local_console_can_still_replace_identity(ether, nodes):
     rep, cli, c, pub = _setup(ether, nodes)
     new_key = c.export_private_key()

@@ -59,6 +59,7 @@ def test_remote_poweroff_refused(ether, nodes):
     assert v.cli("get name").startswith("> ")                 # still serving
 
 
+@pytest.mark.timescale(10)
 def test_remote_reboot_allowed(ether, nodes):
     victim, _, v, r = _pair(ether, nodes, "c")
     assert r.send_cli_command(v.pub_key, "reboot")[0] == 6
