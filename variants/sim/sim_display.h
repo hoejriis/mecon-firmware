@@ -36,7 +36,6 @@ public:
 
 class SimButton {
   size_t _off = 0;
-  bool _started = false;
   unsigned long _next_poll = 0;
 public:
   void begin() {}

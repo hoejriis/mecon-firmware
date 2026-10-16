@@ -229,6 +229,9 @@ class Node:
         if self.mqtt:
             cmd += ["--mqtt-env", self.mqtt.path]
         if self.ui:
+            # Gestures belong to one boot: start each process with an empty input file, so the node reads it from
+            # the beginning and a gesture written before its first poll is never mistaken for an old one.
+            open(self.ui.input_path, "w").close()
             cmd += ["--ui-frames", self.ui.frames_path, "--ui-input", self.ui.input_path, "--ble-env", self.ui.ble_path]
         self.log = open(self.log_path, "ab")
         env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="print_stacktrace=1")
