@@ -1,10 +1,10 @@
 # Versioning and releases
 
-The first public firmware, **mecon-firmware 0.8.0**, is built on upstream **MeshCore 1.18.0**, released on 2026-10-15 (the `companion`, `repeater` and `room-server` v1.18.0 tags, upstream commit 81dbae5). A specific upstream revision is pinned for each public release. Development against the moving `dev` branch does not satisfy the release gate. "MECON 1.0" in these documents names the complete target contract that the public line works towards.
+Public mecon-firmware releases start at **0.1.0** and are built on upstream **MeshCore 1.18.0**, released on 2026-10-15 (the `companion`, `repeater` and `room-server` v1.18.0 tags, upstream commit 81dbae5). A specific upstream revision is pinned for each public release. Development against the moving `dev` branch does not satisfy the release gate. "MECON 1.0" in these documents names the complete target contract that the public line works towards.
 
 ## Two version lines
 
-The public mecon-firmware line (0.8.x) and the private reference line (0.9x, currently the 0.90 series) are **separate lines**. Their numbers do not order across each other: a public 0.8.0 is not an upgrade or a downgrade relative to a private 0.90.x build, and tooling must not compare them. A device compares versions only within the line it runs, and a managed update refuses to start unless the running version is at least the manifest's minimum-from-version.
+The public mecon-firmware line (from 0.1.0) and the private reference line (0.9x, currently the 0.90 series) are **separate lines**. Their numbers do not order across each other: a public 0.x.y is not an upgrade or a downgrade relative to a private 0.90.x build, and tooling must not compare them. A device compares versions only within the line it runs, and a managed update refuses to start unless the running version is at least the manifest's minimum-from-version.
 
 Four identities are reported independently:
 
@@ -39,11 +39,12 @@ Builds based on upstream `dev`, dirty trees or unpinned revisions identify thems
 
 No public release artifacts exist in this repository yet. Follow the [shared roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md):
 
-1. Released MeshCore 1.18.0, a revision pinned, stock behaviour proven. MeshCore 1.18.0 was released on 2026-10-15, so the "wait for 1.18" gate is open; the pin and the stock-behaviour proof are still to do.
-2. **mecon-firmware 0.8.0**, the first public release, shipping four roles: Heltec V3/V4 Companion Gateway, SenseCAP T1000-E BLE Companion, Seeed Wio Tracker L1 RF repeater and ESP32 Repeater Observer. No date is announced.
-3. Backend compatibility and fleet migration, public Backend refounding, and validation against that Backend, in the order the shared roadmap sets.
+1. MeshCore 1.18.0 pinned (upstream commit 81dbae5) as this repository's baseline.
+2. **0.1.0**, the first public release: the pinned baseline plus closed gaps in stock 1.18 (unauthenticated management paths, secret read-back, storage integrity, packet bounds), verified on simulated boards. Then 0.1.x releases work through the ranked standalone targets in [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md) (Stage A).
+3. MECON-specific functionality (Stage B), up to **0.8.0**, the first version planned to serve a MECON fleet: Heltec V3/V4 Companion Gateway, SenseCAP T1000-E BLE Companion, Seeed Wio Tracker L1 RF repeater and ESP32 Repeater Observer. The version plan before 0.8.0 may change. No dates are announced.
+4. Backend support for the public firmware's interfaces follows the firmware; it is not a precondition for it.
 
-Which wire vocabulary the first public release speaks (the legacy one the private 0.9x firmware speaks today, or the v1 target vocabulary in `contract/`) is a roadmap decision; until it is published, treat the v1 vocabulary as the target and the legacy vocabulary as shipped reference behaviour. A private release number is not a public download or evidence that its hardware gates passed.
+The public firmware speaks the **v1 vocabulary** in `contract/` only; it does not emit the legacy vocabulary of the private 0.9x firmware. A private release number is not a public download or evidence that its hardware gates passed.
 
 In the private line a release is published as a pre-release first and promoted only after a hardware bench; promotion, not publication, marks it ready for use.
 

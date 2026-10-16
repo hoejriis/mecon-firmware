@@ -1,0 +1,82 @@
+name: All boards
+
+# Compiles every PlatformIO environment in the repository (the full upstream
+# board set plus this project's additions), split into shards. Pull requests
+# run the smaller upstream PR build check; this workflow is the full software
+# verification, run nightly, on demand and before a release.
+#
+# Compiling is not a hardware-support claim.
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/all-boards.yml'
+
+permissions:
+  contents: read
+
+env:
+  PLATFORMIO_VERSION: '6.2.0'
+  SHARDS: 24
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - id: plan
+        run: |
+          pio project config --json-output > pio-config.json
+          python3 - <<'PY'
+          import json, os
+          envs = sorted(s[0][4:] for s in json.load(open('pio-config.json'))
+                        if s[0].startswith('env:') and not s[0].startswith('env:native'))
+          n = int(os.environ['SHARDS'])
+          shards = [{'id': i, 'envs': ' '.join(envs[i::n])} for i in range(n)]
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('shards=' + json.dumps(shards) + '\n')
+          print(f'{len(envs)} environments in {n} shards')
+          PY
+
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJson(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/cache@v5
+        with:
+          path: ~/.platformio
+          key: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-${{ hashFiles('platformio.ini', 'variants/**/platformio.ini') }}
+          restore-keys: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-
+      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - name: Build shard ${{ matrix.shard.id }}
+        run: |
+          failed=()
+          for env in ${{ matrix.shard.envs }}; do
+            echo "::group::$env"
+            if pio run -e "$env"; then echo "OK $env" >> results.txt; else echo "FAIL $env" >> results.txt; failed+=("$env"); fi
+            echo "::endgroup::"
+          done
+          cat results.txt
+          if [ ${#failed[@]} -gt 0 ]; then echo "Failed: ${failed[*]}"; exit 1; fi
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-shard-${{ matrix.shard.id }}
+          path: results.txt

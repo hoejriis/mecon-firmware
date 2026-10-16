@@ -7,7 +7,7 @@
 - [Staged release roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md)
 - [Detailed product target](PRODUCT_TARGET.md)
 
-There is no public firmware download or source build yet. The first public firmware will be mecon-firmware 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). Documents below specify the target rather than certifying implementation or hardware readiness.
+There is no public firmware download or source build yet. Public releases start at **0.1.0**, a standalone enhanced MeshCore on 1.18.0 (see [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md)); the first version to serve a MECON fleet is planned as 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). Documents below specify the target rather than certifying implementation or hardware readiness.
 
 These documents describe the **complete MECON 1.0 public target**, not merely differences from stock MeshCore and not the temporary state of the private development repositories. The public line is built on **upstream MeshCore 1.18.0** (released 2026-10-15) from `main`; a specific revision is pinned for each public release, and `dev` is investigation/validation only. The target vocabulary (`device_id`, `{namespace}/…` topics) differs in places from what the private 0.9x reference firmware speaks today; [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) states the shipped behaviour.
 
