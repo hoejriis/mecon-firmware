@@ -354,3 +354,14 @@ def test_mqtt_cannot_power_the_device_off_but_the_console_can(nodes, tmp_path, b
     assert any(ln.endswith("refused mqtt cli x1") or "refused mqtt cli" in ln for ln in audit(c)), audit(c)
     c._send(bytes([harness.CMD_RUN_CLI_COMMAND]) + b"poweroff")
     assert n.wait_exit(10) == 0
+
+
+def test_mecon_mem_reports_the_heap_on_a_simulated_board(nodes):
+    """`get mecon.mem` reads the board's heap figures. The simulator's heap budget is a configured number, so this
+    proves the command path and format; the real figures come from hardware."""
+    from sim.harness import CliClient
+    n = nodes("repeater", "memr").start()
+    cli = CliClient(n)
+    r = cli.command("get mecon.mem")
+    cli.close()
+    assert r.startswith("> heap free=") and "largest=" in r and "min_free=" in r, r

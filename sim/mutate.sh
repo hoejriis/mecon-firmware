@@ -459,3 +459,4 @@ echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 
 exit $SURVIVED
+mutate mem_unknown_printed_as_measured src/helpers/cli/MeconCli.h "if (!m.known) snprintf" "if (false) snprintf" unit:test_cli_engine
