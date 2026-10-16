@@ -150,8 +150,9 @@ def test_returns_to_the_better_network_after_the_hold_down_and_only_once(nodes, 
     assert wait_event(n, "up", "phone")
     mark = len(wifi_events(n))
     e.up("home")
-    # 2 s real = 40 s node time: home is seen by now, but not for the 120 s hold-down
-    time.sleep(2)
+    # 4.5 s real = 90 s node time: at least one upgrade scan (every 60 s) has seen home by now, but not for the
+    # 120 s hold-down
+    time.sleep(4.5)
     assert not joins(n, "home", mark), "switched up before the hold-down had passed"
     assert wait_event(n, "up", "home", after=mark, timeout=20)
     time.sleep(8)    # 160 s of node time more: no ping-pong

@@ -206,11 +206,11 @@ TEST(WifiCore, ALongLinkResetsTheDropCount) {
   r.profile(0, "home", 90); r.profile(1, "other", 10);
   r.ap("home"); r.ap("other");
   r.start(); r.run(3000);
-  for (int k = 0; k < 6; k++) {   // one drop per long link never accumulates to the limit
-    r.run(60000);
-    r.linked = false;
-    r.core.onDisconnected(r.now, WifiDrop::Other);
-    r.run(4000);
+  auto drop = [&r]() { r.linked = false; r.core.onDisconnected(r.now, WifiDrop::Other); r.run(4000); };
+  for (int k = 0; k < 4; k++) {   // two quick drops, then a good long link, over and over: never three in a row
+    r.run(3000); drop();
+    r.run(3000); drop();
+    r.run(60000); drop();
     ASSERT_STREQ("home", r.current()) << "round " << k;
   }
   EXPECT_EQ(WifiFail::None, r.core.lastFail(0));
