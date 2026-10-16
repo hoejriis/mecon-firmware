@@ -302,7 +302,7 @@ def test_credentials_are_used_and_a_wrong_password_fails_over(nodes, tmp_path, b
     assert last(c, 0) == "auth"
     assert secure.client_connects() == 0
     assert "updated" in c.cli("set mqtt.profile 0 pwd pw-marker-s3cret")       # an edit applies at once, no reboot
-    wait_status(c, "profile=0", timeout=30)
+    wait_status(c, "profile=0", timeout=6)             # well inside the 120 s (12 s here) the refused password cooled the profile for
     assert secure.client_connects() == 1
 
 
