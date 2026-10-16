@@ -40,6 +40,7 @@ Firmware requirements belong here and in `contract/`. **Backend migration work c
 - [Wi-Fi profiles](WIFI.md): up to ten prioritised networks, failover and return without flapping
 - [Connectivity mode](CONNECTIVITY_MODE.md): BLE or Wi-Fi one at a time, switched by command or by the device button, with a status screen
 - [Adaptive contact memory](CONTACTS.md): contacts in a persistent store on the file system with a RAM cache sized from the free heap, favourites resident, eviction of the least meaningful non-favourite, atomic saves
+- [Command-line engine](CLI.md): one privilege table for every way a command reaches the device (USB, BLE, LoRa, MQTT), the command line over MQTT
 - [MQTT broker profiles](MQTT.md): up to six brokers (static or discovered on the LAN), TLS with a pinned certificate, failover by priority
 - [Upstream and porting](UPSTREAM_AND_PORTING.md)
 - [Versioning and releases](VERSIONING_AND_RELEASES.md)
