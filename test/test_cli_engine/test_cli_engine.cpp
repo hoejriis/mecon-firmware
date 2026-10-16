@@ -415,6 +415,15 @@ TEST(MeconCli, WhoReportsTheCallerAsTheEngineSeesIt) {
   EXPECT_STREQ(r, "> transport=none auth=none remote=0 posture=normal principal=untrusted");
 }
 
+TEST(MeconCli, MemIsAReadAndSaysWhenItCannotMeasure) {
+  char r[160];
+  // the native unit build has no heap API: the reply must say so rather than print zeros as if measured
+  EXPECT_TRUE(handleMecon("get mecon.mem", Context(T_USB, A_CABLE, 0), ROLE_COMPANION, r, sizeof(r)));
+  EXPECT_STREQ(r, "> heap: not measurable on this platform");
+  EXPECT_EQ(resolve("get mecon.mem", ROLE_COMPANION).cls, C_READ);
+  EXPECT_EQ(resolve("get mecon.mem", ROLE_REPEATER).cls, C_READ);
+}
+
 TEST(MeconCli, CheckIsADryRunOfTheTable) {
   char r[160];
   Posture::audit().clear();

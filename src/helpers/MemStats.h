@@ -1,0 +1,34 @@
+#pragma once
+// Run-time memory figures for `get mecon.mem`: what the build cannot show (static RAM is in the CI memory table).
+// free      bytes of heap free now
+// largest   the largest single block that can be allocated now (fragmentation)
+// min_free  the lowest free heap since boot (high-water mark), where the platform tracks it; 0 = not tracked
+#include <stdint.h>
+
+struct MemStats {
+  uint32_t free = 0, largest = 0, min_free = 0;
+  bool known = false;   // false on a platform without a heap API: the numbers are not measurements
+};
+
+#if defined(SIM_FREE_HEAP)
+  uint32_t sim_free_heap();
+  inline MemStats memStats() { MemStats m; m.free = m.largest = sim_free_heap(); m.known = true; return m; }
+#elif defined(ESP32)
+  #include <esp_heap_caps.h>
+  inline MemStats memStats() {
+    MemStats m;
+    m.free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    m.largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    m.min_free = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+    m.known = true;
+    return m;
+  }
+#elif defined(RP2040_PLATFORM)
+  #include <Arduino.h>
+  inline MemStats memStats() { MemStats m; m.free = m.largest = rp2040.getFreeHeap(); m.known = true; return m; }
+#elif defined(NRF52_PLATFORM)
+  #include <Arduino.h>
+  inline MemStats memStats() { MemStats m; int f = dbgHeapFree(); m.free = m.largest = f > 0 ? (uint32_t)f : 0; m.known = true; return m; }
+#else
+  inline MemStats memStats() { return MemStats(); }
+#endif

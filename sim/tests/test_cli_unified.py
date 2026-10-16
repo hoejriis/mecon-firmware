@@ -354,3 +354,30 @@ def test_mqtt_cannot_power_the_device_off_but_the_console_can(nodes, tmp_path, b
     assert any(ln.endswith("refused mqtt cli x1") or "refused mqtt cli" in ln for ln in audit(c)), audit(c)
     c._send(bytes([harness.CMD_RUN_CLI_COMMAND]) + b"poweroff")
     assert n.wait_exit(10) == 0
+
+
+def test_mecon_mem_reports_the_heap_on_a_simulated_board(nodes):
+    """`get mecon.mem` reads the board's heap figures. The simulator's heap budget is a configured number, so this
+    proves the command path and format; the real figures come from hardware."""
+    from sim.harness import CliClient
+    n = nodes("repeater", "memr").start()
+    cli = CliClient(n)
+    r = cli.command("get mecon.mem")
+    cli.close()
+    assert r.startswith("> heap free=") and "largest=" in r and "min_free=" in r, r
+
+
+def test_bench_serial_cli_tool_talks_to_a_simulated_board(nodes):
+    """tools/bench/serial_cli.py is what the hardware sessions use; prove its framing against a simulated Companion and
+    its text mode against a simulated Repeater console."""
+    import subprocess, sys
+    tool = os.path.join(os.path.dirname(__file__), "..", "..", "tools", "bench", "serial_cli.py")
+    c = nodes("companion", "toolc").start()
+    out = subprocess.run([sys.executable, tool, "--tcp", "127.0.0.1:%d" % c.port, "frames", "ver", "get mecon.mem"],
+                         capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "ver => v1.18.0" in out.stdout and "get mecon.mem => > heap free=" in out.stdout, out.stdout
+    r = nodes("repeater", "toolr").start()
+    out = subprocess.run([sys.executable, tool, "--tcp", "127.0.0.1:%d" % r.port, "text", "get name"],
+                         capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0 and "Sim Repeater" in out.stdout, out.stdout + out.stderr
