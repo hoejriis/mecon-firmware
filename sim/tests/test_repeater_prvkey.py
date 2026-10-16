@@ -19,7 +19,8 @@ def _setup(ether, nodes):
     c.device_query()
     c.app_start()
     assert c.add_contact(bytes.fromhex(pub_hex), "rep", ctype=2)[0] == 0
-    assert c.login(bytes.fromhex(pub_hex), "password"), "admin login failed"
+    cli.command("password s3cretpw")      # the stock password no longer opens remote admin: set one on the console
+    assert c.login(bytes.fromhex(pub_hex), "s3cretpw"), "admin login failed"
     return rep, cli, c, bytes.fromhex(pub_hex)
 
 
