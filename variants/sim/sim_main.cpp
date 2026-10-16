@@ -32,6 +32,8 @@ int main(int argc, char** argv) {
     else if (a == "--ui-frames") g_sim.ui_frames = next();
     else if (a == "--ui-input") g_sim.ui_input = next();
     else if (a == "--ble-env") g_sim.ble_env = next();
+    else if (a == "--heap-budget") g_sim.heap_budget = strtoul(next(), nullptr, 10);
+    else if (a == "--fs-size") g_sim.fs_size = strtoul(next(), nullptr, 10);
     else if (a == "--rtc") g_sim.rtc_epoch = strtoul(next(), nullptr, 10);
     else if (a == "--fault") {   // --fault /path:BYTES
       std::string v = next(); size_t c = v.rfind(':');

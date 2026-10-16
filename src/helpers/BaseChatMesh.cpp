@@ -57,12 +57,57 @@ void BaseChatMesh::sendAckTo(const ContactInfo& dest, const uint8_t* ack_hash, u
   }
 }
 
+void BaseChatMesh::EvictAdapter::onContactEvicted(const uint8_t* pub_key) {
+  mesh->onContactOverwrite(pub_key);
+}
+
+// A caller that never set the store up (an example with its own contact file) gets a RAM-only table of
+// MAX_CONTACTS records, which is what the stock array was.
+void BaseChatMesh::ensureContacts() {
+  if (cstore.ready()) return;
+  ContactStoreConfig cfg;
+  cfg.store_ceiling = MAX_CONTACTS;
+#ifdef CONTACTS_STOCK_ARRAY
+  cfg.stock_policy = true;
+#endif
+  cstore.begin(NULL, &evict_adapter, cfg);
+}
+
+bool BaseChatMesh::initContactStore(ContactBackend* backend, const ContactStoreConfig& cfg) {
+  return cstore.begin(backend, &evict_adapter, cfg);
+}
+
+void BaseChatMesh::invalidateContactSecrets() {
+  for (int i = 0; i < MAX_ANON_CONTACTS; i++) anon[i].shared_secret_valid = false;
+  cstore.invalidateSecrets();
+}
+
+ContactInfo* BaseChatMesh::contactByHandle(int handle) {
+  if (handle < 0) return NULL;
+  if (handle < MAX_ANON_CONTACTS) return &anon[handle];
+  ensureContacts();
+  return cstore.get(handle - MAX_ANON_CONTACTS);
+}
+
+ContactInfo* BaseChatMesh::findContactById(const mesh::Identity& id) {
+  for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
+    if (id.matches(anon[i].id)) return &anon[i];
+  }
+  ensureContacts();
+  return cstore.find(id.pub_key, PUB_KEY_SIZE);
+}
+
+// A direct message went out or came in: remember it, it is what keeps a contact in the store (docs/CONTACTS.md).
+void BaseChatMesh::noteDirectMessage(const ContactInfo& contact) {
+  int rec = cstore.recOfPtr(&contact);
+  if (rec >= 0) cstore.noteMessage(rec, getRTCClock()->getCurrentTime());
+}
+
 void BaseChatMesh::bootstrapRTCfromContacts() {
-  uint32_t latest = 0;
-  for (int i = 0; i < num_contacts; i++) {
-    if (contacts[i].lastmod > latest) {
-      latest = contacts[i].lastmod;
-    }
+  ensureContacts();
+  uint32_t latest = cstore.newestLastmod();
+  for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
+    if (anon[i].lastmod > latest) latest = anon[i].lastmod;
   }
   if (latest != 0) {
     getRTCClock()->setCurrentTime(latest + 1);
@@ -70,39 +115,26 @@ void BaseChatMesh::bootstrapRTCfromContacts() {
 }
 
 ContactInfo* BaseChatMesh::allocateContactSlot(bool transient_only) {
-  int oldest_idx = -1;
-  uint32_t oldest_lastmod = 0xFFFFFFFF;
   if (transient_only) {
-    // only allocate from first N
+    // only allocate from the anon slots, the oldest one first
+    int oldest_idx = -1;
+    uint32_t oldest_lastmod = 0xFFFFFFFF;
     for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
-      if (contacts[i].type == ADV_TYPE_NONE && contacts[i].lastmod < oldest_lastmod) {
-        oldest_lastmod = contacts[i].lastmod;
+      if (anon[i].type == ADV_TYPE_NONE && anon[i].lastmod < oldest_lastmod) {
+        oldest_lastmod = anon[i].lastmod;
         oldest_idx = i;
       }
     }
     if (oldest_idx >= 0) {
       // NOTE: do NOT call onContactOverwrite()
-      return &contacts[oldest_idx];
+      return &anon[oldest_idx];
     }
-  } else {
-    if (num_contacts < MAX_ANON_CONTACTS+MAX_CONTACTS) {
-      return &contacts[num_contacts++];
-    } else if (shouldOverwriteWhenFull()) {
-      // Find oldest non-favourite contact by oldest lastmod timestamp
-      for (int i = MAX_ANON_CONTACTS; i < num_contacts; i++) {
-        bool is_favourite = (contacts[i].flags & 0x01) != 0;
-        if (!is_favourite && contacts[i].lastmod < oldest_lastmod) {
-          oldest_lastmod = contacts[i].lastmod;
-          oldest_idx = i;
-        }
-      }
-      if (oldest_idx >= 0) {
-        onContactOverwrite(contacts[oldest_idx].id.pub_key);
-        return &contacts[oldest_idx];
-      }
-    }
+    return NULL;
   }
-  return NULL; // no space, no overwrite or all contacts are all favourites
+  ensureContacts();
+  // The store gives a free record, or (when overwriting is allowed) the one with the lowest score that is not a
+  // favourite, after raising onContactOverwrite() for it. NULL: full and nothing may go, or only favourites remain.
+  return cstore.allocate(shouldOverwriteWhenFull(), getRTCClock()->getCurrentTime());
 }
 
 void BaseChatMesh::populateContactFromAdvert(ContactInfo& ci, const mesh::Identity& id, const AdvertDataParser& parser, uint32_t timestamp) {
@@ -126,16 +158,10 @@ void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
     return;
   }
 
-  ContactInfo* from = NULL;
-  for (int i = 0; i < num_contacts; i++) {
-    if (id.matches(contacts[i].id)) {  // is from one of our contacts
-      from = &contacts[i];
-      if (timestamp <= from->last_advert_timestamp) {  // check for replay attacks!!
-        MESH_DEBUG_PRINTLN("onAdvertRecv: Possible replay attack, name: %s", from->name);
-        return;
-      }
-      break;
-    }
+  ContactInfo* from = findContactById(id);   // is from one of our contacts?
+  if (from && timestamp <= from->last_advert_timestamp) {  // check for replay attacks!!
+    MESH_DEBUG_PRINTLN("onAdvertRecv: Possible replay attack, name: %s", from->name);
+    return;
   }
 
   // save a copy of raw advert packet (to support "Share..." function)
@@ -202,31 +228,37 @@ void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
 
 int BaseChatMesh::searchPeersByHash(const uint8_t* hash) {
   int n = 0;
-  for (int i = 0; i < num_contacts && n < MAX_SEARCH_RESULTS; i++) {
-    if (contacts[i].id.isHashMatch(hash)) {
-      matching_peer_indexes[n++] = i;  // store the INDEXES of matching contacts (for subsequent 'peer' methods)
+  for (int i = 0; i < MAX_ANON_CONTACTS && n < MAX_SEARCH_RESULTS; i++) {
+    if (anon[i].id.isHashMatch(hash)) {
+      matching_peer_indexes[n++] = i;
     }
+  }
+  ensureContacts();
+  int rec[MAX_SEARCH_RESULTS];
+  int found = cstore.findByHash(hash, rec, MAX_SEARCH_RESULTS - n);
+  for (int j = 0; j < found; j++) {
+    matching_peer_indexes[n++] = MAX_ANON_CONTACTS + rec[j];   // store the HANDLES of matching contacts (for subsequent 'peer' methods)
   }
   return n;
 }
 
 void BaseChatMesh::getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) {
-  int i = matching_peer_indexes[peer_idx];
-  if (i >= 0 && i < num_contacts) {
-    memcpy(dest_secret, contacts[i].getSharedSecret(self_id), PUB_KEY_SIZE);
+  ContactInfo* c = contactByHandle(matching_peer_indexes[peer_idx]);
+  if (c) {
+    memcpy(dest_secret, c->getSharedSecret(self_id), PUB_KEY_SIZE);
   } else {
-    MESH_DEBUG_PRINTLN("getPeerSharedSecret: Invalid peer idx: %d", i);
+    MESH_DEBUG_PRINTLN("getPeerSharedSecret: Invalid peer idx: %d", matching_peer_indexes[peer_idx]);
   }
 }
 
 void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) {
-  int i = matching_peer_indexes[sender_idx];
-  if (i < 0 || i >= num_contacts) {
-    MESH_DEBUG_PRINTLN("onPeerDataRecv: Invalid sender idx: %d", i);
+  ContactInfo* sender = contactByHandle(matching_peer_indexes[sender_idx]);
+  if (!sender) {
+    MESH_DEBUG_PRINTLN("onPeerDataRecv: Invalid sender idx: %d", matching_peer_indexes[sender_idx]);
     return;
   }
 
-  ContactInfo& from = contacts[i];
+  ContactInfo& from = *sender;
 
   if (type == PAYLOAD_TYPE_TXT_MSG && len > 5) {
     uint32_t sender_timestamp;
@@ -238,6 +270,7 @@ void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
 
     if (flags == TXT_TYPE_PLAIN) {
       from.lastmod = getRTCClock()->getCurrentTime(); // update last heard time
+      noteDirectMessage(from);
       onMessageRecv(from, packet, sender_timestamp, (const char *) &data[5]);  // let UI know
 
       int text_len = strlen((char *)&data[5]);
@@ -339,13 +372,13 @@ void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
 }
 
 bool BaseChatMesh::onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) {
-  int i = matching_peer_indexes[sender_idx];
-  if (i < 0 || i >= num_contacts) {
-    MESH_DEBUG_PRINTLN("onPeerPathRecv: Invalid sender idx: %d", i);
+  ContactInfo* sender = contactByHandle(matching_peer_indexes[sender_idx]);
+  if (!sender) {
+    MESH_DEBUG_PRINTLN("onPeerPathRecv: Invalid sender idx: %d", matching_peer_indexes[sender_idx]);
     return false;
   }
 
-  ContactInfo& from = contacts[i];
+  ContactInfo& from = *sender;
 
   return onContactPathRecv(from, packet->path, packet->path_len, path, path_len, extra_type, extra, extra_len);
 }
@@ -486,6 +519,7 @@ int  BaseChatMesh::sendMessage(const ContactInfo& recipient, uint32_t timestamp,
     txt_send_timeout = futureMillis(est_timeout = calcDirectTimeoutMillisFor(t, recipient.out_path_len));
     rc = MSG_SEND_SENT_DIRECT;
   }
+  noteDirectMessage(recipient);   // we wrote to them: they are worth keeping
   return rc;
 }
 
@@ -835,48 +869,59 @@ void BaseChatMesh::resetPathTo(ContactInfo& recipient) {
   recipient.out_path_len = OUT_PATH_UNKNOWN;
 }
 
-static ContactInfo* table;  // pass via global :-(
+struct RecentEntry { int handle; uint32_t adv; };
 
 static int cmp_adv_timestamp(const void *a, const void *b) {
-  int a_idx = *((int *)a);
-  int b_idx = *((int *)b);
-  if (table[b_idx].last_advert_timestamp > table[a_idx].last_advert_timestamp) return 1;
-  if (table[b_idx].last_advert_timestamp < table[a_idx].last_advert_timestamp) return -1;
+  const RecentEntry* x = (const RecentEntry*)a;
+  const RecentEntry* y = (const RecentEntry*)b;
+  if (y->adv > x->adv) return 1;
+  if (y->adv < x->adv) return -1;
   return 0;
 }
 
 void BaseChatMesh::scanRecentContacts(int last_n, ContactVisitor* visitor) {
-  for (int i = 0; i < num_contacts; i++) {  // sort the INDEXES into contacts[]
-    sort_array[i] = i;
+  ensureContacts();
+  int total = MAX_ANON_CONTACTS + cstore.count();
+  RecentEntry* list = (RecentEntry*)malloc(sizeof(RecentEntry) * total);
+  if (!list) return;
+  int n = 0;
+  for (int i = 0; i < MAX_ANON_CONTACTS; i++) { list[n].handle = i; list[n].adv = anon[i].last_advert_timestamp; n++; }
+  int cursor = 0;
+  ContactInfo tmp;
+  while (n < total && cstore.next(cursor, tmp)) {   // after a step the cursor is one past the record's id
+    list[n].handle = MAX_ANON_CONTACTS + cursor - 1;
+    list[n].adv = tmp.last_advert_timestamp;
+    n++;
   }
-  table = contacts; // pass via global *sigh* :-(
-  qsort(sort_array, num_contacts, sizeof(sort_array[0]), cmp_adv_timestamp);
+  qsort(list, n, sizeof(RecentEntry), cmp_adv_timestamp);
 
   if (last_n == 0) {
-    last_n = num_contacts;   // scan ALL
+    last_n = n;   // scan ALL
   } else {
-    if (last_n > num_contacts) last_n = num_contacts;
+    if (last_n > n) last_n = n;
   }
   for (int i = 0; i < last_n; i++) {
-    visitor->onContactVisit(contacts[sort_array[i]]);
+    ContactInfo* c = contactByHandle(list[i].handle);
+    if (c) visitor->onContactVisit(*c);
   }
+  free(list);
 }
 
 ContactInfo* BaseChatMesh::searchContactsByPrefix(const char* name_prefix) {
   int len = strlen(name_prefix);
-  for (int i = 0; i < num_contacts; i++) {
-    auto c = &contacts[i];
-    if (memcmp(c->name, name_prefix, len) == 0) return c;
+  for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
+    if (memcmp(anon[i].name, name_prefix, len) == 0) return &anon[i];
   }
-  return NULL;  // not found
+  ensureContacts();
+  return cstore.findByName(name_prefix);
 }
 
 ContactInfo* BaseChatMesh::lookupContactByPubKey(const uint8_t* pub_key, int prefix_len) {
-  for (int i = 0; i < num_contacts; i++) {
-    auto c = &contacts[i];
-    if (memcmp(c->id.pub_key, pub_key, prefix_len) == 0) return c;
+  for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
+    if (memcmp(anon[i].id.pub_key, pub_key, prefix_len) == 0) return &anon[i];
   }
-  return NULL;  // not found
+  ensureContacts();
+  return cstore.find(pub_key, prefix_len);
 }
 
 bool BaseChatMesh::addContact(const ContactInfo& contact) {
@@ -890,19 +935,13 @@ bool BaseChatMesh::addContact(const ContactInfo& contact) {
 }
 
 bool BaseChatMesh::removeContact(ContactInfo& contact) {
-  int idx = 0;
-  while (idx < num_contacts && !contacts[idx].id.matches(contact.id)) {
-    idx++;
+  ensureContacts();
+  int rec = cstore.recOfPtr(&contact);
+  if (rec < 0) {
+    ContactInfo* c = cstore.find(contact.id.pub_key, PUB_KEY_SIZE, &rec);   // a copy of a contact: find the stored one
+    if (!c) return false;                                                    // not found
   }
-  if (idx >= num_contacts) return false;   // not found
-
-  // remove from contacts array
-  num_contacts--;
-  while (idx < num_contacts) {
-    contacts[idx] = contacts[idx + 1];
-    idx++;
-  }
-  return true;  // Success
+  return cstore.remove(rec);
 }
 
 #ifdef MAX_GROUP_CHANNELS
@@ -966,21 +1005,26 @@ int BaseChatMesh::findChannelIdx(const mesh::GroupChannel& ch) {
 #endif
 
 bool BaseChatMesh::getContactByIdx(uint32_t idx, ContactInfo& contact) {
-  if (idx >= num_contacts) return false;
-
-  contact = contacts[idx];
-  return true;
+  if (idx < MAX_ANON_CONTACTS) {
+    contact = anon[idx];
+    return true;
+  }
+  ensureContacts();
+  int cursor = 0;
+  int skip = idx - MAX_ANON_CONTACTS;
+  ContactInfo tmp;
+  while (cstore.next(cursor, tmp)) {
+    if (skip-- == 0) { contact = tmp; return true; }
+  }
+  return false;
 }
 
 ContactsIterator BaseChatMesh::startContactsIterator() {
-  return ContactsIterator(MAX_ANON_CONTACTS);   // start at offset, skip the anon entries
+  return ContactsIterator(0);   // record ids; the anon slots are not part of the walk
 }
 
 bool ContactsIterator::hasNext(const BaseChatMesh* mesh, ContactInfo& dest) {
-  if (next_idx >= mesh->getTotalContactSlots()) return false;
-
-  dest = mesh->contacts[next_idx++];
-  return true;
+  return const_cast<BaseChatMesh*>(mesh)->cstore.next(next_idx, dest);
 }
 
 void BaseChatMesh::loop() {

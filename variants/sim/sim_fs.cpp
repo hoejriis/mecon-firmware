@@ -164,7 +164,10 @@ static size_t treesize(const std::string& d) {
   }
   return total;
 }
-size_t SPIFFSFS::totalBytes() { return 1536 * 1024; }
+size_t SPIFFSFS::totalBytes() { return g_sim.fs_size; }
 size_t SPIFFSFS::usedBytes() { return treesize(_root); }
 
 }  // namespace fs
+
+// Free heap the simulated board reports at boot (see helpers/ContactPlatform.h).
+uint32_t sim_free_heap() { return g_sim.heap_budget; }

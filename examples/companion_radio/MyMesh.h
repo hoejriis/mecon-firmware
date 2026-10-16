@@ -1,6 +1,7 @@
 #pragma once
 
 #include <helpers/Posture.h>
+#include <helpers/ContactPlatform.h>
 #include <Arduino.h>
 #include <Mesh.h>
 
@@ -197,10 +198,17 @@ protected:
   void onSendTimeout() override;
 
   // DataStoreHost methods
-  bool onContactLoaded(const ContactInfo& contact) override { return addContact(contact); }
+  bool onContactLoaded(const ContactInfo& contact) override;
   bool getContactForSave(uint32_t idx, ContactInfo& contact) override { return getContactByIdx(idx, contact); }
   bool onChannelLoaded(uint8_t channel_idx, const ChannelDetails& ch) override { return setChannel(channel_idx, ch); }
   bool getChannelForSave(uint8_t channel_idx, ChannelDetails& ch) override { return getChannel(channel_idx, ch); }
+
+  // Contact memory (docs/CONTACTS.md)
+  enum { MIGRATE_NONE = 0, MIGRATE_BULK, MIGRATE_MERGE };
+  uint8_t _migrate = MIGRATE_NONE;
+  void loadContactsAtBoot();
+  void migrateLegacyContacts();
+  void reloadContactSecrets();
 
   void clearPendingReqs() {
     pending_login = pending_status = pending_telemetry = pending_discovery = pending_req = 0;

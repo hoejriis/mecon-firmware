@@ -1009,9 +1009,7 @@ void MyMesh::begin() {
 
   _active_ble_pin = _prefs.ble_pin;
 
-  resetContacts();
-  _store->loadContacts(this);
-  bootstrapRTCfromContacts();
+  loadContactsAtBoot();
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure public channel
   _store->loadChannels(this);
 
@@ -1111,7 +1109,10 @@ void MyMesh::handleCmdFrame(size_t len) {
     int i = 0;
     out_frame[i++] = RESP_CODE_DEVICE_INFO;
     out_frame[i++] = FIRMWARE_VER_CODE;
-    out_frame[i++] = MAX_CONTACTS / 2;   // v3+
+    {
+      int half = getContactCapacity() / 2;   // the app takes one byte
+      out_frame[i++] = half > 255 ? 255 : half;   // v3+
+    }
     out_frame[i++] = MAX_GROUP_CHANNELS; // v3+
     memcpy(&out_frame[i], &_prefs.ble_pin, 4);
     i += 4;
@@ -1598,9 +1599,8 @@ void MyMesh::handleCmdFrame(size_t len) {
         if (_store->saveMainIdentity(identity)) {
           self_id = identity;
           writeOKFrame();
-          // re-load contacts, to invalidate ecdh shared_secrets
-          resetContacts();
-          _store->loadContacts(this);
+          // the cached ECDH shared secrets belong to the old key
+          reloadContactSecrets();
         } else {
           writeErrFrame(ERR_CODE_FILE_IO_ERROR);
         }
@@ -2117,12 +2117,63 @@ void MyMesh::handleCmdFrame(size_t len) {
   }
 }
 
+#ifdef CONTACTS_STOCK_ARRAY
 static bool save_filter(const ContactInfo& c) {
   return c.type != ADV_TYPE_NONE;   // don't save the transient/anon entries
 }
+#endif
 
 void MyMesh::saveContacts() {
+#ifdef CONTACTS_STOCK_ARRAY
   _store->saveContacts(this, save_filter);
+#else
+  flushContacts();   // rewrites the buckets that hold a changed record, each one atomically
+#endif
+}
+
+bool MyMesh::onContactLoaded(const ContactInfo& contact) {
+  if (_migrate == MIGRATE_BULK) return contactStore().importAdd(contact, 0, getRTCClock()->getCurrentTime());
+  if (_migrate == MIGRATE_MERGE) {
+    if (contactStore().find(contact.id.pub_key, PUB_KEY_SIZE)) return true;   // the store's version is newer
+    addContact(contact);
+    return true;   // a contact that does not fit is dropped; the walk of the old file goes on
+  }
+  return addContact(contact);
+}
+
+// Boot: the contact store is set up from the free heap and file system space, then a stock /contacts3 file, if
+// there is one, moves into it (an empty store takes it in bulk, bucket by bucket; a store that already holds
+// contacts merges it, which is also how a migration that was cut short finishes). The old file is removed
+// only after the last bucket is safely written.
+void MyMesh::loadContactsAtBoot() {
+  resetContacts();
+#ifdef CONTACTS_STOCK_ARRAY
+  _store->loadContacts(this);
+#else
+  initContactStore(_store, contactStoreConfigFor(MAX_CONTACTS));
+  if (_store->legacyContactsExist()) migrateLegacyContacts();
+#endif
+  bootstrapRTCfromContacts();
+}
+
+void MyMesh::migrateLegacyContacts() {
+  ContactStore& cs = contactStore();
+  bool bulk = cs.count() == 0;
+  _migrate = bulk ? MIGRATE_BULK : MIGRATE_MERGE;
+  if (bulk) cs.importBegin();
+  _store->loadContacts(this);
+  bool ok = bulk ? cs.importEnd() : cs.flush();
+  _migrate = MIGRATE_NONE;
+  if (ok) _store->removeLegacyContacts();
+}
+
+void MyMesh::reloadContactSecrets() {
+#ifdef CONTACTS_STOCK_ARRAY
+  resetContacts();
+  _store->loadContacts(this);
+#else
+  invalidateContactSecrets();
+#endif
 }
 
 // A factory reset returns the device to Normal; the audit log (erased with the files) is written again with
@@ -2188,6 +2239,11 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
 
   if (strcmp(command, "get dutycycle") == 0) {
     formatDutyCycleReply(reply);
+    return true;
+  }
+
+  if (strcmp(command, "get contacts.capacity") == 0) {   // docs/CONTACTS.md
+    contactStore().format(reply, 150);
     return true;
   }
 

@@ -17,6 +17,8 @@ struct SimConfig {
   std::string ui_frames;      // file the recording display appends its frames to (variants/sim/sim_display.cpp)
   std::string ui_input;       // file of button gestures the node replays, one word per line (click|long|double|triple)
   std::string ble_env;        // file whose content "connected" makes the stubbed BLE interface report a connected phone
+  uint32_t heap_budget = 300000;   // free heap the node reports at boot (--heap-budget); the contact cache is sized from it
+  uint32_t fs_size = 1536 * 1024;  // size of the simulated file system (--fs-size)
   std::string fault_path;     // fault injection: file path (as the app sees it) ...
   long fault_after = -1;      // ... and bytes after which the process is killed
   std::string fault_op;       // power cut just BEFORE a filesystem operation: "rename" or "remove" ...

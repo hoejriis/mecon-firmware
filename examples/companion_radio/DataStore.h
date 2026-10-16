@@ -3,6 +3,7 @@
 #include <helpers/IdentityStore.h>
 #include <helpers/ContactInfo.h>
 #include <helpers/ChannelDetails.h>
+#include <helpers/ContactStore.h>
 #include "NodePrefs.h"
 
 class DataStoreHost {
@@ -13,7 +14,7 @@ public:
   virtual bool getChannelForSave(uint8_t channel_idx, ChannelDetails& ch) =0;
 };
 
-class DataStore {
+class DataStore : public ContactBackend {
   FILESYSTEM* _fs;
   FILESYSTEM* _fsExtra;
   mesh::RTCClock* _clock;
@@ -35,8 +36,18 @@ public:
   bool saveMainIdentity(const mesh::LocalIdentity &identity);
   void loadPrefs(NodePrefs& prefs);
   bool savePrefs(NodePrefs& prefs);
+  // The stock whole-table file (/contacts3): read for the migration into the contact store, and kept as the
+  // persistence of the CONTACTS_STOCK_ARRAY fallback, where it is now saved atomically.
   void loadContacts(DataStoreHost* host);
   void saveContacts(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);
+  bool legacyContactsExist();
+  bool removeLegacyContacts();
+  // ContactBackend: the contact store's bucket files (/ct<N>), each replaced atomically
+  bool bucketExists(uint16_t b) override;
+  bool readBucket(uint16_t b, uint8_t* buf, uint32_t len) override;
+  bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len) override;
+  bool removeBucket(uint16_t b) override;
+  uint32_t freeBytes() override;
   void loadChannels(DataStoreHost* host);
   void saveChannels(DataStoreHost* host);
   void migrateToSecondaryFS();

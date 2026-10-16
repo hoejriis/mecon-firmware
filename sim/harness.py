@@ -23,6 +23,8 @@ BIN = {
     "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
     # the standalone Companion: connectivity-mode switching, the real ui-new screens on a recording display
     "companion_standalone": os.path.join(REPO, ".pio/build/sim_companion_standalone/program"),
+    # the Companion built with the stock contact array (-D CONTACTS_STOCK_ARRAY): the opt-out of the adaptive contact store
+    "companion_stockcontacts": os.path.join(REPO, ".pio/build/sim_companion_stockcontacts/program"),
 }
 
 
@@ -192,7 +194,7 @@ def wifi_events(node):
 
 class Node:
     def __init__(self, kind, name, workdir, ether_path=None, seed=1, time_scale=1.0, fault=None, rtc=None, fault_before=None,
-                 binary=None, wifi=None, mqtt=None):
+                 binary=None, wifi=None, mqtt=None, extra=None):
         self.kind, self.name = kind, name
         self.dir = os.path.join(str(workdir), name)
         os.makedirs(self.dir, exist_ok=True)
@@ -207,6 +209,7 @@ class Node:
             wifi.set("sim")
         self.wifi = wifi
         self.mqtt = mqtt
+        self.extra = list(extra or [])   # further node command-line options, e.g. ["--heap-budget", "60000"]
         self.ui = UiProbe(workdir, name) if kind == "companion_standalone" else None
         self.proc = None
         self.port = None
@@ -228,6 +231,7 @@ class Node:
             cmd += ["--wifi-env", self.wifi.path]
         if self.mqtt:
             cmd += ["--mqtt-env", self.mqtt.path]
+        cmd += self.extra
         if self.ui:
             cmd += ["--ui-frames", self.ui.frames_path, "--ui-input", self.ui.input_path, "--ble-env", self.ui.ble_path]
         self.log = open(self.log_path, "ab")
@@ -381,6 +385,10 @@ CMD_GET_CHANNEL, RESP_CHANNEL_INFO = 31, 18
 CMD_SEND_LOGIN, PUSH_LOGIN_SUCCESS, PUSH_LOGIN_FAIL = 26, 0x85, 0x86
 RESP_CONTACT_MSG_RECV_V3, RESP_CHANNEL_MSG_RECV_V3 = 16, 17
 PUSH_MSG_WAITING = 0x83
+CMD_GET_CONTACTS, CMD_REBOOT, CMD_SET_AUTOADD_CONFIG = 4, 19, 58
+RESP_CONTACTS_START, RESP_CONTACT, RESP_END_OF_CONTACTS = 2, 3, 4
+PUSH_CONTACT_DELETED, PUSH_CONTACTS_FULL = 0x8F, 0x90
+ERR_TABLE_FULL = 3
 
 
 class CompanionClient:
@@ -453,6 +461,57 @@ class CompanionClient:
         f = (bytes([CMD_ADD_UPDATE_CONTACT]) + pub_key + bytes([ctype, flags, out_path_len]) + b"\0" * 64 +
              name.encode().ljust(32, b"\0") + struct.pack("<I", 0))
         return self.request(f)
+
+    def add_contact_full(self, pub_key, name, flags=0, out_path_len=0xFF, ctype=1, lastmod=None, lat=0, lon=0, path=b""):
+        """CMD_ADD_UPDATE_CONTACT with every optional field; lastmod=None lets the node stamp it."""
+        f = (bytes([CMD_ADD_UPDATE_CONTACT]) + pub_key + bytes([ctype, flags, out_path_len]) + path.ljust(64, b"\0") +
+             name.encode().ljust(32, b"\0") + struct.pack("<I", 0))
+        if lastmod is not None:
+            f += struct.pack("<iiI", lat, lon, lastmod)
+        return self.request(f)
+
+    def get_contacts(self, since=None, timeout=60.0):
+        """CMD_GET_CONTACTS: returns (announced count, [contact dicts]) once RESP_CODE_END_OF_CONTACTS arrives."""
+        payload = bytes([CMD_GET_CONTACTS]) + (struct.pack("<I", since) if since is not None else b"")
+        f = self.request(payload)
+        assert f[0] == RESP_CONTACTS_START, f
+        count = struct.unpack_from("<I", f, 1)[0]
+        out = []
+        end = time.time() + timeout
+        while time.time() < end:
+            fr = self._read_frame(1.0)
+            if fr is None:
+                continue
+            if fr[0] >= 0x80:
+                self.pushes.append(fr)
+                continue
+            if fr[0] == RESP_END_OF_CONTACTS:
+                return count, out
+            assert fr[0] == RESP_CONTACT, fr
+            out.append({"key": bytes(fr[1:33]), "type": fr[33], "flags": fr[34], "path_len": fr[35], "path": bytes(fr[36:100]),
+                        "name": bytes(fr[100:132]).split(b"\0")[0].decode(errors="replace"),
+                        "adv": struct.unpack_from("<I", fr, 132)[0], "lat": struct.unpack_from("<i", fr, 136)[0],
+                        "lon": struct.unpack_from("<i", fr, 140)[0], "lastmod": struct.unpack_from("<I", fr, 144)[0]})
+        raise TimeoutError("contacts sync did not finish")
+
+    def set_overwrite_oldest(self, on=True):
+        return self.request(bytes([CMD_SET_AUTOADD_CONFIG, 1 if on else 0]))
+
+    def request_reboot(self):
+        """CMD_REBOOT: the node saves pending contacts, then exits with status 75."""
+        self._send(bytes([CMD_REBOOT]) + b"reboot")
+
+    def contacts_line(self):
+        """'get contacts.capacity' parsed: {"mode": "adaptive", "store": (used, capacity), "cache": (used, slots), ...}."""
+        text = self.cli("get contacts.capacity")
+        import re
+        m = re.match(r"> (\S+) store (\d+)/(\d+) cache (\d+)/(\d+) pinned (\d+) fav (\d+) evicted (\d+) refused (\d+)\+(\d+) "
+                     r"loads (\d+) damaged (\d+) werr (\d+) ram (\d+)", text)
+        assert m, text
+        v = m.groups()
+        return {"mode": v[0], "store": (int(v[1]), int(v[2])), "cache": (int(v[3]), int(v[4])), "pinned": int(v[5]),
+                "fav": int(v[6]), "evicted": int(v[7]), "refused_full": int(v[8]), "refused_fav": int(v[9]),
+                "loads": int(v[10]), "damaged": int(v[11]), "werr": int(v[12]), "ram": int(v[13])}
 
     def set_channel(self, idx, name, secret):
         assert len(secret) == 16

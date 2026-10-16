@@ -40,7 +40,7 @@ attached. For long jobs run it detached with output redirected to a file under
 | Runner | `sim/harness.py`, `sim/tests/` | starts the broker and N nodes (each in its own temp dir) and drives them with a small Companion client and a CLI client |
 
 Node command line: `--dir`, `--ether`, `--wifi-env`, `--mqtt-env`, `--name`, `--port-file`, `--seed`, `--time-scale`,
-`--rtc`, `--fault /path:BYTES`, and `--toa SF BW CR PREAMBLE LEN` (print time on air in
+`--rtc`, `--heap-budget BYTES` (the free heap the node reports at boot; the contact cache is sized from it; default 300000), `--fs-size BYTES` (size of the simulated file system; default 1.5 MB), `--fault /path:BYTES`, and `--toa SF BW CR PREAMBLE LEN` (print time on air in
 microseconds and exit). A node exits with status 75 on `reboot` and 0 on `poweroff`.
 
 ### Design notes and limits
@@ -84,6 +84,7 @@ Tests that wait on a node's first transmission after a boot are marked `@pytest.
 * `test_mesh.py` – two Companions that cannot hear each other exchange a direct message
   and a channel message through a Repeater; and nothing is delivered with no links.
 * `test_atomic_storage.py` – power cuts in the temp file and between write and rename for repeater prefs, Companion identity and channel table; a damaged identity is kept aside.
+* `test_contacts.py` – the adaptive contact memory ([Adaptive contact memory](CONTACTS.md)): migration of a stock `/contacts3` (fields unchanged, a cut before the old file is removed, a merge into a filled store), app sync returning every stored contact beyond the cache, capacity and cache following the reported heap, RAM against the stock array, favourites resident and reachable over the radio under a small heap, eviction of the least meaningful non-favourite (the overwrite push names it, favourites and contacts with message history either way survive), refusal when only favourites remain, power cuts at any byte of a bucket's temp file and between write and rename, a damaged bucket, and the `CONTACTS_STOCK_ARRAY` build (RAM-only, atomic, stock eviction). `sim_companion_stockcontacts` is the opt-out build.
 * `test_companion_transport.py` – management commands refused on the TCP-class transport, allowed on USB; messaging works on both.
 * `test_companion_cli_secrets.py` – `get wifi.pwd` does not reveal the password.
 * `test_companion_remote_cli.py` – remote Companion CLI limited to reads and `reboot`.
@@ -102,6 +103,8 @@ Tests that wait on a node's first transmission after a boot are marked `@pytest.
 ## Unit tests (`pio test -e native`)
 
 `test_posture` covers the pure decision functions (posture byte, BLE start with a default PIN, TCP server start, key transfer, who may factory-reset, default-password test, the Hardened read-only list, the posture / audit commands for every caller, the Repeater / Room server front door) and the audit ring (folding, eviction, file image and its CRC against any single flipped byte, the flush policy and its millisecond wrap, paging). These are the only checks of the BLE rule and of the BLE factory-reset refusal, because the simulator has no BLE.
+
+`test_contact_store` drives the contact store with an in-memory backend that can be told to fail: the record image against the stock layout and against every single flipped byte, lookups by prefix, by full key and by path hash (contacts sharing their first four key bytes), flush granularity (only changed buckets), the cache size rule (floor, ceiling, unknown heap), favourites resident from boot and under churn, a changed record written before its slot is reused and kept when that write fails, capacity from file-system space (our own files counted as free) and from heap, each eviction rule (store full and overwriting allowed, key in the overwrite event also for a record only on the file system, message recency window, known path, favourite never, only-favourites refusal, favourite set through a pointer, the stock policy), iteration including records outside the cache, bulk import (one write per bucket; fewer slots than contacts), failed and half-finished flushes, the RAM-only mode.
 
 `test_wifi_core` drives the Wi-Fi decision core with a fake radio and a virtual clock (selection and tie-break, failover on wrong password, not-found, join timeout and quick drops, the escalating cooldown, hold-down return and its reset by a missed scan, no scans on the best profile, backoff growth and reset, profile edits, ten profiles, the 32-bit clock wrap). `test_wifi_prefs` covers the profile store in the real `NodePrefs` serializer (a stock-format file, ten full-length profiles round-trip, the prefs size) and the profile CLI (bad input changes nothing, paging through ten profiles, last failure shown, no reply ever carries a password).
 
