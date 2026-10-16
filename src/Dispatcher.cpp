@@ -5,12 +5,12 @@
 #endif
 
 #include <math.h>
+#include <stdio.h>
+#include <helpers/RegulatoryDutyCycle.h>
 
 namespace mesh {
 
 #define MAX_RX_DELAY_MILLIS        32000  // 32 seconds
-#define MIN_TX_BUDGET_RESERVE_MS   100    // min budget (ms) required before allowing next TX
-#define MIN_TX_BUDGET_AIRTIME_DIV  2      // require at least 1/N of estimated airtime as budget before TX
 
 #ifndef NOISE_FLOOR_CALIB_INTERVAL
   #define NOISE_FLOOR_CALIB_INTERVAL   2000     // 2 seconds
@@ -22,10 +22,10 @@ void Dispatcher::begin() {
   _err_flags = 0;
   radio_nonrx_start = _ms->getMillis();
 
-  duty_cycle_window_ms = getDutyCycleWindowMs();
-  float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
-  tx_budget_ms = (unsigned long)(duty_cycle_window_ms * duty_cycle);
-  last_budget_update = _ms->getMillis();
+  memset(duty_bins, 0, sizeof(duty_bins));
+  duty_sum = 0;
+  duty_cur = 0;
+  duty_cur_start = _ms->getMillis();
 
   _radio->begin();
   prev_isrecv_mode = _radio->isInRecvMode();
@@ -35,21 +35,109 @@ float Dispatcher::getAirtimeBudgetFactor() const {
   return 1.0;
 }
 
-void Dispatcher::updateTxBudget() {
-  unsigned long now = _ms->getMillis();
-  unsigned long elapsed = now - last_budget_update;
+// ---- duty-cycle window ---------------------------------------------------------------------------------
 
-  float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
-  unsigned long max_budget = (unsigned long)(getDutyCycleWindowMs() * duty_cycle);
-  unsigned long refill = (unsigned long)(elapsed * duty_cycle);
-  
-  if (refill > 0) {
-    tx_budget_ms += refill;
-    if (tx_budget_ms > max_budget) {
-      tx_budget_ms = max_budget;
-    }
-    last_budget_update = now;
+// Rotate the ring forward so that the bin being filled is the one `now` falls in.
+void Dispatcher::dutyAdvance(unsigned long now) {
+  unsigned long elapsed = now - duty_cur_start;
+  if (elapsed < DUTY_BIN_MS) return;
+  unsigned long steps = elapsed / DUTY_BIN_MS;
+  if (steps >= DUTY_NUM_BINS) {   // idle for longer than the window: nothing left to count
+    memset(duty_bins, 0, sizeof(duty_bins));
+    duty_sum = 0;
+    duty_cur = 0;
+    duty_cur_start = now;
+    return;
   }
+  for (unsigned long i = 0; i < steps; i++) {
+    duty_cur = (duty_cur + 1) % DUTY_NUM_BINS;
+    duty_sum -= duty_bins[duty_cur];     // the oldest bin falls out of the window
+    duty_bins[duty_cur] = 0;
+  }
+  duty_cur_start += steps * DUTY_BIN_MS;
+}
+
+void Dispatcher::dutyRecord(unsigned long now, uint32_t air_ms) {
+  dutyAdvance(now);
+  uint32_t room = 0xFFFF - duty_bins[duty_cur];
+  if (air_ms > room) air_ms = room;
+  duty_bins[duty_cur] += air_ms;
+  duty_sum += air_ms;
+}
+
+uint32_t Dispatcher::getTrailingAirtimeMs() {
+  dutyAdvance(_ms->getMillis());
+  return duty_sum;
+}
+
+// The stricter of what the user asked for (airtime factor af means a duty of 1/(1+af)) and the regulatory
+// floor for the channel the radio is tuned to.  The floor does not depend on the CLI's 0-9 clamp on af.
+uint32_t Dispatcher::getDutyLimitBp() const {
+  float af = getAirtimeBudgetFactor();
+  if (!(af > 0.0f)) af = 0.0f;                        // also covers NaN
+  float user = 10000.0f / (1.0f + af);
+  uint32_t limit = user < 1.0f ? 1 : (uint32_t)user;  // rounds down: never more than the user asked for
+  float freq, bw;
+  if (getRadioChannel(freq, bw)) {
+    uint32_t floor_bp = regulatory::dutyFloor(freq, bw).limit_bp;
+    if (floor_bp < limit) limit = floor_bp;
+  }
+  return limit;
+}
+
+uint32_t Dispatcher::getDutyLimitMs() const {
+  return (uint32_t)((uint64_t)DUTY_WINDOW_MS * getDutyLimitBp() / 10000);
+}
+
+unsigned long Dispatcher::getRemainingTxBudget() {
+  uint32_t used = getTrailingAirtimeMs(), limit = getDutyLimitMs();
+  return used >= limit ? 0 : limit - used;
+}
+
+// How long until enough of the oldest airtime has left the window for `need_ms` to be freed.
+// Bin j (0 = the one being filled) is counted until the last moment in it is an hour old, i.e. until
+// duty_cur_start - j*BIN + BIN + WINDOW.
+uint32_t Dispatcher::dutyWaitMs(unsigned long now, uint32_t need_ms, uint32_t limit_ms) const {
+  (void)limit_ms;
+  uint32_t freed = 0;
+  for (int j = DUTY_NUM_BINS - 1; j >= 0; j--) {
+    freed += duty_bins[(duty_cur + DUTY_NUM_BINS - j) % DUTY_NUM_BINS];
+    if (freed >= need_ms) {
+      long wait = (long)(DUTY_BIN_MS + DUTY_WINDOW_MS) - (long)j * (long)DUTY_BIN_MS - (long)(now - duty_cur_start);
+      return (wait < 1 ? 1 : (uint32_t)wait) + 1;
+    }
+  }
+  return DUTY_WINDOW_MS;   // not reachable when the packet alone fits the limit
+}
+
+static void fmtBp(char* out, uint32_t bp) {   // 1000 -> "10.00%"
+  sprintf(out, "%u.%02u%%", (unsigned)(bp / 100), (unsigned)(bp % 100));
+}
+
+void Dispatcher::formatDutyCycleReply(char* reply) {
+  uint32_t used = getTrailingAirtimeMs();
+  uint32_t limit = getDutyLimitBp();
+  float af = getAirtimeBudgetFactor();
+  if (!(af > 0.0f)) af = 0.0f;
+  uint32_t user = (uint32_t)(10000.0f / (1.0f + af));
+  if (user < 1) user = 1;
+
+  char band[28], lim[12], flo[12], usr[12], pct[12];
+  strcpy(band, "none");
+  strcpy(flo, "none");
+  float freq, bw;
+  if (getRadioChannel(freq, bw)) {
+    regulatory::DutyFloor f = regulatory::dutyFloor(freq, bw);
+    if (f.limit_bp < REG_DUTY_NONE_BP) {
+      sprintf(band, "%u.%03u-%u.%03u MHz", (unsigned)(f.band_lo_khz / 1000), (unsigned)(f.band_lo_khz % 1000),
+              (unsigned)(f.band_hi_khz / 1000), (unsigned)(f.band_hi_khz % 1000));
+      fmtBp(flo, f.limit_bp);
+    }
+  }
+  fmtBp(lim, limit);
+  fmtBp(usr, user);
+  fmtBp(pct, (uint32_t)((uint64_t)used * 10000 / DUTY_WINDOW_MS));
+  sprintf(reply, "> band %s, limit %s, floor %s, user %s, used %u ms (%s)", band, lim, flo, usr, (unsigned)used, pct);
 }
 
 int Dispatcher::calcRxDelay(float score, uint32_t air_time) const {
@@ -89,21 +177,16 @@ void Dispatcher::loop() {
       total_air_time += t;
       //Serial.print("  airtime="); Serial.println(t);
 
-      updateTxBudget();
+      // Charge the larger of the estimated time on air and the time the send actually took, the latter
+      // capped at the send timeout (1.5 x estimate) so a stalled loop cannot book hours of airtime.
+      uint32_t air = outbound_est_ms;
+      uint32_t cap = outbound_est_ms + outbound_est_ms / 2;
+      uint32_t took = t < 0 ? 0 : (uint32_t)t;
+      if (took > cap) took = cap;
+      if (took > air) air = took;
+      dutyRecord(_ms->getMillis(), air);
 
-      if (t > tx_budget_ms) {
-        tx_budget_ms = 0;
-      } else {
-        tx_budget_ms -= t;
-      }
-
-      if (tx_budget_ms < MIN_TX_BUDGET_RESERVE_MS) {
-        float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
-        unsigned long needed = MIN_TX_BUDGET_RESERVE_MS - tx_budget_ms;
-        next_tx_time = futureMillis((unsigned long)(needed / duty_cycle));
-      } else {
-        next_tx_time = _ms->getMillis();
-      }
+      next_tx_time = _ms->getMillis();
 
       _radio->onSendFinished();
       logTx(outbound, 2 + outbound->getPathByteLen() + outbound->payload_len);
@@ -275,16 +358,6 @@ void Dispatcher::processRecvPacket(Packet* pkt) {
 void Dispatcher::checkSend() {
   if (_mgr->getOutboundCount(_ms->getMillis()) == 0) return;
   
-  updateTxBudget();
-  
-  uint32_t est_airtime = _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
-  if (tx_budget_ms < est_airtime / MIN_TX_BUDGET_AIRTIME_DIV) {
-    float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
-    unsigned long needed = est_airtime / MIN_TX_BUDGET_AIRTIME_DIV - tx_budget_ms;
-    next_tx_time = futureMillis((unsigned long)(needed / duty_cycle));
-    return;
-  }
-  
   if (!millisHasNowPassed(next_tx_time)) return;
   if (_radio->isReceiving()) {
     if (cad_busy_start == 0) {
@@ -324,7 +397,30 @@ void Dispatcher::checkSend() {
     } else {
       memcpy(&raw[len], outbound->payload, outbound->payload_len); len += outbound->payload_len;
 
-      uint32_t max_airtime = _radio->getEstAirtimeFor(len)*3/2;
+      // Duty cycle: send only if the trailing hour plus this packet stays within the limit.  The packet is
+      // known only now, so it is put back (as the most urgent, scheduled for when the airtime it needs has
+      // aged out) if it does not fit; a packet longer than the whole limit can never be sent and is dropped.
+      uint32_t est = _radio->getEstAirtimeFor(len);
+      uint32_t limit_ms = getDutyLimitMs();
+      if (est > limit_ms) {
+        MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): packet airtime %u ms exceeds duty-cycle limit %u ms, dropped", getLogDateTime(), (uint32_t)est, (uint32_t)limit_ms);
+        logTxFail(outbound, outbound->getRawLength());
+        releasePacket(outbound);
+        outbound = NULL;
+        return;
+      }
+      unsigned long now = _ms->getMillis();
+      dutyAdvance(now);
+      if (duty_sum + est > limit_ms) {
+        uint32_t wait = dutyWaitMs(now, duty_sum + est - limit_ms, limit_ms);
+        _mgr->queueOutbound(outbound, 0, futureMillis(wait));
+        outbound = NULL;
+        next_tx_time = futureMillis(wait);
+        return;
+      }
+      outbound_est_ms = est;
+
+      uint32_t max_airtime = est*3/2;
       outbound_start = _ms->getMillis();
       bool success = _radio->startSendRaw(raw, len);
       if (!success) {

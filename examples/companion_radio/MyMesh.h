@@ -128,6 +128,11 @@ public:
 
 protected:
   float getAirtimeBudgetFactor() const override;
+  // the channel last applied to the radio (not merely stored in prefs), for the regulatory duty-cycle floor
+  bool getRadioChannel(float& freq_mhz, float& bw_khz) const override {
+    freq_mhz = _radio_freq; bw_khz = _radio_bw;
+    return _radio_freq > 0;
+  }
   int getInterferenceThreshold() const override;
   bool getCADEnabled() const override;
   int getAGCResetInterval() const override {
@@ -257,6 +262,7 @@ private:
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
   char reply_buf[166];
+  float _radio_freq = 0, _radio_bw = 0;
   uint8_t app_target_ver;
   uint8_t *sign_data;
   uint32_t sign_data_len;
