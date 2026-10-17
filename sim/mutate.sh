@@ -55,7 +55,9 @@ PY
   rc=$?
   echo "MUTATION $name -> exit $rc : $(tail -1 ".sim-logs/mut_$name.log")"
   if [ $rc -eq 0 ]; then echo "SURVIVED: $name (its tests still pass with the code broken)"; SURVIVED=1; fi
-  git checkout -q -- "$file"
+  # restore from HEAD by content: `git checkout` does nothing for a same-size edit made within the index timestamp's second
+  # (git calls the file unmodified), which left a protocol-level mutant in the tree on 2026-10-17
+  git show "HEAD:$file" > "$file"
 }
 
 mutate toa_constant variants/sim/sim_toa.h "(sf == 5 || sf == 6) ? 6.25 : 4.25" "(sf == 5 || sf == 6) ? 6.25 : 4.0" sim/tests/test_toa.py
