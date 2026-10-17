@@ -251,6 +251,21 @@ private:
         key[0] = 'u'; def(key, q.user, sizeof(q.user));
         key[0] = 'w'; def(key, q.pwd, sizeof(q.pwd));
         key[0] = 'g'; def(key, q.manage);
+        // A CA anchor, as base64 in pieces of CA_CHUNK characters (one prefs token holds 127). Only the pieces that
+        // exist are written, so a profile without a CA adds nothing to the file. Keys: c<profile><piece, two digits>.
+        char ck[6] = { 'c', (char)('0' + i), '0', '0', 0, 0 };
+        char piece[MqttProfile::CA_CHUNK + 1];
+        for (uint8_t n = 0; n < MqttProfile::CA_CHUNKS; n++) {
+          ck[2] = (char)('0' + n / 10); ck[3] = (char)('0' + n % 10);
+          if (_context->op() == WRITE) {
+            if (!m.caChunk(i, n, piece)) break;
+            def(ck, piece, sizeof(piece));
+          } else {
+            piece[0] = 0;
+            def(ck, piece, sizeof(piece));
+            if (piece[0]) m.loadCaChunk(i, n, piece);
+          }
+        }
       }
     }
   public:

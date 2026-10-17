@@ -6,6 +6,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
 
 
@@ -28,9 +29,107 @@ def make_cert(directory, name, ip):
     return cert, key, fp
 
 
+def make_ca(directory, name, bits=None):
+    """A throw-away certificate authority generated at test time. Returns (cert_path, key_path). `bits` makes it an RSA
+    CA of that size (the largest practical CA certificates are RSA-4096 roots); the default is EC P-256."""
+    cert, key = os.path.join(directory, name + ".crt"), os.path.join(directory, name + ".key")
+    keyargs = ["-newkey", "rsa:%d" % bits] if bits else ["-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1"]
+    subprocess.run(["openssl", "req", "-x509"] + keyargs + ["-nodes", "-keyout", key, "-out", cert, "-days", "2",
+                    "-subj", "/CN=test-ca-" + name, "-addext", "basicConstraints=critical,CA:TRUE",
+                    "-addext", "keyUsage=critical,keyCertSign,cRLSign"], check=True, capture_output=True)
+    return cert, key
+
+
+def make_leaf(directory, name, ca, dns=None, ip=None):
+    """A broker certificate signed by `ca` = (cert_path, key_path), with a DNS name and/or an IP address as subject
+    alternative names. A new key every call, so a "renewed" certificate under the same CA has a different fingerprint.
+    Returns (cert_path, key_path, sha256 fingerprint as 64 lower-case hex)."""
+    cert, key = os.path.join(directory, name + ".crt"), os.path.join(directory, name + ".key")
+    csr, ext = os.path.join(directory, name + ".csr"), os.path.join(directory, name + ".ext")
+    sans = (["DNS:" + dns] if dns else []) + (["IP:" + ip] if ip else [])
+    open(ext, "w").write("basicConstraints=CA:FALSE\n" + ("subjectAltName=" + ",".join(sans) + "\n" if sans else ""))
+    subprocess.run(["openssl", "req", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
+                    "-keyout", key, "-out", csr, "-subj", "/CN=test-broker-" + name], check=True, capture_output=True)
+    subprocess.run(["openssl", "x509", "-req", "-in", csr, "-CA", ca[0], "-CAkey", ca[1], "-set_serial",
+                    str(int.from_bytes(os.urandom(8), "big") >> 1), "-out", cert, "-days", "2", "-extfile", ext],
+                   check=True, capture_output=True)
+    out = subprocess.run(["openssl", "x509", "-in", cert, "-noout", "-fingerprint", "-sha256"], check=True,
+                         capture_output=True, text=True).stdout
+    return cert, key, out.strip().split("=", 1)[1].replace(":", "").lower()
+
+
+def ca_b64(cert_path):
+    """The certificate as base64 of its DER, the form a profile stores."""
+    der = subprocess.run(["openssl", "x509", "-in", cert_path, "-outform", "DER"], check=True, capture_output=True).stdout
+    import base64
+    return base64.b64encode(der).decode()
+
+
+def ca_commands(i, cert_path, piece=48):
+    """The console commands that set a CA anchor on profile i, from tools/mqtt_ca_commands.py (so the tool is under
+    test too); each is short enough for the device's serial line (79 characters)."""
+    tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools", "mqtt_ca_commands.py")
+    pem = subprocess.run(["openssl", "x509", "-in", cert_path], check=True, capture_output=True, text=True).stdout
+    pem_path = cert_path + ".pem"
+    open(pem_path, "w").write(pem)
+    out = subprocess.run([sys.executable, tool, str(i), pem_path, "--piece", str(piece)], check=True,
+                         capture_output=True, text=True).stdout
+    cmds = out.splitlines()
+    assert cmds[0].endswith("ca begin") and cmds[-1].endswith("ca end")
+    return cmds
+
+
+class SniProbe:
+    """A TLS server that records the server name (SNI) each client sends in its ClientHello, completes the handshake
+    with a throw-away certificate and closes. The independent signal for "the device sends SNI": mosquitto does not log
+    it. names holds one entry per connection: the name, or None when the client sent none."""
+
+    def __init__(self, directory, ip, port):
+        import ssl
+        self.ip, self.port, self.names, self.connections = ip, port, [], 0
+        cert, key, self.fingerprint = make_cert(str(directory), "sni-" + ip, ip)
+        self.ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        self.ctx.load_cert_chain(cert, key)
+        self.ctx.sni_callback = lambda sock, name, ctx: self.names.append(name)
+        self._stop = False
+        self._sock = None
+
+    def start(self):
+        import threading
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind((self.ip, self.port))
+        self._sock.listen(8)
+        self._sock.settimeout(0.2)
+
+        def run():
+            import ssl
+            while not self._stop:
+                try:
+                    c, _ = self._sock.accept()
+                except OSError:
+                    continue
+                self.connections += 1
+                try:
+                    c.settimeout(3)
+                    t = self.ctx.wrap_socket(c, server_side=True)
+                    t.close()
+                except (OSError, ssl.SSLError):
+                    c.close()
+                # a client that sent no server_name never reaches the callback
+        threading.Thread(target=run, daemon=True).start()
+        return self
+
+    def stop(self):
+        self._stop = True
+        if self._sock:
+            self._sock.close()
+
+
 class Broker:
-    def __init__(self, directory, name, ip, port, cert=None, key=None, users=None):
+    def __init__(self, directory, name, ip, port, cert=None, key=None, users=None, cafile=None):
         self.dir, self.name, self.ip, self.port, self.cert = str(directory), name, ip, port, cert
+        self.cafile = cafile or cert   # what a test client trusts: the CA when the certificate is CA-signed
         self.log_path = os.path.join(self.dir, name + ".log")
         self.conf = os.path.join(self.dir, name + ".conf")
         lines = ["listener %d %s" % (port, ip), "persistence false", "log_dest file " + self.log_path,
@@ -98,12 +197,12 @@ class Broker:
         """The retained payload on mecon/+/status, or None."""
         cmd = ["mosquitto_sub", "-h", self.ip, "-p", str(self.port), "-t", "mecon/+/status", "-C", "1", "-W", str(timeout)]
         if self.cert:
-            cmd += ["--cafile", self.cert, "--insecure"]
+            cmd += ["--cafile", self.cafile, "--insecure"]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
         return r.stdout.strip() or None
 
     def _client_args(self):
-        return ["-h", self.ip, "-p", str(self.port)] + (["--cafile", self.cert, "--insecure"] if self.cert else [])
+        return ["-h", self.ip, "-p", str(self.port)] + (["--cafile", self.cafile, "--insecure"] if self.cert else [])
 
     def publish(self, topic, payload, retain=False):
         """Publish one message as a client of this broker."""

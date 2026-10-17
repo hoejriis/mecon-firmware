@@ -43,6 +43,8 @@ public:
   // Without a handler nothing is subscribed.
   void setCliHandler(Cli::Mqtt::RunFn fn, void* user) { _cli_fn = fn; _cli_user = user; }
   const MqttCore* core() const { return &_core; }
+  // Seconds clock for the audit entry of a refused profile (a stored anchor that cannot be used); without one, 0.
+  void setAuditClock(uint32_t (*now)()) { _audit_now = now; }
 
   // One status line: state, profile, broker address, TLS state, time connected. Never contains a credential.
   void formatStatus(char* out, size_t cap);
@@ -69,7 +71,9 @@ private:
     uint16_t port;
     bool tls;
     bool has_anchor;
-    char anchor[MqttProfile::ANCHOR_BUF];
+    char anchor[MqttProfile::ANCHOR_BUF];   // leaf fingerprint, "" when the anchor is a CA
+    char* ca;                           // a private copy of the CA certificate (base64 DER), freed by takeResult()
+    char name[MqttProfile::HOST_BUF];   // the broker's host name for SNI and the name check, "" when it has none
     char user[MqttProfile::USER_BUF];   // "" when none
     char pwd[MqttProfile::PWD_BUF];
     Result result;
@@ -84,6 +88,7 @@ private:
   char _resp_topic[40] = {0};
   Cli::Mqtt::RunFn _cli_fn = nullptr;
   void* _cli_user = nullptr;
+  uint32_t (*_audit_now)() = nullptr;
   uint32_t _cur_addr = 0;
   uint16_t _cur_port = 0;
   uint32_t _next_status = 0;

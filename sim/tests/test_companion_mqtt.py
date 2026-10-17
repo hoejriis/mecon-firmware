@@ -15,7 +15,7 @@ import pytest
 
 from sim import harness, mqtt_broker
 from sim.harness import CompanionClient, MqttEnv, WifiEnv, files_containing, mqtt_events
-from sim.mqtt_broker import Broker, make_cert
+from sim.mqtt_broker import Broker, SniProbe, ca_commands, make_ca, make_cert, make_leaf
 
 RTC = 1760000000
 PLAIN, TLS = 18830, 18883
@@ -471,3 +471,214 @@ def test_the_commands_work_while_the_controller_is_not_running(nodes, tmp_path):
     assert "last=none" in c.cli("get mqtt.profile 0")
     assert c.cli("get mqtt.status") == "> off"
     assert c.cli("get mqtt.enabled") == "> 1"
+
+
+# ------------------------------------------------------------------ CA certificate anchors and SNI
+
+@pytest.fixture
+def ca_brokers(tmp_path):
+    """TLS brokers whose certificate is signed by a CA made here: make(name, ip, ca, dns=None) -> Broker with
+    .fingerprint. renew() starts a new broker on the same address with a fresh certificate under the same CA."""
+    made = []
+
+    def make(name, ip, ca, dns=None, port=TLS, cert_ip=None):
+        cert, key, fp = make_leaf(str(tmp_path), name, ca, dns=dns, ip=cert_ip)
+        b = Broker(tmp_path, name, ip, port, cert, key, cafile=ca[0]).start()
+        b.fingerprint = fp
+        made.append(b)
+        return b
+
+    yield make
+    for b in made:
+        b.stop()
+
+
+def ca_static(i, host, prio, ca):
+    return static(i, host, TLS, prio, tls=True) + ca_commands(i, ca[0])
+
+
+def test_a_ca_anchor_survives_the_broker_certificate_being_renewed(nodes, tmp_path, ca_brokers):
+    ca = make_ca(str(tmp_path), "ca")
+    b1 = ca_brokers("b1", "127.0.0.4", ca, dns="broker.test")
+    menv = MqttEnv(str(tmp_path / "ren.mqtt"))
+    menv.host("broker.test", "127.0.0.4")
+    n, c, _ = boot(nodes, tmp_path, "ren", ca_static(0, "broker.test", 90, ca), menv=menv)
+    s = wait_status(c, "connected")
+    assert "profile=0" in s and "tls=verified" in s, s
+    assert "anchor=ca" in c.cli("get mqtt.profile 0")
+    assert b1.client_connects() == 1
+    assert json.loads(wait_until(lambda: b1.retained_status(2), "the retained status"))["tls"] == "verified"
+    b1.stop()                                              # the certificate is renewed: a new key under the same CA
+    b2 = ca_brokers("b2", "127.0.0.4", ca, dns="broker.test")
+    assert b2.fingerprint != b1.fingerprint                # a leaf pin would have to be reconfigured here
+    wait_until(lambda: b2.client_connects() == 1, "the reconnect to the renewed broker", timeout=60)
+    s = wait_status(c, "connected")
+    assert "profile=0" in s and "tls=verified" in s, s
+    assert last(c, 0) in ("none", "dropped"), last(c, 0)   # never refused: the renewal needed no reconfiguration
+
+
+def test_a_leaf_fingerprint_is_refused_after_the_certificate_is_renewed(nodes, tmp_path, ca_brokers):
+    # the contrast with the test above: a fingerprint anchor does not survive a renewal (unchanged behaviour)
+    ca = make_ca(str(tmp_path), "ca")
+    b1 = ca_brokers("b1", "127.0.0.4", ca, dns="broker.test")
+    menv = MqttEnv(str(tmp_path / "fpren.mqtt"))
+    menv.host("broker.test", "127.0.0.4")
+    n, c, _ = boot(nodes, tmp_path, "fpren", static(0, "broker.test", TLS, 90, tls=True, anchor=b1.fingerprint), menv=menv)
+    assert "tls=verified" in wait_status(c, "connected")
+    assert "anchor=fingerprint" in c.cli("get mqtt.profile 0")
+    b1.stop()
+    b2 = ca_brokers("b2", "127.0.0.4", ca, dns="broker.test")
+    wait_until(lambda: last(c, 0) == "pin", "the renewed certificate to be refused", timeout=60)
+    assert b2.client_connects() == 0
+
+
+def test_a_ca_anchor_rejects_a_certificate_from_another_ca(nodes, tmp_path, brokers, ca_brokers):
+    ca = make_ca(str(tmp_path), "ca")
+    other = make_ca(str(tmp_path), "other")
+    plain = brokers("plain", "127.0.0.2")
+    rogue = ca_brokers("rogue", "127.0.0.4", other, dns="broker.test")      # right name, wrong CA
+    menv = MqttEnv(str(tmp_path / "oca.mqtt"))
+    menv.host("broker.test", "127.0.0.4")
+    n, c, _ = boot(nodes, tmp_path, "oca", ca_static(1, "broker.test", 90, ca) + static(0, "127.0.0.2", PLAIN, 10),
+                   menv=menv)
+    wait_status(c, "profile=0")                            # fell back to the plain broker
+    assert last(c, 1) == "pin"
+    assert rogue.client_connects() == 0                    # the broker's own log: no MQTT session, no credentials sent
+    assert "open-fail pin" in mqtt_events(n)
+
+
+def test_a_ca_anchor_rejects_a_wrong_host_name(nodes, tmp_path, brokers, ca_brokers):
+    ca = make_ca(str(tmp_path), "ca")
+    plain = brokers("plain", "127.0.0.2")
+    b = ca_brokers("b", "127.0.0.4", ca, dns="broker.test")                # the certificate names broker.test ...
+    menv = MqttEnv(str(tmp_path / "hn.mqtt"))
+    menv.host("other.test", "127.0.0.4")                   # ... but the profile reaches it as other.test
+    n, c, _ = boot(nodes, tmp_path, "hn", ca_static(1, "other.test", 90, ca) + static(0, "127.0.0.2", PLAIN, 10), menv=menv)
+    wait_status(c, "profile=0")
+    assert last(c, 1) == "pin"
+    assert b.client_connects() == 0
+    # the same broker under its right name is accepted by the same CA (the chain was never the problem)
+    menv.host("broker.test", "127.0.0.4")
+    assert c.cli("set mqtt.profile 1 host broker.test").startswith(">")
+    s = wait_status(c, "profile=1")
+    assert "tls=verified" in s and b.client_connects() == 1, s
+
+
+def test_a_ca_anchor_on_an_address_literal_checks_the_chain_only(nodes, tmp_path, ca_brokers):
+    ca = make_ca(str(tmp_path), "ca")
+    b = ca_brokers("b", "127.0.0.4", ca, dns="not-the-address.test")       # no name that matches an address
+    n, c, _ = boot(nodes, tmp_path, "lit", ca_static(0, "127.0.0.4", 90, ca))
+    s = wait_status(c, "connected")
+    assert "tls=verified" in s and b.client_connects() == 1, s
+    assert "name=-" in " ".join(mqtt_events(n))            # no name was presented or checked
+
+
+def test_a_discovery_ca_anchor_checks_the_chain_and_a_rogue_ca_is_refused(nodes, tmp_path, brokers, ca_brokers):
+    ca = make_ca(str(tmp_path), "ca")
+    other = make_ca(str(tmp_path), "other")
+    plain = brokers("plain", "127.0.0.2")
+    rogue = ca_brokers("rogue", "127.0.0.5", other, dns="broker.test")
+    real = ca_brokers("real", "127.0.0.4", ca, dns="broker.test")
+    menv = MqttEnv(str(tmp_path / "dca.mqtt"))
+    menv.advertise("alpha", "127.0.0.5", TLS)              # the rogue answers first with the right site ID
+    menv.advertise("alpha", "127.0.0.4", TLS)
+    cmds = ["set mqtt.profile 0 type discovery", "set mqtt.profile 0 site alpha", "set mqtt.profile 0 priority 90"]
+    n, c, _ = boot(nodes, tmp_path, "dca", cmds + ca_commands(0, ca[0]) + static(1, "127.0.0.2", PLAIN, 10), menv=menv)
+    s = wait_status(c, "connected")
+    assert "profile=0" in s and "broker=127.0.0.4:%d" % TLS in s and "tls=verified" in s, s
+    assert real.client_connects() == 1 and rogue.client_connects() == 0
+    assert plain.client_connects() == 0
+    assert "anchor=ca" in c.cli("get mqtt.profile 0")
+
+
+def test_the_server_name_is_sent_with_every_tls_profile_that_has_a_host_name(nodes, tmp_path):
+    probe = SniProbe(tmp_path, "127.0.0.6", TLS).start()
+    try:
+        menv = MqttEnv(str(tmp_path / "sni.mqtt"))
+        menv.host("sni.test", "127.0.0.6")
+        # unanchored, and fingerprint-anchored (which must still pass the pin before anything else): the name goes out
+        cmds = static(0, "sni.test", TLS, 90, tls=True)
+        n, c, _ = boot(nodes, tmp_path, "sni", cmds, menv=menv)
+        wait_until(lambda: "sni.test" in probe.names, "a ClientHello with the server name")
+        c.cli("set mqtt.profile 0 anchor %s" % probe.fingerprint)
+        before = len(probe.names)
+        wait_until(lambda: len(probe.names) > before and probe.names[-1] == "sni.test", "the pinned profile's ClientHello")
+        # an address literal has no name to send
+        c.cli("set mqtt.profile 0 host 127.0.0.6")
+        before_names = len(probe.names)
+        # a client that sends no server name reaches the callback with None; an attempt still in flight from before the
+        # edit may add one more "sni.test", so wait for the None rather than counting entries
+        wait_until(lambda: None in probe.names[before_names:], "a connection to the address literal without a server name")
+        assert "127.0.0.6" not in probe.names               # and never the address text posing as a name
+    finally:
+        probe.stop()
+
+
+def test_a_fingerprint_anchor_does_not_check_the_host_name(nodes, tmp_path, ca_brokers):
+    ca = make_ca(str(tmp_path), "ca")
+    b = ca_brokers("b", "127.0.0.4", ca, dns="broker.test")
+    menv = MqttEnv(str(tmp_path / "fpn.mqtt"))
+    menv.host("another.test", "127.0.0.4")
+    n, c, _ = boot(nodes, tmp_path, "fpn", static(0, "another.test", TLS, 90, tls=True, anchor=b.fingerprint), menv=menv)
+    assert "tls=verified" in wait_status(c, "connected")   # a leaf pin is the trust decision; unchanged
+    assert b.client_connects() == 1
+
+
+def test_the_largest_practical_ca_fits_and_is_accepted(nodes, tmp_path, ca_brokers):
+    ca = make_ca(str(tmp_path), "bigca", bits=4096)         # an RSA-4096 root, like the large public roots
+    b = ca_brokers("b", "127.0.0.4", ca, dns="broker.test")
+    menv = MqttEnv(str(tmp_path / "big.mqtt"))
+    menv.host("broker.test", "127.0.0.4")
+    cmds = ca_commands(0, ca[0])
+    print("RSA-4096 CA: %d commands" % len(cmds))
+    n, c, _ = boot(nodes, tmp_path, "big", static(0, "broker.test", TLS, 90, tls=True) + cmds, menv=menv)
+    assert "tls=verified" in wait_status(c, "connected")
+    assert b.client_connects() == 1
+
+
+def test_a_damaged_ca_is_refused_at_ca_end_and_the_profile_keeps_its_anchor(nodes, tmp_path, ca_brokers):
+    ca = make_ca(str(tmp_path), "ca")
+    b = ca_brokers("b", "127.0.0.4", ca, dns="broker.test")
+    menv = MqttEnv(str(tmp_path / "dmg.mqtt"))
+    menv.host("broker.test", "127.0.0.4")
+    cmds = ca_commands(0, ca[0])
+    damaged = cmds[:-3] + [cmds[-1]]                        # two pieces lost before ca end
+    n, c, _ = boot(nodes, tmp_path, "dmg", static(0, "broker.test", TLS, 90, tls=True, anchor=b.fingerprint), menv=menv)
+    for cmd in damaged[:-1]:
+        assert c.cli(cmd).startswith(">")
+    assert c.cli(damaged[-1]).startswith("ERR: ca is not one complete")
+    assert "anchor=fingerprint" in c.cli("get mqtt.profile 0")
+    assert "tls=verified" in wait_status(c, "connected")
+
+
+@pytest.mark.parametrize("damage", ["flipped", "first_piece_missing"])
+def test_a_damaged_stored_ca_fails_closed_and_never_connects_unverified(nodes, tmp_path, ca_brokers, damage):
+    ca = make_ca(str(tmp_path), "ca")
+    b = ca_brokers("b", "127.0.0.4", ca, dns="broker.test")
+    menv = MqttEnv(str(tmp_path / ("dmgp-%s.mqtt" % damage)))
+    menv.host("broker.test", "127.0.0.4")
+    name = "dmgp" + damage[:3]
+    n, c, _ = boot(nodes, tmp_path, name, ca_static(0, "broker.test", 90, ca), menv=menv)
+    assert "tls=verified" in wait_status(c, "connected")
+    sessions, tcp = b.client_connects(), b.connections()
+    n.stop()
+    path = os.path.join(n.dir, "prefs.json")
+    text = open(path).read()
+    if damage == "flipped":
+        k = text.index("c001:\"") + 6
+        text = text[:k] + "*" + text[k + 1:]            # a character that is not base64
+    else:
+        k = text.index("c000:")
+        e = text.index('"', text.index('"', k) + 1)
+        text = text[:k] + text[e + 2:]                  # the first piece is gone
+    open(path, "w").write(text)
+    n.start()
+    c = _client(n)
+    wait_until(lambda: last(c, 0) == "pin", "the damaged anchor to be refused")
+    time.sleep(1.0)
+    s = c.cli("get mqtt.status")
+    assert "tls=unverified" not in s and "connected" not in s, s
+    assert "anchor=ca" in c.cli("get mqtt.profile 0")        # still a pinned profile, not an unanchored one
+    assert b.client_connects() == sessions                    # the broker's own log: no new session ...
+    assert b.connections() == tcp                             # ... and not even a TCP connection: closed before the network
+    assert any("mqtt-session" in e for e in harness.audit_entries(c.cli)), "no refusal in the audit log"

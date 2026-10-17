@@ -153,7 +153,7 @@ TEST(MqttProfileCli, SetsADiscoveryProfileAndNormalisesTheAnchor) {
             cmd(p, "set mqtt.profile 1 anchor 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF"));
   EXPECT_STREQ(ANCHOR, p.p[1].anchor);
   EXPECT_TRUE(p.configured(1));
-  EXPECT_EQ("> 1: discovery site=home-1 anchor=set prio=50 user=unset pwd=unset last=none", cmd(p, "get mqtt.profile 1"));
+  EXPECT_EQ("> 1: discovery site=home-1 anchor=fingerprint prio=50 user=unset pwd=unset last=none", cmd(p, "get mqtt.profile 1"));
   EXPECT_EQ("> profile 1 anchor cleared", cmd(p, "set mqtt.profile 1 anchor clear"));
   EXPECT_FALSE(p.configured(1));
 }
@@ -365,6 +365,275 @@ TEST(MqttProfileCli, TheListingShowsTheLastFailurePerProfile) {
   EXPECT_NE(std::string::npos, r.find("last=auth")) << r;
   r = cmd(p, "get mqtt.profile 1", Posture::NORMAL, &core);
   EXPECT_NE(std::string::npos, r.find("last=none")) << r;
+}
+
+// ---- CA certificate anchors
+
+// A syntactically valid DER SEQUENCE of `payload` bytes (not a real certificate: the platform parses the real thing),
+// as base64.
+static std::string fakeCaB64(size_t payload, uint8_t seed = 1) {
+  std::string der;
+  der.push_back(0x30);
+  if (payload < 128) der.push_back((char)payload);
+  else if (payload < 256) { der.push_back((char)0x81); der.push_back((char)payload); }
+  else { der.push_back((char)0x82); der.push_back((char)(payload >> 8)); der.push_back((char)(payload & 255)); }
+  for (size_t i = 0; i < payload; i++) der.push_back((char)(seed + i * 7));
+  static const char* T = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  for (size_t i = 0; i < der.size(); i += 3) {
+    uint32_t v = (uint8_t)der[i] << 16;
+    size_t rem = der.size() - i;
+    if (rem > 1) v |= (uint8_t)der[i + 1] << 8;
+    if (rem > 2) v |= (uint8_t)der[i + 2];
+    out.push_back(T[(v >> 18) & 63]);
+    out.push_back(T[(v >> 12) & 63]);
+    out.push_back(rem > 1 ? T[(v >> 6) & 63] : '=');
+    out.push_back(rem > 2 ? T[v & 63] : '=');
+  }
+  return out;
+}
+
+// Sends a CA the way a tool does over a short serial line: begin, pieces of 48 characters, end. Returns the last reply.
+static std::string sendCa(MqttProfiles& p, int idx, const std::string& b64, size_t piece = 48) {
+  char c[160];
+  snprintf(c, sizeof(c), "set mqtt.profile %d ca begin", idx);
+  std::string r = cmd(p, c);
+  for (size_t i = 0; i < b64.size(); i += piece) {
+    snprintf(c, sizeof(c), "set mqtt.profile %d ca add %s", idx, b64.substr(i, piece).c_str());
+    r = cmd(p, c);
+    if (r.compare(0, 3, "ERR") == 0) return r;
+  }
+  snprintf(c, sizeof(c), "set mqtt.profile %d ca end", idx);
+  return cmd(p, c);
+}
+
+TEST(MqttCa, ASetInPiecesIsInstalledWholeAndListedAsCa) {
+  MqttProfiles p;
+  cmd(p, "set mqtt.profile 1 type discovery");
+  cmd(p, "set mqtt.profile 1 site home-1");
+  std::string ca = fakeCaB64(600);
+  EXPECT_EQ("> profile 1 anchor is a CA certificate", sendCa(p, 1, ca));
+  EXPECT_STREQ(ca.c_str(), p.p[1].ca);
+  EXPECT_EQ(2, p.p[1].anchorKind());
+  EXPECT_TRUE(p.configured(1));   // a CA alone makes a discovery profile usable
+  EXPECT_EQ("> 1: discovery site=home-1 anchor=ca prio=50 user=unset pwd=unset last=none", cmd(p, "get mqtt.profile 1"));
+  EXPECT_EQ(nullptr, p.stage_);   // the staging buffer is gone
+}
+
+TEST(MqttCa, TheListingNamesTheKindAndNeverTheBody) {
+  MqttProfiles p;
+  cmd(p, "set mqtt.profile 0 type static");
+  cmd(p, "set mqtt.profile 0 host b.example");
+  EXPECT_NE(std::string::npos, cmd(p, "get mqtt.profile 0").find("anchor=unset"));
+  cmd(p, ("set mqtt.profile 0 anchor " + std::string(ANCHOR)).c_str());
+  EXPECT_NE(std::string::npos, cmd(p, "get mqtt.profile 0").find("anchor=fingerprint"));
+  std::string ca = fakeCaB64(300);
+  sendCa(p, 0, ca);
+  std::string r = cmd(p, "get mqtt.profile 0");
+  EXPECT_NE(std::string::npos, r.find("anchor=ca")) << r;
+  EXPECT_EQ(std::string::npos, r.find(ca.substr(0, 20)));
+  EXPECT_LT(r.size(), 149u);
+}
+
+TEST(MqttCa, ACaReplacesAFingerprintAndAFingerprintReplacesACa) {
+  MqttProfiles p;
+  cmd(p, "set mqtt.profile 0 type static");
+  cmd(p, "set mqtt.profile 0 host b.example");
+  cmd(p, ("set mqtt.profile 0 anchor " + std::string(ANCHOR)).c_str());
+  sendCa(p, 0, fakeCaB64(300));
+  EXPECT_EQ(0, p.p[0].anchor[0]);       // one anchor per profile: the fingerprint is gone
+  EXPECT_TRUE(p.p[0].hasCa());
+  cmd(p, ("set mqtt.profile 0 anchor " + std::string(ANCHOR)).c_str());
+  EXPECT_FALSE(p.p[0].hasCa());         // and back
+  EXPECT_EQ(nullptr, p.p[0].ca);
+  EXPECT_EQ(1, p.p[0].anchorKind());
+}
+
+TEST(MqttCa, AnchorClearAndCaClearAndProfileClearAllRemoveTheCa) {
+  MqttProfiles p;
+  for (const char* how : {"set mqtt.profile 2 anchor clear", "set mqtt.profile 2 ca clear", "set mqtt.profile 2 clear"}) {
+    cmd(p, "set mqtt.profile 2 type static");
+    sendCa(p, 2, fakeCaB64(300));
+    ASSERT_TRUE(p.p[2].hasCa()) << how;
+    cmd(p, how);
+    EXPECT_FALSE(p.p[2].hasCa()) << how;
+    EXPECT_EQ(nullptr, p.p[2].ca) << how;
+  }
+}
+
+TEST(MqttCa, ABadCaIsRefusedAndTheProfileKeepsWhatItHad) {
+  MqttProfiles p;
+  cmd(p, "set mqtt.profile 0 type static");
+  cmd(p, ("set mqtt.profile 0 anchor " + std::string(ANCHOR)).c_str());
+  std::string good = fakeCaB64(300);
+  // truncated paste: the DER declares more than arrived
+  EXPECT_EQ(0u, sendCa(p, 0, good.substr(0, good.size() - 40)).find("ERR")) ;
+  // not base64
+  cmd(p, "set mqtt.profile 0 ca begin");
+  EXPECT_EQ(0u, cmd(p, "set mqtt.profile 0 ca add not*base64!").find("ERR"));
+  // base64 of something that is not a DER SEQUENCE
+  EXPECT_EQ(0u, sendCa(p, 0, std::string(120, 'A')).find("ERR"));
+  // trailing garbage inside the DER length
+  EXPECT_EQ(0u, sendCa(p, 0, fakeCaB64(300) + "AAAA").find("ERR"));
+  EXPECT_FALSE(p.p[0].hasCa());
+  EXPECT_STREQ(ANCHOR, p.p[0].anchor);   // the fingerprint survived every refusal
+  EXPECT_EQ(nullptr, p.stage_);
+}
+
+TEST(MqttCa, TheStagingProtocolIsStrict) {
+  MqttProfiles p;
+  EXPECT_EQ("ERR: ca begin first", cmd(p, "set mqtt.profile 0 ca add AAAA"));
+  EXPECT_EQ("ERR: ca begin first", cmd(p, "set mqtt.profile 0 ca end"));
+  cmd(p, "set mqtt.profile 0 ca begin");
+  EXPECT_EQ("ERR: ca begin first", cmd(p, "set mqtt.profile 1 ca add AAAA"));   // another profile is not the one being staged
+  EXPECT_EQ("> ca 4 chars", cmd(p, "set mqtt.profile 0 ca add AAAA"));
+  EXPECT_EQ("> ca 4 chars", cmd(p, "set mqtt.profile 0 ca add -----BEGIN CERTIFICATE-----"));   // armour lines are skipped
+  EXPECT_EQ(0u, cmd(p, "set mqtt.profile 0 ca add").find("ERR"));
+  EXPECT_EQ(0u, cmd(p, "set mqtt.profile 0 ca frob").find("ERR"));
+  EXPECT_EQ(4, p.stage_len_);
+  cmd(p, "set mqtt.profile 0 ca begin");   // begin starts again, empty
+  EXPECT_EQ(0, p.stage_len_);
+  p.dropStage();
+}
+
+TEST(MqttCa, NothingIsSavedBeforeCaEnd) {
+  // The Companion saves its prefs whenever a command reports a change, so begin and add must not report one.
+  MqttProfiles p;
+  MqttProfileChange ch;
+  char reply[160];
+  auto run = [&](const char* c) { mqttProfileCommand(p, nullptr, Posture::NORMAL, c, reply, 150, ch); return ch.changed; };
+  EXPECT_FALSE(run("set mqtt.profile 0 ca begin"));
+  EXPECT_FALSE(run("set mqtt.profile 0 ca add AAAA"));
+  p.dropStage();
+  std::string ca = fakeCaB64(300);
+  run("set mqtt.profile 0 ca begin");
+  EXPECT_FALSE(run(("set mqtt.profile 0 ca add " + ca).c_str()));
+  EXPECT_TRUE(run("set mqtt.profile 0 ca end"));
+  EXPECT_TRUE(p.p[0].hasCa());
+  EXPECT_TRUE(run("set mqtt.profile 0 ca clear"));
+}
+
+TEST(MqttCa, TheLongestCaFitsAndOneMoreCharacterDoesNot) {
+  MqttProfiles p;
+  // 1,437 payload bytes + 4 header = 1,441 bytes = 1,924 characters: just over; 1,436 + 4 = 1,440 bytes = 1,920 characters
+  std::string fits = fakeCaB64(1436);
+  ASSERT_EQ(MqttProfile::CA_B64_MAX, fits.size());
+  EXPECT_EQ("> profile 0 anchor is a CA certificate", sendCa(p, 0, fits));
+  std::string over = fakeCaB64(1440);
+  std::string r = sendCa(p, 1, over);
+  EXPECT_EQ(0u, r.find("ERR: ca is longer than")) << r;
+  EXPECT_FALSE(p.p[1].hasCa());
+  EXPECT_EQ(nullptr, p.stage_);
+}
+
+TEST(MqttCa, DecodeEdgeCases) {
+  uint8_t der[2048];
+  std::string ok = fakeCaB64(200);
+  EXPECT_EQ(203, mqttCaDecode(ok.c_str(), der, sizeof(der)));
+  EXPECT_EQ(0x30, der[0]);
+  EXPECT_EQ(-1, mqttCaDecode(ok.c_str(), der, 100));                 // does not fit
+  EXPECT_EQ(-1, mqttCaDecode("", der, sizeof(der)));
+  EXPECT_EQ(-1, mqttCaDecode((ok + "=A").c_str(), der, sizeof(der)));   // data after the padding
+  EXPECT_EQ(-1, mqttCaDecode((ok.substr(0, 40) + " " + ok.substr(40)).c_str(), der, sizeof(der)));
+  EXPECT_TRUE(mqttHostIsLiteral("10.0.0.5"));
+  EXPECT_FALSE(mqttHostIsLiteral("broker.example"));
+  EXPECT_FALSE(mqttHostIsLiteral("1.example"));
+  EXPECT_FALSE(mqttHostIsLiteral(""));
+}
+
+TEST(MqttCaPrefs, ACaRoundTripsThroughThePrefsFile) {
+  NodePrefs a;
+  std::string ca0 = fakeCaB64(450, 3), ca3 = fakeCaB64(1000, 9);
+  sendCa(a.mqtt_profiles, 0, ca0);
+  a.mqtt_profiles.p[0].kind = MqttProfile::Static;
+  a.mqtt_profiles.p[3].kind = MqttProfile::Discovery;
+  sendCa(a.mqtt_profiles, 3, ca3);
+  CaptureStream out;
+  ASSERT_TRUE(a.saveSerial(out));
+  NodePrefs b;
+  ReplayStream in(out.text().c_str());
+  ASSERT_TRUE(b.loadSerial(in));
+  ASSERT_NE(nullptr, b.mqtt_profiles.p[0].ca);
+  ASSERT_NE(nullptr, b.mqtt_profiles.p[3].ca);
+  EXPECT_STREQ(ca0.c_str(), b.mqtt_profiles.p[0].ca);
+  EXPECT_STREQ(ca3.c_str(), b.mqtt_profiles.p[3].ca);
+  EXPECT_EQ(nullptr, b.mqtt_profiles.p[1].ca);
+  // loading again over the same object replaces, never appends
+  ReplayStream in2(out.text().c_str());
+  ASSERT_TRUE(b.loadSerial(in2));
+  EXPECT_STREQ(ca0.c_str(), b.mqtt_profiles.p[0].ca);
+}
+
+TEST(MqttCaPrefs, TheFileSizeWithoutACaIsUnchangedAndSixLargeOnesAreMeasured) {
+  NodePrefs none;
+  CaptureStream base;
+  ASSERT_TRUE(none.saveSerial(base));
+  NodePrefs one;
+  sendCa(one.mqtt_profiles, 0, fakeCaB64(450));
+  CaptureStream with1;
+  ASSERT_TRUE(one.saveSerial(with1));
+  NodePrefs six;
+  for (int i = 0; i < 6; i++) sendCa(six.mqtt_profiles, i, fakeCaB64(1436));
+  CaptureStream with6;
+  ASSERT_TRUE(six.saveSerial(with6));
+  printf("prefs file: %u bytes with no CA, %u with one EC-sized CA (450 DER bytes), %u with six of the largest CA (1,440 DER bytes)\n",
+         (unsigned)base.text().size(), (unsigned)with1.text().size(), (unsigned)with6.text().size());
+  EXPECT_EQ(std::string::npos, base.text().find("c000"));          // no CA, no CA keys
+  EXPECT_LT(with1.text().size() - base.text().size(), 800u);
+  EXPECT_LT(with6.text().size() - base.text().size(), 6u * 2100u);
+}
+
+TEST(MqttCaPrefs, ACaWithAGapIsKeptAsAnUnusableAnchorNotDroppedToNoAnchor) {
+  NodePrefs a;
+  sendCa(a.mqtt_profiles, 0, fakeCaB64(450));
+  CaptureStream out;
+  ASSERT_TRUE(a.saveSerial(out));
+  std::string text = out.text();
+  size_t k = text.find("c001:");     // remove piece 1
+  ASSERT_NE(std::string::npos, k);
+  size_t e = text.find('"', text.find('"', k) + 1);
+  text.erase(k, e + 2 - k);
+  NodePrefs b;
+  ReplayStream in(text.c_str());
+  ASSERT_TRUE(b.loadSerial(in));
+  // Dropping it would turn a pinned profile into an unanchored one that connects unverified: it stays, and fails closed.
+  EXPECT_TRUE(b.mqtt_profiles.p[0].hasCa());
+  EXPECT_FALSE(MqttProfiles::anchorUsable(b.mqtt_profiles.p[0]));
+}
+
+TEST(MqttCaPrefs, AMissingFirstPieceAndACorruptedPieceAreUnusableToo) {
+  NodePrefs a;
+  sendCa(a.mqtt_profiles, 0, fakeCaB64(450));
+  CaptureStream out;
+  ASSERT_TRUE(a.saveSerial(out));
+  std::string noFirst = out.text();
+  size_t k = noFirst.find("c000:");
+  ASSERT_NE(std::string::npos, k);
+  size_t e = noFirst.find('"', noFirst.find('"', k) + 1);
+  noFirst.erase(k, e + 2 - k);
+  NodePrefs b;
+  ReplayStream in(noFirst.c_str());
+  ASSERT_TRUE(b.loadSerial(in));
+  EXPECT_TRUE(b.mqtt_profiles.p[0].hasCa());
+  EXPECT_FALSE(MqttProfiles::anchorUsable(b.mqtt_profiles.p[0]));
+  std::string bad = out.text();
+  size_t q = bad.find("c001:\"") + 6;
+  bad[q] = '*';
+  NodePrefs c;
+  ReplayStream in2(bad.c_str());
+  ASSERT_TRUE(c.loadSerial(in2));
+  EXPECT_FALSE(MqttProfiles::anchorUsable(c.mqtt_profiles.p[0]));
+  EXPECT_TRUE(MqttProfiles::anchorUsable(a.mqtt_profiles.p[0]));
+}
+
+TEST(MqttCaPrefs, AMalformedFingerprintIsUnusableAndNoAnchorIsFine) {
+  MqttProfile q;
+  memset(&q, 0, sizeof(q));
+  EXPECT_TRUE(MqttProfiles::anchorUsable(q));
+  strcpy(q.anchor, "00112233");
+  EXPECT_FALSE(MqttProfiles::anchorUsable(q));
+  strcpy(q.anchor, ANCHOR);
+  EXPECT_TRUE(MqttProfiles::anchorUsable(q));
 }
 
 int main(int argc, char** argv) {

@@ -13,6 +13,21 @@ struct MqttResponder {
   char site[24];     // the TXT "site" value, "" when absent
 };
 
+// What open() needs. `anchor_hex` (a leaf certificate's SHA-256 fingerprint, 64 hex digits) and `ca_b64` (a CA
+// certificate: base64 of its DER) are alternatives; with neither, the link is encrypted but the broker is not
+// authenticated. `name` is the broker's host name (a static profile whose host is not an address literal), or nullptr:
+// it is sent as the TLS server name (SNI) with any TLS profile, and with a CA anchor the certificate must also carry it.
+// With a CA anchor and no name (an address literal, or a discovered broker) only the chain to the CA is checked.
+struct MqttOpenArgs {
+  bool tls;
+  uint32_t addr;
+  uint16_t port;
+  const char* anchor_hex;
+  const char* ca_b64;
+  const char* name;
+  uint32_t timeout_ms;
+};
+
 enum class MqttOpen : uint8_t { Ok, Tcp, Tls, Pin };
 
 class MqttNet {
@@ -27,10 +42,9 @@ public:
   // initialised on the first browse and stays initialised.
   virtual void browseBegin() = 0;
   virtual int browsePoll(MqttResponder* out, int max) = 0;
-  // Open the transport to addr:port, blocking for at most about timeout_ms. With `tls`, the peer certificate's SHA-256
-  // fingerprint must equal `anchor_hex` (64 hex digits) when one is given; without one the connection is encrypted
-  // but the broker is not authenticated.
-  virtual MqttOpen open(bool tls, uint32_t addr, uint16_t port, const char* anchor_hex, uint32_t timeout_ms) = 0;
+  // Open the transport to args.addr:args.port, blocking for at most about args.timeout_ms. With `tls`, the broker is
+  // authenticated by the anchor as described at MqttOpenArgs; Pin is the answer when the certificate does not satisfy it.
+  virtual MqttOpen open(const MqttOpenArgs& args) = 0;
   virtual Client& client() = 0;   // the open connection, for PubSubClient
   virtual void close() = 0;
 

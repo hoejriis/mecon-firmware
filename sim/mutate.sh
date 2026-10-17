@@ -11,6 +11,12 @@ SURVIVED=0
 MATCHED=0
 DRY=0
 if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; fi   # --dry: only check that every mutant's target text exists (no build, no tests)
+# Each mutant is undone with `git checkout`, which would also throw away uncommitted work: refuse a dirty tree.
+if [ "$DRY" = 0 ] && [ "$ONLY" != "--list" ]; then
+  if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+    echo "REFUSED: uncommitted changes in tracked files; commit or stash them first (mutants are undone with git checkout)"; exit 2
+  fi
+fi
 if [ "$ONLY" = "--list" ]; then grep -o "^mutate [a-z0-9_]*" "$0" | cut -d" " -f2; exit 0; fi
 
 build() { BUILD_OK=1; sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { BUILD_OK=0; echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
@@ -288,6 +294,37 @@ mutate mqtt_cancelled_attempt_penalises_the_profile $MQ_CORE "void MqttCore::onC
   if (_state != MqttState::Connecting || _cur == NONE) return;" "void MqttCore::onConnectCancelled() {
   if (_state != MqttState::Connecting || _cur == NONE) return;
   failCurrent(0, MqttFail::Timeout, false);" unit:test_mqtt_core
+# --- CA-certificate anchors and SNI (docs/MQTT.md): undo each rule and its tests must go red
+MQ_CA_OTHER=$MQ_SIM::test_a_ca_anchor_rejects_a_certificate_from_another_ca
+mutate mqtt_ca_chain_not_verified $MQ_NET "      SSL_CTX_set_verify(_ctx, SSL_VERIFY_PEER, nullptr);" "      SSL_CTX_set_verify(_ctx, SSL_VERIFY_NONE, nullptr);" $MQ_CA_OTHER
+mutate mqtt_ca_host_name_not_checked $MQ_NET "      if (a.ca_b64) SSL_set1_host(_ssl, a.name);" "" $MQ_SIM::test_a_ca_anchor_rejects_a_wrong_host_name
+mutate mqtt_sni_not_sent $MQ_NET "      SSL_set_tlsext_host_name(_ssl, a.name);   // SNI, with every TLS profile that has a host name" "" $MQ_SIM::test_the_server_name_is_sent_with_every_tls_profile_that_has_a_host_name
+mutate mqtt_ca_refusal_not_reported_as_pin $MQ_NET "return refused ? fail(\"pin\", MqttOpen::Pin) : fail(\"tls\", MqttOpen::Tls);" "return fail(\"tls\", MqttOpen::Tls);" $MQ_CA_OTHER
+mutate mqtt_ca_not_passed_on $MQ_CTRL "  oa.ca_b64 = j.ca;" "  oa.ca_b64 = nullptr;" $MQ_CA_OTHER
+mutate mqtt_name_not_passed_on $MQ_CTRL "  oa.name = j.name[0] ? j.name : nullptr;" "  oa.name = nullptr;" $MQ_SIM::test_a_ca_anchor_rejects_a_wrong_host_name
+mutate mqtt_name_sent_for_an_address_literal $MQ_CTRL "    if (j.resolve) { strlcpy_(j.host, q.host, sizeof(j.host)); strlcpy_(j.name, q.host, sizeof(j.name)); }" "    strlcpy_(j.host, q.host, sizeof(j.host)); strlcpy_(j.name, q.host, sizeof(j.name)); " $MQ_SIM::test_a_ca_anchor_on_an_address_literal_checks_the_chain_only
+mutate mqtt_discovery_ca_not_a_usable_anchor $MQ_PROF_H "(validAnchor(q.anchor) || q.hasCa())" "validAnchor(q.anchor)" unit:test_mqtt_prefs
+mutate mqtt_discovery_ca_not_a_usable_anchor_sim $MQ_PROF_H "(validAnchor(q.anchor) || q.hasCa())" "validAnchor(q.anchor)" $MQ_SIM::test_a_discovery_ca_anchor_checks_the_chain_and_a_rogue_ca_is_refused
+mutate mqtt_ca_does_not_replace_the_fingerprint $MQ_PROF_C "  p[i].anchor[0] = 0;    // a profile has one anchor: the CA replaces a leaf fingerprint" "" unit:test_mqtt_prefs
+mutate mqtt_fingerprint_does_not_replace_the_ca $MQ_PROF_C "      else { pr.clearCa(idx); done(true, \"anchor updated\"); }" "      else { done(true, \"anchor updated\"); }" unit:test_mqtt_prefs
+mutate mqtt_anchor_clear_keeps_the_ca $MQ_PROF_C "{ q.anchor[0] = 0; pr.clearCa(idx); done(true, \"anchor cleared\"); }" "{ q.anchor[0] = 0; done(true, \"anchor cleared\"); }" unit:test_mqtt_prefs
+mutate mqtt_truncated_ca_accepted $MQ_PROF_C "  if (hdr + len != n) return -1;" "" unit:test_mqtt_prefs
+mutate mqtt_truncated_ca_accepted_sim $MQ_PROF_C "  if (hdr + len != n) return -1;" "" $MQ_SIM::test_a_damaged_ca_is_refused_at_ca_end_and_the_profile_keeps_its_anchor
+mutate mqtt_ca_add_saves_the_prefs $MQ_PROF_C "        pr.stage_len_ = (uint16_t)(pr.stage_len_ + n);
+" "        pr.stage_len_ = (uint16_t)(pr.stage_len_ + n);
+        change.changed = true;
+" unit:test_mqtt_prefs
+mutate mqtt_ca_one_character_too_many_accepted $MQ_PROF_C "if (pr.stage_len_ + n > MqttProfile::CA_B64_MAX) {" "if (pr.stage_len_ + n >= MqttProfile::CA_B64_MAX) {" unit:test_mqtt_prefs
+mutate mqtt_ca_not_persisted examples/companion_radio/NodePrefs.h "            if (!m.caChunk(i, n, piece)) break;" "            break;" unit:test_mqtt_prefs
+mutate mqtt_ca_not_persisted_sim examples/companion_radio/NodePrefs.h "            if (!m.caChunk(i, n, piece)) break;" "            break;" $MQ_SIM::test_a_ca_anchor_survives_the_broker_certificate_being_renewed
+mutate mqtt_ca_only_first_chunk_persisted examples/companion_radio/NodePrefs.h "        for (uint8_t n = 0; n < MqttProfile::CA_CHUNKS; n++) {" "        for (uint8_t n = 0; n < 1; n++) {" $MQ_SIM::test_the_largest_practical_ca_fits_and_is_accepted
+mutate mqtt_ca_listed_as_fingerprint $MQ_PROF_C 'const char* anchor = q.hasCa() ? "ca" : (q.anchor[0] ? "fingerprint" : "unset");' 'const char* anchor = (q.hasCa() || q.anchor[0]) ? "fingerprint" : "unset";' unit:test_mqtt_prefs
+mutate mqtt_ca_copy_not_made $MQ_CTRL "    strcpy(j.ca, q.ca);" "    j.ca[0] = 0;" $MQ_SIM::test_a_ca_anchor_survives_the_broker_certificate_being_renewed
+mutate mqtt_damaged_anchor_connects_anyway src/helpers/mqtt/MqttController.cpp "  if (q.useTls() && !MqttProfiles::anchorUsable(q)) {" "  if (false) {" "$MQ_SIM::test_a_damaged_stored_ca_fails_closed_and_never_connects_unverified"
+mutate mqtt_damaged_anchor_unit src/helpers/mqtt/MqttProfiles.cpp "  return q.anchor[0] == 0 || validAnchor(q.anchor);" "  return true;" unit:test_mqtt_prefs
+mutate mqtt_damaged_ca_dropped_at_load src/helpers/mqtt/MqttProfiles.cpp "    poisonCa(p[i]);    // a gap" "    clearCa(i);    // a gap" unit:test_mqtt_prefs
+mutate mqtt_damaged_ca_dropped_at_load_sim src/helpers/mqtt/MqttProfiles.cpp "    poisonCa(p[i]);    // a gap" "    clearCa(i);    // a gap" "$MQ_SIM::test_a_damaged_stored_ca_fails_closed_and_never_connects_unverified"
+mutate mqtt_damaged_anchor_not_audited src/helpers/mqtt/MqttController.cpp "    Posture::audit().addOnce(_audit_now" "    (void)(_audit_now" "$MQ_SIM::test_a_damaged_stored_ca_fails_closed_and_never_connects_unverified"
 mutate mqtt_no_cancel_check_after_the_name_is_resolved $MQ_CTRL "  if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }
   if (_job_cancel) { j.result = ConnectJob::Cancelled; return; }" "  if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[dns-edit] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[dns-disable]"
 mutate mqtt_no_cancel_check_after_the_transport_opens $MQ_CTRL "  if (_job_cancel) { _net->close(); j.result = ConnectJob::Cancelled; return; }" "" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-edit] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tls-edit]"
