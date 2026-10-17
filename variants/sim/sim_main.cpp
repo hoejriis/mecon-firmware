@@ -47,6 +47,7 @@ int main(int argc, char** argv) {
     else if (a == "--ui-input") g_sim.ui_input = next();
     else if (a == "--ble-env") g_sim.ble_env = next();
     else if (a == "--heap-budget") g_sim.heap_budget = strtoul(next(), nullptr, 10);
+    else if (a == "--heap-file") g_sim.heap_file = next();
     else if (a == "--fs-size") g_sim.fs_size = strtoul(next(), nullptr, 10);
     else if (a == "--fs-calls") g_sim.fs_calls = next();
     else if (a == "--rtc") g_sim.rtc_epoch = strtoul(next(), nullptr, 10);

@@ -6,7 +6,8 @@
 //
 // What is recorded (never a secret, never a password, never command arguments):
 //   event   what happened            posture change, refused command, failed admin login, factory reset
-//   caller  who asked                cable (USB/UART), BLE, network (TCP), remote admin (RF), remote CLI (RF), MQTT
+//   caller  who asked                cable (USB/UART), BLE, network (TCP), remote admin (RF), remote CLI (RF), MQTT, or the
+//                                    device itself (a heap-floor episode, helpers/HeapFloor.h)
 //   what    which command class      or, for a posture change, the new posture
 //   count   how many times           repeats of the same (event, caller, what) are folded into one entry
 //
@@ -25,12 +26,12 @@
 
 namespace Posture {
 
-enum Event : uint8_t { EV_POSTURE_SET = 1, EV_REFUSED = 2, EV_LOGIN_FAILED = 3, EV_FACTORY_RESET = 4, EV_MODE_SET = 5 };
-enum Caller : uint8_t { CALLER_CABLE = 1, CALLER_BLE = 2, CALLER_NET = 3, CALLER_REMOTE_ADMIN = 4, CALLER_REMOTE_CLI = 5, CALLER_BUTTON = 6, CALLER_MQTT = 7 };
+enum Event : uint8_t { EV_POSTURE_SET = 1, EV_REFUSED = 2, EV_LOGIN_FAILED = 3, EV_FACTORY_RESET = 4, EV_MODE_SET = 5, EV_LOW_MEM = 6 };
+enum Caller : uint8_t { CALLER_CABLE = 1, CALLER_BLE = 2, CALLER_NET = 3, CALLER_REMOTE_ADMIN = 4, CALLER_REMOTE_CLI = 5, CALLER_BUTTON = 6, CALLER_MQTT = 7, CALLER_SYSTEM = 8 };
 enum What : uint8_t {
   W_NONE = 0, W_CLI = 1, W_KEY_EXPORT = 2, W_KEY_IMPORT = 3, W_SET_PIN = 4, W_FACTORY_RESET = 5, W_POSTURE = 6,
   W_AUDIT = 7, W_REMOTE_WRITE = 8, W_REMOTE_CLI = 9, W_DEFAULT_PASSWORD = 10, W_BAD_PASSWORD = 11,
-  W_BLE_START = 12, W_NET_START = 13, W_CONNMODE = 14, W_MQTT_SESSION = 15, W_MGMT_FLAG = 16
+  W_BLE_START = 12, W_NET_START = 13, W_CONNMODE = 14, W_MQTT_SESSION = 15, W_MGMT_FLAG = 16, W_HEAP_FLOOR = 17
 };
 
 struct AuditEntry {
@@ -150,6 +151,7 @@ public:
       case EV_LOGIN_FAILED: return "login-fail";
       case EV_FACTORY_RESET: return "reset";
       case EV_MODE_SET: return "mode";
+      case EV_LOW_MEM: return "low-mem";
     }
     return "?";
   }
@@ -162,6 +164,7 @@ public:
       case CALLER_REMOTE_CLI: return "remote-cli";
       case CALLER_BUTTON: return "button";
       case CALLER_MQTT: return "mqtt";
+      case CALLER_SYSTEM: return "system";
     }
     return "?";
   }
@@ -186,6 +189,7 @@ public:
       case W_CONNMODE: return "connectivity-mode";
       case W_MQTT_SESSION: return "mqtt-session";
       case W_MGMT_FLAG: return "mgmt-flag";
+      case W_HEAP_FLOOR: return "heap-floor";
     }
     return "?";
   }

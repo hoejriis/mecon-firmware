@@ -11,8 +11,9 @@ struct MemStats {
 };
 
 #if defined(SIM_FREE_HEAP)
-  uint32_t sim_free_heap();
-  inline MemStats memStats() { MemStats m; m.free = m.largest = sim_free_heap(); m.known = true; return m; }
+  uint32_t sim_free_heap();                    // the boot budget (--heap-budget)
+  void sim_heap_now(uint32_t& free, uint32_t& largest);   // what the test has set since (--heap-file), else the budget
+  inline MemStats memStats() { MemStats m; sim_heap_now(m.free, m.largest); m.known = true; return m; }
 #elif defined(ESP32)
   #include <esp_heap_caps.h>
   inline MemStats memStats() {

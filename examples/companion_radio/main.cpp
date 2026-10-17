@@ -1,6 +1,7 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include "MyMesh.h"
+#include <helpers/HeapFloor.h>
 
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
@@ -296,6 +297,8 @@ void setup() {
   interface_manager.addInterface(InterfaceType::HardwareSerial, &hardware_serial_interface);
 #endif
 
+  heapFloor().begin(HEAP_FLOOR_BYTES);   // the enforced heap floor (helpers/HeapFloor.h): first look in loop(), then every 60 s
+
   the_mesh.startInterface(interface_manager);
   sensors.begin();
 
@@ -313,6 +316,7 @@ void setup() {
 
 void loop() {
   the_mesh.loop();
+  heapFloor().loop(millis(), rtc_clock.getCurrentTime());
   interface_manager.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS

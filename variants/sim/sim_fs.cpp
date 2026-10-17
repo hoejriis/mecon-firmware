@@ -6,6 +6,7 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdio.h>
 #include <algorithm>
 
 fs::SPIFFSFS SPIFFS;
@@ -185,3 +186,26 @@ size_t SPIFFSFS::usedBytes() { return treesize(_root); }
 
 // Free heap the simulated board reports at boot (see helpers/ContactPlatform.h).
 uint32_t sim_free_heap() { return g_sim.heap_budget; }
+
+// The heap the node reports now (MemStats): the boot budget until the test writes --heap-file, then "FREE [LARGEST]"
+// from that file (LARGEST defaults to FREE). The file is read at most every 100 ms of node time. The contact store
+// keeps sizing itself from the boot budget above.
+void sim_heap_now(uint32_t& free, uint32_t& largest) {
+  static unsigned long next = 0;
+  static uint32_t f = 0, l = 0;
+  static bool init = false;
+  if (!init) { f = l = g_sim.heap_budget; init = true; }
+  if (!g_sim.heap_file.empty()) {
+    unsigned long now = millis();
+    if (next == 0 || now >= next) {
+      next = now + 100;
+      if (FILE* fp = fopen(g_sim.heap_file.c_str(), "r")) {
+        unsigned long a = 0, b = 0;
+        int n = fscanf(fp, "%lu %lu", &a, &b);
+        fclose(fp);
+        if (n >= 1) { f = (uint32_t)a; l = n >= 2 ? (uint32_t)b : (uint32_t)a; }
+      }
+    }
+  }
+  free = f; largest = l;
+}

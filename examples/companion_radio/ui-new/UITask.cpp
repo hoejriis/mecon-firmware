@@ -324,7 +324,7 @@ public:
           fillConnStatus(st, _task, _node_prefs);
           ConnMode::formatHome(st, tmp, sizeof(tmp));
           display.setTextSize(1);
-          display.setColor(st.mode == ConnMode::BLE && st.ble_pin_default ? UIColor::warning_txt : UIColor::primary_txt);
+          display.setColor(st.heap_low || (st.mode == ConnMode::BLE && st.ble_pin_default) ? UIColor::warning_txt : UIColor::primary_txt);
           display.drawTextCentered(display.width() / 2, 32, tmp);
           display.setColor(UIColor::primary_txt);
         }
