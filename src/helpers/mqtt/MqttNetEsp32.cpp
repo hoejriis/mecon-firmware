@@ -7,12 +7,79 @@
 #include <ESPmDNS.h>
 #include <stdio.h>
 #include <string.h>
+#include <atomic>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 namespace {
+// The connect worker: one FreeRTOS task, created on the first connect attempt and kept (creating and deleting a task
+// per attempt would churn the heap and risk a failed allocation exactly when a TLS context needs the memory). It
+// sleeps on a task notification, runs one job, and sleeps again.
+//
+// Stack: 10240 bytes. The sequence it runs (DNS, WiFiClientSecure::connect with the mbedTLS handshake, then
+// PubSubClient::connect) runs today on the Arduino loop task, whose stack is 8192 bytes and which also carries the
+// Companion's call depth; the mbedTLS handshake is the deepest part (ECDHE and ECDSA/RSA verification, X.509 parsing)
+// and its large buffers are on the heap, not the stack. 10 KiB is that 8 KiB plus 25 % headroom, not a measurement:
+// the high-water mark of the worker's stack is read after every job (stackFree()) so the hardware run can replace the
+// estimate with a figure. The stack is allocated from the internal heap when the first attempt starts, so a device
+// that never connects never pays it.
+//
+// Core: the Arduino loop (and with it the mesh) runs on ARDUINO_RUNNING_CORE; the worker is pinned to the other core,
+// so a handshake that takes hundreds of milliseconds of CPU does not compete with mesh processing. Priority 1, the
+// same as the loop task: the Wi-Fi and lwIP tasks above it keep the radio and the network stack responsive.
+const uint32_t WORKER_STACK_BYTES = 10240;
+#ifdef ARDUINO_RUNNING_CORE
+const BaseType_t WORKER_CORE = ARDUINO_RUNNING_CORE == 0 ? 1 : 0;
+#else
+const BaseType_t WORKER_CORE = 0;
+#endif
+
+class Worker {
+  TaskHandle_t _task = nullptr;
+  void (*_job)(void*) = nullptr;
+  void* _arg = nullptr;
+  std::atomic<bool> _busy{false};
+  std::atomic<uint32_t> _stack_free{0};
+
+  static void body(void* self) {
+    Worker* w = static_cast<Worker*>(self);
+    for (;;) {
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      w->_job(w->_arg);
+      w->_stack_free.store((uint32_t)uxTaskGetStackHighWaterMark(nullptr), std::memory_order_relaxed);
+#ifdef MESH_DEBUG
+      Serial.printf("DEBUG: mqtt worker stack: %u of %u bytes unused at its deepest\n",
+                    (unsigned)w->_stack_free.load(std::memory_order_relaxed), (unsigned)WORKER_STACK_BYTES);
+#endif
+      w->_busy.store(false, std::memory_order_release);   // publishes everything the job wrote
+    }
+  }
+
+public:
+  bool start(void (*job)(void*), void* arg) {
+    if (_busy.load(std::memory_order_acquire)) return false;
+    if (!_task) {
+      if (xTaskCreatePinnedToCore(&Worker::body, "mqttconn", WORKER_STACK_BYTES, this, 1, &_task, WORKER_CORE) != pdPASS) {
+        _task = nullptr;
+        return false;
+      }
+    }
+    _job = job;
+    _arg = arg;
+    _busy.store(true, std::memory_order_relaxed);
+    xTaskNotifyGive(_task);
+    return true;
+  }
+  bool idle() const { return !_busy.load(std::memory_order_acquire); }
+  // Unused stack bytes at the deepest point of any job so far (0 before the first job).
+  uint32_t stackFree() const { return _stack_free.load(std::memory_order_relaxed); }
+};
+
 class Esp32Net : public MqttNet {
   WiFiClient* _plain = nullptr;
   WiFiClientSecure* _sec = nullptr;
   WiFiClient _none;                   // handed out only when nothing is open
+  Worker _worker;
   char _hostname[24] = {0};
   bool _mdns_up = false;
   mdns_search_once_t* _q = nullptr;
@@ -108,6 +175,9 @@ public:
     if (_plain) return *_plain;
     return _none;
   }
+
+  bool asyncStart(void (*job)(void*), void* arg) override { return _worker.start(job, arg); }
+  bool asyncIdle() override { return _worker.idle(); }
 
   void close() override {
     if (_sec) { _sec->stop(); delete _sec; _sec = nullptr; }   // frees the TLS context, the large heap user

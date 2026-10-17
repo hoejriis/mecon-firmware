@@ -4,6 +4,14 @@
 //   mdns<TAB>secure|plain<TAB>site<TAB>ipv4<TAB>port   a responder for _secure-mqtt._tcp or _mqtt._tcp with TXT site=<site>
 // Removing a line withdraws the responder. The link is up while the simulated Wi-Fi is joined.
 // Every transport event is logged with addresses only: the simulated network never prints a credential.
+//
+// Interleaving hook (sim only): a test makes a timing-dependent interleaving deterministic by pausing the connect job
+// at a named step and acting on the main loop while the job is provably stopped there:
+//   pause<TAB>dns|tcp|tls|connack      the job stops at that step for as long as the row is in the file
+// The steps are: after the name was resolved, after the TCP connect, after the TLS handshake and pin check, and before
+// the first byte of the MQTT CONNECT is written. The job logs "SIMMQTT paused <step>" when it has stopped and
+// "SIMMQTT released <step>" when it carries on; removing the row releases it. A step the job does not take (no name to
+// resolve, no TLS) is not a stop. Nothing here is compiled outside the simulator.
 #ifdef ENABLE_MQTT
 #include <helpers/mqtt/MqttNet.h>
 #include <WiFi.h>
@@ -22,15 +30,20 @@
 #include <errno.h>
 #include <string>
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <strings.h>
 #include "sim_config.h"
 
 namespace {
 struct Row { std::string kind, a, b, c, d; };
 std::vector<Row> g_rows;
+std::mutex g_rows_mu;   // the name service is read by the connect worker (resolve) and the main loop (browse)
 long long g_sig_ns = -1, g_sig_size = -1, g_sig_ino = -1;
 
-void reload() {
+void reload() {   // callers hold g_rows_mu
   if (g_sim.mqtt_env.empty()) return;
   struct stat st;
   if (stat(g_sim.mqtt_env.c_str(), &st) != 0) return;
@@ -59,6 +72,34 @@ void reload() {
   g_rows.swap(rows);
 }
 
+// Is a pause armed for `step`? Reads the file itself every time (the table above is cached by modification time, which a
+// rewrite within the same clock tick would not change).
+bool pauseArmed(const char* step) {
+  if (g_sim.mqtt_env.empty()) return false;
+  FILE* f = fopen(g_sim.mqtt_env.c_str(), "r");
+  if (!f) return false;
+  bool armed = false;
+  char line[256];
+  char want[32];
+  snprintf(want, sizeof want, "pause\t%s", step);
+  while (fgets(line, sizeof line, f)) {
+    line[strcspn(line, "\r\n")] = 0;
+    if (strcmp(line, want) == 0) { armed = true; break; }
+  }
+  fclose(f);
+  return armed;
+}
+
+// Called by the connect job at a step boundary. A test that forgets to release does not hang the node for ever.
+void pausePoint(const char* step) {
+  if (!pauseArmed(step)) return;
+  fprintf(stderr, "SIMMQTT paused %s\n", step);
+  fflush(stderr);
+  for (int i = 0; i < 24000 && pauseArmed(step); i++) usleep(5000);   // at most 120 s
+  fprintf(stderr, "SIMMQTT released %s\n", step);
+  fflush(stderr);
+}
+
 bool parseAddr(const std::string& s, uint32_t& out) {
   in_addr a;
   if (inet_pton(AF_INET, s.c_str(), &a) != 1) return false;
@@ -83,6 +124,7 @@ class SimClient : public Client {
   SSL_CTX* _ctx = nullptr;
   SSL* _ssl = nullptr;
   bool _eof = false;
+  bool _first_write = false;   // the next write is the first byte of the MQTT CONNECT (the "connack" stop)
 
   bool waitFd(short ev, int ms) {
     pollfd p{_fd, ev, 0};
@@ -95,6 +137,7 @@ public:
   MqttOpen open(bool tls, uint32_t addr, uint16_t port, const char* anchor, uint32_t timeout_ms) {
     stop();
     _eof = false;
+    _first_write = true;
     fprintf(stderr, "SIMMQTT open addr=%s:%u tls=%d\n", addrStr(addr).c_str(), (unsigned)port, tls ? 1 : 0);
     fflush(stderr);
     _fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -114,6 +157,7 @@ public:
     }
     int one = 1;
     setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    pausePoint("tcp");
     if (!tls) { fprintf(stderr, "SIMMQTT up plain\n"); fflush(stderr); return MqttOpen::Ok; }
 
     _ctx = SSL_CTX_new(TLS_client_method());
@@ -146,6 +190,7 @@ public:
       if (cert) X509_free(cert);
       if (strcasecmp(hex, anchor) != 0) { stop(); return fail("pin", MqttOpen::Pin); }
     }
+    pausePoint("tls");
     fprintf(stderr, "SIMMQTT up tls pinned=%d\n", anchor ? 1 : 0);
     fflush(stderr);
     return MqttOpen::Ok;
@@ -163,6 +208,7 @@ public:
   size_t write(uint8_t b) override { return write(&b, 1); }
   size_t write(const uint8_t* buf, size_t n) override {
     if (_fd < 0) return 0;
+    if (_first_write) { _first_write = false; pausePoint("connack"); }
     size_t off = 0;
     uint64_t t0 = (uint64_t)millis();
     while (off < n && !_eof) {
@@ -239,22 +285,79 @@ public:
   operator bool() override { return _fd >= 0; }
 };
 
+// The connect worker, modelled as on the device: one thread, created on the first job, reused, running one job at a
+// time while the main loop carries on. It is never joined (the node exits with the process).
+class SimWorker {
+  std::mutex _mu;
+  std::condition_variable _cv;
+  void (*_job)(void*) = nullptr;
+  void* _arg = nullptr;
+  bool _go = false;
+  std::atomic<bool> _busy{false};
+  bool _started = false;
+
+  void run() {
+    for (;;) {
+      void (*job)(void*);
+      void* arg;
+      {
+        std::unique_lock<std::mutex> l(_mu);
+        _cv.wait(l, [&] { return _go; });
+        _go = false;
+        job = _job;
+        arg = _arg;
+      }
+      job(arg);
+      _busy.store(false, std::memory_order_release);
+    }
+  }
+
+public:
+  bool start(void (*job)(void*), void* arg) {
+    if (_busy.load(std::memory_order_acquire)) return false;
+    if (!_started) {
+      _started = true;
+      std::thread([this] { run(); }).detach();
+    }
+    _busy.store(true, std::memory_order_relaxed);
+    {
+      std::lock_guard<std::mutex> l(_mu);
+      _job = job;
+      _arg = arg;
+      _go = true;
+    }
+    _cv.notify_one();
+    return true;
+  }
+  bool idle() const { return !_busy.load(std::memory_order_acquire); }
+};
+
 class SimNet : public MqttNet {
   SimClient _c;
+  SimWorker _w;
   bool _browsing = false;
   unsigned long _browse_at = 0;
 public:
+  bool asyncStart(void (*job)(void*), void* arg) override { return _w.start(job, arg); }
+  bool asyncIdle() override { return _w.idle(); }
+
   bool linkUp() override { return WiFi.status() == WL_CONNECTED; }
 
   bool resolve(const char* host, uint32_t& addr) override {
-    reload();
-    for (auto& r : g_rows) {
-      if (r.kind == "host" && r.a == host && parseAddr(r.b, addr)) {
-        fprintf(stderr, "SIMMQTT resolve name=%s addr=%s\n", host, r.b.c_str());
-        fflush(stderr);
-        return true;
+    bool found = false;
+    {
+      std::lock_guard<std::mutex> l(g_rows_mu);   // not held across the pause: the main loop's browse needs it
+      reload();
+      for (auto& r : g_rows) {
+        if (r.kind == "host" && r.a == host && parseAddr(r.b, addr)) {
+          fprintf(stderr, "SIMMQTT resolve name=%s addr=%s\n", host, r.b.c_str());
+          fflush(stderr);
+          found = true;
+          break;
+        }
       }
     }
+    if (found) { pausePoint("dns"); return true; }
     fprintf(stderr, "SIMMQTT resolve-fail name=%s\n", host);
     fflush(stderr);
     return false;
@@ -271,6 +374,7 @@ public:
     if (!_browsing) return 0;
     if ((unsigned long)(millis() - _browse_at) < 200) return -1;   // a browse takes time and never blocks the loop
     _browsing = false;
+    std::lock_guard<std::mutex> l(g_rows_mu);
     reload();
     int n = 0;
     for (auto& r : g_rows) {
@@ -295,7 +399,9 @@ public:
 }  // namespace
 
 MqttNet& mqttPlatformNet() {
-  static SimNet n;
-  return n;
+  // Never destroyed: the worker thread sleeps on a condition variable, and exit() (reboot, poweroff) would destroy
+  // that variable under it, which blocks until the waiter leaves, that is forever.
+  static SimNet* n = new SimNet;
+  return *n;
 }
 #endif

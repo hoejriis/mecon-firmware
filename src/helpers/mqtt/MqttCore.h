@@ -73,6 +73,9 @@ public:
   void browseDone(uint32_t now);
   void onConnected(uint32_t now, bool verified);   // after a Connect action
   void onConnectFailed(uint32_t now, MqttFail why);
+  // The attempt in flight was abandoned by the platform layer (the posture now forbids the profile): back to Idle with
+  // no penalty for the profile, so the next poll picks again. Only meaningful while Connecting.
+  void onConnectCancelled();
   void onSessionLost(uint32_t now, MqttFail why);
 
   // ---- status

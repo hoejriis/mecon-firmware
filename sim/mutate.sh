@@ -13,7 +13,7 @@ DRY=0
 if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; fi   # --dry: only check that every mutant's target text exists (no build, no tests)
 if [ "$ONLY" = "--list" ]; then grep -o "^mutate [a-z0-9_]*" "$0" | cut -d" " -f2; exit 0; fi
 
-build() { sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
+build() { BUILD_OK=1; sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { BUILD_OK=0; echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
 
 # name | file | old text | new text | pytest target
 mutate() {
@@ -29,6 +29,9 @@ if old not in s:
     print("TARGET MISSING: %s in %s" % (sys.argv[0], p)); sys.exit(1)
 if old == new:
     print("NO-OP MUTANT in %s" % p); sys.exit(1)
+if s.count(old) > 1:
+    # mutate() replaces only the first occurrence, which may be the wrong one: make the target unique
+    print("AMBIGUOUS TARGET (%d occurrences) in %s" % (s.count(old), p)); sys.exit(1)
 PY
     if [ $? -ne 0 ]; then echo "  -> $name"; SURVIVED=1; fi
     return 0
@@ -42,14 +45,30 @@ open(p, "w").write(s.replace(old, new, 1))
 PY
   if [ $? -ne 0 ]; then echo "TARGET MISSING: $name (the code it mutates has changed; update the mutant)"; SURVIVED=1; return 0; fi
   build
+  if [ "$BUILD_OK" = 0 ]; then
+    # a mutant that does not compile proves nothing, and the tests would run the previous binaries: an error
+    echo "ERROR: $name does not build (fix the mutant)"; SURVIVED=1
+    git show "HEAD:$file" > "$file"; return 0
+  fi
   case "$target" in
     unit:*) sim/run.sh pio test -e native -f "${target#unit:}" > ".sim-logs/mut_$name.log" 2>&1 ;;
     *) sim/run.sh python3 -m pytest $target -q -x -p no:cacheprovider > ".sim-logs/mut_$name.log" 2>&1 ;;
   esac
   rc=$?
   echo "MUTATION $name -> exit $rc : $(tail -1 ".sim-logs/mut_$name.log")"
-  if [ $rc -eq 0 ]; then echo "SURVIVED: $name (its tests still pass with the code broken)"; SURVIVED=1; fi
-  git checkout -q -- "$file"
+  # Only a failing test counts as caught. pytest exits 1 for failed tests and 2-5 for usage, collection or internal
+  # errors; a missing tool is 126/127. The unit runner exits non-zero for a build error too, so it needs a failed case.
+  verdict=error
+  if [ $rc -eq 0 ]; then verdict=survived
+  else case "$target" in
+    unit:*) grep -Eq "test cases: [0-9]+ failed|[0-9]+ failed, [0-9]+ succeeded|\[FAILED\]" ".sim-logs/mut_$name.log" && verdict=caught ;;
+    *) [ $rc -eq 1 ] && grep -Eq "[0-9]+ failed" ".sim-logs/mut_$name.log" && verdict=caught ;;
+  esac; fi
+  if [ "$verdict" = survived ]; then echo "SURVIVED: $name (its tests still pass with the code broken)"; SURVIVED=1; fi
+  if [ "$verdict" = error ]; then echo "ERROR: $name (exit $rc without a failing test: the test run itself broke)"; SURVIVED=1; fi
+  # restore from HEAD by content: `git checkout` does nothing for a same-size edit made within the index timestamp's second
+  # (git calls the file unmodified), which left a protocol-level mutant in the tree on 2026-10-17
+  git show "HEAD:$file" > "$file"
 }
 
 mutate toa_constant variants/sim/sim_toa.h "(sf == 5 || sf == 6) ? 6.25 : 4.25" "(sf == 5 || sf == 6) ? 6.25 : 4.0" sim/tests/test_toa.py
@@ -212,25 +231,20 @@ mutate mqtt_tcp_port_served_in_hardened examples/companion_radio/main.cpp "    i
       wifi_interface.begin(TCP_PORT);" "    if (true) {
       wifi_interface.begin(TCP_PORT);" $MQ_SIM::test_hardened_keeps_the_link_for_mqtt_but_never_serves_the_tcp_port
 mutate mqtt_pin_not_checked $MQ_NET "if (strcasecmp(hex, anchor) != 0) {" "if (false) {" $MQ_SIM::test_discovery_rejects_the_right_site_id_with_the_wrong_certificate
-mutate mqtt_anchor_not_passed_on $MQ_CTRL "const char* anchor = (tls && q.hasAnchor()) ? q.anchor : nullptr;" "const char* anchor = nullptr;" $MQ_SIM::test_discovery_rejects_the_right_site_id_with_the_wrong_certificate
-mutate mqtt_tls_dropped $MQ_CTRL "const bool tls = q.useTls();" "const bool tls = false;" $MQ_SIM::test_discovery_accepts_a_matching_site_id_with_a_matching_certificate
-mutate mqtt_unverified_reported_as_verified $MQ_CTRL "_core.onConnected(millis(), tls && anchor != nullptr);" "_core.onConnected(millis(), tls);" $MQ_SIM::test_a_tls_profile_without_an_anchor_is_encrypted_but_reported_unverified_and_a_wrong_anchor_is_refused
-mutate mqtt_name_resolved_once $MQ_CTRL "    if (!parseIPv4(q.host, addr) && !_net->resolve(q.host, addr)) {
-      _core.onConnectFailed(millis(), MqttFail::Dns);
-      return;
-    }" "    static uint32_t cached[MqttProfiles::COUNT];
-    if (cached[a.profile]) addr = cached[a.profile];
-    else if (!parseIPv4(q.host, addr) && !_net->resolve(q.host, addr)) {
-      _core.onConnectFailed(millis(), MqttFail::Dns);
-      return;
-    } else cached[a.profile] = addr;" $MQ_SIM::test_a_host_name_is_resolved_again_on_every_attempt
+mutate mqtt_anchor_not_passed_on $MQ_CTRL "j.has_anchor = j.tls && q.hasAnchor();" "j.has_anchor = false;" $MQ_SIM::test_discovery_rejects_the_right_site_id_with_the_wrong_certificate
+mutate mqtt_tls_dropped $MQ_CTRL "j.tls = q.useTls();" "j.tls = false;" $MQ_SIM::test_discovery_accepts_a_matching_site_id_with_a_matching_certificate
+mutate mqtt_unverified_reported_as_verified $MQ_CTRL "_core.onConnected(now, j.tls && j.has_anchor);" "_core.onConnected(now, j.tls);" $MQ_SIM::test_a_tls_profile_without_an_anchor_is_encrypted_but_reported_unverified_and_a_wrong_anchor_is_refused
+mutate mqtt_name_resolved_once $MQ_CTRL "  if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }" "  static uint32_t cached[MqttProfiles::COUNT];
+  if (j.resolve && cached[_job_profile]) j.addr = cached[_job_profile];
+  else if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }
+  else if (j.resolve) cached[_job_profile] = j.addr;" $MQ_SIM::test_a_host_name_is_resolved_again_on_every_attempt
 mutate mqtt_password_in_listing $MQ_PROF_C 'const char* pwd = q.pwd[0] ? "set" : "unset";' 'const char* pwd = q.pwd[0] ? q.pwd : "unset";' unit:test_mqtt_prefs
 mutate mqtt_password_in_listing_sim $MQ_PROF_C 'const char* pwd = q.pwd[0] ? "set" : "unset";' 'const char* pwd = q.pwd[0] ? q.pwd : "unset";' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
-mutate mqtt_password_logged $MQ_CTRL "  _open = true;
-  _psc.setClient(_net->client());" '  fprintf(stderr, "mqtt connect as %s\n", q.pwd);
-  _open = true;
-  _psc.setClient(_net->client());' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
-mutate mqtt_credentials_not_sent $MQ_CTRL "const char* user = q.user[0] ? q.user : nullptr;" "const char* user = nullptr;" $MQ_SIM::test_credentials_are_used_and_a_wrong_password_fails_over
+mutate mqtt_password_logged $MQ_CTRL "  _psc.setClient(_net->client());
+  const char* user = j.user[0]" '  fprintf(stderr, "mqtt connect as %s\n", j.pwd);
+  _psc.setClient(_net->client());
+  const char* user = j.user[0]' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
+mutate mqtt_credentials_not_sent $MQ_CTRL "const char* user = j.user[0] ? j.user : nullptr;" "const char* user = nullptr;" $MQ_SIM::test_credentials_are_used_and_a_wrong_password_fails_over
 mutate mqtt_profiles_not_persisted examples/companion_radio/NodePrefs.h "        key[0] = 'h'; def(key, q.host, sizeof(q.host));
 " "" unit:test_mqtt_prefs
 mutate mqtt_profiles_not_persisted_sim examples/companion_radio/NodePrefs.h "        key[0] = 'h'; def(key, q.host, sizeof(q.host));
@@ -238,6 +252,54 @@ mutate mqtt_profiles_not_persisted_sim examples/companion_radio/NodePrefs.h "   
 mutate mqtt_status_not_published $MQ_CTRL "  _psc.publish(_topic, payload, true);" "  (void)payload;" $MQ_SIM::test_status_topic_is_published_and_retained
 mutate mqtt_disable_ignored examples/companion_radio/MyMesh.cpp "    mqttController().setEnabled(_prefs.mqtt_enabled != 0);
 " "" $MQ_SIM::test_profiles_persist_across_a_reboot_and_can_be_disabled
+# --- the connect runs on a worker (docs/MQTT.md): undo each rule and its tests must go red
+MQ_NB=sim/tests/test_mqtt_nonblocking.py
+MQ_IL=sim/tests/test_mqtt_interleave.py   # the job is stopped at a named step (variants/sim/sim_mqtt_net.cpp), so these do not race
+mutate mqtt_connect_runs_inline $MQ_CTRL "  if (!_net->asyncStart(&MqttController::connectEntry, this)) {" "  connectEntry(this);
+  if (false) {" $MQ_NB::test_a_connect_attempt_does_not_stall_the_main_loop
+mutate mqtt_connect_runs_inline_mesh $MQ_CTRL "  if (!_net->asyncStart(&MqttController::connectEntry, this)) {" "  connectEntry(this);
+  if (false) {" $MQ_NB::test_the_mesh_keeps_delivering_during_a_connect_attempt
+# the text is matched to the end of the posture block: the disabled branch above has the same line (a mutant on that one
+# survived on 2026-10-17, because the first match was the wrong branch)
+mutate mqtt_result_taken_before_the_job_ends $MQ_CTRL "    _core.onConnectCancelled();
+  }
+  if (_job_active && _net->asyncIdle()) takeResult();" "    _core.onConnectCancelled();
+  }
+  if (_job_active) takeResult();" $MQ_IL::test_the_result_is_not_taken_while_the_job_runs
+mutate mqtt_result_taken_before_the_job_ends_while_disabled $MQ_CTRL "    if (_job_active && _net->asyncIdle()) takeResult();
+    return;" "    if (_job_active) takeResult();
+    return;" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-disable]"
+mutate mqtt_cancelled_result_kept $MQ_CTRL "const bool wanted = !_job_cancel && _core.state() == MqttState::Connecting;" "const bool wanted = true;" $MQ_NB::test_a_connect_that_completes_after_it_was_cancelled_is_closed_cleanly
+mutate mqtt_cancel_does_not_wait_for_the_job $MQ_CTRL "  if (_job_active && _job_cancel) return;" "" $MQ_NB::test_a_profile_edit_during_a_pending_connect_is_applied_and_leaks_nothing
+mutate mqtt_posture_cancel_not_reported_to_the_core $MQ_CTRL "    cancelAttempt();
+    _core.onConnectCancelled();" "    cancelAttempt();" $MQ_NB::test_raising_the_posture_during_a_pending_connect_cancels_it
+mutate mqtt_late_plain_session_announced_in_hardened $MQ_CTRL "    cancelAttempt();
+    _core.onConnectCancelled();
+  }
+  if (_job_active && _net->asyncIdle()) takeResult();" "  }
+  if (_job_active && _net->asyncIdle()) takeResult();" $MQ_NB::test_a_plain_connect_that_completes_after_the_posture_rose_says_nothing
+mutate mqtt_disabled_controller_never_takes_the_result $MQ_CTRL "    if (_job_active && _net->asyncIdle()) takeResult();
+    return;" "    return;" $MQ_NB::test_disabling_during_a_pending_connect_closes_the_late_session
+mutate mqtt_close_ignores_a_running_job $MQ_CTRL "  if (_job_active) {   // the job owns the transport and PubSubClient: ask it to stop and let takeResult() tidy up
+    _job_cancel = true;
+    return;
+  }" "" $MQ_IL::test_an_edit_while_the_job_owns_the_transport_does_not_touch_it
+mutate mqtt_cancelled_attempt_penalises_the_profile $MQ_CORE "void MqttCore::onConnectCancelled() {
+  if (_state != MqttState::Connecting || _cur == NONE) return;" "void MqttCore::onConnectCancelled() {
+  if (_state != MqttState::Connecting || _cur == NONE) return;
+  failCurrent(0, MqttFail::Timeout, false);" unit:test_mqtt_core
+mutate mqtt_no_cancel_check_after_the_name_is_resolved $MQ_CTRL "  if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }
+  if (_job_cancel) { j.result = ConnectJob::Cancelled; return; }" "  if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[dns-edit] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[dns-disable]"
+mutate mqtt_no_cancel_check_after_the_transport_opens $MQ_CTRL "  if (_job_cancel) { _net->close(); j.result = ConnectJob::Cancelled; return; }" "" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-edit] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tls-edit]"
+mutate mqtt_cancelled_transport_not_closed_by_the_job $MQ_CTRL "  if (_job_cancel) { _net->close(); j.result = ConnectJob::Cancelled; return; }" "  if (_job_cancel) { j.result = ConnectJob::Cancelled; return; }" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-disable] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tls-disable]"
+mutate mqtt_close_does_not_raise_the_cancel_flag $MQ_CTRL "    _job_cancel = true;
+    return;
+  }
+  if (_open && _psc.connected())" "    return;
+  }
+  if (_open && _psc.connected())" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-edit] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-disable]"
+mutate mqtt_posture_does_not_raise_the_cancel_flag $MQ_CTRL "    cancelAttempt();
+    _core.onConnectCancelled();" "    _core.onConnectCancelled();" $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-posture]
 # --- connectivity mode and its screen (docs/CONNECTIVITY_MODE.md)
 CM_H=src/helpers/connmode/ConnMode.h
 CS_H=src/helpers/connmode/ConnStatus.h
@@ -273,7 +335,15 @@ mutate connmode_mqtt_password_drawn $UI "      int ly = 19;" "      int ly = 19;
 # --- adaptive contact memory (docs/CONTACTS.md): undo each rule and its tests must go red
 CS=src/helpers/ContactStore.cpp
 CT_SIM=sim/tests/test_contacts.py
-mutate contacts_bucket_written_in_place examples/companion_radio/DataStore.cpp 'return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; });' 'File f = openWrite(_getContactsChannelsFS(), path); if (!f) return false; bool ok = f.write(buf, len) == len; f.close(); return ok;' "$CT_SIM::test_power_cut_in_the_temp_file_keeps_the_previous_record $CT_SIM::test_contacts_are_never_written_in_place"
+mutate contacts_bucket_written_in_place examples/companion_radio/DataStore.cpp '  bucketPath(path, sizeof(path), b);
+  return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; });
+}
+
+bool DataStore::removeBucket' '  bucketPath(path, sizeof(path), b);
+  File f = openWrite(_getContactsChannelsFS(), path); if (!f) return false; bool ok = f.write(buf, len) == len; f.close(); return ok;
+}
+
+bool DataStore::removeBucket' $CT_SIM::test_power_cut_in_the_temp_file_keeps_the_previous_record $CT_SIM::test_contacts_are_never_written_in_place
 mutate contacts_stock_file_written_in_place examples/companion_radio/DataStore.cpp 'AtomicFile::save(_getContactsChannelsFS(), "/contacts3", [host, filter](Stream& s) {' 'auto inPlaceSave = [](FILESYSTEM* fs, const char* path, auto writer) { File f = openWrite(fs, path); if (f) { writer(f); f.close(); } }; inPlaceSave(_getContactsChannelsFS(), "/contacts3", [host, filter](Stream& s) {' $CT_SIM::test_the_stock_array_build_is_ram_only_and_atomic_and_evicts_the_oldest
 mutate contacts_flush_skipped examples/companion_radio/MyMesh.cpp '  flushContacts();   // rewrites the buckets that hold a changed record, each one atomically' '' $CT_SIM::test_power_cut_between_write_and_rename
 mutate contacts_old_file_kept_after_migration examples/companion_radio/MyMesh.cpp '  if (ok) _store->removeLegacyContacts();' '' $CT_SIM::test_stock_contacts_file_migrates_unchanged

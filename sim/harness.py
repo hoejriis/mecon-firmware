@@ -20,6 +20,7 @@ BIN = {
     "room_server": os.path.join(REPO, ".pio/build/sim_room_server/program"),
     "repeater_asan": os.path.join(REPO, ".pio/build/sim_repeater_asan/program"),
     "companion_asan": os.path.join(REPO, ".pio/build/sim_companion_asan/program"),
+    "companion_wifi_usb_asan": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb_asan/program"),
     "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
     # the standalone Companion: connectivity-mode switching, the real ui-new screens on a recording display
     "companion_standalone": os.path.join(REPO, ".pio/build/sim_companion_standalone/program"),
@@ -67,6 +68,18 @@ class MqttEnv:
         self.path = str(path)
         self.hosts = {}
         self.responders = []
+        self.pauses = []
+        self._write()
+
+    def pause(self, step):
+        """Stop the connect job at `step` (dns | tcp | tls | connack) until release(); see variants/sim/sim_mqtt_net.cpp."""
+        assert step in ("dns", "tcp", "tls", "connack"), step
+        if step not in self.pauses:
+            self.pauses.append(step)
+        self._write()
+
+    def release(self, step=None):
+        self.pauses = [] if step is None else [s for s in self.pauses if s != step]
         self._write()
 
     def host(self, name, ip):
@@ -88,6 +101,8 @@ class MqttEnv:
                 f.write("host\t%s\t%s\n" % (name, ip))
             for kind, site, ip, port in self.responders:
                 f.write("mdns\t%s\t%s\t%s\t%d\n" % (kind, site, ip, port))
+            for step in self.pauses:
+                f.write("pause\t%s\n" % step)
         os.replace(tmp, self.path)
 
 
@@ -178,6 +193,17 @@ def mqtt_events(node):
         for ln in open(node.log_path, errors="replace"):
             if ln.startswith("SIMMQTT "):
                 out.append(ln[8:].strip())
+    return out
+
+
+def loop_gaps(node):
+    """The node's running record of its longest main-loop gap (`SIMLOOP gap_ms=N`, wall-clock milliseconds, each new
+    maximum of at least 5 ms), oldest first; max() is the longest stall."""
+    out = []
+    if os.path.exists(node.log_path):
+        for ln in open(node.log_path, errors="replace"):
+            if ln.startswith("SIMLOOP gap_ms="):
+                out.append(int(ln.split("=", 1)[1]))
     return out
 
 
@@ -527,9 +553,9 @@ class CompanionClient:
         assert f[0] == RESP_OK, f
         return f
 
-    def cli(self, text):
+    def cli(self, text, timeout=5.0):
         """CMD_RUN_CLI_COMMAND; returns the reply text (USB/BLE class transports only)."""
-        f = self.request(bytes([CMD_RUN_CLI_COMMAND]) + text.encode())
+        f = self.request(bytes([CMD_RUN_CLI_COMMAND]) + text.encode(), timeout=timeout)
         assert f[0] == RESP_CLI_REPLY, f
         return f[1:].decode(errors="replace")
 

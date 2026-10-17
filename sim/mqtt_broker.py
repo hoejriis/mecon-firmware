@@ -122,3 +122,117 @@ class Broker:
         self.publish("mecon/%s/cli/req" % node_id, payload)
         out, _ = sub.communicate(timeout=timeout + 5)
         return json.loads(out) if out.strip() else None
+
+
+class BlackHole:
+    """A broker that accepts the TCP connection and then says nothing: no TLS ServerHello, no CONNACK, ever. A client
+    that connects to it waits for its own timeout, which is exactly what stalled a blocking MQTT connect."""
+
+    def __init__(self, ip, port):
+        self.ip, self.port = ip, port
+        self.accepted = 0
+        self._held = []
+        self._stop = False
+        self._sock = None
+        self._thread = None
+
+    def start(self):
+        import threading
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind((self.ip, self.port))
+        self._sock.listen(8)
+        self._sock.settimeout(0.2)
+
+        def run():
+            while not self._stop:
+                try:
+                    c, _ = self._sock.accept()
+                except OSError:
+                    continue
+                self.accepted += 1
+                self._held.append(c)   # held open and never read from or written to
+
+        self._thread = threading.Thread(target=run, daemon=True)
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop = True
+        if self._thread:
+            self._thread.join(2)
+        for c in self._held:
+            try:
+                c.close()
+            except OSError:
+                pass
+        if self._sock:
+            self._sock.close()
+
+
+class SlowProxy:
+    """Accepts the TCP connection at once, waits `delay` seconds, then relays it to a real broker. A client that
+    connects through it sits in its CONNACK wait and then succeeds: the late success a cancelled attempt can produce."""
+
+    def __init__(self, ip, port, target_ip, target_port, delay):
+        self.ip, self.port, self.target, self.delay = ip, port, (target_ip, target_port), delay
+        self._stop = False
+        self._socks = []
+        self._sock = None
+
+    def start(self):
+        import threading
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind((self.ip, self.port))
+        self._sock.listen(8)
+        self._sock.settimeout(0.2)
+
+        def pump(a, b):
+            try:
+                while not self._stop:
+                    data = a.recv(4096)
+                    if not data:
+                        break
+                    b.sendall(data)
+            except OSError:
+                pass
+            finally:
+                for s in (a, b):
+                    try:
+                        s.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+
+        def serve(c):
+            time.sleep(self.delay)
+            try:
+                u = socket.create_connection(self.target, timeout=5)
+            except OSError:
+                c.close()
+                return
+            self._socks += [c, u]
+            threading.Thread(target=pump, args=(c, u), daemon=True).start()
+            threading.Thread(target=pump, args=(u, c), daemon=True).start()
+
+        def run():
+            while not self._stop:
+                try:
+                    c, _ = self._sock.accept()
+                except OSError:
+                    continue
+                self._socks.append(c)
+                threading.Thread(target=serve, args=(c,), daemon=True).start()
+
+        threading.Thread(target=run, daemon=True).start()
+        return self
+
+    def stop(self):
+        self._stop = True
+        for s in self._socks:
+            try:
+                s.close()
+            except OSError:
+                pass
+        if self._sock:
+            self._sock.close()
