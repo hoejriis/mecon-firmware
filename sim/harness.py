@@ -18,6 +18,9 @@ BIN = {
     # same Companion code, but its app transport is classed as unauthenticated TCP (a _wifi build)
     "companion_wifi_usb": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb/program"),
     "room_server": os.path.join(REPO, ".pio/build/sim_room_server/program"),
+    # the same, with the RAK4631 Ethernet TCP console (a loopback stand-in for the W5100S transport)
+    "repeater_eth": os.path.join(REPO, ".pio/build/sim_repeater_eth/program"),
+    "room_server_eth": os.path.join(REPO, ".pio/build/sim_room_server_eth/program"),
     "repeater_asan": os.path.join(REPO, ".pio/build/sim_repeater_asan/program"),
     "companion_asan": os.path.join(REPO, ".pio/build/sim_companion_asan/program"),
     "companion_wifi_usb_asan": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb_asan/program"),
@@ -243,6 +246,8 @@ class Node:
     def start(self):
         if os.path.exists(self.port_file):
             os.unlink(self.port_file)
+        if os.path.exists(self.port_file + ".eth"):
+            os.unlink(self.port_file + ".eth")
         cmd = [self.binary, "--dir", self.dir, "--name", self.name, "--port-file", self.port_file,
                "--seed", str(self.seed), "--time-scale", str(self.time_scale)]
         if self.ether_path:
@@ -304,12 +309,24 @@ class Node:
         s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
         return s
 
+    def connect_ethernet(self):
+        """A connection to the Ethernet TCP console of a `*_eth` build (a stand-in for the RAK4631 W5100S transport)."""
+        path = self.port_file + ".eth"
+        end = time.time() + 10
+        while not os.path.exists(path):
+            if time.time() > end:
+                raise RuntimeError("no Ethernet console port file: not a *_eth build?")
+            time.sleep(0.05)
+        with open(path) as f:
+            port = int(f.read().strip())
+        return socket.create_connection(("127.0.0.1", port), timeout=5)
+
 
 class CliClient:
     """Repeater text CLI. The node echoes typed characters, then prints '  -> reply'."""
 
-    def __init__(self, node):
-        self.sock = node.connect()
+    def __init__(self, node, ethernet=False):
+        self.sock = node.connect_ethernet() if ethernet else node.connect()
         self.sock.settimeout(0.2)
 
     def command(self, line, timeout=5.0):

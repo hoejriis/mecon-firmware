@@ -6,6 +6,7 @@
 #include <SPI.h>
 #include <RAK13800_W5100S.h>
 #include <helpers/nrf52/EthernetMac.h>
+#include <helpers/cli/NetConsole.h>
 
 #define PIN_SPI1_MISO (29)
 #define PIN_SPI1_MOSI (30)
@@ -30,6 +31,8 @@ static SPIClass ETHERNET_SPI_PORT(NRF_SPIM1, PIN_SPI1_MISO, PIN_SPI1_SCK, PIN_SP
 static EthernetServer ethernet_server(ETHERNET_TCP_PORT);
 static EthernetClient ethernet_client;
 static volatile bool ethernet_running = false;
+// The login state of the one console connection (docs/CLI.md): a new connection starts logged out.
+static Cli::NetConsole ethernet_console;
 
 // FreeRTOS task: handles hw init, DHCP, and retries in the background
 static void ethernet_task(void* param) {
@@ -107,6 +110,7 @@ static void ethernet_check_client() {
   if (newClient) {
     if (ethernet_client) ethernet_client.stop();
     ethernet_client = newClient;
+    ethernet_console.endSession();
     IPAddress ip = ethernet_client.remoteIP();
     Serial.printf("ETH: Client connected from %u.%u.%u.%u\n", ip[0], ip[1], ip[2], ip[3]);
     ethernet_client.println(ETHERNET_CLI_BANNER);
@@ -125,7 +129,8 @@ static void ethernet_loop_maintain() {
 // Returns true when a complete line is ready to process (command is null-terminated).
 // The caller should process the command and then reset ethernet_command[0] = 0.
 static bool ethernet_read_line(char* ethernet_command, size_t buf_size) {
-  if (!ethernet_running || !ethernet_client || !ethernet_client.connected()) return false;
+  if (!ethernet_running) return false;
+  if (!ethernet_client || !ethernet_client.connected()) { ethernet_console.endSession(); return false; }
 
   int elen = strlen(ethernet_command);
   while (ethernet_client.available() && elen < (int)buf_size - 1) {

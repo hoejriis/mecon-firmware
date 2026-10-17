@@ -6,6 +6,7 @@
 #include <vector>
 #include "helpers/Posture.h"
 #include "helpers/cli/CliEngine.h"
+#include "helpers/cli/NetConsole.h"
 #include "helpers/connmode/ConnMode.h"
 
 using namespace Cli;
@@ -17,6 +18,7 @@ namespace {
 //   .  allowed          U  untrusted transport      P  not permitted          L  flagged contact limited to reads and reboot
 //   H  hardened remote  O  remote CLI off           D  admin password is default
 //   K  key refused in Hardened      Y  local console only      V  broker session not verified
+//   N  Ethernet console off in Hardened
 //   F  allowed when the broker profile is flagged for management, else R (read-only in Hardened)
 struct Expect {
   Principal p;
@@ -35,6 +37,7 @@ const Expect EXPECT_TABLE[] = {
   {P_MQTT,            "MQTT verified",    "..PPP.", ".FPPPF"},
   {P_MQTT_UNVERIFIED, "MQTT unverified",  "VVVVVV", "VVVVVV"},
   {P_BUTTON,          "button",           "PPP.PP", "PPP.PP"},
+  {P_NETCON_ADMIN,    "Ethernet admin",   ". . Y P Y .", "NNNNNN"},
 };
 
 std::string squeeze(const char* s) {
@@ -55,6 +58,7 @@ uint8_t expectedReason(char c, bool mgmt) {
     case 'K': return R_KEY_HARDENED;
     case 'Y': return R_LOCAL_ONLY;
     case 'V': return R_MQTT_UNVERIFIED;
+    case 'N': return R_NETCON_OFF;
     case 'R': return R_MQTT_READONLY;
     case 'F': return mgmt ? R_ALLOW : R_MQTT_READONLY;
   }
@@ -74,6 +78,7 @@ const Valid VALID[] = {
   {T_MQTT, A_TLS_VERIFIED, true, P_MQTT},
   {T_MQTT, A_TLS_UNVERIFIED, true, P_MQTT_UNVERIFIED},
   {T_BUTTON, A_BUTTON, false, P_BUTTON},
+  {T_NETCON, A_NETCON_ADMIN, false, P_NETCON_ADMIN},
 };
 
 Principal expectedPrincipal(uint8_t t, uint8_t a, bool remote) {
@@ -129,15 +134,15 @@ TEST_P(PrivilegeMatrix, EveryCellOfTheTableIsAsWritten) {
 
 static std::vector<Cell> allCells() {
   std::vector<Cell> v;
-  for (uint8_t t = T_NONE; t <= T_BUTTON; t++)
-    for (uint8_t a = A_NONE; a <= A_BUTTON; a++)
+  for (uint8_t t = T_NONE; t <= T_NETCON; t++)
+    for (uint8_t a = A_NONE; a <= A_NETCON_ADMIN; a++)
       for (bool remote : {false, true}) v.push_back({t, a, remote});
   return v;
 }
 INSTANTIATE_TEST_SUITE_P(AllContexts, PrivilegeMatrix, ::testing::ValuesIn(allCells()));
 
 TEST(PrivilegeProperties, ARemoteCallerNeverInheritsALocalCallersPrivileges) {
-  for (Principal p : {P_ADMIN, P_ADMIN_DEFAULT, P_GUEST, P_CONTACT, P_MQTT, P_MQTT_UNVERIFIED}) {
+  for (Principal p : {P_ADMIN, P_ADMIN_DEFAULT, P_GUEST, P_CONTACT, P_MQTT, P_MQTT_UNVERIFIED, P_NETCON_ADMIN}) {
     for (bool hardened : {false, true}) {
       for (uint8_t cls : {C_SECRET, C_POSTURE, C_DESTRUCTIVE}) {
         EXPECT_NE(tableCell(p, hardened, cls), R_ALLOW) << "principal " << p << " class " << (int)cls << " hardened " << hardened;
@@ -183,6 +188,17 @@ TEST(PrivilegeProperties, TheAuditCallerIsTheWayTheRefusalHasAlwaysBeenRecorded)
   EXPECT_EQ(decide(Context(T_LORA, A_CONTACT_FLAG, 1), C_WRITE).caller, Posture::CALLER_REMOTE_CLI);
   EXPECT_EQ(decide(Context(T_MQTT, A_TLS_VERIFIED, 1), C_WRITE).caller, Posture::CALLER_MQTT);
   EXPECT_EQ(decide(Context(T_BLE, A_PAIRED_DEFAULT_PIN, 0), C_READ).caller, Posture::CALLER_NET);   // a default PIN is not a phone
+  EXPECT_EQ(decide(Context(T_NETCON, A_NONE, 0), C_READ).caller, Posture::CALLER_NET);
+  EXPECT_EQ(decide(Context(T_NETCON, A_NETCON_ADMIN, 0), C_SECRET).caller, Posture::CALLER_NET);
+}
+
+TEST(PrivilegeProperties, TheEthernetConsoleIsNeverTheCable) {
+  // An unauthenticated Ethernet console connection, and one that logged in, never resolve to the cable row.
+  EXPECT_EQ(principalOf(Context(T_NETCON, A_NONE, 0)), P_UNTRUSTED);
+  EXPECT_EQ(principalOf(Context(T_NETCON, A_CABLE, 0)), P_UNTRUSTED);            // a cable claim over the network
+  EXPECT_EQ(principalOf(Context(T_NETCON, A_NETCON_ADMIN, 0)), P_NETCON_ADMIN);
+  EXPECT_EQ(principalOf(Context(T_USB, A_NETCON_ADMIN, 0)), P_UNTRUSTED);        // and the reverse
+  for (uint8_t cls = 0; cls < C_COUNT; cls++) EXPECT_FALSE(decide(Context(T_NETCON, A_NONE, 0), cls).allow);
 }
 
 // ---- the registry
@@ -317,6 +333,96 @@ TEST_F(Gate, RemoteAdminRefusals) {
   EXPECT_EQ(count(Posture::CALLER_REMOTE_ADMIN, Posture::W_DEFAULT_PASSWORD), 1);
   EXPECT_EQ(run("erase", n, ROLE_REPEATER), "ERR: not permitted");
   EXPECT_EQ(count(Posture::CALLER_REMOTE_ADMIN, Posture::W_REMOTE_WRITE), 3);
+}
+
+// ---- the Ethernet console (NetConsole.h): untrusted until `login`, then the remote admin's rights, off in Hardened
+
+struct EthConsole : public Gate {
+  Cli::NetConsole nc;
+  std::string line(const char* l, const char* pw = "s3cret", uint8_t posture = 0, bool* answered = nullptr) {
+    reply[0] = 0;
+    bool a = netConsoleLine(nc, l, pw, "password", posture, 1000, reply, 150);
+    if (answered) *answered = a;
+    return reply;
+  }
+  int logins(uint8_t what) {
+    for (int i = 0; i < Posture::audit().n; i++) {
+      auto& e = Posture::audit().e[i];
+      if (e.event == Posture::EV_LOGIN_FAILED && e.caller == Posture::CALLER_NET && e.what == what) return e.count;
+    }
+    return 0;
+  }
+};
+
+TEST_F(EthConsole, EveryLineIsRefusedAndAuditedUntilLogin) {
+  EXPECT_EQ(line("get prv.key"), "ERR: not permitted");
+  EXPECT_EQ(count(Posture::CALLER_NET, Posture::W_KEY_EXPORT), 1);
+  EXPECT_EQ(line("set prv.key 00"), "ERR: not permitted");
+  EXPECT_EQ(count(Posture::CALLER_NET, Posture::W_KEY_IMPORT), 1);
+  EXPECT_EQ(line("set posture hardened"), "ERR: not permitted");
+  EXPECT_EQ(count(Posture::CALLER_NET, Posture::W_POSTURE), 1);
+  EXPECT_EQ(line("erase"), "ERR: not permitted");
+  EXPECT_EQ(line("get name"), "ERR: not permitted");
+  EXPECT_EQ(line("reboot"), "ERR: not permitted");
+}
+
+TEST_F(EthConsole, LoginRulesAndWhatItOpens) {
+  EXPECT_EQ(line("login wrong"), "ERR: wrong password");
+  EXPECT_EQ(logins(Posture::W_BAD_PASSWORD), 1);
+  EXPECT_EQ(line("get name"), "ERR: not permitted");
+  EXPECT_EQ(line("login s3cret"), "OK - logged in");
+  bool a = true;
+  line("get name", "s3cret", 0, &a); EXPECT_FALSE(a);                        // runs, as a remote admin
+  line("set name x", "s3cret", 0, &a); EXPECT_FALSE(a);
+  line("reboot", "s3cret", 0, &a); EXPECT_FALSE(a);
+  EXPECT_EQ(line("get prv.key"), "ERR: not permitted");
+  EXPECT_EQ(line("set prv.key 00"), "ERR: prv.key can only be set from the local console");
+  EXPECT_EQ(line("erase"), "ERR: not permitted");
+  EXPECT_EQ(line("poweroff"), "ERR: not permitted");
+  EXPECT_EQ(line("get audit"), "ERR: not permitted");
+  EXPECT_EQ(line("set posture normal confirm"), "ERR: not permitted");
+  EXPECT_EQ(line("set posture hardened"), "ERR: not permitted");
+  EXPECT_EQ(line("logout"), "OK - logged out");
+  EXPECT_EQ(line("get name"), "ERR: not permitted");
+}
+
+TEST_F(EthConsole, TheDefaultPasswordOpensNothing) {
+  for (const char* pw : {"password", ""}) {
+    nc = Cli::NetConsole();
+    const std::string cmd = std::string("login ") + pw;
+    EXPECT_NE(line(cmd.c_str(), pw[0] ? pw : ""), "OK - logged in") << pw;       // stored == typed, and the stock default
+    EXPECT_FALSE(nc.authed);
+  }
+  nc = Cli::NetConsole();
+  Posture::audit().clear();
+  EXPECT_EQ(line("login password", "password"),
+            "ERR: the Ethernet console is off until the admin password is set on the local console");
+  EXPECT_EQ(logins(Posture::W_DEFAULT_PASSWORD), 1);
+  EXPECT_EQ(line("get name", "password"), "ERR: not permitted");
+}
+
+TEST_F(EthConsole, HardenedRefusesLoginAndDropsALiveSession) {
+  EXPECT_EQ(line("login s3cret"), "OK - logged in");
+  EXPECT_EQ(line("get name", "s3cret", 1), "ERR: not permitted");
+  EXPECT_FALSE(nc.authed);
+  EXPECT_EQ(line("login s3cret", "s3cret", 1), "ERR: the Ethernet console is off in hardened posture");
+  EXPECT_FALSE(nc.authed);
+  EXPECT_EQ(line("get name", "s3cret", 0), "ERR: not permitted");              // back in Normal: logged out
+}
+
+TEST_F(EthConsole, ChangingBackToTheDefaultPasswordDropsTheSession) {
+  EXPECT_EQ(line("login s3cret"), "OK - logged in");
+  EXPECT_EQ(line("get name", "password"), "ERR: not permitted");
+}
+
+TEST_F(EthConsole, FiveWrongPasswordsLockLoginsForAMinute) {
+  for (int i = 0; i < 5; i++) EXPECT_EQ(line("login nope"), "ERR: wrong password");
+  EXPECT_EQ(line("login s3cret"), "ERR: too many failed logins, try again later");
+  nc.endSession();                                                             // a new connection: still locked
+  EXPECT_EQ(line("login s3cret"), "ERR: too many failed logins, try again later");
+  reply[0] = 0;
+  EXPECT_TRUE(netConsoleLine(nc, "login s3cret", "s3cret", "password", 0, 1000 + 61, reply, 150));
+  EXPECT_STREQ(reply, "OK - logged in");
 }
 
 TEST_F(Gate, HardenedKeyRefusalsOnTheConsole) {
