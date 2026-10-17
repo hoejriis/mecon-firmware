@@ -533,6 +533,23 @@ mutate mqtt_topic_is_not_per_device src/helpers/cli/CliMqtt.h "snprintf(out, cap
 mutate mecon_check_always_allows src/helpers/cli/MeconCli.h "v.allow ? \"allowed\" : reasonName(v.reason)" "\"allowed\"" unit:test_cli_engine
 mutate mecon_who_hides_the_principal src/helpers/cli/MeconCli.h "principalName(principalOf(ctx)), ctx.mgmt ? \" mgmt=on\" : \"\");" "\"cable\", ctx.mgmt ? \" mgmt=on\" : \"\");" unit:test_cli_engine
 
+# atomic blobs and client ACL
+mutate acl_swap_not_recovered src/helpers/ClientACL.cpp '  AtomicFile::recover(_fs, "/s_contacts");   // finish or drop a save that was cut by a power loss
+' "" sim/tests/test_atomic_blobs_acl.py::test_acl_cut_between_write_and_rename
+mutate acl_written_in_place src/helpers/ClientACL.cpp 'void ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
+  _fs = fs;
+' '#define AtomicFile ClientInPlace
+namespace ClientInPlace {
+  template <typename F, typename W> inline bool save(F* fs, const char* p, W w) { File f = fs->open(p, "w", true); if (!f) return false; bool ok = w(f); f.close(); return ok; }
+  template <typename F> inline void discard(F* fs, const char* p) { fs->remove(p); }
+}
+void ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
+  _fs = fs;
+' sim/tests/test_atomic_blobs_acl.py::test_acl_cut_in_temp_file_keeps_logged_in_client sim/tests/test_atomic_blobs_acl.py::test_acl_is_never_written_in_place
+mutate blob_swap_not_recovered examples/companion_radio/DataStore.cpp '  AtomicFile::recover(_fs, path);   // finish or drop a save that was cut by a power loss
+  if (_fs->exists(path)) {' '  if (_fs->exists(path)) {' sim/tests/test_atomic_blobs_acl.py::test_blob_cut_between_write_and_rename
+mutate blob_written_in_place examples/companion_radio/DataStore.cpp '  return AtomicFile::save(_fs, path, [src_buf, len](Stream& s) { return s.write(src_buf, len) == len; });' '  File f = openWrite(_fs, path); if (!f) return false; int n = f.write(src_buf, len); f.close(); return n == len;' sim/tests/test_atomic_blobs_acl.py::test_blob_cut_in_temp_file_keeps_previous_blob sim/tests/test_atomic_blobs_acl.py::test_blob_is_never_written_in_place
+
 build
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
