@@ -57,6 +57,7 @@ PY
     git show "HEAD:$file" > "$file"; return 0
   fi
   case "$target" in
+    unit:test_kiss_modem) sim/run.sh pio test -e native_kiss_modem -f test_kiss_modem > ".sim-logs/mut_$name.log" 2>&1 ;;   # its own env
     unit:*) sim/run.sh pio test -e native -f "${target#unit:}" > ".sim-logs/mut_$name.log" 2>&1 ;;
     *) sim/run.sh python3 -m pytest $target -q -x -p no:cacheprovider > ".sim-logs/mut_$name.log" 2>&1 ;;
   esac
