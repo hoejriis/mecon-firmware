@@ -8,7 +8,7 @@
 //   v0.1.2-5-gabc1234         v1.18.0-mecon.0.1.2+5.gabc1234       v1.18.0-mecon.0.1.2
 //   v0.1.2-5-gabc1234-dirty   v1.18.0-mecon.0.1.2+5.gabc1234.dirty v1.18.0-mecon.0.1.2
 //   v0.1.2-dirty              v1.18.0-mecon.0.1.2+dirty            v1.18.0-mecon.0.1.2
-//   unknown (no git, no tag)  v1.18.0-mecon.unknown                v1.18.0-mecon.unknown
+//   unknown (no git, no tag)  v1.18.0-mecon.unknown                v1.18.0-mecon.unk
 //
 // The upstream base stays first so an app that reads the leading "v1.18.0" still does. The short form is what the
 // Companion device-info frame has room for (a 20-byte field: 19 characters and the terminator); it is cut at 19.
@@ -79,7 +79,7 @@ inline void formatVersion(const char* describe, const char* upstream, char* full
   const char* base = upstream ? upstream : MECON_UPSTREAM_BASE;
   if (full && fullN) snprintf(full, fullN, "%s-mecon.%s%s", base, tag, extra);
   if (shortv && shortN) {
-    snprintf(shortv, shortN, "%s-mecon.%s", base, tag);
+    snprintf(shortv, shortN, "%s-mecon.%s", base, strcmp(tag, "unknown") == 0 ? "unk" : tag);   // "unknown" would not fit
     if (shortN > MECON_VERSION_SHORT_MAX + 1) shortv[MECON_VERSION_SHORT_MAX] = 0;
   }
 }

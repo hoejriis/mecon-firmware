@@ -17,6 +17,24 @@ The private 0.9x firmware reports the same four identities today: `mecon_firmwar
 
 Clients gate protocol behaviour on contract/profile versions and capabilities, not firmware release numbers.
 
+## The version string a build reports
+
+One source: the build script `bin/mecon_version.py` (a PlatformIO `pre:` script on every platform base and the simulator base) passes `git describe --tags --match 'v[0-9]*' --dirty` as `-D MECON_VERSION`. `src/helpers/MeconVersion.h` turns it into two strings. The upstream base stays first, so an app that reads the leading `v1.18.0` still does.
+
+| `git describe` | Full (`ver`, `get mecon.version`) | Short (device-info frame, display) |
+|---|---|---|
+| `v0.1.2` (clean tag build) | `v1.18.0-mecon.0.1.2` | `v1.18.0-mecon.0.1.2` |
+| `v0.1.2-5-gabc1234` (5 commits after the tag) | `v1.18.0-mecon.0.1.2+5.gabc1234` | `v1.18.0-mecon.0.1.2` |
+| `v0.1.2-5-gabc1234-dirty` | `v1.18.0-mecon.0.1.2+5.gabc1234.dirty` | `v1.18.0-mecon.0.1.2` |
+| `v0.1.2-dirty` | `v1.18.0-mecon.0.1.2+dirty` | `v1.18.0-mecon.0.1.2` |
+| no git or no `v*` tag (source tarball) | `v1.18.0-mecon.unknown` | `v1.18.0-mecon.unk` |
+
+- The Companion device-info frame has a 20-byte version field (19 characters and the terminator), so it carries the short form, cut at 19 characters. A release tag of the form `v0.1.2` fills it exactly; a tag with two-digit components is cut. The frame does not grow.
+- `ver` prints the full form on the Companion, Repeater, Room server and Sensor. `get mecon.version` answers `> <full> (describe <git describe>, upstream <base>)`.
+- `FIRMWARE_VER_CODE` (the Companion protocol level, currently 14) is a separate number and does not change with the version string.
+- A build with `-D FIRMWARE_VERSION=...` still overrides the string; `build.sh` no longer does, so release artifacts take their version from the tag they are built from.
+- A development or dirty build carries `+N.g<hash>` or `+dirty` in the full form, so it cannot be mistaken for a release artifact.
+
 ## Release artifacts
 
 Each supported board/role publishes flash/OTA artifacts, machine-readable manifest, digest/signature metadata, hardware/role/variant identifiers, exact MeshCore base, MECON contract versions and measured resource limits such as contact capacity.

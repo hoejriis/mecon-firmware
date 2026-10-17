@@ -39,7 +39,7 @@ TEST(MeconVersion, NoGitOrNoTagIsUnknownNotAnEmptyOrGarbageString) {
   EXPECT_EQ(fullOf(""), "v1.18.0-mecon.unknown");
   EXPECT_EQ(fullOf(NULL), "v1.18.0-mecon.unknown");
   EXPECT_EQ(fullOf("abc1234"), "v1.18.0-mecon.unknown");   // a bare hash is not a version
-  EXPECT_EQ(shortOf("unknown"), "v1.18.0-mecon.unknown");
+  EXPECT_EQ(shortOf("unknown"), "v1.18.0-mecon.unk");   // "unknown" would be cut mid-word in the frame field
 }
 
 TEST(MeconVersion, PrereleaseTagKeepsItsHyphenAndStillSplitsTheDescribeSuffix) {
@@ -66,3 +66,8 @@ TEST(MeconVersion, RunningBuildStartsWithTheUpstreamBase) {
 }
 
 }  // namespace
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

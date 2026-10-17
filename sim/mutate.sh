@@ -554,6 +554,19 @@ mutate blob_written_in_place examples/companion_radio/DataStore.cpp '  return At
 
 mutate mem_unknown_printed_as_measured src/helpers/cli/MeconCli.h "if (!m.known) snprintf" "if (false) snprintf" unit:test_cli_engine
 
+# firmware identity (version string)
+mutate ver_dev_suffix_dropped src/helpers/MeconVersion.h '"+%.*s.%.*s"' '"%.0s%.0s"' unit:test_mecon_version
+mutate ver_dirty_unmarked src/helpers/MeconVersion.h 'if (dirty) strncat' 'if (false) strncat' unit:test_mecon_version
+mutate ver_unknown_not_shortened src/helpers/MeconVersion.h 'strcmp(tag, "unknown") == 0 ? "unk" : tag' 'tag' unit:test_mecon_version
+mutate ver_frame_back_to_stock examples/companion_radio/MyMesh.h '#define FIRMWARE_VERSION mecon::versionShort()' '#define FIRMWARE_VERSION "v1.18.0"' sim/tests/test_mecon_version.py::test_companion_device_info_frame_carries_the_mecon_version_and_the_unchanged_protocol_level
+mutate ver_protocol_level_changed examples/companion_radio/MyMesh.h '#define FIRMWARE_VER_CODE 14' '#define FIRMWARE_VER_CODE 15' sim/tests/test_mecon_version.py::test_companion_device_info_frame_carries_the_mecon_version_and_the_unchanged_protocol_level
+mutate ver_companion_cli_stock examples/companion_radio/MyMesh.cpp 'mecon::versionFull(), FIRMWARE_BUILD_DATE' '"v1.18.0", FIRMWARE_BUILD_DATE' sim/tests/test_mecon_version.py::test_companion_ver_and_mecon_version_over_the_cli_frame
+mutate ver_repeater_cli_stock examples/simple_repeater/MyMesh.h 'getFirmwareVer() override { return mecon::versionFull(); }' 'getFirmwareVer() override { return "v1.18.0"; }' sim/tests/test_mecon_version.py::test_repeater_and_room_server_ver_and_mecon_version
+mutate ver_room_cli_stock examples/simple_room_server/MyMesh.h 'getFirmwareVer() override { return mecon::versionFull(); }' 'getFirmwareVer() override { return "v1.18.0"; }' sim/tests/test_mecon_version.py::test_repeater_and_room_server_ver_and_mecon_version
+mutate ver_get_command_missing src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.version") == 0' 'strcmp(cmd, "get mecon.versionx") == 0' sim/tests/test_mecon_version.py::test_companion_ver_and_mecon_version_over_the_cli_frame
+mutate ver_script_ignores_dirty bin/mecon_version.py '"--match", "v[0-9]*", "--dirty"]' '"--match", "v[0-9]*"]' sim/tests/test_mecon_version.py::test_build_script_defines_the_describe_string_for_tag_dev_dirty_and_no_git
+mutate ver_script_any_tag bin/mecon_version.py '"--match", "v[0-9]*"' '"--match", "*"' sim/tests/test_mecon_version.py::test_build_script_defines_the_describe_string_for_tag_dev_dirty_and_no_git
+
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries after a full run
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
