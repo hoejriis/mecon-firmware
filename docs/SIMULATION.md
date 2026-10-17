@@ -24,7 +24,7 @@ attached. For long jobs run it detached with output redirected to a file under
 
 | Piece | Where | What it does |
 |---|---|---|
-| `sim` variant | `variants/sim/` | `platform = native` envs `sim_companion`, `sim_repeater`; `target.h/.cpp` replace the board layer |
+| `sim` variant | `variants/sim/` | `platform = native` envs `sim_companion`, `sim_repeater` (and `sim_repeater_eth`, `sim_room_server_eth`, which add the RAK4631 Ethernet TCP console over a loopback listener); `target.h/.cpp` replace the board layer |
 | Arduino/FS shims | `variants/sim/shims/` | just enough `Arduino.h`, `FS.h`, `SPIFFS.h`, `RTClib.h` to compile the examples; no upstream file is edited |
 | SimRadio | `variants/sim/sim_radio.cpp` | `mesh::Radio` that sends/receives raw packets through the ether over a unix socket |
 | Ether broker | `sim/ether.py` | decides who hears whom, per-link RSSI/SNR/loss, holds the channel busy for the packet's time on air, delivers at end of airtime, destroys overlapping receptions |

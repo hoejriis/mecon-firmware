@@ -141,3 +141,20 @@ def test_repeated_wrong_passwords_lock_logins(nodes, kind):
     other = CliClient(rep, ethernet=True)
     assert "too many failed logins" in other.command("login " + PW)       # a new connection does not reset it
     assert other.command("get public.key") == DENIED
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_logged_in_connection_runs_as_a_remote_admin_not_as_timestamp_zero(nodes, kind):
+    """The handlers keep a few cable-only commands behind sender timestamp 0 (radio frequency, the statistics dumps, the
+    log, the ACL listing). A logged-in Ethernet connection must not reach them, whatever the table says."""
+    rep, cable, eth = _start(nodes, kind)
+    cable.command("password " + PW)
+    assert eth.command("login " + PW) == "OK - logged in"
+    freq = cable.command("get freq")
+    assert eth.command("set freq 869.1").startswith("unknown config")
+    assert eth.command("stats-core") == "Unknown command"
+    assert eth.command("stats-radio") == "Unknown command"
+    assert eth.command("log") == "Unknown command"
+    assert eth.command("get acl") != ""                      # timestamp 0 would list the ACL on the serial port and answer nothing
+    assert cable.command("get freq") == freq
+    assert cable.command("stats-core").startswith("{")       # the cable still has them

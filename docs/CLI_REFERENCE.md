@@ -16,7 +16,7 @@ What has run where: the sections below describe what the code does. The simulate
 | Remote LoRa admin | Repeater, Room server, Sensor | **remote admin** (login with the admin password), **guest** | A client logs in with the admin or guest password and sends CLI text. While the admin password is the stock default no admin login is accepted. `get acl`, `erase`, `stats-*`, `log` and `set freq` are console only at the handler level whatever the caller. The Sensor role still accepts the default admin password, as stock. |
 | Remote LoRa CLI from a flagged contact | Companion | **flagged contact** | A contact the owner flagged for remote CLI sends a CLI text message. Reads and `reboot` in Normal, nothing in Hardened. |
 | MQTT request topic `mecon/<node id>/cli/req` | Companion (Wi-Fi + MQTT builds) | **MQTT, TLS verified** or **plain / unverified** | JSON request, JSON reply on `.../cli/resp`; see [CLI.md](CLI.md#the-command-line-over-mqtt). Runs only on a TLS-verified session. |
-| Ethernet TCP console (RAK4631 `_ethernet` builds) | Repeater, Room server | handled as the **cable** | Not authenticated. See Known gaps. |
+| Ethernet TCP console (RAK4631 `_ethernet` builds) | Repeater, Room server | **untrusted** until `login <admin password>`, then **Ethernet admin** | A plain-text line protocol on the network, so never the cable. Every line is refused and audited until the connection sends `login`; the login needs Normal posture and an admin password that has been set. Logged in, the connection has the remote admin's rights (not the key, `erase`, `poweroff`, posture or audit). Hardened turns it off. See [CLI.md](CLI.md#the-ethernet-console). |
 | Device button | Companion | **device button** | Not a command line; it only reaches the connectivity-mode switch. |
 
 ## Who may run what: the privilege table
@@ -27,9 +27,10 @@ A compact copy of the table in [Command-line engine](CLI.md#the-table), where th
 |---|---|---|---|---|---|---|
 | cable (USB / UART) | - / - | - / - | - / refused | - / - | - / - | - / - |
 | paired phone (BLE, own PIN) | - / - | - / - | - / refused | - / - | - / refused | - / - |
-| untrusted (TCP port, default-PIN BLE, unset context) | refused | refused | refused | refused | refused | refused |
+| untrusted (TCP port, default-PIN BLE, Ethernet console before login, unset context) | refused | refused | refused | refused | refused | refused |
 | remote admin (LoRa, password set) | - / - | - / refused | local only / refused | refused | local only / refused | - / - |
 | remote admin, default password | refused | refused | refused | refused | refused | refused |
+| Ethernet console, logged in | - / off | - / off | local only / off | refused / off | local only / off | - / off |
 | guest (LoRa) | refused | refused | refused | refused | refused | refused |
 | flagged contact (Companion) | - / off | limited / off | limited / off | refused / off | limited / off | - / off |
 | MQTT, TLS verified | - / - | - / flag | refused | refused | refused | - / flag |
@@ -139,7 +140,7 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | Command and syntax | What it does | Origin | Class | Notes |
 |---|---|---|---|---|
 | `reboot` | Restart the node. | stock | reboot | No reply is sent. Only the exact line `reboot` is the reboot class; the handler also reboots on a line that merely starts with `reboot` (for example `reboot now`), and that line is classified `write`. |
-| `poweroff` | Power the board off. | stock, behaviour changed | destructive | Stock let any remote admin run it. Now the cable (or the Ethernet console) only; a remote admin gets `ERR: not permitted`. Needs someone on site to power the board on again. Matched by prefix. |
+| `poweroff` | Power the board off. | stock, behaviour changed | destructive | Stock let any remote admin run it. Now the cable only; a remote admin gets `ERR: not permitted`. Needs someone on site to power the board on again. Matched by prefix. |
 | `shutdown` | Same as `poweroff`. | stock, behaviour changed | destructive | As `poweroff`. |
 | `clkreboot` | Reset the clock to 15 May 2024 and reboot. | stock | write | Classified `write`, not `reboot`: refused for a Hardened remote admin. |
 | `advert` | Send a flood advert. | stock | write | Matched by prefix (any line starting `advert` that is not `advert.zerohop`). |
@@ -194,7 +195,7 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | `sensor get <key>` / `sensor set <key> <value>` / `sensor list [start]` | Read, set and list the sensor board's settings. | stock | read / write | `sensor get` and `sensor list` are `read`; `sensor set` is `write`. |
 | `region` / `region get <name>` / `region list allowed\|denied` | List the region tree, show a region, list allowed or denied regions. | stock | read / write | Exactly `region` and `region get <name>` are `read`. `region list ...`, `region home`, `region default` (the queries without an argument too) are `write`, so a Hardened remote admin cannot ask them. |
 | `region load` / `region save` / `region put <name> [parent]` / `region remove <name>` / `region allowf <name>` / `region denyf <name>` / `region home [name]` / `region default [name\|<null>]` | Edit the region tree, flood permissions, home and default scope. | stock | write | `region load` reads the following lines until a blank one. |
-| `eth.status` | Ethernet address and port. | stock | write | RAK4631 `_ethernet` builds of the repeater and room server only. Not registered, hence `write` for the gate, but it is answered before the gate, on the TCP console, see Known gaps. |
+| `eth.status` | Ethernet address and port. | stock | write | RAK4631 `_ethernet` builds of the repeater and room server only. Not registered, hence `write` for the gate: the Ethernet console answers it only after `login`, the serial console as the cable. |
 | `get radio` / `set radio <freq>,<bw>,<sf>,<cr>` | Show or set frequency (MHz, 150-2500), bandwidth (kHz, 7-500), spreading factor (5-12), coding rate (5-8). | stock | read / write | `OK - reboot to apply`. Saved at once, applied at reboot. |
 | `get freq` | Show the frequency. | stock | read |  |
 | `get af` / `set af <0-9>` | Airtime factor: after a transmission the node stays silent for `af` times its airtime. | stock | read / write | A duty cycle of `1/(1+af)`. The regulatory floor can make the effective limit stricter, see `get dutycycle`. |
@@ -233,7 +234,8 @@ The posture and audit commands are handled in the Repeater and Room server front
 | Command and syntax | What it does | Origin | Class | Notes |
 |---|---|---|---|---|
 | `discover.neighbors` | Send a zero-hop discovery request. | stock | write | Takes no options (`Err - discover.neighbors has no options`). |
-| `eth.status` | Ethernet address and port (RAK4631 `_ethernet` builds). | stock | write | Answered by the TCP console front end before the gate, see Known gaps. |
+| `login <admin password>` / `logout` | Ethernet console only: log this connection in as the Ethernet admin, or out again. | MECON | read | Not a handler command and not registered: the Ethernet console answers it before the gate. Refused in Hardened (`ERR: the Ethernet console is off in hardened posture`) and while the admin password is the stock default or empty; a wrong password answers `ERR: wrong password` and is audited as `login-fail net` without the attempt; five wrong attempts lock logins for a minute. The login ends with the connection. |
+| `eth.status` | Ethernet address and port (RAK4631 `_ethernet` builds). | stock | write | On the Ethernet console only after `login` (class `write`); on the serial console as the cable. |
 
 ### Room server only
 
@@ -241,7 +243,8 @@ The posture and audit commands are handled in the Repeater and Room server front
 | Command and syntax | What it does | Origin | Class | Notes |
 |---|---|---|---|---|
 | `room.post <text>` | Post a system message to the room. | stock | write | `ERR empty message` for an empty text. |
-| `eth.status` | Ethernet address and port (RAK4631 `_ethernet` builds). | stock | write | Answered by the TCP console front end before the gate, see Known gaps. |
+| `login <admin password>` / `logout` | Ethernet console only: log this connection in as the Ethernet admin, or out again. | MECON | read | Not a handler command and not registered: the Ethernet console answers it before the gate. Refused in Hardened (`ERR: the Ethernet console is off in hardened posture`) and while the admin password is the stock default or empty; a wrong password answers `ERR: wrong password` and is audited as `login-fail net` without the attempt; five wrong attempts lock logins for a minute. The login ends with the connection. |
+| `eth.status` | Ethernet address and port (RAK4631 `_ethernet` builds). | stock | write | On the Ethernet console only after `login` (class `write`); on the serial console as the cable. |
 
 ### Sensor only
 
@@ -367,7 +370,6 @@ get mecon.cli.check set name x
 
 ## Known gaps
 
-- **Ethernet TCP console.** On RAK4631 `_ethernet` builds of the Repeater and Room server, lines from the TCP console reach the same handler as the serial console with sender timestamp 0, so the engine treats them as the **cable**: any client that can open the port (23 by default) has console privileges, including `get prv.key` in Normal and `erase`. [CLI.md](CLI.md) lists the TCP port as untrusted only for the Companion. Not yet gated by a separate context.
 - **Sensor role.** Shares `CommonCLI` and therefore the gate for remote callers, but has no posture or audit commands and the stock login (the default admin password still logs in). Not exercised in the simulator or on hardware.
 - **Rescue console `ls`, `cat`, `rm`** are not routed through the engine: they exist only on the cable and are not registered, so a remote caller never reaches them.
 - **Board commands.** Vendor commands added by a board class are not described here.

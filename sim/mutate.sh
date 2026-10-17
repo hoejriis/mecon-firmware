@@ -620,7 +620,20 @@ mutate ver_script_any_tag bin/mecon_version.py '"--match", "v[0-9]*"' '"--match"
 mutate cli_reference_registry_row_misspelt docs/CLI_REFERENCE.md '| `neighbors` | List nearby repeaters heard.' '| `neighbours` | List nearby repeaters heard.' sim/tests/test_cli_reference_sync.py
 mutate cli_reference_mecon_command_renamed src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.mem") == 0' 'strcmp(cmd, "get mecon.memx") == 0' sim/tests/test_cli_reference_sync.py
 
+# The Ethernet console is the untrusted/remote-admin caller, never timestamp 0 (the cable)
+mutate eth_console_cable_repeater examples/simple_repeater/main.cpp "Cli::netConsoleRun(ethernet_console, the_mesh, ADMIN_PASSWORD, rtc_clock.getCurrentTime(), ethernet_command, reply," "the_mesh.handleCommand(0, ethernet_command, reply); if (0) Cli::netConsoleRun(ethernet_console, the_mesh, ADMIN_PASSWORD, rtc_clock.getCurrentTime(), ethernet_command, reply," sim/tests/test_ethernet_console.py
+mutate eth_console_cable_room examples/simple_room_server/main.cpp "Cli::netConsoleRun(ethernet_console, the_mesh, ADMIN_PASSWORD, rtc_clock.getCurrentTime(), ethernet_command, reply," "the_mesh.handleCommand(0, ethernet_command, reply); if (0) Cli::netConsoleRun(ethernet_console, the_mesh, ADMIN_PASSWORD, rtc_clock.getCurrentTime(), ethernet_command, reply," sim/tests/test_ethernet_console.py
+mutate eth_console_runs_as_timestamp_zero src/helpers/cli/NetConsole.h "mesh.handleCommand(now != 0 ? now : 1, line, reply);" "mesh.handleCommand(0, line, reply);" sim/tests/test_ethernet_console.py
+mutate eth_console_unauthenticated_is_cable src/helpers/cli/CliPolicy.h "case T_NETCON: return c.auth == A_NETCON_ADMIN ? P_NETCON_ADMIN : P_UNTRUSTED;" "case T_NETCON: return c.auth == A_NETCON_ADMIN ? P_NETCON_ADMIN : P_CABLE;" sim/tests/test_ethernet_console.py
+mutate eth_console_login_in_hardened src/helpers/cli/NetConsole.h "    if (posture != 0) {
+      Posture::recordRefusal" "    if (false) {
+      Posture::recordRefusal" sim/tests/test_ethernet_console.py
+mutate eth_console_login_with_default_password src/helpers/cli/NetConsole.h "if (is_default || !match) {" "if (!match) {" sim/tests/test_ethernet_console.py
+mutate eth_console_session_survives_reconnect variants/sim/SimEthernetCLI.h "    ethernet_console.endSession();
+    sim_eth_send(ETHERNET_CLI_BANNER" "    sim_eth_send(ETHERNET_CLI_BANNER" sim/tests/test_ethernet_console.py
+
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries after a full run
+
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 
