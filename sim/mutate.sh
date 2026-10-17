@@ -29,6 +29,9 @@ if old not in s:
     print("TARGET MISSING: %s in %s" % (sys.argv[0], p)); sys.exit(1)
 if old == new:
     print("NO-OP MUTANT in %s" % p); sys.exit(1)
+if s.count(old) > 1:
+    # mutate() replaces only the first occurrence, which may be the wrong one: make the target unique
+    print("AMBIGUOUS TARGET (%d occurrences) in %s" % (s.count(old), p)); sys.exit(1)
 PY
     if [ $? -ne 0 ]; then echo "  -> $name"; SURVIVED=1; fi
     return 0
@@ -318,7 +321,15 @@ mutate connmode_mqtt_password_drawn $UI "      int ly = 19;" "      int ly = 19;
 # --- adaptive contact memory (docs/CONTACTS.md): undo each rule and its tests must go red
 CS=src/helpers/ContactStore.cpp
 CT_SIM=sim/tests/test_contacts.py
-mutate contacts_bucket_written_in_place examples/companion_radio/DataStore.cpp 'return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; });' 'File f = openWrite(_getContactsChannelsFS(), path); if (!f) return false; bool ok = f.write(buf, len) == len; f.close(); return ok;' "$CT_SIM::test_power_cut_in_the_temp_file_keeps_the_previous_record $CT_SIM::test_contacts_are_never_written_in_place"
+mutate contacts_bucket_written_in_place examples/companion_radio/DataStore.cpp '  bucketPath(path, sizeof(path), b);
+  return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; });
+}
+
+bool DataStore::removeBucket' '  bucketPath(path, sizeof(path), b);
+  File f = openWrite(_getContactsChannelsFS(), path); if (!f) return false; bool ok = f.write(buf, len) == len; f.close(); return ok;
+}
+
+bool DataStore::removeBucket' $CT_SIM::test_power_cut_in_the_temp_file_keeps_the_previous_record $CT_SIM::test_contacts_are_never_written_in_place
 mutate contacts_stock_file_written_in_place examples/companion_radio/DataStore.cpp 'AtomicFile::save(_getContactsChannelsFS(), "/contacts3", [host, filter](Stream& s) {' 'auto inPlaceSave = [](FILESYSTEM* fs, const char* path, auto writer) { File f = openWrite(fs, path); if (f) { writer(f); f.close(); } }; inPlaceSave(_getContactsChannelsFS(), "/contacts3", [host, filter](Stream& s) {' $CT_SIM::test_the_stock_array_build_is_ram_only_and_atomic_and_evicts_the_oldest
 mutate contacts_flush_skipped examples/companion_radio/MyMesh.cpp '  flushContacts();   // rewrites the buckets that hold a changed record, each one atomically' '' $CT_SIM::test_power_cut_between_write_and_rename
 mutate contacts_old_file_kept_after_migration examples/companion_radio/MyMesh.cpp '  if (ok) _store->removeLegacyContacts();' '' $CT_SIM::test_stock_contacts_file_migrates_unchanged
