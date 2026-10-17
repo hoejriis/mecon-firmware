@@ -151,6 +151,7 @@ On a standalone build the home page shows one line at y=32 that says how the pho
 | Wi-Fi mode, connected | `Wi-Fi <address>` | normal |
 | Wi-Fi mode, not connected | `Wi-Fi: <state>` (for example `Wi-Fi: backoff`) or `Wi-Fi: off` | normal |
 | Wi-Fi mode, no profile | `Wi-Fi: no profile` | normal |
+| heap low ([Heap floor](CONNECTIVITY_MODE.md#heap-floor)) | the line above, then ` LOW MEM` when both fit the 21 columns (`BLE LOW MEM`), else `LOW MEM` alone | warning |
 
 BLE mode, per-device PIN (*captured*; the simulated USB port always counts as a connected host, which is why `< Connected >` shows):
 
@@ -161,6 +162,21 @@ BLE mode, per-device PIN (*captured*; the simulated USB port always counts as a 
 |    Unread Msg: 0    |
 |                     |
 |         BLE         |
+|    < Connected >    |
+|                     |
+|                     |
++---------------------+
+```
+
+BLE mode while the largest free heap block is below the floor (*captured*, the simulator's heap lowered by the test):
+
+```text
++---------------------+
+|ExampleNode          |
+|                     |
+|    Unread Msg: 0    |
+|                     |
+|     BLE LOW MEM     |
 |    < Connected >    |
 |                     |
 |                     |

@@ -177,6 +177,16 @@ def test_ble_default_pin_and_hardened(nodes):
     emit("connectivity_ble_hardened", "Connectivity page, BLE mode, Hardened, per-device PIN", last_frame(n))
 
 
+def test_ble_low_heap(nodes):
+    n, c = start(nodes, "cap_low")
+    t.home_settled(n)
+    settle(n)
+    n.heap(300000, 1000)                       # the largest block falls below the 20 KB floor
+    assert n.ui.wait_text("LOW MEM", 20), n.ui.last_text()
+    settle(n)
+    emit("home_ble_low_mem", "Home page, BLE mode, largest free heap block below the floor", last_frame(n))
+
+
 @pytest.fixture
 def wenv(tmp_path):
     return WifiEnv(str(tmp_path / "w.wifi"))

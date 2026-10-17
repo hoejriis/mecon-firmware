@@ -4,6 +4,7 @@
 // takes. The struct has no field for a password, key or PIN digit, so nothing read here can reach the screen.
 #ifdef ENABLE_CONNMODE
 #include <helpers/connmode/ConnStatus.h>
+#include <helpers/HeapFloor.h>
 #include <helpers/wifi/WifiController.h>
 #ifdef ENABLE_MQTT
   #include <helpers/mqtt/MqttController.h>
@@ -15,6 +16,7 @@ inline void fillConnStatus(ConnMode::ConnStatus& s, AbstractUITask* task, NodePr
   s.posture = prefs->posture;
   s.ble_pin_default = ConnMode::pinIsDefault(the_mesh.getBLEPin());
   s.ble_connected = task->isBleConnected();
+  s.heap_low = heapFloor().low();
 
   WifiController& w = wifiController();
   s.wifi_has_profile = prefs->wifi_profiles.configuredCount() > 0;

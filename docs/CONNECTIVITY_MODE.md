@@ -40,6 +40,17 @@ A default PIN (0 or the published 123456) and an unverified TLS session are draw
 
 Compiled sizes of the standalone builds are in the CI memory table of each pull request. Measured when the feature was written: Heltec V3 RAM 201,988 B, flash 1,850,577 B (55.4 % of the app partition); Heltec V4 RAM 201,976 B, flash 1,848,793 B (28.2 %). Against the `_wifi` builds with MQTT this is about 22.6 KB more static RAM and 566 KB more flash, almost all the BLE stack.
 
+## Heap floor
+
+A run-time check that the largest free heap block stays above a per-board floor (`src/helpers/HeapFloor.h`). CI cannot measure heap and the hardware sessions only sample it, while a Wi-Fi + TLS session, a BLE pairing or a long uptime can leave no block big enough for the next allocation.
+
+- **When.** Once after setup, then every 60 s. The figure is the **largest allocatable block**, not the total free heap (fragmentation is what makes an allocation fail). On the ESP32 builds the floor is 20,480 B (the threshold proposed from the first hardware session); `-D HEAP_FLOOR_BYTES=<n>` changes it at build time, and `0` turns the check off. Platforms whose heap figure is not measurable never fire, and the Repeater and Room server run no check.
+- **Episode.** The device is *low* once the largest block is below the floor, and the episode ends when it is back at floor + 2,048 B (so a block hovering at the floor is one episode, not one per look).
+- **What it does while low.** `get mecon.mem` reports `heap_low=1` and `floor=<bytes>`; the home status line carries `LOW MEM` (after the mode text where both fit the 21-column line, else alone, drawn as a warning); and **one** audit entry is written per episode: event `low-mem`, caller `system`, command class `heap-floor`. The entry folds like any other, so its count is the number of episodes since the log was last cleared.
+- **What it does not do.** It does not stop anything, shed load or restart: it makes a shrinking margin visible and gives hardware sessions a threshold to test against. The sizes are the hardware session's proposal, not a promise of how much headroom a feature needs.
+
+The decision logic is checked by native unit tests; the state change, the single audit entry per episode, the CLI fields and the screen marker are checked end to end on the simulated board (the test lowers the simulated heap while the node runs). **Not verified:** the real allocator and the figure on a board.
+
 ## Known limits
 
 - USB coexists with BLE and with Wi-Fi in the multiplexed serial interface; this is **assumed, not verified on hardware**, for both boards. The V3 reaches USB through a UART bridge; the V4 uses the chip's native USB, whose coexistence with BLE is the one to check first. A board where it fails is recorded here as an exception.

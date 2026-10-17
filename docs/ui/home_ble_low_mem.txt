@@ -1,0 +1,11 @@
+# Home page, BLE mode, largest free heap block below the floor
++---------------------+
+|ExampleNode          |
+|                     |
+|    Unread Msg: 0    |
+|                     |
+|     BLE LOW MEM     |
+|    < Connected >    |
+|                     |
+|                     |
++---------------------+

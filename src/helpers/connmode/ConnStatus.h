@@ -40,9 +40,11 @@ struct ConnStatus {
   const char* mqtt_state = "off"; // MqttCore::stateName() when not connected
   int8_t mqtt_profile = -1;
   uint8_t mqtt_tls = TLS_NONE;
+  // Memory
+  bool heap_low = false;          // the largest free heap block is below the floor (helpers/HeapFloor.h)
 };
 
-enum { LINES = 4, LINE_LEN = 40 };
+enum { LINES = 4, LINE_LEN = 40, HOME_COLUMNS = 21 };   // a screen line is 21 characters wide
 
 // Fills up to LINES lines for the status screen; `warn[i]` marks a line the screen draws as a warning.
 // Returns the number of lines.
@@ -83,8 +85,19 @@ inline int formatLines(const ConnStatus& s, char lines[LINES][LINE_LEN], bool wa
   return LINES;
 }
 
-// The one status line on the home screen.
+// The one status line on the home screen. While the heap is low the line carries the marker LOW MEM: after the normal
+// text when both fit the 21-character line, else alone (the connectivity page still has the details).
+inline void formatHomeStatus(const ConnStatus& s, char* out, size_t cap);
 inline void formatHome(const ConnStatus& s, char* out, size_t cap) {
+  formatHomeStatus(s, out, cap);
+  if (!s.heap_low) return;
+  static const char MARK[] = "LOW MEM";
+  const size_t len = strlen(out);
+  if (len + 1 + (sizeof(MARK) - 1) <= HOME_COLUMNS && cap > len + sizeof(MARK)) snprintf(out + len, cap - len, " %s", MARK);
+  else snprintf(out, cap, "%s", MARK);
+}
+
+inline void formatHomeStatus(const ConnStatus& s, char* out, size_t cap) {
   if (sanitize(s.mode) == BLE) {
     snprintf(out, cap, "%s", s.ble_pin_default ? "BLE (default PIN!)" : "BLE");
   } else if (!s.wifi_has_profile) {

@@ -6,7 +6,8 @@
 //
 //   get mecon.cli.who             how the engine sees the caller: transport, authentication, posture, row of the table
 //   get mecon.cli.check <line>    what the table would say to <line> for this caller, without running it or auditing it
-//   get mecon.mem                 heap free now, largest allocatable block, lowest free since boot (where tracked)
+//   get mecon.mem                 heap free now, largest allocatable block, lowest free since boot (where tracked), and the
+//                                 heap floor check: heap_low=1|0 and floor=<bytes> (0 = no check on this role or platform)
 //   get mecon.version             the build's full identity and the upstream base it carries (helpers/MeconVersion.h)
 //
 // All are reads. Pure logic: runs in the native unit tests.
@@ -15,6 +16,7 @@
 #include <string.h>
 #include "CliRegistry.h"
 #include "../MemStats.h"
+#include "../HeapFloor.h"
 #include "../MeconVersion.h"
 
 namespace Cli {
@@ -95,13 +97,17 @@ inline const char* reasonName(uint8_t r) {
   return "?";
 }
 
+// The reply to `get mecon.mem`. Split out so the native unit tests can feed it a measured heap.
+inline void formatMem(const MemStats& m, const HeapFloor& floor, char* reply, size_t max) {
+  if (!m.known) snprintf(reply, max, "> heap: not measurable on this platform");
+  else snprintf(reply, max, "> heap free=%lu largest=%lu min_free=%lu heap_low=%d floor=%lu", (unsigned long)m.free,
+                (unsigned long)m.largest, (unsigned long)m.min_free, floor.low() ? 1 : 0, (unsigned long)floor.floorBytes());
+}
+
 // Returns true when `cmd` is one of the MECON commands and `reply` holds the answer.
 inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char* reply, size_t max) {
   if (strcmp(cmd, "get mecon.mem") == 0) {
-    const MemStats m = memStats();
-    if (!m.known) snprintf(reply, max, "> heap: not measurable on this platform");
-    else snprintf(reply, max, "> heap free=%lu largest=%lu min_free=%lu", (unsigned long)m.free, (unsigned long)m.largest,
-                  (unsigned long)m.min_free);
+    formatMem(memStats(), heapFloor(), reply, max);
     return true;
   }
   if (strcmp(cmd, "get mecon.version") == 0) {

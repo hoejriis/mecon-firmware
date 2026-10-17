@@ -240,6 +240,7 @@ class Node:
         self.mqtt = mqtt
         self.extra = list(extra or [])   # further node command-line options, e.g. ["--heap-budget", "60000"]
         self.ui = UiProbe(workdir, name) if kind == "companion_standalone" else None
+        self.heap_path = os.path.join(str(workdir), name + ".heap")   # --heap-file: the heap the node reports at run time
         self.proc = None
         self.port = None
 
@@ -263,6 +264,7 @@ class Node:
         if self.mqtt:
             cmd += ["--mqtt-env", self.mqtt.path]
         cmd += self.extra
+        cmd += ["--heap-file", self.heap_path]
         if self.ui:
             # Gestures belong to one boot: start each process with an empty input file, so the node reads it from
             # the beginning and a gesture written before its first poll is never mistaken for an old one.
@@ -282,6 +284,14 @@ class Node:
         raise RuntimeError("%s did not publish a serial port" % self.name)
 
     def sanitizer_report(self):
+    def heap(self, free, largest=None):
+        """Change the heap the node reports (`get mecon.mem`, the heap-floor check) while it runs: `free` bytes free and
+        `largest` the largest allocatable block (default: the same). The contact store keeps its boot-time budget."""
+        tmp = self.heap_path + ".tmp"
+        with open(tmp, "w") as f:
+            f.write("%d %d\n" % (free, free if largest is None else largest))
+        os.replace(tmp, self.heap_path)
+
         """Text of any AddressSanitizer/UBSan report this node printed (empty when clean)."""
         self.log.flush()
         text = open(self.log_path, errors="replace").read()
