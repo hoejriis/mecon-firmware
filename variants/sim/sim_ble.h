@@ -120,6 +120,7 @@ class SerialBLEInterface : public BaseSerialInterface {
 
 public:
   bool isTrustedTransport() const override { return _pin != 0 && _pin != 123456; }   // as the real class
+  bool isBleTransport() const override { return true; }
   void begin(const char*, char*, uint32_t pin) {
     _pin = pin;
     fprintf(stderr, "SIMBLE begin pin=%s\n", (pin == 0 || pin == 123456) ? "default" : "per-device");

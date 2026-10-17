@@ -193,7 +193,8 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   Verdict v;
   v.allow = r == R_ALLOW;
   v.reason = r;
-  v.caller = auditCaller(p);
+  // An untrusted BLE link (default PIN) is audited as the BLE it is, not as "net"; Wi-Fi / Ethernet TCP stay "net".
+  v.caller = (p == P_UNTRUSTED && c.transport == T_BLE) ? Posture::CALLER_BLE : auditCaller(p);
   return v;
 }
 

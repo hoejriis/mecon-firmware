@@ -28,6 +28,11 @@ public:
    *          Hardened posture lets only a cable factory-reset the device. Fails closed.
    */
   virtual bool isCableTransport() const { return false; }
+  /**
+   * \returns true for a BLE link, whatever its PIN. Only says which transport a frame arrived on (the audit
+   *          records a refusal against it); trust is isTrustedTransport()'s alone. Fails closed to "not BLE".
+   */
+  virtual bool isBleTransport() const { return false; }
   virtual void loop() {};
 
   /**

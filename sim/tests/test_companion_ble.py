@@ -168,8 +168,8 @@ def test_with_the_default_pin_management_is_refused_and_messaging_works(ether, n
     ba.close()
     u = usb_after_ble(a)
     ev = audit_entries(u.cli)
-    for what in ("cli", "key-export", "key-import", "set-pin", "factory-reset"):   # audited, as an untrusted transport ("net")
-        assert any(e.endswith("refused net %s x1" % what) for e in ev), (what, ev)
+    for what in ("cli", "key-export", "key-import", "set-pin", "factory-reset"):   # audited against the transport it arrived on ("ble"), not as "net"
+        assert any(e.endswith("refused ble %s x1" % what) for e in ev), (what, ev)
 
 
 # ------------------------------------------------------------------ Hardened
