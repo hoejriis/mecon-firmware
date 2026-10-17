@@ -96,6 +96,10 @@ def boot(nodes, tmp_path, name, commands, hardened=False, menv=None, seed=3):
 
 
 def wait_status(c, text, timeout=30.0):
+    # "profile=<n>" means a session on that profile. Since the connect runs off the main loop, the status also reads
+    # "connecting profile=<n>" while an attempt is under way; a bare substring match returned before the session existed.
+    if text.startswith("profile="):
+        text = "connected " + text
     end = time.time() + timeout
     s = ""
     while time.time() < end:
