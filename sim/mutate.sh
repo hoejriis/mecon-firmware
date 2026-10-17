@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
 mkdir -p .sim-logs
 ONLY="${1:-}"
 SURVIVED=0
+MATCHED=0
 DRY=0
 if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; fi   # --dry: only check that every mutant's target text exists (no build, no tests)
 if [ "$ONLY" = "--list" ]; then grep -o "^mutate [a-z0-9_]*" "$0" | cut -d" " -f2; exit 0; fi
@@ -18,6 +19,7 @@ build() { sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-lo
 mutate() {
   name="$1"; file="$2"; old="$3"; new="$4"; target="$5"
   if [ -n "$ONLY" ] && [ "$ONLY" != "$name" ]; then return 0; fi
+  MATCHED=1
   if [ "$DRY" = 1 ]; then
     python3 - "$file" "$old" "$new" <<'PY'
 import sys
@@ -496,9 +498,13 @@ mutate mqtt_topic_is_not_per_device src/helpers/cli/CliMqtt.h "snprintf(out, cap
 mutate mecon_check_always_allows src/helpers/cli/MeconCli.h "v.allow ? \"allowed\" : reasonName(v.reason)" "\"allowed\"" unit:test_cli_engine
 mutate mecon_who_hides_the_principal src/helpers/cli/MeconCli.h "principalName(principalOf(ctx)), ctx.mgmt ? \" mgmt=on\" : \"\");" "\"cable\", ctx.mgmt ? \" mgmt=on\" : \"\");" unit:test_cli_engine
 
-build
+mutate mem_unknown_printed_as_measured src/helpers/cli/MeconCli.h "if (!m.known) snprintf" "if (false) snprintf" unit:test_cli_engine
+
+if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries after a full run
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 
+if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
+  echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1
+fi
 exit $SURVIVED
-mutate mem_unknown_printed_as_measured src/helpers/cli/MeconCli.h "if (!m.known) snprintf" "if (false) snprintf" unit:test_cli_engine
