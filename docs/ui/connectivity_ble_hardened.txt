@@ -1,0 +1,11 @@
+# Connectivity page, BLE mode, Hardened, per-device PIN
++---------------------+
+|ExampleNode          |
+|                     |
+|Mode: BLE, Hardened  |
+|Pin: per-device      |
+|Phone: not connected |
+|Wi-Fi, MQTT: off     |
+| to Wi-Fi: long press|
+|                     |
++---------------------+

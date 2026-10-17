@@ -1,6 +1,6 @@
 # Device settings contract
 
-> **Target documentation:** this public repository has no installable release yet. Public releases start at **0.1.0**, a standalone enhanced MeshCore on 1.18.0 (see [Clean refounding on MeshCore 1.18](../CLEAN_REFOUNDING_1_18.md)); the first version to serve a MECON fleet is planned as 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../../README.md) and the [documentation index](../README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 Configuration is one logical model across supported MQTT, USB, BLE and remote MeshCore/LoRa paths. **Released MeshCore 1.18 CLI/configuration semantics and storage are authoritative for native settings.** MECON does not maintain a second authoritative copy of native settings and does not define transport-specific setting semantics.
 
@@ -60,7 +60,7 @@ Native mesh/radio/location/routing/GPS/system settings map to released MeshCore 
 
 ## Wi-Fi
 
-MECON extends upstream Wi-Fi support to **three ordered profiles**, slots 0–2, only where the target supports the IP profile. Each profile contains SSID and write-only credential material plus any future versioned connection metadata. The device tries available configured networks in entered priority order and changes association as availability changes.
+MECON extends upstream Wi-Fi support to **three ordered profiles**, slots 0–2 (target contract; the standalone firmware has up to ten profiles, [Wi-Fi profiles](../WIFI.md)), only where the target supports the IP profile. Each profile contains SSID and write-only credential material plus any future versioned connection metadata. The device tries available configured networks in entered priority order and changes association as availability changes.
 
 Current status reports the actual associated slot and actual SSID independently from configured values so configuration drift can be detected. Disconnected state is explicit `null`; slot 0 must never be overloaded to mean disconnected.
 

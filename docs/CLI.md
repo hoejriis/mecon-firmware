@@ -1,5 +1,7 @@
 # Command-line engine
 
+Every command, per role, with its class and origin: [CLI reference](CLI_REFERENCE.md).
+
 Stock MeshCore 1.18 lets commands reach a device four ways, each with its own parser and its own idea of who may do what: the Companion's `CMD_RUN_CLI_COMMAND` frame, the serial rescue console, a remote `TXT_TYPE_CLI_COMMAND` from a flagged contact, and the repeater and room server console and remote admin. This firmware routes all of them, and the new MQTT transport, through **one engine** in `src/helpers/cli/`.
 
 What the simulated-board suite checks here is software behaviour. BLE needs a radio stack the simulator does not have: its rows of the table are covered by unit tests of the table, not by a simulated pairing ([Simulated-board test harness](SIMULATION.md)). **Nothing here has run on a board.**
@@ -95,7 +97,7 @@ The Companion `_wifi` builds with MQTT ([MQTT broker profiles](MQTT.md)) subscri
 
 - `id` is 1 to 32 characters of letters, digits, `.` `_` `:` `-`; it is echoed unchanged. `cmd` is 1 to 159 characters, with no control characters (a command line has no line breaks). Other keys are ignored; a duplicated `id` or `cmd`, a nested value, or anything that is not one JSON object is a `bad-request`, answered with an empty `id` and run as nothing.
 - `status` is `ok` (the command ran), `refused` (the gate said no; `reply` is the refusal text of the table above), `unknown` (allowed, but not a command) or `bad-request`. `reply` is the command's own reply, JSON-escaped; a reply that does not fit the 512-byte MQTT buffer is cut at a character boundary and `"truncated":true` is added.
-- QoS 0, not retained. **`reboot` and `poweroff` are never answered**: the device is gone before it could reply.
+- QoS 0, not retained. **`reboot` is never answered**: the device is gone before it could reply. `poweroff` and `shutdown` are `destructive`, so a request for them is answered `refused` (`ERR: not permitted`) and the device stays up.
 - A request is answered in every case, including a refusal. The device subscribes on any session; a request is **run only on a session that is TLS-verified** (the broker certificate satisfied the profile's anchor: the pinned fingerprint, or a chain to the profile's CA certificate, which for a discovery profile or an address literal is the only check, see [MQTT broker profiles](MQTT.md)). On a plain session, or TLS without an anchor, every request is answered `refused` with `ERR: management needs a TLS-verified broker` and audited.
 - **Authority.** Mosquitto (or whatever broker) decides who may publish to a device's request topic; the device cannot tell publishers apart. Treat publish rights on `mecon/+/cli/req` as management rights over every device, and grant them per device with the broker's ACLs. The device's own check is the transport: the session must be TLS-verified, so the broker is the one the owner pinned.
 - **Hardened.** A verified session reads. Writes and `reboot` need the profile flagged for management: `set mqtt.profile <n> manage on` (`off` clears it). The flag can be set only from a caller that may change the posture (the cable or a paired phone); a broker, however trusted, cannot flag itself. `get mqtt.profile` shows `manage=on` only when on, so a profile that does not manage lists as it always did. In Normal a verified session may manage without the flag. No session, flagged or not, runs a `secret`, `posture` or `destructive` command.
@@ -126,4 +128,5 @@ The registry and the table are `const` data in flash. Not in the static figure: 
 - BLE with a default PIN and the TCP port are one *untrusted* row; the audit records both as `net`.
 - A remote `erase` or `get prv.key` on a repeater or room server used to fall through to an unknown-command reply and now gets `ERR: not permitted` and an audit entry. The only behavioural difference from before the engine; no test relied on the old reply.
 - The sensor example reaches the same gate through the common CLI. It had no front door before, so Hardened now applies its remote read-only rule there too. The sensor role is not verified on hardware or in the simulator.
+- On the RAK4631 `_ethernet` builds of the Repeater and Room server, the Ethernet TCP console hands its lines to the handler with sender timestamp 0, which the engine reads as the cable: the port is not an untrusted caller there. Only the Companion's TCP server is the *untrusted* row.
 - No rate limit on requests. A flood of refused requests folds into one audit entry but each is answered.

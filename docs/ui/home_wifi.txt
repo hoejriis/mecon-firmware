@@ -1,0 +1,11 @@
+# Home page, Wi-Fi mode, connected (no pairing PIN is drawn)
++---------------------+
+|ExampleNode          |
+|                     |
+|    Unread Msg: 0    |
+|                     |
+|   Wi-Fi 192.0.2.10  |
+|    < Connected >    |
+|                     |
+|                     |
++---------------------+

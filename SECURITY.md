@@ -1,6 +1,6 @@
 # Security reporting
 
-This public repository has no supported software release line yet. Private beta acceptance and public release readiness are distinct.
+This repository publishes source-only pre-releases (0.1.x), verified on simulated boards and not on hardware; there is no supported release line yet. Private beta acceptance and public release readiness are distinct.
 
 Do not publish suspected vulnerabilities, exploit details, private keys, tokens, passwords or private message contents in public issues.
 
@@ -8,4 +8,4 @@ Report privately through this repository's **Security → Advisories → Report 
 
 A private report should identify the affected build, component or board/role, reproduction conditions and likely impact. A roadmap or contract is not evidence of a completed security review.
 
-See [Security model](docs/SECURITY_MODEL.md) and [Security and authority contract](docs/contract/SECURITY_AND_AUTHORITY.md) for the target boundaries.
+See [Standalone security postures](docs/STANDALONE_POSTURES.md) for what is built, and [Security model](docs/SECURITY_MODEL.md) and [Security and authority contract](docs/contract/SECURITY_AND_AUTHORITY.md) for the later MECON target boundaries.

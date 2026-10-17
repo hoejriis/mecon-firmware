@@ -1,0 +1,11 @@
+# Connectivity page, BLE mode, default PIN
++---------------------+
+|ExampleNode          |
+|                     |
+|Mode: BLE, Normal    |
+|Pin: DEFAULT (unsafe)|
+|Phone: not connected |
+|Wi-Fi, MQTT: off     |
+| to Wi-Fi: long press|
+|                     |
++---------------------+

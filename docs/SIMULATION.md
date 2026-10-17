@@ -3,8 +3,7 @@
 > **A pass in this harness is software verification on simulated boards. It is not a
 > hardware claim.** No radio, flash, USB or BLE stack of a real board is exercised.
 
-The harness builds the real upstream application code (`examples/companion_radio` and
-`examples/simple_repeater`, unmodified) into Linux executables and drives them the way a
+The harness builds the real application code (`examples/companion_radio`, `examples/simple_repeater` and `examples/simple_room_server`, with no simulator-specific edits) into Linux executables and drives them the way a
 client would. It is the regression rig for work that has no hardware to run on.
 
 ## Running it

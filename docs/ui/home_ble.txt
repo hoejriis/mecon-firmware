@@ -1,0 +1,11 @@
+# Home page, BLE mode, per-device PIN (the simulated USB host counts as connected)
++---------------------+
+|ExampleNode          |
+|                     |
+|    Unread Msg: 0    |
+|                     |
+|         BLE         |
+|    < Connected >    |
+|                     |
+|                     |
++---------------------+

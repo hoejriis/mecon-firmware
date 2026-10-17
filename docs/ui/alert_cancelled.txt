@@ -1,0 +1,11 @@
+# Alert after a click while armed
++---------------------+
+|ExampleNode          |
+|                     |
+| +-----------------+ |
+| |    Cancelled    | |
+| |                 | |
+| +-----------------+ |
+| to Wi-Fi: long press|
+|                     |
++---------------------+

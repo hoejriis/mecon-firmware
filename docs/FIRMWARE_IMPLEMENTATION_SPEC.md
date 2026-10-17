@@ -1,6 +1,6 @@
 # MECON 1.0 firmware implementation specification
 
-> **Target documentation:** this public repository has no installable release yet. Public releases start at **0.1.0**, a standalone enhanced MeshCore on 1.18.0 (see [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md)); the first version to serve a MECON fleet is planned as 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards (hardware testing has started on a Heltec V3; no target has passed acceptance yet), and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../README.md) and the [documentation index](README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 This document is the **functional implementation checklist** for rebuilding mecon-firmware from the released MeshCore 1.18 baseline. Together with `docs/contract/`, it must be sufficient to determine what the firmware is expected to do without reading the private MVP source. The private MVP is evidence and a test oracle only.
 
@@ -23,7 +23,7 @@ The following decisions supersede older wording in migration/audit material and 
 
 ## Release dependency and foundation
 
-The public line (first release mecon-firmware 0.8.0) is based on MeshCore 1.18.0, released 2026-10-15. Pin a specific compatible upstream revision, prove stock Companion and Repeater behaviour on supported hardware, then layer MECON functionality through upstream extension points rather than recreating native capabilities.
+The public line (public releases from 0.1.0; the first planned to serve a MECON fleet is mecon-firmware 0.8.0) is based on MeshCore 1.18.0, released 2026-10-15, pinned at upstream commit `81dbae5`. Prove stock Companion and Repeater behaviour on supported hardware, then layer MECON functionality through upstream extension points rather than recreating native capabilities.
 
 MECON extends upstream facilities for Wi-Fi/runtime configuration, native Companion/Repeater commands, radio settings, board preferences, UI and remote CLI/message primitives wherever they already solve the requirement.
 
@@ -91,7 +91,7 @@ Entering Hardened discards the previous Normal connectivity selection. Returning
 
 ## Wi-Fi
 
-- Store up to three ordered Wi-Fi profiles.
+- Store up to three ordered Wi-Fi profiles (the standalone firmware stores up to ten).
 - Extend the MeshCore Wi-Fi/configuration model rather than maintaining a parallel implementation.
 - Try configured profiles in user-entered priority order while avoiding needless roaming away from a working connection.
 - Automatically reconnect/fail over when the active network disappears.

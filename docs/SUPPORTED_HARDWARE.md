@@ -1,8 +1,8 @@
 # Supported hardware and roles
 
-> **Public availability:** no firmware releases are published here yet. Read the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for the private beta versus public target distinction. Every table below describes the target, not accepted downloadable builds.
+> **Public availability:** this repository publishes source-only pre-releases (0.1.x) with no binaries, verified on simulated boards; hardware testing has started on a Heltec V3 and no target has passed acceptance yet (first finding: boot time on real flash, [#43](https://github.com/hoejriis/mecon-firmware/issues/43)). The 16 Heltec V3/V4, T1000-E and Wio Tracker L1 environments (Companion, Repeater, Room server and, on the Heltec boards, the standalone Companion) compile on every pull request, and compiling is not support. Read the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for the private beta versus public target distinction. Every table below describes the intended MECON-stage target, not accepted builds.
 
-The public line starts with **mecon-firmware 0.8.0**, built on released **MeshCore 1.18.0 from upstream `main`**. The public line (from 0.1.0) and the private 0.9x reference line are separate lines; their version numbers do not order across each other. A target is called supported only after its derived build passes its real-hardware gate.
+The first public release planned to serve a MECON fleet is **mecon-firmware 0.8.0** (public releases from 0.1.0 are standalone), built on released **MeshCore 1.18.0 from upstream `main`**. The public line (from 0.1.0) and the private 0.9x reference line are separate lines; their version numbers do not order across each other. A target is called supported only after its derived build passes its real-hardware gate.
 
 MECON uses capability profiles rather than defining the product as ESP32/Wi-Fi/MQTT firmware. The roles below are the **intended 0.8.0 set, subject to acceptance**; non-ESP boards implement portable MECON Core plus the transports/features their hardware actually provides.
 
@@ -30,7 +30,7 @@ A client must discover capabilities rather than infer them from board name or fi
 
 ## Heltec Companion
 
-The Companion image preserves MeshCore 1.18 behaviour, adds three ordered Wi-Fi profiles, local-first/cloud-fallback MQTT, MECON management/observations, and direct USB/BLE where advertised. BLE uses NimBLE (the private 0.9x gateways already do, on the older Arduino-ESP32 2.x / ESP-IDF 4.4 platform; the pioarduino / IDF 5 migration is still a target). On the V3, connectivity mode `both` is not available: a measured 9 KB of heap remains in that mode, so the V3 runs `mqtt` or `ble`.
+The Companion image preserves MeshCore 1.18 behaviour, adds ordered Wi-Fi profiles (three in the original target; the standalone firmware implements up to ten), local-first/cloud-fallback MQTT, MECON management/observations, and direct USB/BLE where advertised. BLE uses NimBLE (the private 0.9x gateways already do, on the older Arduino-ESP32 2.x / ESP-IDF 4.4 platform; the pioarduino / IDF 5 migration is still a target). On the V3, connectivity mode `both` is not available: a measured 9 KB of heap remains in that mode, so the V3 runs `mqtt` or `ble`.
 
 Companion contact capacity is **not fixed by this target contract**, and not at the private MVP's historical 32/64 values. It is set from the measured memory budget after the pioarduino/Arduino-ESP32 3.x/IDF5 migration and published in status/manifests. For reference, the 0.9x gateways enforce 50 contacts on V3 and V4, and the T1000-E 350.
 
