@@ -534,7 +534,7 @@ These screens were not run in the simulator; they are described from the code.
 - **Boards other than the simulated one**: joystick, rotary, TFT and e-paper variants. Not run.
 - **`ui-orig`, `ui-tiny`, Repeater and Room server screens**: described from the code, not run. They are unchanged from stock.
 
-Hardware photos will replace these text renderings after hardware verification.
+Hardware photos will replace these text renderings once a board has passed acceptance.
 
 ## Regenerating the captures
 
@@ -546,5 +546,7 @@ sim/run.sh python3 -m pytest sim/tests/test_ui_captures.py -q  # fail if a scree
 SIM_DOCKER_ARGS="-e UI_CAPTURE_UPDATE=1" \
   sim/run.sh python3 -m pytest sim/tests/test_ui_captures.py -q   # rewrite docs/ui/*.txt
 ```
+
+The renderer draws every string at its recorded coordinates and never moves one. Cells claimed by two draws are shown as `#` and listed under the grid (`! overlap: ...`); a string running past the 128x64 panel is listed as `! clipped: ...`. No capture currently shows either.
 
 The test also fails if a capture in `docs/ui/` is missing from this page, so the pictures here cannot drift from the firmware. The MQTT captures need `mosquitto` and `openssl`, which the dev image carries. Test values are made up (the network `ExNet`, chosen short so the signal strength fits the line; `ExampleNetwork-5G` for the long-name case; `ExampleNode`, documentation addresses from 192.0.2.0/24).
