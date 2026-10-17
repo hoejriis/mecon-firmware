@@ -4,11 +4,11 @@
 
 The code is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore) pinned at upstream v1.18.0 (commit `81dbae5`), with upstream history kept so later upstream releases merge in the ordinary way. Every change to a file that exists upstream is listed in [`docs/UPSTREAM_DELTA.md`](docs/UPSTREAM_DELTA.md). Stock behaviour and wire compatibility are kept: a stock app and stock nodes interoperate with this firmware.
 
-> **Status.** Source-only pre-releases (0.1.x). No binaries are published. Everything described below is verified on **simulated boards** (the real Companion and Repeater code on a simulated LoRa channel, with fault-injecting storage, real MQTT brokers and simulated Wi-Fi access points) and by native unit tests. **No hardware test has been run.** Compiling for a board is not a hardware-support claim. Hardware sessions are about to start, on the Heltec V3 and V4 first; see [Status and hardware](#status-and-hardware).
+> **Status.** Source-only pre-releases (0.1.x). No binaries are published. Everything described below is verified on **simulated boards** (the real Companion and Repeater code on a simulated LoRa channel, with fault-injecting storage, real MQTT brokers and simulated Wi-Fi access points) and by native unit tests. **Hardware testing has started on a Heltec V3, and no target has passed acceptance yet**; the first finding is boot time on real flash ([#43](https://github.com/hoejriis/mecon-firmware/issues/43)). Compiling for a board is not a hardware-support claim. The Heltec V4 is next; see [Status and hardware](#status-and-hardware).
 
 ## Differences from stock MeshCore 1.18.0
 
-"Verified how" says what has been checked. "Sim" means the simulated-board suite on the real application code; "unit" means a native unit test of the decision logic. Nothing in the table has run on a board. Items marked "not run on hardware" depend on a radio, flash or TLS stack that the simulator replaces.
+"Verified how" says what has been checked. "Sim" means the simulated-board suite on the real application code; "unit" means a native unit test of the decision logic. Nothing in the table is verified on a board. Items marked "not run on hardware" depend on a radio, flash or TLS stack that the simulator replaces.
 
 | Area | Stock 1.18.0 | This firmware | Verified how |
 |---|---|---|---|
@@ -73,7 +73,7 @@ To build on or borrow from the code:
 
 - **Releases:** 0.1.0 (pinned baseline, closed management and storage gaps), 0.1.1 (duty cycle, postures), 0.1.2 (Wi-Fi and MQTT controllers) are pre-releases of source. Work merged since 0.1.2 and described above (MQTT CA anchors and SNI, non-blocking connect, connectivity mode and screen, adaptive contact memory, unified CLI and CLI over MQTT, atomic blobs and ACL, firmware identity string) is not yet in a tagged release. Release notes: [GitHub releases](https://github.com/hoejriis/mecon-firmware/releases).
 - **Test evidence:** every pull request runs the simulated-board suite, the native unit tests, a mutation check (each mutant must be caught by a failing test), and builds of the 16 Heltec V3/V4, T1000-E and Wio Tracker L1 target environments; the full board set (618 environments) is compiled nightly, with the 24 that fail on stock 1.18.0 recorded. Current counts are in the CI runs.
-- **Hardware:** none verified. Target boards for the first hardware sessions are the Heltec V3 and V4 (Companion, Repeater, Room server, and the standalone Companion). The T1000-E and Wio Tracker L1 compile in CI. [SUPPORTED_HARDWARE](docs/SUPPORTED_HARDWARE.md) is the target role matrix; [BETA_BOARDS](docs/BETA_BOARDS.md) describes a separate private beta line and not this repository's builds.
+- **Hardware:** testing has started on a Heltec V3; no target has passed acceptance yet. The first finding is a boot of about 87 s on real flash, caused by the contact store ([#43](https://github.com/hoejriis/mecon-firmware/issues/43)); nothing else is claimed as verified on hardware. Target boards for the first hardware sessions are the Heltec V3 and V4 (Companion, Repeater, Room server, and the standalone Companion). The T1000-E and Wio Tracker L1 compile in CI. [SUPPORTED_HARDWARE](docs/SUPPORTED_HARDWARE.md) is the target role matrix; [BETA_BOARDS](docs/BETA_BOARDS.md) describes a separate private beta line and not this repository's builds.
 - **Not covered:** BLE is not simulated, so BLE trust and pairing are checked by unit tests of the decision logic only. RP2040 has no MQTT. KISS modem, sensor and secure-chat roles have no duty-cycle enforcement.
 
 ## Getting started
@@ -82,13 +82,13 @@ Build and test inside the container, not on the host.
 
 ```sh
 docker build -t mecon-firmware-dev .
-sim/run.sh pio run                          # builds the simulated-board environments (and any you select with -e)
+sim/build.sh                                # builds all simulated-board environments in one pio run
 sim/run.sh python3 -m pytest sim/tests -q   # the simulated-board suite
 sim/run.sh pio test -e native               # native unit tests
 sim/run.sh pio run -e Heltec_v3_companion_radio_standalone   # compile a target board
 ```
 
-Flashing: build the environment for your board and flash it with PlatformIO (`pio run -e <env> -t upload`) or from the produced image. **Nothing in this repository has been run on hardware yet.** Flash a spare board, keep USB access for recovery (several management paths are intentionally refused on BLE with a default PIN and over Wi-Fi), and report what you see. The factory reset over USB always works and returns a device to Normal posture.
+Flashing: build the environment for your board and flash it with PlatformIO (`pio run -e <env> -t upload`) or from the produced image. **Hardware testing has only just started (a Heltec V3; no target has passed acceptance, see [#43](https://github.com/hoejriis/mecon-firmware/issues/43)).** Flash a spare board, keep USB access for recovery (several management paths are intentionally refused on BLE with a default PIN and over Wi-Fi), and report what you see. The factory reset over USB always works and returns a device to Normal posture.
 
 ## Documentation
 
