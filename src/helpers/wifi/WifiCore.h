@@ -12,6 +12,10 @@
 //  * Return: while on a profile that is not the best configured one, rescan periodically; switch up only to a
 //    profile that has been seen in every scan for the whole hold-down time.
 //  * Nothing reachable: back off (doubling, capped), then scan again.
+//  * A scan that could not run or never reported (scanFailed) tells nothing about what is in range, so the
+//    highest-priority profile that is not cooling down is tried directly ("blind join"). That also joins a hidden
+//    network when the scan is broken. A blind join that fails cools its profile down, so the next attempt takes the
+//    next profile instead of hammering the same one.
 #include <stdint.h>
 #include "WifiProfiles.h"
 
@@ -60,6 +64,7 @@ public:
   // ---- observations from the platform layer
   void scanObserve(const char* ssid, int8_t rssi);   // one scan result (any number of them, between poll()=Scan and scanDone)
   void scanDone(uint32_t now);
+  void scanFailed(uint32_t now);                     // the scan could not start, was aborted, or never reported
   void onConnected(uint32_t now);
   void onDisconnected(uint32_t now, WifiDrop reason);
 
@@ -70,6 +75,7 @@ public:
   bool visible(uint8_t i) const { return i < WifiProfiles::COUNT && _p[i].vis; }
   int8_t rssiOf(uint8_t i) const { return _p[i].rssi; }
   uint32_t connectedMs(uint32_t now) const { return _state == WifiState::Connected ? now - _connected_at : 0; }
+  bool blindJoin() const { return _blind && _state == WifiState::Connecting; }   // the join in progress is a blind one
   uint32_t connectCount() const { return _connect_count; }   // joins that succeeded since begin()
   static const char* stateName(WifiState s);
   static const char* failName(WifiFail f);
@@ -102,6 +108,7 @@ private:
   uint32_t _scan_started = 0;
   uint32_t _last_upgrade_scan = 0;
   bool _upgrade_scan_due_now = false;
+  bool _blind = false;              // the join in progress was chosen without a scan result
   WifiAction _pending;
   uint32_t _backoff_ms = 0;
   uint32_t _backoff_until = 0;
