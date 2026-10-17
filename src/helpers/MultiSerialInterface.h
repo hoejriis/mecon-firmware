@@ -154,6 +154,10 @@ public:
     return _bound != nullptr && _bound->isCableTransport();
   }
 
+  bool isBleTransport() const override {
+    return _bound != nullptr && _bound->isBleTransport();
+  }
+
   const BaseSerialInterface* rxSource() const override { return _last_rx; }
   void bindReply(const BaseSerialInterface* src) override { _bound = src; }
 

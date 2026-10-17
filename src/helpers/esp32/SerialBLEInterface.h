@@ -54,6 +54,7 @@ protected:
 public:
   // Paired BLE authenticates the peer only when the PIN is not the well-known default (123456).
   bool isTrustedTransport() const override { return _pin_code != 0 && _pin_code != 123456; }
+  bool isBleTransport() const override { return true; }
   SerialBLEInterface() {
     pServer = NULL;
     pService = NULL;

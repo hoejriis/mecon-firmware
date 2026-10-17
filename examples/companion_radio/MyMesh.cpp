@@ -1082,6 +1082,8 @@ static uint8_t gatedFrame(uint8_t cmd) {
 Cli::Context MyMesh::serialContext() const {
   if (_serial && _serial->isCableTransport()) return Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture);
   if (_serial && _serial->isTrustedTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);
+  // BLE with a default PIN is still BLE: it authenticates nobody (untrusted row) but a refusal is audited as "ble".
+  if (_serial && _serial->isBleTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_DEFAULT_PIN, _prefs.posture);
   return Cli::Context(Cli::T_TCP, Cli::A_NONE, _prefs.posture);
 }
 
