@@ -68,6 +68,18 @@ class MqttEnv:
         self.path = str(path)
         self.hosts = {}
         self.responders = []
+        self.pauses = []
+        self._write()
+
+    def pause(self, step):
+        """Stop the connect job at `step` (dns | tcp | tls | connack) until release(); see variants/sim/sim_mqtt_net.cpp."""
+        assert step in ("dns", "tcp", "tls", "connack"), step
+        if step not in self.pauses:
+            self.pauses.append(step)
+        self._write()
+
+    def release(self, step=None):
+        self.pauses = [] if step is None else [s for s in self.pauses if s != step]
         self._write()
 
     def host(self, name, ip):
@@ -89,6 +101,8 @@ class MqttEnv:
                 f.write("host\t%s\t%s\n" % (name, ip))
             for kind, site, ip, port in self.responders:
                 f.write("mdns\t%s\t%s\t%s\t%d\n" % (kind, site, ip, port))
+            for step in self.pauses:
+                f.write("pause\t%s\n" % step)
         os.replace(tmp, self.path)
 
 
