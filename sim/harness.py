@@ -247,8 +247,9 @@ class Node:
     def start(self):
         if os.path.exists(self.port_file):
             os.unlink(self.port_file)
-        if os.path.exists(self.port_file + ".eth"):
-            os.unlink(self.port_file + ".eth")
+        for ext in (".eth", ".ble"):
+            if os.path.exists(self.port_file + ext):
+                os.unlink(self.port_file + ext)
         cmd = [self.binary, "--dir", self.dir, "--name", self.name, "--port-file", self.port_file,
                "--seed", str(self.seed), "--time-scale", str(self.time_scale)]
         if self.ether_path:
@@ -263,8 +264,8 @@ class Node:
             cmd += ["--wifi-env", self.wifi.path]
         if self.mqtt:
             cmd += ["--mqtt-env", self.mqtt.path]
-        cmd += self.extra
         cmd += ["--heap-file", self.heap_path]
+        cmd += self.extra
         if self.ui:
             # Gestures belong to one boot: start each process with an empty input file, so the node reads it from
             # the beginning and a gesture written before its first poll is never mistaken for an old one.
@@ -283,7 +284,6 @@ class Node:
             time.sleep(0.02)
         raise RuntimeError("%s did not publish a serial port" % self.name)
 
-    def sanitizer_report(self):
     def heap(self, free, largest=None):
         """Change the heap the node reports (`get mecon.mem`, the heap-floor check) while it runs: `free` bytes free and
         `largest` the largest allocatable block (default: the same). The contact store keeps its boot-time budget."""
@@ -292,6 +292,7 @@ class Node:
             f.write("%d %d\n" % (free, free if largest is None else largest))
         os.replace(tmp, self.heap_path)
 
+    def sanitizer_report(self):
         """Text of any AddressSanitizer/UBSan report this node printed (empty when clean)."""
         self.log.flush()
         text = open(self.log_path, errors="replace").read()
@@ -319,6 +320,46 @@ class Node:
         s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
         return s
 
+    def ble_listening(self):
+        """True once the simulated BLE interface has been brought up (its port file exists)."""
+        return os.path.exists(self.port_file + ".ble")
+
+    def connect_ble(self, pin, timeout=5.0, raw=None):
+        """A Companion client over the simulated BLE transport (variants/sim/sim_ble.h), paired with ``pin``.
+
+        Waits up to ``timeout`` seconds for the BLE stack to be up (raises BleUnavailable; pass a short timeout, after the
+        node has finished booting, to assert that it is not). A wrong PIN raises PairingRejected. ``raw`` is a byte string
+        sent in place of the pairing line (tests of the transport itself); the socket is then returned unpaired."""
+        path = self.port_file + ".ble"
+        end = time.time() + timeout
+        while not os.path.exists(path):
+            if time.time() > end:
+                raise BleUnavailable("%s has no BLE interface" % self.name)
+            time.sleep(0.02)
+        with open(path) as f:
+            port = int(f.read().strip())
+        sock = socket.create_connection(("127.0.0.1", port), timeout=5)
+        try:
+            sock.sendall(raw if raw is not None else b"PAIR %d\n" % pin)
+        except OSError:
+            pass                      # the node already closed the link (a disabled interface drops every central)
+        if raw is not None:
+            return sock
+        sock.settimeout(5)
+        reply = b""
+        try:
+            while not reply.endswith(b"\n"):
+                chunk = sock.recv(64)
+                if not chunk:
+                    break
+                reply += chunk
+        except (socket.timeout, ConnectionError):
+            pass
+        if reply != b"PAIRED\n":
+            sock.close()
+            raise PairingRejected("pairing with %s failed: %r" % (self.name, reply))
+        return CompanionClient(self, sock=sock)
+
     def connect_ethernet(self):
         """A connection to the Ethernet TCP console of a `*_eth` build (a stand-in for the RAK4631 W5100S transport)."""
         path = self.port_file + ".eth"
@@ -330,6 +371,15 @@ class Node:
         with open(path) as f:
             port = int(f.read().strip())
         return socket.create_connection(("127.0.0.1", port), timeout=5)
+
+
+class BleUnavailable(Exception):
+    """The node has no BLE listener: its BLE stack was never brought up (Wi-Fi mode, Hardened with a default PIN, a build
+    without it) or the Bluetooth page turned it off."""
+
+
+class PairingRejected(Exception):
+    """The simulated BLE interface refused the pairing (wrong PIN, or not a pairing at all) and closed the link."""
 
 
 class CliClient:
@@ -450,8 +500,8 @@ ERR_TABLE_FULL = 3
 class CompanionClient:
     """Minimal Companion client: '<' + len16 framing out, '>' + len16 framing in."""
 
-    def __init__(self, node):
-        self.sock = node.connect()
+    def __init__(self, node, sock=None):
+        self.sock = sock or node.connect()
         self.sock.settimeout(0.2)
         self.buf = b""
         self.pushes = []

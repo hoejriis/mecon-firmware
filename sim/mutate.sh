@@ -664,6 +664,23 @@ mutate heap_floor_not_run_from_the_loop examples/companion_radio/main.cpp "  hea
 " "" sim/tests/test_heap_floor.py::test_an_episode_starts_below_the_floor_holds_until_the_hysteresis_and_ends
 mutate heap_floor_not_started examples/companion_radio/main.cpp "heapFloor().begin(HEAP_FLOOR_BYTES);" "heapFloor().begin(0);" sim/tests/test_heap_floor.py::test_a_healthy_heap_reports_no_low_state_and_the_default_floor
 
+
+# --- the simulated BLE transport: each BLE rule that was unit-only, broken end to end (docs/SIMULATION.md)
+mutate ble_wrong_pin_accepted variants/sim/sim_ble.h "&& (uint32_t)given == _pin) {" "&& true) {" sim/tests/test_companion_ble.py::test_a_wrong_pin_is_disconnected_and_nothing_is_carried
+mutate ble_paired_on_connect variants/sim/sim_ble.h "_client = c; _paired = false; _line_len = 0; _state = IDLE;" "_client = c; _paired = true; _line_len = 0; _state = IDLE;" sim/tests/test_companion_ble.py::test_frames_before_pairing_are_not_accepted
+mutate ble_data_before_pairing_waits_for_a_line variants/sim/sim_ble.h "if (_line_len == 0 && ch != 'P') { sendText(\"REJECT\n\"); dropClient(\"pairing rejected: data before pairing\"); return; }" "" sim/tests/test_companion_ble.py::test_frames_before_pairing_are_not_accepted
+mutate ble_default_pin_is_trusted variants/sim/sim_ble.h "return _pin != 0 && _pin != 123456; }   // as the real class" "return _pin != 0; }" sim/tests/test_companion_ble.py::test_with_the_default_pin_management_is_refused_and_messaging_works
+mutate ble_every_pin_is_trusted variants/sim/sim_ble.h "return _pin != 0 && _pin != 123456; }   // as the real class" "return true; }" sim/tests/test_companion_ble.py::test_with_the_default_pin_management_is_refused_and_messaging_works
+mutate ble_link_survives_disable variants/sim/sim_ble.h "    dropClient(\"disabled: link dropped\");
+" "" sim/tests/test_companion_ble.py::test_the_bluetooth_page_switches_the_link_off_and_on
+mutate posture_ble_default_pin_starts_sim src/helpers/Posture.h "return !isHardened(posture) || (active_pin != 0 && active_pin != 123456);" "return true;" sim/tests/test_companion_ble.py::test_hardened_with_the_default_pin_does_not_start_ble
+mutate connmode_ble_started_in_wifi_mode_sim examples/companion_radio/main.cpp "if (!ConnMode::bleMayStart(conn_mode)) {" "if (false) {" sim/tests/test_companion_ble.py::test_switching_to_wifi_mode_takes_ble_down_and_a_reboot_does_not_bring_it_back
+mutate connmode_ble_may_always_start_sim src/helpers/connmode/ConnMode.h "inline bool bleMayStart(uint8_t mode) { return sanitize(mode) == BLE; }" "inline bool bleMayStart(uint8_t mode) { return true; }" sim/tests/test_companion_ble.py::test_switching_to_wifi_mode_takes_ble_down_and_a_reboot_does_not_bring_it_back
+mutate table_paired_key_in_hardened_sim src/helpers/cli/CliPolicy.h "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           NOT_PERMITTED,   ALLOW) }," "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW) }," sim/tests/test_companion_ble.py::test_hardened_with_a_per_device_pin_starts_ble_but_keeps_the_rules
+mutate table_paired_factory_reset_in_hardened_sim src/helpers/cli/CliPolicy.h "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           NOT_PERMITTED,   ALLOW) }," "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           ALLOW,           ALLOW) }," sim/tests/test_companion_ble.py::test_hardened_with_a_per_device_pin_starts_ble_but_keeps_the_rules
+mutate policy_flag_ignored_for_the_lowering_rule_sim src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" sim/tests/test_companion_ble.py::test_hardened_with_a_per_device_pin_starts_ble_but_keeps_the_rules
+mutate frame_context_trusts_every_interface_sim examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isTrustedTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" "if (_serial) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" sim/tests/test_companion_ble.py::test_with_the_default_pin_management_is_refused_and_messaging_works
+
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries after a full run
 
 echo "RESTORED; final clean run:"

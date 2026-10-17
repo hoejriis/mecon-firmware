@@ -4,7 +4,7 @@ Every command, per role, with its class and origin: [CLI reference](CLI_REFERENC
 
 Stock MeshCore 1.18 lets commands reach a device four ways, each with its own parser and its own idea of who may do what: the Companion's `CMD_RUN_CLI_COMMAND` frame, the serial rescue console, a remote `TXT_TYPE_CLI_COMMAND` from a flagged contact, and the repeater and room server console and remote admin. This firmware routes all of them, and the new MQTT transport, through **one engine** in `src/helpers/cli/`.
 
-What the simulated-board suite checks here is software behaviour. BLE needs a radio stack the simulator does not have: its rows of the table are covered by unit tests of the table, not by a simulated pairing ([Simulated-board test harness](SIMULATION.md)). **Nothing here has run on a board.**
+What the simulated-board suite checks here is software behaviour. BLE needs a radio stack the simulator does not have: its rows of the table are covered by unit tests of the table and, end to end, by a simulated BLE transport that pairs with a PIN and reports its trust like the real class, not by a real pairing ([Simulated-board test harness](SIMULATION.md)). **Nothing here has run on a board.**
 
 ## Shape
 

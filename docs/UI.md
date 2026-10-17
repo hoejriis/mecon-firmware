@@ -543,7 +543,7 @@ These screens were not run in the simulator; they are described from the code.
 
 ## What was not reachable in the simulator
 
-- **BLE.** The simulator has no BLE stack. A stub stands in for it, logs when BLE would start and can be told a phone is connected, so the *screens* and the *mode logic* are exercised, but pairing, the PIN prompt a phone shows and the link itself are not. **The `Phone: connected` capture shows the screen reacting to a stub, not a real connection.**
+- **BLE.** The simulator has no BLE radio or stack. A simulated transport stands in for it (a PIN pairing, then the app's frames over a loopback socket; see [Simulated-board test harness](SIMULATION.md)) and a file can also tell the screen a phone is connected, so the *screens*, the *mode logic* and the transport-trust rules are exercised, but the PIN prompt a phone shows and the radio link itself are not. **The `Phone: connected` capture shows the screen reacting to a file, not a real connection.**
 - **The home-page pairing PIN** (`Pin:nnnnnn`, `< Connected >` absent). The simulated USB port always reports a host, so this state cannot be drawn there. Described from code only.
 - **Graphics**: battery icon, page dots, the Bluetooth, advert and power icons, the splash logo, and the popup frame (drawn here by the renderer). Not recorded by the simulator.
 - **Real OLED rendering and timing**: the real font metrics, contrast, the 15 s auto-off, the real click timing. Not run on hardware.

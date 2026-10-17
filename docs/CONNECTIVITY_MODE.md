@@ -2,7 +2,7 @@
 
 The standalone Companion builds (`Heltec_v3_companion_radio_standalone`, `heltec_v4_companion_radio_standalone`) carry BLE, the [Wi-Fi controller](WIFI.md) and the [MQTT controller](MQTT.md), and run **one of BLE or Wi-Fi at a time**. USB management works in both modes. Stock MeshCore has separate `_ble` and `_wifi` builds and no switching.
 
-What is verified, and how: the decision logic (`src/helpers/connmode/`) by native unit tests; the mode handling, the button gesture, the screens and the audit by the simulated-board suite on the real application and the real `ui-new` screens, with a recording display ([Simulated-board test harness](SIMULATION.md)). **Not verified:** the simulator has no BLE stack (a stub logs when BLE would start), so nothing here proves BLE pairing or a BLE link; the USB-plus-BLE and USB-plus-Wi-Fi coexistence on the boards, the real OLED rendering and the real button timing are compiled but **not run on hardware**.
+What is verified, and how: the decision logic (`src/helpers/connmode/`) by native unit tests; the mode handling, the button gesture, the screens and the audit by the simulated-board suite on the real application and the real `ui-new` screens, with a recording display ([Simulated-board test harness](SIMULATION.md)). **Not verified:** the simulator has no BLE radio or stack (a simulated BLE transport carries the app's frames behind a PIN pairing, see [Simulated-board test harness](SIMULATION.md)), so nothing here proves the real pairing exchange, the air link or a phone; the USB-plus-BLE and USB-plus-Wi-Fi coexistence on the boards, the real OLED rendering and the real button timing are compiled but **not run on hardware**.
 
 ## The mode
 
