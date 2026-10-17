@@ -1,0 +1,11 @@
+# Connectivity page, Wi-Fi mode, a network name too long for the line
++---------------------+
+|ExampleNode          |
+|                     |
+|Mode: Wi-Fi, Normal  |
+|Wi-Fi p0 ExampleNe...|
+|IP: 192.0.2.10       |
+|MQTT: no profile     |
+|  to BLE: long press |
+|                     |
++---------------------+

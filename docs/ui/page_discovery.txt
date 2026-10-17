@@ -1,0 +1,11 @@
+# Repeater discovery page (nothing sent yet)
++---------------------+
+|ExampleNode          |
+|                     |
+|                     |
+|                     |
+|                     |
+|                     |
+| discover: long press|
+|                     |
++---------------------+

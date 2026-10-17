@@ -1,0 +1,11 @@
+# Home page, Wi-Fi mode, no profile
++---------------------+
+|ExampleNode          |
+|                     |
+|    Unread Msg: 0    |
+|                     |
+|  Wi-Fi: no profile  |
+|    < Connected >    |
+|                     |
+|                     |
++---------------------+
