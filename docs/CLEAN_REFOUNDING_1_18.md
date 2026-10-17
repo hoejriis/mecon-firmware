@@ -8,7 +8,7 @@ This is a **clean implementation on a pinned upstream MeshCore 1.18.0 baseline**
 
 ## Stage A — standalone enhanced MeshCore (ranked implementation targets)
 
-**Status (see the [README](../README.md) for how each is verified; everything is simulation-verified only, nothing is hardware-verified):**
+**Status (see the [README](../README.md) for how each is verified; everything is simulation-verified; hardware testing has started on a Heltec V3 and no target has passed acceptance yet, see [#43](https://github.com/hoejriis/mecon-firmware/issues/43)):**
 
 | # | Target | State |
 |---|---|---|
