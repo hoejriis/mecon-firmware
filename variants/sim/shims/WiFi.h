@@ -38,7 +38,7 @@ public:
   int status();
   int32_t RSSI();
   SimIPAddress localIP();
-  int16_t scanNetworks(bool async = false, bool show_hidden = false);
+  // Arduino's read side of a scan (the table its own done handler keeps); the scan itself runs through esp_wifi.h
   int16_t scanComplete();
   void scanDelete();
   std::string SSID(uint8_t i);

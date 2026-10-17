@@ -39,6 +39,7 @@ void WifiCore::begin(uint32_t now) {
   memset(_p, 0, sizeof(_p));
   _cur = NONE;
   _scan_running = _scan_upgrade = _scan_pending = false;
+  _blind = false;
   _pending = WifiAction();
   _backoff_ms = 0;
   _connect_count = 0;
@@ -124,6 +125,7 @@ bool WifiCore::betterExists(uint32_t now) {
 
 void WifiCore::connectTo(uint32_t now, uint8_t i) {
   _cur = i;
+  _blind = false;
   _state = WifiState::Connecting;
   _state_since = now;
   _pending.kind = WifiAction::Connect;
@@ -159,6 +161,7 @@ void WifiCore::failProfile(uint32_t now, uint8_t i, WifiFail why) {
     }
     case WifiFail::NotFound:
       p.vis = false;   // it is not there; the next scan decides whether it is back
+      if (_blind) startCooldown(i, now, _t.fail_cooldown_ms);   // a guess that missed: let the next attempt guess another
       break;
     case WifiFail::Disconnects:
       startCooldown(i, now, _t.drop_cooldown_ms);
@@ -189,7 +192,7 @@ WifiAction WifiCore::poll(uint32_t now) {
         for (auto& p : _p) p.seen_now = false;
         a.kind = WifiAction::Scan;
       } else if (_scan_running && (uint32_t)(now - _scan_started) >= _t.scan_timeout_ms) {
-        scanDone(now);   // a scan that never answers found nothing new
+        scanFailed(now);   // a scan that never answers: nothing is known, so try the best profile directly
         return poll(now);
       }
       break;
@@ -206,7 +209,7 @@ WifiAction WifiCore::poll(uint32_t now) {
       break;
     case WifiState::Connected:
       if (_scan_running) {
-        if ((uint32_t)(now - _scan_started) >= _t.scan_timeout_ms) scanDone(now);
+        if ((uint32_t)(now - _scan_started) >= _t.scan_timeout_ms) scanFailed(now);
       } else if ((_upgrade_scan_due_now || (uint32_t)(now - _last_upgrade_scan) >= _t.rescan_ms) && betterExists(now)) {
         _upgrade_scan_due_now = false;
         _last_upgrade_scan = now;
@@ -256,6 +259,28 @@ void WifiCore::scanDone(uint32_t now) {
   if (_state == WifiState::Scanning) chooseOrBackoff(now);
 }
 
+// The scan told nothing. While connected (an upgrade scan) that changes nothing. Otherwise every sighting is stale,
+// so no profile counts as visible, and the best profile that is not cooling down is joined directly.
+void WifiCore::scanFailed(uint32_t now) {
+  if (!_scan_running) return;
+  _scan_running = false;
+  if (_scan_upgrade) {
+    _scan_upgrade = false;
+    return;
+  }
+  if (_state != WifiState::Scanning) return;
+  uint8_t pick = NONE;
+  for (uint8_t i = 0; i < WifiProfiles::COUNT; i++) {
+    _p[i].vis = false;
+    if (!_profiles->configured(i) || cooling(i, now)) continue;
+    bool higher = pick == NONE || _profiles->priority(i) > _profiles->priority(pick);   // ties keep the lower number
+    if (higher) pick = i;
+  }
+  if (pick == NONE) { enterBackoff(now); return; }
+  connectTo(now, pick);
+  _blind = true;
+}
+
 void WifiCore::onConnected(uint32_t now) {
   if (_state != WifiState::Connecting) return;
   _state = WifiState::Connected;
@@ -264,6 +289,7 @@ void WifiCore::onConnected(uint32_t now) {
   _upgrade_scan_due_now = false;
   _backoff_ms = 0;
   _connect_count++;
+  _blind = false;
   _p[_cur].auth_fails = 0;
 }
 

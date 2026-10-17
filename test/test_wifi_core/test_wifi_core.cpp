@@ -26,6 +26,8 @@ struct Rig {
   bool joining = false; uint32_t join_end = 0; std::string join_ssid;
   bool linked = false; std::string link_ssid;
   uint32_t scans = 0;
+  bool scan_fails = false;    // a scan ends with the platform's "failed" instead of a result
+  bool scan_silent = false;   // a scan never reports at all
 
   explicit Rig(uint32_t start = 1000) : core(&prof, WifiTiming()), now(start) {}
 
@@ -57,10 +59,13 @@ struct Rig {
 
   void tick() {   // advance 100 ms
     now += 100;
-    if (scan_running && (int32_t)(now - scan_end) >= 0) {
+    if (scan_running && !scan_silent && (int32_t)(now - scan_end) >= 0) {
       scan_running = false;
-      for (auto& kv : aps) if (kv.second.up) core.scanObserve(kv.first.c_str(), kv.second.rssi);
-      core.scanDone(now);
+      if (scan_fails) core.scanFailed(now);
+      else {
+        for (auto& kv : aps) if (kv.second.up) core.scanObserve(kv.first.c_str(), kv.second.rssi);
+        core.scanDone(now);
+      }
     }
     if (joining && (int32_t)(now - join_end) >= 0) {
       joining = false;
@@ -267,6 +272,94 @@ TEST(WifiCore, ASwitchUpThatFailsFallsBackAndDoesNotFlap) {
   uint32_t home_tries = 0;
   for (auto& j : r.joins) if (j == "home") home_tries++;
   EXPECT_LE(home_tries, 6u);
+}
+
+// ---- a scan that fails
+
+TEST(WifiCore, AFailedScanJoinsTheHighestPriorityProfileDirectly) {
+  Rig r;
+  r.profile(0, "lo", 10); r.profile(1, "hi", 90);
+  r.ap("lo"); r.ap("hi");
+  r.scan_fails = true;
+  r.start(); r.run(5000);
+  EXPECT_EQ(WifiState::Connected, r.state());
+  ASSERT_EQ(1u, r.joins.size());
+  EXPECT_EQ("hi", r.joins[0]);
+}
+
+TEST(WifiCore, AScanThatNeverReportsEndsAtTheTimeoutAndJoinsDirectly) {
+  Rig r;
+  r.profile(0, "net", 50);
+  r.ap("net");
+  r.scan_silent = true;
+  r.start(); r.run(r.t.scan_timeout_ms - 1000);
+  EXPECT_EQ(WifiState::Scanning, r.state());
+  EXPECT_TRUE(r.joins.empty());
+  r.run(3000);
+  EXPECT_EQ(WifiState::Connected, r.state());
+  EXPECT_EQ(1u, r.joins.size());
+}
+
+TEST(WifiCore, ABlindJoinThatMissesMovesOnToTheNextProfile) {
+  Rig r;
+  r.profile(0, "lo", 10); r.profile(1, "hi", 90);
+  r.ap("lo");   // "hi" is not there
+  r.scan_fails = true;
+  r.start(); r.run(10000);
+  EXPECT_EQ(WifiState::Connected, r.state());
+  ASSERT_EQ(2u, r.joins.size());
+  EXPECT_EQ("hi", r.joins[0]);
+  EXPECT_EQ("lo", r.joins[1]);
+}
+
+TEST(WifiCore, ABlindJoinThatMissesIsNotRepeatedAtOnce) {
+  Rig r;
+  r.profile(0, "gone", 50);
+  r.scan_fails = true;
+  r.start(); r.run(12000);
+  EXPECT_EQ(1u, r.joins.size());   // cooling for 15 s: the second backoff round has nothing to try
+  r.run(120000);
+  EXPECT_GE(r.joins.size(), 2u);   // but it is tried again later, not given up on
+  EXPECT_LT(r.joins.size(), 12u);
+}
+
+TEST(WifiCore, AFailedUpgradeScanKeepsTheLinkAndGuessesNothing) {
+  Rig r;
+  r.profile(0, "lo", 10); r.profile(1, "hi", 90);
+  r.ap("lo");
+  r.start(); r.run(10000);
+  ASSERT_EQ(WifiState::Connected, r.state());
+  r.scan_fails = true;
+  r.ap("hi");
+  r.run(400000);
+  EXPECT_EQ(WifiState::Connected, r.state());
+  EXPECT_EQ(1u, r.joins.size());
+  EXPECT_STREQ("lo", r.current());
+}
+
+TEST(WifiCore, TheScanAfterAFailedOneIsTrustedAgain) {
+  Rig r;
+  r.profile(0, "lo", 10); r.profile(1, "hi", 90);
+  r.ap("lo");
+  r.scan_fails = true;
+  r.start(); r.run(10000);
+  ASSERT_EQ(WifiState::Connected, r.state());
+  ASSERT_STREQ("lo", r.current());
+  r.scan_fails = false;
+  r.ap("hi");
+  r.run(400000);   // upgrade scans see "hi" for the whole hold-down time
+  EXPECT_STREQ("hi", r.current());
+}
+
+TEST(WifiCore, AFailedScanStillSkipsAProfileWithAWrongPassword) {
+  Rig r;
+  r.profile(0, "lo", 10); r.profile(1, "hi", 90, "wrong-pw-fake");
+  r.ap("lo"); r.ap("hi", "right-pw-fake");
+  r.scan_fails = true;
+  r.start(); r.run(10000);
+  EXPECT_STREQ("lo", r.current());
+  ASSERT_EQ(2u, r.joins.size());
+  EXPECT_EQ("hi", r.joins[0]);
 }
 
 // ---- nothing reachable
