@@ -237,11 +237,21 @@ mutate mqtt_disable_ignored examples/companion_radio/MyMesh.cpp "    mqttControl
 " "" $MQ_SIM::test_profiles_persist_across_a_reboot_and_can_be_disabled
 # --- the connect runs on a worker (docs/MQTT.md): undo each rule and its tests must go red
 MQ_NB=sim/tests/test_mqtt_nonblocking.py
+MQ_IL=sim/tests/test_mqtt_interleave.py   # the job is stopped at a named step (variants/sim/sim_mqtt_net.cpp), so these do not race
 mutate mqtt_connect_runs_inline $MQ_CTRL "  if (!_net->asyncStart(&MqttController::connectEntry, this)) {" "  connectEntry(this);
   if (false) {" $MQ_NB::test_a_connect_attempt_does_not_stall_the_main_loop
 mutate mqtt_connect_runs_inline_mesh $MQ_CTRL "  if (!_net->asyncStart(&MqttController::connectEntry, this)) {" "  connectEntry(this);
   if (false) {" $MQ_NB::test_the_mesh_keeps_delivering_during_a_connect_attempt
-mutate mqtt_result_taken_before_the_job_ends $MQ_CTRL "if (_job_active && _net->asyncIdle()) takeResult();" "if (_job_active) takeResult();" $MQ_NB::test_a_connect_attempt_does_not_stall_the_main_loop
+# the text is matched to the end of the posture block: the disabled branch above has the same line (a mutant on that one
+# survived on 2026-10-17, because the first match was the wrong branch)
+mutate mqtt_result_taken_before_the_job_ends $MQ_CTRL "    _core.onConnectCancelled();
+  }
+  if (_job_active && _net->asyncIdle()) takeResult();" "    _core.onConnectCancelled();
+  }
+  if (_job_active) takeResult();" $MQ_IL::test_the_result_is_not_taken_while_the_job_runs
+mutate mqtt_result_taken_before_the_job_ends_while_disabled $MQ_CTRL "    if (_job_active && _net->asyncIdle()) takeResult();
+    return;" "    if (_job_active) takeResult();
+    return;" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-disable]"
 mutate mqtt_cancelled_result_kept $MQ_CTRL "const bool wanted = !_job_cancel && _core.state() == MqttState::Connecting;" "const bool wanted = true;" $MQ_NB::test_a_connect_that_completes_after_it_was_cancelled_is_closed_cleanly
 mutate mqtt_cancel_does_not_wait_for_the_job $MQ_CTRL "  if (_job_active && _job_cancel) return;" "" $MQ_NB::test_a_profile_edit_during_a_pending_connect_is_applied_and_leaks_nothing
 mutate mqtt_posture_cancel_not_reported_to_the_core $MQ_CTRL "    cancelAttempt();
@@ -256,11 +266,23 @@ mutate mqtt_disabled_controller_never_takes_the_result $MQ_CTRL "    if (_job_ac
 mutate mqtt_close_ignores_a_running_job $MQ_CTRL "  if (_job_active) {   // the job owns the transport and PubSubClient: ask it to stop and let takeResult() tidy up
     _job_cancel = true;
     return;
-  }" "" $MQ_NB::test_a_profile_edit_during_a_pending_connect_is_applied_and_leaks_nothing
+  }" "" $MQ_IL::test_an_edit_while_the_job_owns_the_transport_does_not_touch_it
 mutate mqtt_cancelled_attempt_penalises_the_profile $MQ_CORE "void MqttCore::onConnectCancelled() {
   if (_state != MqttState::Connecting || _cur == NONE) return;" "void MqttCore::onConnectCancelled() {
   if (_state != MqttState::Connecting || _cur == NONE) return;
   failCurrent(0, MqttFail::Timeout, false);" unit:test_mqtt_core
+mutate mqtt_no_cancel_check_after_the_name_is_resolved $MQ_CTRL "  if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }
+  if (_job_cancel) { j.result = ConnectJob::Cancelled; return; }" "  if (j.resolve && !_net->resolve(j.host, j.addr)) { j.result = ConnectJob::Dns; return; }" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[dns-edit] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[dns-disable]"
+mutate mqtt_no_cancel_check_after_the_transport_opens $MQ_CTRL "  if (_job_cancel) { _net->close(); j.result = ConnectJob::Cancelled; return; }" "" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-edit] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tls-edit]"
+mutate mqtt_cancelled_transport_not_closed_by_the_job $MQ_CTRL "  if (_job_cancel) { _net->close(); j.result = ConnectJob::Cancelled; return; }" "  if (_job_cancel) { j.result = ConnectJob::Cancelled; return; }" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-disable] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tls-disable]"
+mutate mqtt_close_does_not_raise_the_cancel_flag $MQ_CTRL "    _job_cancel = true;
+    return;
+  }
+  if (_open && _psc.connected())" "    return;
+  }
+  if (_open && _psc.connected())" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-edit] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-disable]"
+mutate mqtt_posture_does_not_raise_the_cancel_flag $MQ_CTRL "    cancelAttempt();
+    _core.onConnectCancelled();" "    _core.onConnectCancelled();" $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-posture]
 # --- connectivity mode and its screen (docs/CONNECTIVITY_MODE.md)
 CM_H=src/helpers/connmode/ConnMode.h
 CS_H=src/helpers/connmode/ConnStatus.h
