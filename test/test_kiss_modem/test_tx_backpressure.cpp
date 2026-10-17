@@ -112,21 +112,27 @@ public:
 class FakeRadio : public mesh::Radio {
 public:
   bool isReceiving() override { return false; }
-  uint32_t getEstAirtimeFor(uint16_t) override { return 10; }
+  uint32_t getEstAirtimeFor(uint16_t) override { return _est_ms; }
   bool startSendRaw(const uint8_t*, uint16_t) override {
     _start_send_count++;
+    _starts.push_back({millis(), _est_ms});
     return _start_send_result;
   }
   bool isSendComplete() override { return _send_complete; }
   void onSendFinished() override { _send_finished_count++; }
   int16_t getNoiseFloor() override { return -120; }
 
+  void setEstAirtime(uint32_t ms) { _est_ms = ms; }
+  struct Start { uint32_t at_ms; uint32_t air_ms; };
+  const std::vector<Start>& starts() const { return _starts; }
   void setStartSendResult(bool result) { _start_send_result = result; }
   void setSendComplete(bool complete) { _send_complete = complete; }
   int startSendCount() const { return _start_send_count; }
   int sendFinishedCount() const { return _send_finished_count; }
 
 private:
+  uint32_t _est_ms = 10;
+  std::vector<Start> _starts;
   bool _start_send_result = true;
   bool _send_complete = true;
   int _start_send_count = 0;
@@ -158,6 +164,7 @@ protected:
 
   KissModemFixture()
     : modem(serial, identity, rng, radio, board, sensors) {
+    modem.setChannel(915.0f, 250.0f);   // a band with no duty-cycle floor, so the older tests are about their own subject
     modem.begin();
   }
 
@@ -166,6 +173,28 @@ protected:
     frame.insert(frame.end(), packet.begin(), packet.end());
     frame.push_back(KISS_FEND);
     return frame;
+  }
+
+  uint32_t runSustainedLoad(uint32_t hours, const std::vector<uint8_t>& frame) {
+    const uint32_t t0 = millis();
+    while (millis() - t0 < hours * 3600000UL) {
+      if (!modem.isTxBusy()) serial.pushRx(frame);
+      delay(1000);
+      modem.loop();
+      modem.loop();
+      modem.loop();
+      modem.loop();
+    }
+    uint32_t worst = 0;
+    const auto& s = radio.starts();
+    for (size_t i = 0; i < s.size(); i++) {
+      uint32_t sum = 0;
+      for (size_t j = 0; j <= i; j++) {
+        if (s[i].at_ms - s[j].at_ms < 3600000UL) sum += s[j].air_ms;   // a send started within the hour before this one
+      }
+      if (sum > worst) worst = sum;
+    }
+    return worst;
   }
 
   void advanceToTxSending() {
@@ -286,6 +315,73 @@ TEST_F(KissModemFixture, MaxPacketWorstCaseEscapingFitsQueuedFrame) {
 
   modem.onPacketReceived((int8_t)TEST_SNR, (int8_t)TEST_RSSI, packet.data(), packet.size());
   EXPECT_EQ(serial.writesSnapshot(), expected);
+}
+
+// ---- duty cycle (the raw sends go through the same sliding hour and regulatory floor as mesh::Dispatcher) ----
+
+static void noRadioChange(float, float, uint8_t, uint8_t) {}
+
+// Offers the modem a frame whenever it is idle, for `hours` of mock time, and returns the busiest sliding hour of
+// airtime (ms) measured from the radio's own record of when it was keyed, not from the modem's counters.
+TEST_F(KissModemFixture, AnUnknownChannelRefusesTheFrameInsteadOfSendingUnlimited) {
+  KissModem m(serial, identity, rng, radio, board, sensors);   // no setChannel(): the channel is unknown
+  m.begin();
+  serial.pushRx(dataFrame({0x42}));
+  for (int i = 0; i < 4; i++) { m.loop(); delay((uint32_t)KISS_DEFAULT_TXDELAY * 10); }
+  m.loop();
+  EXPECT_EQ(radio.startSendCount(), 0);
+  const std::vector<uint8_t> expected = {KISS_FEND, KISS_CMD_SETHARDWARE, HW_RESP_TX_DONE, 0x00, KISS_FEND};
+  EXPECT_EQ(serial.writesSnapshot(), expected);
+}
+
+TEST_F(KissModemFixture, OneSubBandPercentIsHeldOnTheSlidingHour) {
+  radio.setEstAirtime(5000);
+  modem.setChannel(868.1f, 125.0f);   // 1 %: 36 000 ms per sliding hour
+  uint32_t worst = runSustainedLoad(3, dataFrame({0x42}));
+  EXPECT_GT(radio.startSendCount(), 3);       // it does transmit, at the limit's pace
+  EXPECT_LE(worst, 36000U);
+  EXPECT_GE(worst, 30000U);                   // and it uses most of what it is allowed
+}
+
+TEST_F(KissModemFixture, TenPercentBandIsHeldToTenPercent) {
+  radio.setEstAirtime(5000);
+  modem.setChannel(869.525f, 250.0f);   // 10 %: 360 000 ms per sliding hour
+  uint32_t worst = runSustainedLoad(3, dataFrame({0x42}));
+  EXPECT_LE(worst, 360000U);
+  EXPECT_GE(worst, 300000U);
+}
+
+TEST_F(KissModemFixture, AChannelWithoutAFloorIsNotThrottled) {
+  radio.setEstAirtime(5000);   // 915 MHz from the fixture
+  uint32_t worst = runSustainedLoad(1, dataFrame({0x42}));
+  EXPECT_GT(worst, 360000U);   // far above what any regulated band allows
+}
+
+TEST_F(KissModemFixture, SetRadioMovesTheFloorAtOnce) {
+  radio.setEstAirtime(5000);
+  modem.setRadioCallback(noRadioChange);
+  uint32_t f = 868100000U, bw = 125000U;
+  std::vector<uint8_t> req = {KISS_FEND, KISS_CMD_SETHARDWARE, HW_CMD_SET_RADIO};
+  for (int i = 0; i < 4; i++) req.push_back((f >> (8 * i)) & 0xFF);
+  for (int i = 0; i < 4; i++) req.push_back((bw >> (8 * i)) & 0xFF);
+  req.push_back(7); req.push_back(5); req.push_back(KISS_FEND);
+  for (size_t i = 3; i + 1 < req.size(); i++) ASSERT_NE(req[i], KISS_FEND);   // nothing to escape in this request
+  serial.pushRx(req);
+  modem.loop();
+  uint32_t worst = runSustainedLoad(3, dataFrame({0x42}));
+  EXPECT_LE(worst, 36000U);
+}
+
+TEST_F(KissModemFixture, AFrameLongerThanTheWholeLimitIsFailedNotHeldForever) {
+  radio.setEstAirtime(40000);          // more than 1 % of an hour
+  modem.setChannel(868.1f, 125.0f);
+  serial.pushRx(dataFrame({0x42}));
+  advanceToTxSending();
+  EXPECT_EQ(radio.startSendCount(), 0);
+  const std::vector<uint8_t> expected = {KISS_FEND, KISS_CMD_SETHARDWARE, HW_RESP_TX_DONE, 0x00, KISS_FEND};
+  modem.loop();
+  EXPECT_EQ(serial.writesSnapshot(), expected);
+  EXPECT_FALSE(modem.isTxBusy());
 }
 
 int main(int argc, char** argv) {

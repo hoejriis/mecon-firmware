@@ -123,6 +123,11 @@ protected:
 
   // Mesh overrides
   float getAirtimeBudgetFactor() const override;
+  // the channel last applied to the radio (not merely stored in prefs), for the regulatory duty-cycle floor
+  bool getRadioChannel(float& freq_mhz, float& bw_khz) const override {
+    freq_mhz = radio_freq; bw_khz = radio_bw;
+    return radio_freq > 0;
+  }
   bool allowPacketForward(const mesh::Packet* packet) override;
   int calcRxDelay(float score, uint32_t air_time) const override;
   uint32_t getRetransmitDelay(const mesh::Packet* packet) override;
@@ -160,6 +165,7 @@ private:
   int num_alert_tasks;
   Trigger* alert_tasks[MAX_CONCURRENT_ALERTS];
   unsigned long set_radio_at, revert_radio_at;
+  float radio_freq = 0, radio_bw = 0;   // as applied to the radio, for the regulatory duty-cycle floor
   float pending_freq;
   float pending_bw;
   uint8_t pending_sf;

@@ -5,18 +5,10 @@
 #include <Packet.h>
 #include <Utils.h>
 #include <string.h>
+#include <helpers/DutyWindow.h>
 
 namespace mesh {
 
-/*
- * Sliding one-hour airtime window used to enforce the duty cycle.
- * Transmitted airtime is kept in DUTY_NUM_BINS bins of DUTY_BIN_MS each: 121 x 30 s covers the hour plus
- * the bin being filled, so everything younger than an hour is always counted (at most one bin of older
- * airtime is counted too, which can only make the node more conservative).  Cost: 121 x 2 = 242 bytes.
- */
-#define DUTY_WINDOW_MS   3600000UL
-#define DUTY_BIN_MS      30000UL
-#define DUTY_NUM_BINS    (DUTY_WINDOW_MS / DUTY_BIN_MS + 1)
 
 /**
  * \brief  Abstraction of local/volatile clock with Millisecond granularity.
@@ -135,18 +127,12 @@ class Dispatcher {
   bool  prev_isrecv_mode;
   uint32_t n_sent_flood, n_sent_direct;
   uint32_t n_recv_flood, n_recv_direct;
-  uint16_t duty_bins[DUTY_NUM_BINS];   // airtime (ms) of each 30 s bin of the trailing hour, ring buffer
-  uint32_t duty_sum;                   // sum of duty_bins
-  bool     duty_seeded;                // the hour has been seeded at boot (see dutySeed())
-  uint8_t  duty_cur;                   // index of the bin being filled
-  unsigned long duty_cur_start;        // millis() at which that bin started
+  DutyWindow duty;                     // airtime of the trailing hour (see helpers/DutyWindow.h)
   uint32_t outbound_est_ms;            // estimated airtime of the packet being transmitted
 
   void processRecvPacket(Packet* pkt);
-  void dutySeed();
   void dutyAdvance(unsigned long now);
   void dutyRecord(unsigned long now, uint32_t air_ms);
-  uint32_t dutyWaitMs(unsigned long now, uint32_t need_ms, uint32_t limit_ms) const;
 
 protected:
   PacketManager* _mgr;
@@ -165,11 +151,7 @@ protected:
     _err_flags = 0;
     radio_nonrx_start = 0;
     prev_isrecv_mode = true;
-    memset(duty_bins, 0, sizeof(duty_bins));
-    duty_sum = 0;
-    duty_seeded = false;
-    duty_cur = 0;
-    duty_cur_start = ms.getMillis();
+    duty.reset(ms.getMillis());
     outbound_est_ms = 0;
   }
 

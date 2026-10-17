@@ -73,6 +73,7 @@ struct NodePrefs {  // persisted to file
 class MyMesh : public BaseChatMesh, ContactVisitor {
   FILESYSTEM* _fs;
   NodePrefs _prefs;
+  float _radio_freq = 0, _radio_bw = 0;   // as applied to the radio
   uint32_t expected_ack_crc;
   ChannelDetails* _public;
   unsigned long last_msg_sent;
@@ -194,6 +195,13 @@ protected:
     return _prefs.airtime_factor;
   }
 
+  // the channel last applied to the radio (`set freq` only takes effect at the next boot), for the regulatory
+  // duty-cycle floor
+  bool getRadioChannel(float& freq_mhz, float& bw_khz) const override {
+    freq_mhz = _radio_freq; bw_khz = _radio_bw;
+    return _radio_freq > 0;
+  }
+
   int calcRxDelay(float score, uint32_t air_time) const override {
     return 0;  // disable rxdelay
   }
@@ -295,6 +303,7 @@ public:
   }
 
   float getFreqPref() const { return _prefs.freq; }
+  void noteRadioApplied(float freq, float bw) { _radio_freq = freq; _radio_bw = bw; }
   int8_t getTxPowerPref() const { return _prefs.tx_power_dbm; }
 
   void begin(FILESYSTEM& fs) {
@@ -594,6 +603,7 @@ void setup() {
 #endif
 
   radio_driver.setParams(the_mesh.getFreqPref(), LORA_BW, LORA_SF, LORA_CR);
+  the_mesh.noteRadioApplied(the_mesh.getFreqPref(), LORA_BW);
   radio_driver.setTxPower(the_mesh.getTxPowerPref());
 
   the_mesh.showWelcome();

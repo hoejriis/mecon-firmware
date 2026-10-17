@@ -78,7 +78,7 @@ A refusal's reply text (the strings are those the individual checks always gave)
 | MQTT, Hardened, profile not flagged | `ERR: management is off for this broker profile` |
 | a Companion frame on an untrusted transport | `ERR_CODE_NOT_PERMITTED` (7) |
 
-Every refusal is an audit entry ([Standalone security postures](STANDALONE_POSTURES.md)): the class (`remote-write`, `posture`, `audit`, `key-export`, ...) and who asked (`cable`, `ble`, `net`, `remote-admin`, `remote-cli`, `mqtt`). Two new kinds: `mqtt-session` (a request on a session that is not TLS-verified) and `mgmt-flag` (an attempt to set the management flag from a caller that may not). Repeats fold into one entry with a count.
+Every refusal is an audit entry ([Standalone security postures](STANDALONE_POSTURES.md)): the class (`remote-write`, `posture`, `audit`, `key-export`, ...) and who asked (`cable`, `ble`, `net`, `remote-admin`, `remote-cli`, `mqtt`). Two new kinds: `mqtt-session` (a request on a session that is not TLS-verified) and `mgmt-flag` (an attempt to set the management flag from a caller that may not). A refusal on a BLE link is recorded as `ble` whether the link is paired with a PIN of its own or still has a default PIN (which authenticates nobody, but is still BLE); `net` is for the TCP ports (Wi-Fi, Ethernet) and the Ethernet console. Repeats fold into one entry with a count.
 
 ## The Ethernet console
 
