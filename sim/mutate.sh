@@ -13,7 +13,7 @@ DRY=0
 if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; fi   # --dry: only check that every mutant's target text exists (no build, no tests)
 if [ "$ONLY" = "--list" ]; then grep -o "^mutate [a-z0-9_]*" "$0" | cut -d" " -f2; exit 0; fi
 
-build() { sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
+build() { BUILD_OK=1; sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { BUILD_OK=0; echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
 
 # name | file | old text | new text | pytest target
 mutate() {
@@ -45,13 +45,27 @@ open(p, "w").write(s.replace(old, new, 1))
 PY
   if [ $? -ne 0 ]; then echo "TARGET MISSING: $name (the code it mutates has changed; update the mutant)"; SURVIVED=1; return 0; fi
   build
+  if [ "$BUILD_OK" = 0 ]; then
+    # a mutant that does not compile proves nothing, and the tests would run the previous binaries: an error
+    echo "ERROR: $name does not build (fix the mutant)"; SURVIVED=1
+    git show "HEAD:$file" > "$file"; return 0
+  fi
   case "$target" in
     unit:*) sim/run.sh pio test -e native -f "${target#unit:}" > ".sim-logs/mut_$name.log" 2>&1 ;;
     *) sim/run.sh python3 -m pytest $target -q -x -p no:cacheprovider > ".sim-logs/mut_$name.log" 2>&1 ;;
   esac
   rc=$?
   echo "MUTATION $name -> exit $rc : $(tail -1 ".sim-logs/mut_$name.log")"
-  if [ $rc -eq 0 ]; then echo "SURVIVED: $name (its tests still pass with the code broken)"; SURVIVED=1; fi
+  # Only a failing test counts as caught. pytest exits 1 for failed tests and 2-5 for usage, collection or internal
+  # errors; a missing tool is 126/127. The unit runner exits non-zero for a build error too, so it needs a failed case.
+  verdict=error
+  if [ $rc -eq 0 ]; then verdict=survived
+  else case "$target" in
+    unit:*) grep -Eq "test cases: [0-9]+ failed|[0-9]+ failed, [0-9]+ succeeded|\[FAILED\]" ".sim-logs/mut_$name.log" && verdict=caught ;;
+    *) [ $rc -eq 1 ] && grep -Eq "[0-9]+ failed" ".sim-logs/mut_$name.log" && verdict=caught ;;
+  esac; fi
+  if [ "$verdict" = survived ]; then echo "SURVIVED: $name (its tests still pass with the code broken)"; SURVIVED=1; fi
+  if [ "$verdict" = error ]; then echo "ERROR: $name (exit $rc without a failing test: the test run itself broke)"; SURVIVED=1; fi
   # restore from HEAD by content: `git checkout` does nothing for a same-size edit made within the index timestamp's second
   # (git calls the file unmodified), which left a protocol-level mutant in the tree on 2026-10-17
   git show "HEAD:$file" > "$file"
