@@ -681,6 +681,11 @@ mutate table_paired_factory_reset_in_hardened_sim src/helpers/cli/CliPolicy.h "/
 mutate policy_flag_ignored_for_the_lowering_rule_sim src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" sim/tests/test_companion_ble.py::test_hardened_with_a_per_device_pin_starts_ble_but_keeps_the_rules
 mutate frame_context_trusts_every_interface_sim examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isTrustedTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" "if (_serial) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" sim/tests/test_companion_ble.py::test_with_the_default_pin_management_is_refused_and_messaging_works
 
+# --- a reply goes back to the interface its request came from, and that interface's trust decides the command
+mutate reply_routed_to_every_interface src/helpers/MultiSerialInterface.h "if(_bound != nullptr && iface.instance != _bound){" "if(false){" sim/tests/test_companion_ble.py::test_interleaved_requests_are_answered_on_their_own_transport
+mutate reply_and_trust_from_the_wrong_interface src/helpers/MultiSerialInterface.h "          _last_rx = iface.instance;" "          _last_rx = _last_rx ? _last_rx : iface.instance;" sim/tests/test_companion_ble.py::test_a_default_pin_ble_frame_is_never_decided_with_the_cables_trust
+mutate reply_bound_to_the_whole_loop_pass_only src/helpers/MultiSerialInterface.h "  void bindReply(const BaseSerialInterface* src) override { _bound = src; }" "  void bindReply(const BaseSerialInterface* src) override { (void)src; }" sim/tests/test_companion_ble.py::test_interleaved_requests_are_answered_on_their_own_transport
+
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries after a full run
 
 echo "RESTORED; final clean run:"

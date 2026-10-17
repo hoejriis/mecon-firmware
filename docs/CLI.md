@@ -20,6 +20,8 @@ allowed                         ->  the role's own handler runs the command, unc
 - **The table** (`CliPolicy.h`) maps (caller, posture, class) to allow or to the reason for the refusal. It is the only place a rule about *who* lives. The older entry points (`Posture::keyTransferAllowed`, `Posture::factoryResetAllowed`, `Posture::isRemoteReadOnly`, `ConnMode::callerMaySwitch`, the posture commands) are thin functions that ask it.
 - **The handlers** (the Companion's `handleCommand`, the repeater's, the room server's, `CommonCLI`) run only what the gate let through. Upstream commands keep their names, syntax and replies.
 
+On a Companion with more than one app transport (USB, BLE, Wi-Fi), a command is judged by the transport it arrived on and its reply goes back to that transport only, whatever the other transports send in between; only unsolicited frames (a received message, an advert) go to every connected transport. A key exported over the cable is never written to a paired phone, and a frame from a default-PIN phone is never judged with the cable's trust.
+
 A remote caller never inherits a local caller's privileges: a LoRa or MQTT caller is a different row from the cable, whatever it sent. A context that disagrees with itself (a remote flag that does not match the transport, an authentication that does not belong to the transport) resolves to the *untrusted* row, which refuses everything.
 
 ## Classes

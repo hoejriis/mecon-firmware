@@ -281,6 +281,8 @@ private:
   uint32_t _most_recent_lastmod;
   uint32_t _active_ble_pin;
   bool _iter_started;
+  const BaseSerialInterface* _cmd_src = nullptr;   // the interface the command being handled arrived on (multiplexed serial)
+  const BaseSerialInterface* _iter_src = nullptr;  // ... and the one the running contact list is streamed to
   bool _cli_rescue;
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
