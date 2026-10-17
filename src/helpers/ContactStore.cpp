@@ -600,28 +600,104 @@ void ContactStore::noteMessage(int rec, uint32_t now) {
   _idx[rec].last_msg = now;
 }
 
-// The rescue console's "rebuild" formats the file system and then writes what is in memory again. The contacts in
-// the cache are written again by the next flush; those that were only on the file system are gone, and leaving
-// them in the index would make the store claim contacts it cannot read.
-int ContactStore::filesystemErased() {
-  if (!_ready || !_persistent) return 0;
-  int lost = 0;
-  for (int r = 0; r < _cap; r++) {
-    Idx& e = _idx[r];
-    if (!(e.flags & F_USED)) continue;
-    if (e.slot == NOSLOT) {
-      memset(&e, 0, sizeof(Idx));
-      e.slot = NOSLOT;
-      _count--;
-      lost++;
-      if (r < _first_free) _first_free = r;
-    } else {
-      _slots[e.slot].prov = 1;                          // changed as far as the file system is concerned
-    }
+// The rescue console's "rebuild": works from the persistent store, not from the cache. Every bucket is read and every
+// record re-verified (CRC). Every valid record is kept, cached or not. A record whose CRC fails is dropped from the
+// rewritten bucket and counted, and the bucket as it was is kept aside (backend keepAside) before it is touched; if it
+// cannot be kept aside the bucket is left as it is. Each bucket is rewritten through the backend's atomic swap, so a
+// power cut leaves the previous bucket or the new one. The index is rebuilt from what the buckets hold.
+int ContactStore::rebuild(int* damaged_out, int* isolated_out) {
+  int damaged = 0, isolated = 0;
+  if (!_ready || !_persistent) {
+    if (damaged_out) *damaged_out = 0;
+    if (isolated_out) *isolated_out = 0;
+    return _count;
   }
-  _scratch_bucket = -1;
-  memset(_bdirty, 0, (_nbuckets + 7) / 8 + 1);
-  return lost;
+  syncAll();                                            // changes made through pointers are in the image below
+  const int K = CONTACT_RECORD_BUCKET;
+  for (int b = 0; b < _nbuckets; b++) {
+    bool have = _be->bucketExists((uint16_t)b);
+    bool readable = have && _be->readBucket((uint16_t)b, _scratch, BUCKET_BYTES);
+    _scratch_bucket = -1;
+    if (!readable) memset(_scratch, 0, BUCKET_BYTES);
+    bool resident[CONTACT_RECORD_BUCKET];
+    bool any_bad = false, any_res = false;
+    for (int i = 0; i < K; i++) {
+      Idx& e = _idx[b * K + i];
+      resident[i] = (e.flags & F_USED) && e.slot != NOSLOT;
+      if (resident[i]) { any_res = true; continue; }
+      const uint8_t* r = _scratch + i * REC;
+      ContactInfo c; uint32_t lm;
+      bool zero = true;
+      for (int k = 0; k < REC && zero; k++) if (r[k]) zero = false;
+      if (!zero && !decode(r, c, lm)) any_bad = true;
+    }
+    if (have && !readable) any_bad = true;              // a file that cannot be read is damaged as a whole
+    if (!have && !any_res) {                            // no file: nothing to verify, but the index may claim records
+      for (int i = 0; i < K; i++) {
+        Idx& e = _idx[b * K + i];
+        if (e.flags & F_USED) { memset(&e, 0, sizeof(Idx)); e.slot = NOSLOT; _count--; damaged++; }
+      }
+      continue;
+    }
+    if (any_bad && readable) {                          // the bucket as found is kept before anything is rewritten
+      if (!_be->keepAside((uint16_t)b, _scratch, BUCKET_BYTES)) {
+        _write_errors++;
+        for (int i = 0; i < K; i++) {                    // left as it is: the damaged records are still counted
+          const uint8_t* r = _scratch + i * REC;
+          ContactInfo c; uint32_t lm;
+          bool zero = true;
+          for (int k = 0; k < REC && zero; k++) if (r[k]) zero = false;
+          if (!resident[i] && !zero && !decode(r, c, lm)) damaged++;
+        }
+        continue;
+      }
+      isolated++;
+    }
+    bool any = false;
+    for (int i = 0; i < K; i++) {
+      int rec = b * K + i;
+      uint8_t* r = _scratch + i * REC;
+      Idx& e = _idx[rec];
+      if (resident[i]) {
+        if (_slots[e.slot].ci.type == ADV_TYPE_NONE) memset(r, 0, REC);
+        else imageOf(_slots[e.slot], r);
+      } else {
+        ContactInfo c; uint32_t lm = 0;
+        bool zero = true;
+        for (int k = 0; k < REC && zero; k++) if (r[k]) zero = false;
+        if (!zero && decode(r, c, lm)) {
+          if (!(e.flags & F_USED)) _count++;
+          setIdxFromContact(e, c, lm);
+          e.slot = NOSLOT;
+        } else {
+          if (!zero || (e.flags & F_USED)) damaged++;
+          if (e.flags & F_USED) { memset(&e, 0, sizeof(Idx)); e.slot = NOSLOT; _count--; }
+          memset(r, 0, REC);
+        }
+      }
+      for (int k = 0; k < REC && !any; k++) if (r[k]) any = true;
+    }
+    bool ok;
+    if (any) ok = _be->writeBucket((uint16_t)b, _scratch, BUCKET_BYTES);
+    else ok = have ? _be->removeBucket((uint16_t)b) : true;
+    if (!ok) { _write_errors++; continue; }
+    if (any) _scratch_bucket = b;
+    for (int i = 0; i < K; i++) {
+      Idx& e = _idx[b * K + i];
+      if ((e.flags & F_USED) && e.slot != NOSLOT && _slots[e.slot].ci.type != ADV_TYPE_NONE) {
+        Slot& s = _slots[e.slot];
+        memcpy(&s.saved_crc, _scratch + i * REC + 156, 4);
+        s.prov = 0;
+        e.flags &= (uint8_t)~F_PROV;
+      }
+    }
+    if (_bdirty) _bdirty[b >> 3] &= (uint8_t)~(1u << (b & 7));
+  }
+  _first_free = 0;
+  while (_first_free < _cap && (_idx[_first_free].flags & F_USED)) _first_free++;
+  if (damaged_out) *damaged_out = damaged;
+  if (isolated_out) *isolated_out = isolated;
+  return _count;
 }
 
 // ---------------------------------------------------------------------------------------------- bulk import

@@ -47,6 +47,7 @@ public:
   bool readBucket(uint16_t b, uint8_t* buf, uint32_t len) override;
   bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len) override;
   bool removeBucket(uint16_t b) override;
+  bool keepAside(uint16_t b, const uint8_t* buf, uint32_t len) override;   // /ct<N>.bad
   uint32_t freeBytes() override;
   void loadChannels(DataStoreHost* host);
   void saveChannels(DataStoreHost* host);
