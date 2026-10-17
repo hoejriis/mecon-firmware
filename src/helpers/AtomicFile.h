@@ -92,6 +92,17 @@ inline void recover(FS_T* fs, const char* path) {
   }
 }
 
+// Removes <path> together with any leftover temp or swap file: for a file that is deleted on purpose.
+template <typename FS_T>
+inline void discard(FS_T* fs, const char* path) {
+  char tmp[48], nw[48];
+  nameWith(tmp, sizeof(tmp), path, ".tmp");
+  nameWith(nw, sizeof(nw), path, ".new");
+  if (fs->exists(tmp)) fs->remove(tmp);
+  if (fs->exists(nw)) fs->remove(nw);
+  if (fs->exists(path)) fs->remove(path);
+}
+
 // writer: bool(Stream&) writes the complete content. Returns true once the new file is in place.
 template <typename FS_T, typename WRITER>
 inline bool save(FS_T* fs, const char* path, WRITER writer) {

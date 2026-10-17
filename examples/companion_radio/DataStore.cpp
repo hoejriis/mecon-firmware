@@ -433,6 +433,7 @@ struct BlobRec {
 };
 
 void DataStore::checkAdvBlobFile() {
+  AtomicFile::recover(_getContactsChannelsFS(), "/adv_blobs");   // finish or drop a save that was cut by a power loss
   if (!_getContactsChannelsFS()->exists("/adv_blobs")) {
     File file = openWrite(_getContactsChannelsFS(), "/adv_blobs");
     if (file) {
@@ -574,14 +575,16 @@ uint8_t DataStore::getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_b
 bool DataStore::putBlobByKey(const uint8_t key[], int key_len, const uint8_t src_buf[], uint8_t len) {
   if (len < PUB_KEY_SIZE+4+SIGNATURE_SIZE || len > MAX_ADVERT_PKT_LEN) return false;
   checkAdvBlobFile();
-  File file = _getContactsChannelsFS()->open("/adv_blobs", FILE_O_WRITE);
-  if (file) {
-    uint32_t pos = 0, found_pos = 0;
+  FILESYSTEM* fs = _getContactsChannelsFS();
+  uint32_t found_pos = 0;
+  {
+    File file = openRead(fs, "/adv_blobs");
+    if (!file) return false; // error
+    uint32_t pos = 0;
     uint32_t min_timestamp = 0xFFFFFFFF;
 
     // search for matching key OR evict by oldest timestamp
     BlobRec tmp;
-    file.seek(0);
     while (file.read((uint8_t *) &tmp, sizeof(tmp)) == sizeof(tmp)) {
       if (memcmp(key, tmp.key, sizeof(tmp.key)) == 0) {  // only match by 7 byte prefix
         found_pos = pos;
@@ -594,19 +597,34 @@ bool DataStore::putBlobByKey(const uint8_t key[], int key_len, const uint8_t src
 
       pos += sizeof(tmp);
     }
-
-    memcpy(tmp.key, key, sizeof(tmp.key));  // just record 7 byte prefix of key
-    memcpy(tmp.data, src_buf, len);
-    tmp.len = len;
-    tmp.timestamp = _clock->getCurrentTime();
-
-    file.seek(found_pos);
-    file.write((uint8_t *) &tmp, sizeof(tmp));
-
     file.close();
-    return true;
   }
-  return false; // error
+
+  BlobRec upd;
+  memset(&upd, 0, sizeof(upd));
+  memcpy(upd.key, key, sizeof(upd.key));  // just record 7 byte prefix of key
+  memcpy(upd.data, src_buf, len);
+  upd.len = len;
+  upd.timestamp = _clock->getCurrentTime();
+
+  // The records are fixed size and rewritten in place by stock, so a power cut could leave a short or torn
+  // file. Write the whole table to a temp file with the one record replaced, verify it, swap it in.
+  return AtomicFile::save(fs, "/adv_blobs", [this, fs, found_pos, &upd](Stream& out) {
+    File old = openRead(fs, "/adv_blobs");
+    BlobRec rec;
+    for (int i = 0; i < MAX_BLOBRECS; i++) {
+      const BlobRec* w = &rec;
+      if ((uint32_t)i * sizeof(BlobRec) == found_pos) {
+        w = &upd;
+      } else if (!old || old.read((uint8_t *) &rec, sizeof(rec)) != sizeof(rec)) {
+        memset(&rec, 0, sizeof(rec));
+      }
+      if (w == &upd && old) old.seek((i + 1) * sizeof(BlobRec));   // keep the read position in step
+      if (out.write((const uint8_t *) w, sizeof(BlobRec)) != sizeof(BlobRec)) { if (old) old.close(); return false; }
+    }
+    if (old) old.close();
+    return true;
+  });
 }
 bool DataStore::deleteBlobByKey(const uint8_t key[], int key_len) {
   return true; // this is just a stub on NRF52/STM32 platforms
@@ -623,6 +641,7 @@ uint8_t DataStore::getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_b
   char path[64];
   makeBlobPath(key, key_len, path, sizeof(path));
 
+  AtomicFile::recover(_fs, path);   // finish or drop a save that was cut by a power loss
   if (_fs->exists(path)) {
     File f = openRead(_fs, path);
     if (f) {
@@ -638,23 +657,16 @@ bool DataStore::putBlobByKey(const uint8_t key[], int key_len, const uint8_t src
   char path[64];
   makeBlobPath(key, key_len, path, sizeof(path));
 
-  File f = openWrite(_fs, path);
-  if (f) {
-    int n = f.write(src_buf, len);
-    f.close();
-    if (n == len) return true; // success!
-
-    _fs->remove(path); // blob was only partially written!
-  }
-  return false; // error
+  // temp file, read-back check, swap: a power cut keeps the previous complete blob (stock rewrote it in place)
+  return AtomicFile::save(_fs, path, [src_buf, len](Stream& s) { return s.write(src_buf, len) == len; });
 }
 
 bool DataStore::deleteBlobByKey(const uint8_t key[], int key_len) {
   char path[64];
   makeBlobPath(key, key_len, path, sizeof(path));
 
-  _fs->remove(path);
-  
+  AtomicFile::discard(_fs, path);
+
   return true; // return true even if file did not exist
 }
 #endif
