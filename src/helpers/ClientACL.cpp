@@ -1,19 +1,10 @@
 #include "ClientACL.h"
-
-static File openWrite(FILESYSTEM* _fs, const char* filename) {
-  #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-    _fs->remove(filename);
-    return _fs->open(filename, FILE_O_WRITE);
-  #elif defined(RP2040_PLATFORM)
-    return _fs->open(filename, "w");
-  #else
-    return _fs->open(filename, "w", true);
-  #endif
-}
+#include <helpers/AtomicFile.h>
 
 void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   _fs = fs;
   num_clients = 0;
+  AtomicFile::recover(_fs, "/s_contacts");   // finish or drop a save that was cut by a power loss
   if (_fs->exists("/s_contacts")) {
   #if defined(RP2040_PLATFORM)
     File file = _fs->open("/s_contacts", "r");
@@ -54,8 +45,8 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
 
 void ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
   _fs = fs;
-  File file = openWrite(_fs, "/s_contacts");
-  if (file) {
+  // Temp file, read-back check, swap: a power cut leaves the previous complete list, not a truncated one.
+  AtomicFile::save(_fs, "/s_contacts", [this, filter](Stream& file) {
     uint8_t unused[2];
     memset(unused, 0, sizeof(unused));
 
@@ -71,17 +62,15 @@ void ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
       success = success && (file.write(c->out_path, 64) == 64);
       success = success && (file.write(c->shared_secret, PUB_KEY_SIZE) == PUB_KEY_SIZE);
 
-      if (!success) break; // write failed
+      if (!success) return false; // write failed: the temp file is dropped, the old list stays
     }
-    file.close();
-  }
+    return true;
+  });
 }
 
 bool ClientACL::clear() {
   if (!_fs) return false; // no filesystem, nothing to clear
-  if (_fs->exists("/s_contacts")) {
-    _fs->remove("/s_contacts");
-  }
+  AtomicFile::discard(_fs, "/s_contacts");
   memset(clients, 0, sizeof(clients));
   num_clients = 0;
   return true;

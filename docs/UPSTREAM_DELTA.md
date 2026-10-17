@@ -15,6 +15,7 @@ This register lists **every change this repository makes to a file that exists u
 | `src/helpers/BaseSerialInterface.h`, `MultiSerialInterface.h`, `ArduinoSerialInterface.h`, `wifi/SerialWifiInterface.h`, `ethernet/SerialEthernetInterface.h`, `esp32/`, `nrf52/` and `rp2040/SerialBLEInterface.*` | `isTrustedTransport()` added. It **defaults to false (fail closed)**. USB/UART serial is trusted. BLE is trusted only when paired with a PIN other than 0 or the default 123456. The TCP interfaces are untrusted. The multiplexer reports the transport of the last frame. | Lets the Companion tell an authenticated transport from an unauthenticated one. A PIN anyone can look up does not authenticate, so on default-PIN boards management stays on USB. |
 | `examples/companion_radio/MyMesh.cpp` | `CMD_RUN_CLI_COMMAND`, export/import private key, set device PIN and factory reset are refused with `ERR_CODE_NOT_PERMITTED` (7) on an untrusted transport | Stock serves these to any client of the `_wifi` build's open TCP port. |
 | `src/helpers/CommonCLI.cpp` (`loadPrefs`, `savePrefs`), `examples/companion_radio/DataStore.cpp` (prefs, channel table), `src/helpers/IdentityStore.cpp`/`.h` | Saves go through `src/helpers/AtomicFile.h` (new): temp file, flush, read-back check of length and CRC, then swap; boot completes or drops an interrupted swap. A stored identity that cannot be read is renamed to `<file>.damaged` instead of being overwritten by a fresh one | Stock rewrites these files in place: a power cut leaves a truncated file that the loader accepts (settings silently revert), or loses the identity. |
+| `examples/companion_radio/DataStore.cpp` (`getBlobByKey`, `putBlobByKey`, `deleteBlobByKey`, `checkAdvBlobFile`), `src/helpers/ClientACL.cpp` (`load`, `save`, `clear`), `src/helpers/AtomicFile.h` (`discard()` added) | The Companion blob store (`/bl/<key>` on ESP32 and RP2040; the fixed-record `/adv_blobs` table on nRF52 and STM32) and the repeater / room server / sensor client ACL (`/s_contacts`) are saved through `AtomicFile`. A blob is read through `recover()` (a blob is a file per key, so there is no boot-time list to walk); the ACL and `/adv_blobs` are recovered at load. A delete also removes a leftover temp or swap file. On nRF52 and STM32 the one record is replaced by writing the whole table to the temp file | Stock rewrites these files in place: a power cut leaves a truncated blob (the contact's last advert, so it can no longer be shared) or a truncated ACL (logged-in clients are forgotten, and admin entries with them). |
 | `examples/simple_repeater/main.cpp` | Prints a warning when the identity file was damaged and kept aside | The repeater console is the only place that can report it. |
 | `src/Mesh.cpp` | TRACE handling: payloads shorter than the 9-byte header are dropped, the hash-list length is no longer a wrapping `uint8_t`, and a hop entry must lie fully inside the payload before it is compared | Stock computes `payload_len - 9` as a `uint8_t`, so a short TRACE yields a length near 255 and the next-hop comparison reads past the packet buffer (found with AddressSanitizer in the simulator). |
 | `src/helpers/CommonRadioPrefs.cpp`, `src/helpers/CommonCLI.cpp` | `strcpy` of the command tail into fixed 132-byte buffers (`set radio`, `tempradio`, `sensor set`, `extra.sf`) replaced by a bounded copy; `??:` and `unknown config:` replies are bounded | Stock overflows the buffer for a long argument; a remote caller sends up to about 160 characters. |
@@ -62,7 +63,7 @@ Generic fixes made here that would also benefit stock MeshCore, with whether the
 | Change | Offered upstream |
 |---|---|
 | Transport trust for Companion management commands (`isTrustedTransport()`, `ERR_CODE_NOT_PERMITTED`) | not yet offered |
-| Atomic prefs/identity/channel saves (`AtomicFile.h`) | not yet offered |
+| Atomic prefs/identity/channel/blob saves and the client ACL (`AtomicFile.h`) | not yet offered |
 | Atomic contact saves, in buckets that bound the temporary space of a save | not yet offered |
 | Adaptive contact memory: persistent contact store with a RAM cache sized from the free heap, favourites resident, eviction of the least meaningful non-favourite ([CONTACTS.md](CONTACTS.md)) | not yet offered |
 | Bounded TRACE parsing; bounded copies in CLI parsing | not yet offered |
@@ -100,7 +101,9 @@ Limits of the enforcement: the window lives in RAM and is not persisted; after a
 | nRF52, STM32 | Adafruit LittleFS (littlefs) | Atomic replace (`lfs_rename`) | Direct rename over the live file. |
 | RP2040 | LittleFS (littlefs) | Atomic replace (`lfs_rename`) | Direct rename over the live file. |
 
-Not covered: contacts, blobs and the client ACL are still written in place.
+Covered: prefs, identity, the channel table, the contact buckets, the Companion blobs and the client ACL.
+
+Temporary space: a save needs room for one extra copy of the file being replaced. The largest are the client ACL (32 clients of 136 bytes, 4,352 bytes at most), the nRF52 / STM32 blob table (`/adv_blobs`: 20 records of 178 bytes, 3,560 bytes, or 17,800 bytes with 100 records on boards with an extra file system) and a contact bucket. An ESP32 or RP2040 blob is one file of at most 166 bytes. The nRF52 / STM32 blob table path is not built by any simulated environment, so it is **not exercised by any test**; the ESP32-style `/bl/<key>` path and the ACL are.
 
 ## Known stock compile failures
 
