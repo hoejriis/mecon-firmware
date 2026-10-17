@@ -1,10 +1,10 @@
 # Non-ESP portability
 
-> **Target documentation:** this public repository has no installable release yet. Public releases start at **0.1.0**, a standalone enhanced MeshCore on 1.18.0 (see [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md)); the first version to serve a MECON fleet is planned as 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../README.md) and the [documentation index](README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 MECON is a capability architecture around MeshCore, not an ESP32/Wi-Fi/MQTT product definition.
 
-The first public release (mecon-firmware 0.8.0) centres on Heltec V3/V4 and also carries two nRF52 roles, the T1000-E BLE Companion and the Wio Tracker L1 RF repeater; portable functionality is separated so each target implements only what its hardware supports.
+The first release planned to serve a MECON fleet (mecon-firmware 0.8.0) centres on Heltec V3/V4 and also carries two nRF52 roles, the T1000-E BLE Companion and the Wio Tracker L1 RF repeater; portable functionality is separated so each target implements only what its hardware supports.
 
 ## Portable Core
 

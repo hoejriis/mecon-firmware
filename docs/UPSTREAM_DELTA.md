@@ -6,7 +6,7 @@ This register lists **every change this repository makes to a file that exists u
 
 | Path | Change | Why |
 |---|---|---|
-| `README.md`, `CONTRIBUTING.md`, `SECURITY.md` | This project's own versions | The project describes and governs itself; upstream's versions remain in upstream history. |
+| `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `RELEASE.md` | This project's own versions | The project describes and governs itself; upstream's versions remain in upstream history. Upstream's `RELEASE.md` described its tag-triggered release builders, which are removed here. |
 | `.devcontainer/devcontainer.json` | Replaced | Upstream's container runs privileged on the host network, installs an unpinned PlatformIO and pipes a third-party installer through `curl … \| bash`. This project builds in an unprivileged container from the root `Dockerfile` with a pinned PlatformIO, matching CI. |
 | `.github/workflows/github-pages.yml` | Removed | Deploys upstream's documentation site under upstream's domain on every push to `main`. |
 | `.github/workflows/build-companion-firmwares.yml`, `build-repeater-firmwares.yml`, `build-room-server-firmwares.yml` | Removed | Release builders triggered by upstream's tag names. This project's releases have their own workflow. |

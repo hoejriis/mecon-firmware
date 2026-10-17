@@ -4,7 +4,7 @@
 
 This page lists what has actually run on real hardware for the first hosted beta. A board that is not listed as tested is not offered, even if the firmware compiles for it. Inclusion here is not a promise of future support.
 
-The builds are private beta builds (the 0.9x reference line); this repository still publishes no firmware downloads (see the [README](../README.md)). Public mecon-firmware releases start at 0.1.0. The public and private numbers are separate lines, so a lower public number is not a downgrade from a private build.
+The builds are private beta builds (the 0.9x reference line); this repository publishes source-only pre-releases and no firmware downloads (see the [README](../README.md)). Public mecon-firmware releases start at 0.1.0. The public and private numbers are separate lines, so a lower public number is not a downgrade from a private build.
 
 ## Offered for the beta (beta firmware 0.90.5)
 

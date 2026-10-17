@@ -1,18 +1,18 @@
 # mecon-firmware — detailed product target
 
-> **Target specification, not current availability.** See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) and [staged roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md). This repository currently contains documentation only.
+> **Target specification, not current availability.** See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) and [staged roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md). This repository contains the source of the standalone 0.1.x pre-releases (MeshCore 1.18.0 plus standalone security, storage, duty-cycle, Wi-Fi, MQTT, connectivity-mode, contact-memory and CLI improvements, verified on simulated boards only; see the [README](../README.md)). **None of the MECON-specific behaviour on this page is implemented yet**, and some of it is superseded by what the standalone line built (notes marked *Built differently* below).
 
 **mecon-firmware** is an open MeshCore firmware distribution, centred on Heltec V3 and V4 devices; its first release, 0.8.0, also carries the SenseCAP T1000-E BLE Companion and the Seeed Wio Tracker L1 RF repeater. It preserves normal MeshCore Companion and Repeater operation while adding resilient IP connectivity, remote management, observations and messaging through Wi-Fi, MQTT, USB and BLE.
 
 It is the sister project of [MeshContinuum](https://github.com/hoejriis/MeshContinuum), but it is **not coupled to MeshContinuum**. Any backend, broker or Reader may integrate with mecon-firmware by implementing the public, versioned contracts in this repository.
 
-> This repository currently defines the public release target. The existing private MVP is an implementation reference, not source to be copied wholesale. The public firmware will be refactored here against the documented behaviour and contracts.
+> This page defines the target for the MECON-integrated release. The existing private MVP is an implementation reference, not source to be copied wholesale. The public firmware is being rebuilt here, standalone features first, against the documented behaviour and contracts.
 
 ## Upstream dependency
 
-**The public line depends on MeshCore 1.18.** MeshCore 1.18.0 was released on upstream `main` on 2026-10-15, so the baseline is no longer unresolved; the production implementation is based on a specific revision of it, which is not yet pinned. The `dev` branch remains for investigation and validation only.
+**The public line depends on MeshCore 1.18.** MeshCore 1.18.0 was released on upstream `main` on 2026-10-15, so the baseline is no longer unresolved; the repository is pinned at upstream v1.18.0 (commit `81dbae5`). The `dev` branch remains for investigation and validation only.
 
-The first public firmware is **mecon-firmware 0.8.0**. The public line (from 0.1.0) and the private 0.9x reference firmware are separate lines, and their version numbers do not order across each other.
+The first public release (0.1.0) is a standalone enhanced MeshCore; the first release planned to serve a MECON fleet is **mecon-firmware 0.8.0**. The public line (from 0.1.0) and the private 0.9x reference firmware are separate lines, and their version numbers do not order across each other.
 
 This dependency is intentional. The 1.18 lineage contains substantial upstream work that overlaps areas MECON needs, including Wi-Fi infrastructure, runtime configuration, Companion/Repeater command handling, board-specific preferences, remote CLI/message primitives, scoping/subscription work, UI evolution and Heltec V3/V4 support. MECON should extend those upstream facilities rather than recreate their older 1.17-era equivalents from the private MVP.
 
@@ -24,7 +24,7 @@ MECON is deliberately an extension of MeshCore, not a replacement for it. A devi
 
 1. **It remains a normal MeshCore Companion or Repeater.** RF operation, mesh participation and the native role continue without Wi-Fi, MQTT, a backend or Internet connection. MECON uses a deliberately smaller Companion contact table than stock configurations may allow, trading contact capacity for enough RAM to run the additional connectivity and management services reliably. Managed/protected contacts must survive normal eviction.
 
-2. **It can store three ordered Wi-Fi profiles.** The device automatically tries configured networks in their entered priority order and reconnects as availability changes. Losing Wi-Fi must not interrupt the underlying MeshCore role. MECON should extend the MeshCore 1.18 Wi-Fi/configuration infrastructure rather than carry forward the private MVP's parallel Wi-Fi implementation.
+2. **It can store ordered Wi-Fi profiles** (*built differently*: the standalone firmware stores up to ten, see [Wi-Fi profiles](WIFI.md); the three of the original target is a lower bound). The device automatically tries configured networks in their entered priority order and reconnects as availability changes. Losing Wi-Fi must not interrupt the underlying MeshCore role. MECON should extend the MeshCore 1.18 Wi-Fi/configuration infrastructure rather than carry forward the private MVP's parallel Wi-Fi implementation.
 
 3. **It adds local-first MQTT connectivity.** A device may be provisioned with MQTT credentials and authority. When a compatible broker is advertised on the local network, the device prefers that local path; otherwise it uses its configured cloud broker. Local broker discovery is automatic, while credentials and permitted capabilities remain provisioned configuration. Only one MQTT session is active at a time, reducing RAM pressure on constrained hardware.
 
@@ -43,6 +43,8 @@ The private 0.9x reference firmware also ships, beyond the list above: Deploymen
 These behaviours are the public product target. The private development firmware demonstrates much of the machinery and informs the implementation, but the public repository's contracts and tests are authoritative for the refactor.
 
 ## Device UI for 1.0
+
+> *Built differently.* The standalone Companion builds already add a connectivity status page after the Bluetooth page and a two-step long-press gesture on it that switches between BLE and Wi-Fi ([Connectivity mode](CONNECTIVITY_MODE.md)). The "no additional screen" and "no new button semantics" rules below describe the original MECON 1.0 target and predate that; reconcile them when the MECON stage is built. The Companion's contact capacity is no longer a smaller fixed table either: see [Adaptive contact memory](CONTACTS.md).
 
 MECON 1.0 deliberately keeps the physical user interface as close to the corresponding stock MeshCore Companion or Repeater firmware as possible. MECON should add useful connectivity information without turning the device display into a separate management dashboard.
 
