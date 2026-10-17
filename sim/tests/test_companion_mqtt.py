@@ -96,6 +96,10 @@ def boot(nodes, tmp_path, name, commands, hardened=False, menv=None, seed=3):
 
 
 def wait_status(c, text, timeout=30.0):
+    # "profile=<n>" means a session on that profile. Since the connect runs off the main loop, the status also reads
+    # "connecting profile=<n>" while an attempt is under way; a bare substring match returned before the session existed.
+    if text.startswith("profile="):
+        text = "connected " + text
     end = time.time() + timeout
     s = ""
     while time.time() < end:
@@ -281,10 +285,32 @@ def test_a_responder_that_appears_later_is_taken_after_the_hold_down(nodes, tmp_
     n, c, _ = boot(nodes, tmp_path, "d6", discovery(0, "alpha", t.fingerprint, 90) + static(1, "127.0.0.2", PLAIN, 10),
                    menv=menv)
     wait_status(c, "profile=1")
-    t0 = time.time()
+
+    def browses():
+        return sum(1 for e in mqtt_events(n) if e == "browse")
+
+    def next_browse(after, timeout):
+        """Wall-clock time at which a browse beyond the `after`-th started (polled every 20 ms)."""
+        end = time.time() + timeout
+        while time.time() < end:
+            if browses() > after:
+                return time.time()
+            time.sleep(0.02)
+        raise AssertionError("no browse started")
+
+    # Advertise only after a browse has finished (it takes 200 ms of node time), so the first browse that can see the
+    # responder is the next one, and the time it started is known from the node's own log. The hold-down is then
+    # measured from that browse, not from the advertisement: the old bound (9 s from the advertisement) depended on
+    # where in the rescan period the advertisement happened to fall, and failed when a browse came right after it.
+    next_browse(browses(), 40)
+    time.sleep(0.5)
+    seen = browses()
     menv.advertise("alpha", "127.0.0.4", TLS)
+    first_sight = next_browse(seen, 40)
     s = wait_status(c, "profile=0", timeout=40)
-    assert time.time() - t0 >= 9.0          # seen at the next browse (up to 6 s), then a 6 s hold-down: not at first sight
+    took = time.time() - first_sight
+    hold = 6.0   # 60 s of node time at time scale 10
+    assert took >= hold - 0.15, "taken %.2f s after it was first seen: not held down for %.1f s" % (took, hold)
     assert "tls=verified" in s
     assert a.client_connects() == 1 and t.client_connects() == 1       # one switch, no flapping
     time.sleep(8.0)
