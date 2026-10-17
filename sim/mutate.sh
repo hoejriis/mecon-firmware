@@ -10,6 +10,12 @@ ONLY="${1:-}"
 SURVIVED=0
 DRY=0
 if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; fi   # --dry: only check that every mutant's target text exists (no build, no tests)
+# Each mutant is undone with `git checkout`, which would also throw away uncommitted work: refuse a dirty tree.
+if [ "$DRY" = 0 ] && [ "$ONLY" != "--list" ]; then
+  if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+    echo "REFUSED: uncommitted changes in tracked files; commit or stash them first (mutants are undone with git checkout)"; exit 2
+  fi
+fi
 if [ "$ONLY" = "--list" ]; then grep -o "^mutate [a-z0-9_]*" "$0" | cut -d" " -f2; exit 0; fi
 
 build() { sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
