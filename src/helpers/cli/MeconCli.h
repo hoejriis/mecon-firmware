@@ -27,6 +27,7 @@ inline const char* transportName(uint8_t t) {
     case T_MQTT: return "mqtt";
     case T_LORA: return "lora";
     case T_BUTTON: return "button";
+    case T_NETCON: return "netcon";
   }
   return "none";
 }
@@ -43,6 +44,7 @@ inline const char* authName(uint8_t a) {
     case A_GUEST: return "guest";
     case A_CONTACT_FLAG: return "contact-flag";
     case A_BUTTON: return "button";
+    case A_NETCON_ADMIN: return "netcon-admin";
   }
   return "none";
 }
@@ -58,6 +60,7 @@ inline const char* principalName(uint8_t p) {
     case P_MQTT: return "mqtt";
     case P_MQTT_UNVERIFIED: return "mqtt-unverified";
     case P_BUTTON: return "button";
+    case P_NETCON_ADMIN: return "ethernet-admin";
   }
   return "untrusted";
 }
@@ -87,6 +90,7 @@ inline const char* reasonName(uint8_t r) {
     case R_LOCAL_ONLY: return "local-only";
     case R_MQTT_UNVERIFIED: return "broker-not-verified";
     case R_MQTT_READONLY: return "broker-read-only";
+    case R_NETCON_OFF: return "ethernet-console-off";
   }
   return "?";
 }

@@ -45,16 +45,17 @@ Rows are the callers; per caller the left cell is Normal and the right is Harden
 |---|---|---|---|---|---|---|
 | **cable** (USB / UART) | - / - | - / - | - / refused | - / - | - / - | - / - |
 | **paired phone** (BLE, a PIN of the device's own) | - / - | - / - | - / refused | - / - | - / refused | - / - |
-| **untrusted** (the TCP port, BLE with a default PIN, an unset or inconsistent context) | refused | refused | refused | refused | refused | refused |
+| **untrusted** (the Companion TCP port, BLE with a default PIN, the Ethernet console before `login`, an unset or inconsistent context) | refused | refused | refused | refused | refused | refused |
 | **remote admin** (LoRa login, password set) | - / - | - / refused | local only / refused | refused | local only / refused | - / - |
 | **remote admin, default password** | refused | refused | refused | refused | refused | refused |
+| **Ethernet admin** (repeater and room server Ethernet console, `login` with a set password) | - / off | - / off | local only / off | refused / off | local only / off | - / off |
 | **guest** (LoRa) | refused | refused | refused | refused | refused | refused |
 | **flagged contact** (Companion remote CLI) | - / off | limited / off | limited / off | refused / off | limited / off | - / off |
 | **MQTT, TLS verified** | - / - | - / flag | refused | refused | refused | - / flag |
 | **MQTT, plain or unverified TLS** | refused | refused | refused | refused | refused | refused |
 | **device button** | refused | refused | refused | allowed | refused | refused |
 
-- *limited*: a flagged contact reads and reboots only. *off*: Hardened turns the remote CLI off entirely, reads included.
+- *limited*: a flagged contact reads and reboots only. *off*: Hardened turns the remote CLI (and the Ethernet console) off entirely, reads included.
 - *flag*: allowed only when the broker profile the session runs on is flagged for management (`set mqtt.profile <n> manage on`); otherwise the request is answered `refused` with `ERR: management is off for this broker profile`.
 - *local only* and *refused* are explicit replies and audit entries; `set prv.key` from the air is explained but, as it always was, not logged.
 - The button reaches the connectivity-mode switch and nothing else; it is not a command line.
@@ -76,6 +77,24 @@ A refusal's reply text (the strings are those the individual checks always gave)
 | a Companion frame on an untrusted transport | `ERR_CODE_NOT_PERMITTED` (7) |
 
 Every refusal is an audit entry ([Standalone security postures](STANDALONE_POSTURES.md)): the class (`remote-write`, `posture`, `audit`, `key-export`, ...) and who asked (`cable`, `ble`, `net`, `remote-admin`, `remote-cli`, `mqtt`). Two new kinds: `mqtt-session` (a request on a session that is not TLS-verified) and `mgmt-flag` (an attempt to set the management flag from a caller that may not). Repeats fold into one entry with a count.
+
+## The Ethernet console
+
+The RAK4631 `_ethernet` builds of the Repeater and Room server listen on a TCP port (23) and hand each line to the same command handler as the serial console. The serial console is the cable. The TCP port is a plain-text line protocol on a network, so it is not.
+
+Before this was fixed the console passed its lines with sender timestamp 0, the marker for the local console, so any host that could open the port ran `get prv.key`, `set prv.key`, `erase` and posture changes. Now the console is its own caller (`T_NETCON`, in `NetConsole.h`):
+
+- **A connection starts untrusted.** Every line is refused with `ERR: not permitted` and audited (caller `net`, the command's own kind), except `login`.
+- **`login <admin password>`** turns the connection into the *Ethernet admin* row, which has the remote admin's rights: reads, writes and `reboot`, but not the private key, `erase`, `poweroff`, `shutdown`, posture or audit. Those stay on the cable. It needs Normal posture and an admin password that has been set (not the stock default, not empty); the console then runs the line as a remote admin (a non-zero sender timestamp), so the handlers' console-only commands (`set freq`, `stats-*`, `log`, `get acl`) stay closed too.
+- **Wrong passwords** are answered `ERR: wrong password` and audited as `login-fail net bad-password`; the attempt itself is never stored or echoed. Five wrong attempts lock all logins for a minute, across connections. The default password gets `ERR: the Ethernet console is off until the admin password is set on the local console` and is audited as `default-password`.
+- **A login ends** with the connection (a new connection replaces the old one), with `logout`, when the posture is no longer Normal, or when the admin password is the default again.
+- **Hardened** refuses the login (`ERR: the Ethernet console is off in hardened posture`) and drops a live session.
+
+Why a login and not a read-only or refused console: a console that refuses everything leaves a headless repeater on a rack with no way to be configured except by walking to it, and the Ethernet builds exist to be reached over the network. A login with the admin password is the same authentication the radio uses for remote admin, so the console is held to the same row, no higher. A refusal-only console was the alternative; it is safe but throws away the feature, and the stock `eth.status` and day-to-day tuning still work after a login.
+
+**Limit, stated plainly:** the line protocol is cleartext, so the admin password and every command can be read by anyone who can see the traffic, and a stolen password also opens remote admin over the air. Use the console only on a network you trust (a management VLAN, a point-to-point link), and keep the posture Hardened where that is not true. Management over an unauthenticated TCP port stays refused, as for the Companion's TCP server; this is the one TCP management path, and it is authenticated and Normal-only.
+
+Not verified on a board: the simulated board runs the real mains and handlers over a loopback listener in place of the W5100S driver ([Simulated-board test harness](SIMULATION.md)); the RAK4631 builds compile (`RAK_4631_repeater_ethernet`, `RAK_4631_room_server_ethernet`), nothing more.
 
 ## MECON commands
 
@@ -128,5 +147,4 @@ The registry and the table are `const` data in flash. Not in the static figure: 
 - BLE with a default PIN and the TCP port are one *untrusted* row; the audit records both as `net`.
 - A remote `erase` or `get prv.key` on a repeater or room server used to fall through to an unknown-command reply and now gets `ERR: not permitted` and an audit entry. The only behavioural difference from before the engine; no test relied on the old reply.
 - The sensor example reaches the same gate through the common CLI. It had no front door before, so Hardened now applies its remote read-only rule there too. The sensor role is not verified on hardware or in the simulator.
-- On the RAK4631 `_ethernet` builds of the Repeater and Room server, the Ethernet TCP console hands its lines to the handler with sender timestamp 0, which the engine reads as the cable: the port is not an untrusted caller there. Only the Companion's TCP server is the *untrusted* row.
 - No rate limit on requests. A flood of refused requests folds into one audit entry but each is answered.

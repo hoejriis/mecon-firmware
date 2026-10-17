@@ -5,7 +5,11 @@
 
 #ifdef ETHERNET_ENABLED
   #define ETHERNET_CLI_BANNER "MeshCore Room Server CLI"
-  #include <helpers/nrf52/EthernetCLI.h>
+  #ifdef SIM_ETHERNET_CONSOLE
+    #include <SimEthernetCLI.h>   // the simulated board: same interface, a loopback listener for the W5100S (variants/sim)
+  #else
+    #include <helpers/nrf52/EthernetCLI.h>
+  #endif
 #endif
 
 #ifdef DISPLAY_CLASS
@@ -148,9 +152,9 @@ void loop() {
   if (ethernet_read_line(ethernet_command, sizeof(ethernet_command))) {
     char reply[160];
     reply[0] = 0;
-    if (!ethernet_handle_command(ethernet_command, reply)) {
-      the_mesh.handleCommand(0, ethernet_command, reply);
-    }
+    // Not the cable: the console is gated as the Ethernet caller (login needed) and never runs as timestamp 0.
+    Cli::netConsoleRun(ethernet_console, the_mesh, ADMIN_PASSWORD, rtc_clock.getCurrentTime(), ethernet_command, reply,
+                       sizeof(reply), ethernet_handle_command);
     ethernet_send_reply(reply);
     ethernet_command[0] = 0;
   }

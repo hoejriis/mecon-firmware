@@ -44,6 +44,7 @@ public:
   bool removeLegacyContacts();
   // ContactBackend: the contact store's bucket files (/ct<N>), each replaced atomically
   bool bucketExists(uint16_t b) override;
+  bool listBuckets(uint16_t limit, uint8_t* present) override;   // one directory pass at boot
   bool readBucket(uint16_t b, uint8_t* buf, uint32_t len) override;
   bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len) override;
   bool removeBucket(uint16_t b) override;

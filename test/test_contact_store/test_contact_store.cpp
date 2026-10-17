@@ -16,7 +16,14 @@ public:
   int fail_after = -1;            // writes allowed before every further write fails (-1 = never fail)
   int writes = 0;
 
-  bool bucketExists(uint16_t b) override { return files.count(b) != 0; }
+  bool can_list = false;          // a backend that lists its files once at boot
+  int exists_calls = 0;
+  bool bucketExists(uint16_t b) override { exists_calls++; return files.count(b) != 0; }
+  bool listBuckets(uint16_t limit, uint8_t* present) override {
+    if (!can_list) return false;
+    for (auto& f : files) if (f.first < limit) present[f.first >> 3] |= (uint8_t)(1u << (f.first & 7));
+    return true;
+  }
   bool readBucket(uint16_t b, uint8_t* buf, uint32_t len) override {
     auto it = files.find(b);
     if (it == files.end() || it->second.size() != len) return false;
@@ -197,6 +204,25 @@ TEST(ContactStore, FindsByFullKeyAndByPrefixAndSurvivesARestart) {
   ASSERT_NE(nullptr, by_two) << "only the bytes of the prefix may be compared";
   EXPECT_STREQ("contact-23", by_two->name);
   EXPECT_EQ(nullptr, s.find(mk(500).id.pub_key, 32));
+}
+
+TEST(ContactStore, ABackendThatListsItsFilesIsNeverProbedBucketByBucketAtBoot) {
+  for (int listing = 0; listing < 2; listing++) {
+    MemBackend be;
+    be.can_list = listing == 1;
+    {
+      ContactStore s;
+      ASSERT_TRUE(s.begin(&be, nullptr, cfg()));
+      for (int i = 0; i < 40; i++) ASSERT_GE(add(s, mk(i)), 0);
+      EXPECT_TRUE(s.flush());
+    }
+    be.exists_calls = 0;
+    ContactStore s;
+    ASSERT_TRUE(s.begin(&be, nullptr, cfg()));
+    EXPECT_EQ(40, s.count()) << "same contacts either way";
+    if (listing) EXPECT_EQ(0, be.exists_calls) << "the listing replaces every per-bucket lookup";
+    else EXPECT_GT(be.exists_calls, 0) << "a backend that cannot list keeps the per-bucket probe";
+  }
 }
 
 TEST(ContactStore, ContactsSharingTheFirstFourKeyBytesAreTold_Apart) {

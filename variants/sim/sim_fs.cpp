@@ -12,6 +12,18 @@ fs::SPIFFSFS SPIFFS;
 
 namespace fs {
 
+// Call counts for tests that bound the file system work of a boot (--fs-calls FILE): the file holds
+// "exists=N open=N remove=N rename=N", rewritten after each call. A real SPIFFS scans its file table on each call.
+static unsigned long g_calls[4];
+static void count_call(int which) {
+  g_calls[which]++;
+  if (g_sim.fs_calls.empty()) return;
+  if (FILE* f = fopen(g_sim.fs_calls.c_str(), "w")) {
+    fprintf(f, "exists=%lu open=%lu remove=%lu rename=%lu\n", g_calls[0], g_calls[1], g_calls[2], g_calls[3]);
+    fclose(f);
+  }
+}
+
 FileImpl::~FileImpl() { if (fp) fclose(fp); }
 
 static void mkdirs(const std::string& path) {
@@ -32,6 +44,7 @@ std::string FS::hostPath(const char* path) const {
 }
 
 File FS::open(const char* path, const char* mode, const bool create) {
+  count_call(1);
   std::string hp = hostPath(path);
   bool writing = mode && (mode[0] == 'w' || mode[0] == 'a');
   struct stat st;
@@ -54,7 +67,7 @@ File FS::open(const char* path, const char* mode, const bool create) {
   return File(impl);
 }
 
-bool FS::exists(const char* path) { struct stat st; return stat(hostPath(path).c_str(), &st) == 0; }
+bool FS::exists(const char* path) { count_call(0); struct stat st; return stat(hostPath(path).c_str(), &st) == 0; }
 // Power cut just before a filesystem operation (--fault-before OP:PATH).
 static void fault_before(const char* op, const char* path) {
   if (!g_sim.fault_op.empty() && g_sim.fault_op == op && g_sim.fault_op_path == (path ? path : "")) {
@@ -62,10 +75,11 @@ static void fault_before(const char* op, const char* path) {
     _exit(99);
   }
 }
-bool FS::remove(const char* path) { fault_before("remove", path); return ::unlink(hostPath(path).c_str()) == 0; }
+bool FS::remove(const char* path) { count_call(2); fault_before("remove", path); return ::unlink(hostPath(path).c_str()) == 0; }
 // Like ESP32 SPIFFS (not like POSIX or littlefs), rename does not replace an existing destination:
 // the simulated board must not let firmware rely on rename-over.
 bool FS::rename(const char* a, const char* b) {
+  count_call(3);
   fault_before("rename", a);
   std::string hb = hostPath(b);
   struct stat st;

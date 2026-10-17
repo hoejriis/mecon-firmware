@@ -37,6 +37,11 @@ class ContactBackend {
 public:
   virtual ~ContactBackend() { }
   virtual bool bucketExists(uint16_t b) = 0;                              // also completes or drops an interrupted swap
+  // One pass over the file system at boot: sets bit b of `present` (limit bits, zeroed by the caller) for every bucket
+  // file that exists, after completing or dropping an interrupted swap for only those buckets that have a swap file.
+  // false = the backend cannot list; the store then asks bucketExists() for each bucket, which costs one file system
+  // lookup (several on a flat file system such as SPIFFS) per possible bucket.
+  virtual bool listBuckets(uint16_t limit, uint8_t* present) { (void)limit; (void)present; return false; }
   virtual bool readBucket(uint16_t b, uint8_t* buf, uint32_t len) = 0;    // false when absent or short
   virtual bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len) = 0;   // atomic: old or new content, never a mix
   virtual bool removeBucket(uint16_t b) = 0;
@@ -164,6 +169,8 @@ private:
   Slot* _slots;
   uint8_t* _scratch;               // one bucket
   int _scratch_bucket;
+  uint8_t* _bpresent;              // bit per bucket found by the boot listing; only while begin() runs
+  int _bpresent_bits;
   uint8_t* _bdirty;                // bit per bucket: needs a rewrite
   int _cap, _nslots, _count, _pinned, _pin_limit, _first_free, _nbuckets;
   uint32_t _tick;

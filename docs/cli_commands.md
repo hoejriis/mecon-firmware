@@ -1226,6 +1226,6 @@ Ethernet support is available on RAK4631 boards with a RAK13800 (W5100S) Etherne
 - Available on repeater and room server firmware only. Companion radio ethernet firmware does not expose a CLI.
 - The Ethernet interface obtains an IP address via DHCP automatically on boot.
 - A TCP server listens on port 23 (default) for CLI connections.
-- Connect with any TCP client (e.g. `nc`, PuTTY) to access the same CLI available over serial.
+- Connect with any TCP client (e.g. `nc`, PuTTY). In this firmware the connection is not the serial console: it is refused everything until `login <admin password>`, then has the remote admin's rights, and is off in Hardened. See [Command-line engine](CLI.md#the-ethernet-console).
 
 ---
