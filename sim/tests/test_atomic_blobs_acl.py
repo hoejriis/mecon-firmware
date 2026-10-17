@@ -94,9 +94,16 @@ def test_acl_cut_between_write_and_rename(ether, nodes, kind, op, size_after):
     rep, cli, c, pub = _acl_setup(ether, nodes, kind)
     _cut_acl_save(rep, CliClient, fault_before=op)
     assert ether.wait_for_nodes(["rp", "ad"])
-    assert _wait(lambda: _size(rep, "/s_contacts") == size_after)
-    for leftover in ("/s_contacts.tmp", "/s_contacts.new"):
-        assert _size(rep, leftover) is None or leftover == "/s_contacts.new" and size_after == 272, leftover
+
+    def recovered():
+        # Where the size after recovery equals the size before (136), a size check alone is already true before boot
+        # recovery has run, and the leftover check then raced it (issue #48). Wait for the whole recovered state.
+        leftovers_ok = all(_size(rep, f) is None or (f == "/s_contacts.new" and size_after == 272)
+                           for f in ("/s_contacts.tmp", "/s_contacts.new"))
+        return _size(rep, "/s_contacts") == size_after and leftovers_ok
+
+    assert _wait(recovered), "after the cut: /s_contacts=%s .tmp=%s .new=%s" % (
+        _size(rep, "/s_contacts"), _size(rep, "/s_contacts.tmp"), _size(rep, "/s_contacts.new"))
     assert c.login(pub, "", timeout=30)
 
 
