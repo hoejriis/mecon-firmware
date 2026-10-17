@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
 mkdir -p .sim-logs
 ONLY="${1:-}"
 SURVIVED=0
+MATCHED=0
 DRY=0
 if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; fi   # --dry: only check that every mutant's target text exists (no build, no tests)
 # Each mutant is undone with `git checkout`, which would also throw away uncommitted work: refuse a dirty tree.
@@ -24,6 +25,7 @@ build() { sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-lo
 mutate() {
   name="$1"; file="$2"; old="$3"; new="$4"; target="$5"
   if [ -n "$ONLY" ] && [ "$ONLY" != "$name" ]; then return 0; fi
+  MATCHED=1
   if [ "$DRY" = 1 ]; then
     python3 - "$file" "$old" "$new" <<'PY'
 import sys
@@ -550,9 +552,13 @@ mutate blob_swap_not_recovered examples/companion_radio/DataStore.cpp '  AtomicF
   if (_fs->exists(path)) {' '  if (_fs->exists(path)) {' sim/tests/test_atomic_blobs_acl.py::test_blob_cut_between_write_and_rename
 mutate blob_written_in_place examples/companion_radio/DataStore.cpp '  return AtomicFile::save(_fs, path, [src_buf, len](Stream& s) { return s.write(src_buf, len) == len; });' '  File f = openWrite(_fs, path); if (!f) return false; int n = f.write(src_buf, len); f.close(); return n == len;' sim/tests/test_atomic_blobs_acl.py::test_blob_cut_in_temp_file_keeps_previous_blob sim/tests/test_atomic_blobs_acl.py::test_blob_is_never_written_in_place
 
-build
+mutate mem_unknown_printed_as_measured src/helpers/cli/MeconCli.h "if (!m.known) snprintf" "if (false) snprintf" unit:test_cli_engine
+
+if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries after a full run
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 
+if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
+  echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1
+fi
 exit $SURVIVED
-mutate mem_unknown_printed_as_measured src/helpers/cli/MeconCli.h "if (!m.known) snprintf" "if (false) snprintf" unit:test_cli_engine
