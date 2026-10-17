@@ -12,7 +12,7 @@ import time
 import pytest
 
 from sim import harness
-from sim.harness import CompanionClient, WifiEnv, wifi_events
+from sim.harness import CompanionClient, WifiEnv, loop_gaps, scan_events, wifi_events
 
 RTC = 1760000000
 pytestmark = pytest.mark.timescale(20)
@@ -343,3 +343,67 @@ def test_hardened_starts_no_wifi_at_all(nodes, env):
     time.sleep(2)
     assert wifi_events(n) == []
     assert c.cli("get wifi.status") == "> off"
+
+
+# ------------------------------------------------------------------ a scan that does not report (hardware session 1)
+#
+# On a Heltec V3 the first asynchronous scan never reported: Arduino gave up after 6 s, every later scan found nothing, and
+# the controller never tried a network. The simulated scan hardware can now do the same ("wedge": the scan never ends and
+# the driver refuses another until it is stopped), and "deaf" (the event reaches the controller but not Arduino's tables).
+
+def test_a_scan_that_never_ends_is_stopped_and_the_best_profile_is_joined_directly(nodes, env):
+    e = env()
+    e.set("home"); e.set("phone")
+    n, c = usb_node(nodes, "wedge", e)
+    configure(c, [("phone", "", 10), ("home", "", 90)])
+    e.scan("wedge")
+    c = reboot(n, c)
+    assert wait_event(n, "up", "home")
+    assert wifi_events(n) == [("join", "home"), ("up", "home")]
+    sc = scan_events(n)
+    assert sc[:2] == ["start (will wedge)", "stop"], sc    # the driver was told to stop before anything else ran
+    assert "ssid=home" in wait_status(c, "connected")
+
+
+def test_the_next_scan_works_after_a_stopped_one(nodes, env):
+    e = env()
+    e.set("home"); e.set("phone")
+    n, c = usb_node(nodes, "afterwedge", e)
+    configure(c, [("phone", "", 10), ("home", "", 90)])
+    e.scan("wedge")
+    c = reboot(n, c)
+    assert wait_event(n, "up", "home")
+    e.down("home")
+    assert wait_event(n, "lost", "home")
+    assert wait_event(n, "up", "phone")
+    sc = scan_events(n)
+    assert any(x.startswith("done n=") for x in sc), sc    # the rescan after the drop ran to its end ...
+    assert "refused" not in sc, sc                        # ... on a driver that had been left idle
+    # the second join came from that scan: "home" is gone, so it was not guessed
+    assert wifi_events(n) == [("join", "home"), ("up", "home"), ("lost", "home"), ("join", "phone"), ("up", "phone")]
+
+
+def test_results_are_read_from_the_driver_when_arduino_never_takes_the_event(nodes, env):
+    e = env()
+    e.set("low")
+    n, c = usb_node(nodes, "deaf", e)
+    configure(c, [("low", "", 10), ("absent", "", 90)])
+    e.scan("deaf")
+    c = reboot(n, c)
+    assert wait_event(n, "up", "low")
+    assert ("join", "absent") not in wifi_events(n)       # a scan result, not a guess at the top profile
+    assert "done n=1 (arduino deaf)" in scan_events(n)
+
+
+@pytest.mark.timescale(1)
+def test_a_wedged_scan_does_not_stall_the_main_loop(nodes, env):
+    e = env()
+    e.set("home")
+    n, c = usb_node(nodes, "gap", e)
+    configure(c, [("home", "", 50)])
+    e.scan("wedge")
+    c = reboot(n, c)
+    assert wait_event(n, "up", "home", timeout=30)        # after the controller's own 5 s bound
+    gaps = loop_gaps(n)
+    print("longest main-loop gap %d ms" % max(gaps or [0]))
+    assert max(gaps or [0]) < 200, "the main loop stalled %s ms during a scan that never ended" % gaps

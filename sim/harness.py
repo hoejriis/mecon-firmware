@@ -37,6 +37,14 @@ class WifiEnv:
     def __init__(self, path):
         self.path = str(path)
         self.aps = {}
+        self.scan_mode = "ok"
+        self._write()
+
+    def scan(self, mode):
+        """Inject a scan-hardware fault (variants/sim/sim_wifi.cpp): "ok", "wedge" (the next scan never ends and the
+        driver refuses new ones until the node stops it) or "deaf" (the scan-done event reaches the node's own handler but
+        not Arduino's tables)."""
+        self.scan_mode = mode
         self._write()
 
     def set(self, ssid, password="", rssi=-50, up=True):
@@ -54,6 +62,7 @@ class WifiEnv:
     def _write(self):
         tmp = self.path + ".tmp"
         with open(tmp, "w") as f:
+            f.write("#scan\t%s\n" % self.scan_mode)
             for ssid, (pw, rssi, up) in self.aps.items():
                 f.write("%s\t%s\t%d\t%d\n" % (ssid, pw, rssi, 1 if up else 0))
         os.replace(tmp, self.path)
@@ -204,6 +213,17 @@ def loop_gaps(node):
         for ln in open(node.log_path, errors="replace"):
             if ln.startswith("SIMLOOP gap_ms="):
                 out.append(int(ln.split("=", 1)[1]))
+    return out
+
+
+def scan_events(node):
+    """The simulated scan hardware's lines in the node's log, oldest first, as the text after "SIMSCAN ":
+    "start", "start (will wedge)", "stop", "refused", "done n=<count>"."""
+    out = []
+    if os.path.exists(node.log_path):
+        for ln in open(node.log_path, errors="replace"):
+            if ln.startswith("SIMSCAN "):
+                out.append(ln[8:].strip())
     return out
 
 

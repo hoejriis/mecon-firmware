@@ -620,6 +620,51 @@ mutate ver_script_any_tag bin/mecon_version.py '"--match", "v[0-9]*"' '"--match"
 mutate cli_reference_registry_row_misspelt docs/CLI_REFERENCE.md '| `neighbors` | List nearby repeaters heard.' '| `neighbours` | List nearby repeaters heard.' sim/tests/test_cli_reference_sync.py
 mutate cli_reference_mecon_command_renamed src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.mem") == 0' 'strcmp(cmd, "get mecon.memx") == 0' sim/tests/test_cli_reference_sync.py
 
+# the Wi-Fi controller's own scan: bounded, stopped in the driver, and a failed scan still joins directly
+WIFI_CTL=src/helpers/wifi/WifiController.cpp
+mutate wifi_failed_scan_not_joined_directly $WIFI_CORE "  if (pick == NONE) { enterBackoff(now); return; }
+  connectTo(now, pick);
+  _blind = true;" "  enterBackoff(now);
+  return;" unit:test_wifi_core
+mutate wifi_failed_scan_not_joined_directly_sim $WIFI_CORE "  if (pick == NONE) { enterBackoff(now); return; }
+  connectTo(now, pick);
+  _blind = true;" "  enterBackoff(now);
+  return;" $WIFI_SIM::test_a_scan_that_never_ends_is_stopped_and_the_best_profile_is_joined_directly
+mutate wifi_failed_scan_ignores_priority $WIFI_CORE "    bool higher = pick == NONE || _profiles->priority(i) > _profiles->priority(pick);   // ties keep the lower number" "    bool higher = pick == NONE;" unit:test_wifi_core
+mutate wifi_blind_miss_not_cooled $WIFI_CORE "      if (_blind) startCooldown(i, now, _t.fail_cooldown_ms);   // a guess that missed: let the next attempt guess another" "" unit:test_wifi_core
+mutate wifi_failed_upgrade_scan_guesses $WIFI_CORE "  if (_scan_upgrade) {
+    _scan_upgrade = false;
+    return;
+  }
+  if (_state != WifiState::Scanning) return;" "  _scan_upgrade = false;" unit:test_wifi_core
+mutate wifi_silent_scan_taken_for_empty $WIFI_CORE "        scanFailed(now);   // a scan that never answers: nothing is known, so try the best profile directly" "        scanDone(now);" unit:test_wifi_core
+mutate wifi_scan_not_stopped_in_the_driver $WIFI_CTL "  _scanning = false;
+  esp_wifi_scan_stop();
+}" "  _scanning = false;
+}" $WIFI_SIM::test_the_next_scan_works_after_a_stopped_one
+mutate wifi_scan_not_stopped_in_the_driver_first $WIFI_CTL "  _scanning = false;
+  esp_wifi_scan_stop();
+}" "  _scanning = false;
+}" $WIFI_SIM::test_a_scan_that_never_ends_is_stopped_and_the_best_profile_is_joined_directly
+mutate wifi_scan_not_bounded $WIFI_CTL "const uint32_t SCAN_BOUND_MS = 5000;" "const uint32_t SCAN_BOUND_MS = 5000000;" $WIFI_SIM::test_a_scan_that_never_ends_is_stopped_and_the_best_profile_is_joined_directly
+mutate wifi_scan_timeout_taken_for_empty $WIFI_CTL '    WIFICTL_LOG("scan did not report");
+    scanAbort();
+    _core.scanFailed(now);' '    WIFICTL_LOG("scan did not report");
+    scanAbort();
+    _core.scanDone(now);' $WIFI_SIM::test_a_scan_that_never_ends_is_stopped_and_the_best_profile_is_joined_directly
+mutate wifi_arduino_table_not_read $WIFI_CTL "int n = WiFi.scanComplete();   // Arduino's handler, when it ran, read the driver's list into its own table" "int n = -1;" $WIFI_SIM::test_joins_the_highest_priority_visible_profile
+mutate wifi_driver_list_not_read $WIFI_CTL "if (cnt && esp_wifi_scan_get_ap_records(&cnt, rec) != ESP_OK) cnt = 0;" "cnt = 0;" $WIFI_SIM::test_results_are_read_from_the_driver_when_arduino_never_takes_the_event
+mutate wifi_scan_holds_the_main_loop $WIFI_CTL "  _scanning = true;
+}
+
+void WifiController::scanAbort() {
+  _scan_armed = false;" "  _scanning = true;
+  while (!_ev_scan_done && (uint32_t)(millis() - now) < SCAN_BOUND_MS) delay(10);
+}
+
+void WifiController::scanAbort() {
+  _scan_armed = false;" $WIFI_SIM::test_a_wedged_scan_does_not_stall_the_main_loop
+
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries after a full run
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
