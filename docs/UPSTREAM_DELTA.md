@@ -103,7 +103,7 @@ Limits of the enforcement: the window lives in RAM and is not persisted; after a
 
 Covered: prefs, identity, the channel table, the contact buckets, the Companion blobs and the client ACL.
 
-Temporary space: a save needs room for one extra copy of the file being replaced. The largest are the client ACL (32 clients of 136 bytes, 4,352 bytes at most), the nRF52 / STM32 blob table (`/adv_blobs`: 20 records of 178 bytes, 3,560 bytes, or 17,800 bytes with 100 records on boards with an extra file system) and a contact bucket. An ESP32 or RP2040 blob is one file of at most 166 bytes. The nRF52 / STM32 blob table path is not built by any simulated environment, so it is **not exercised by any test**; the ESP32-style `/bl/<key>` path and the ACL are.
+Temporary space: a save needs room for one extra copy of the file being replaced. The largest are the client ACL (32 clients of 136 bytes, 4,352 bytes at most), the nRF52 / STM32 blob table (`/adv_blobs`: 20 records of 178 bytes, 3,560 bytes, or 17,800 bytes with 100 records on boards with an extra file system) and a contact bucket. An ESP32 or RP2040 blob is one file of at most 166 bytes. The nRF52 / STM32 blob table path is not built by any simulated environment: it compiles for the RAK4631 Companion, but **no test exercises it**; the ESP32-style `/bl/<key>` path and the ACL are.
 
 ## Known stock compile failures
 

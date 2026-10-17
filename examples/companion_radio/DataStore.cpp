@@ -609,7 +609,7 @@ bool DataStore::putBlobByKey(const uint8_t key[], int key_len, const uint8_t src
 
   // The records are fixed size and rewritten in place by stock, so a power cut could leave a short or torn
   // file. Write the whole table to a temp file with the one record replaced, verify it, swap it in.
-  return AtomicFile::save(fs, "/adv_blobs", [fs, found_pos, &upd](Stream& out) {
+  return AtomicFile::save(fs, "/adv_blobs", [this, fs, found_pos, &upd](Stream& out) {
     File old = openRead(fs, "/adv_blobs");
     BlobRec rec;
     for (int i = 0; i < MAX_BLOBRECS; i++) {
