@@ -688,6 +688,10 @@ mutate reply_bound_to_the_whole_loop_pass_only src/helpers/MultiSerialInterface.
 
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries after a full run
 
+# audit caller of a default-PIN BLE refusal (#53)
+mutate audit_default_pin_ble_recorded_as_net src/helpers/cli/CliPolicy.h "v.caller = (p == P_UNTRUSTED && c.transport == T_BLE) ? Posture::CALLER_BLE : auditCaller(p);" "v.caller = auditCaller(p);" unit:test_cli_engine
+mutate audit_default_pin_ble_frame_context_is_tcp examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isBleTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_DEFAULT_PIN, _prefs.posture);" "" sim/tests/test_companion_ble.py
+mutate audit_multi_interface_ble_not_forwarded src/helpers/MultiSerialInterface.h "return _bound != nullptr && _bound->isBleTransport();" "return false;" sim/tests/test_companion_ble.py
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 

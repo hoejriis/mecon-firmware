@@ -187,7 +187,7 @@ TEST(PrivilegeProperties, TheAuditCallerIsTheWayTheRefusalHasAlwaysBeenRecorded)
   EXPECT_EQ(decide(Context(T_LORA, A_ADMIN, 1), C_WRITE).caller, Posture::CALLER_REMOTE_ADMIN);
   EXPECT_EQ(decide(Context(T_LORA, A_CONTACT_FLAG, 1), C_WRITE).caller, Posture::CALLER_REMOTE_CLI);
   EXPECT_EQ(decide(Context(T_MQTT, A_TLS_VERIFIED, 1), C_WRITE).caller, Posture::CALLER_MQTT);
-  EXPECT_EQ(decide(Context(T_BLE, A_PAIRED_DEFAULT_PIN, 0), C_READ).caller, Posture::CALLER_NET);   // a default PIN is not a phone
+  EXPECT_EQ(decide(Context(T_BLE, A_PAIRED_DEFAULT_PIN, 0), C_READ).caller, Posture::CALLER_BLE);   // a default PIN is not a phone, but it is BLE
   EXPECT_EQ(decide(Context(T_NETCON, A_NONE, 0), C_READ).caller, Posture::CALLER_NET);
   EXPECT_EQ(decide(Context(T_NETCON, A_NETCON_ADMIN, 0), C_SECRET).caller, Posture::CALLER_NET);
 }
