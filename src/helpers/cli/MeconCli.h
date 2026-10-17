@@ -7,13 +7,15 @@
 //   get mecon.cli.who             how the engine sees the caller: transport, authentication, posture, row of the table
 //   get mecon.cli.check <line>    what the table would say to <line> for this caller, without running it or auditing it
 //   get mecon.mem                 heap free now, largest allocatable block, lowest free since boot (where tracked)
+//   get mecon.version             the build's full identity and the upstream base it carries (helpers/MeconVersion.h)
 //
-// Both are reads. Pure logic: runs in the native unit tests.
+// All are reads. Pure logic: runs in the native unit tests.
 
 #include <stdio.h>
 #include <string.h>
 #include "CliRegistry.h"
 #include "../MemStats.h"
+#include "../MeconVersion.h"
 
 namespace Cli {
 
@@ -96,6 +98,10 @@ inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char*
     if (!m.known) snprintf(reply, max, "> heap: not measurable on this platform");
     else snprintf(reply, max, "> heap free=%lu largest=%lu min_free=%lu", (unsigned long)m.free, (unsigned long)m.largest,
                   (unsigned long)m.min_free);
+    return true;
+  }
+  if (strcmp(cmd, "get mecon.version") == 0) {
+    snprintf(reply, max, "> %s (describe %s, upstream %s)", mecon::versionFull(), MECON_VERSION, MECON_UPSTREAM_BASE);
     return true;
   }
   if (strcmp(cmd, "get mecon.cli.who") == 0) {

@@ -2410,7 +2410,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
 
   if (strcmp(command, "ver") == 0) {
-    sprintf(reply, "%s (Build: %s)", FIRMWARE_VERSION, FIRMWARE_BUILD_DATE);
+    sprintf(reply, "%s (Build: %s)", mecon::versionFull(), FIRMWARE_BUILD_DATE);
     return true;
   }
 

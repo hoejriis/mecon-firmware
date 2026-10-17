@@ -146,8 +146,10 @@ build_firmware() {
   # e.g: RAK_4631_Repeater-v1.0.0-SHA
   FIRMWARE_FILENAME="$1-${FIRMWARE_VERSION_STRING}"
 
-  # add firmware version info to end of existing platformio build flags in environment vars
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFIRMWARE_BUILD_DATE='\"${FIRMWARE_BUILD_DATE}\"' -DFIRMWARE_VERSION='\"${FIRMWARE_VERSION_STRING}\"'"
+  # add the build date to the platformio build flags. The version string the firmware reports is not set here: it
+  # comes from the git tag through bin/mecon_version.py (docs/VERSIONING_AND_RELEASES.md); FIRMWARE_VERSION above
+  # only names the artifact file.
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFIRMWARE_BUILD_DATE='\"${FIRMWARE_BUILD_DATE}\"'"
 
   # disable debug flags if requested
   disable_debug_flags

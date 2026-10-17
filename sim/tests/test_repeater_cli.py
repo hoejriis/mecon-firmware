@@ -7,7 +7,7 @@ from sim.harness import CliClient
 def test_ver_get_set_name(nodes):
     rep = nodes("repeater", "rep1").start()
     cli = CliClient(rep)
-    assert re.match(r"v1\.18\.0 \(Build: .+\)", cli.command("ver"))
+    assert re.match(r"v1\.18\.0-mecon\.\S+ \(Build: .+\)", cli.command("ver"))
     assert cli.command("get name") == "> Sim Repeater"
     assert cli.command("set name Hilltop") == "OK"
     assert cli.command("get name") == "> Hilltop"
