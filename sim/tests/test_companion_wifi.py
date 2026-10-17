@@ -360,8 +360,8 @@ def test_a_scan_that_never_ends_is_stopped_and_the_best_profile_is_joined_direct
     c = reboot(n, c)
     assert wait_event(n, "up", "home")
     assert wifi_events(n) == [("join", "home"), ("up", "home")]
-    sc = scan_events(n)
-    assert sc[:2] == ["start (will wedge)", "stop"], sc    # the driver was told to stop before anything else ran
+    # the driver was told to stop, and the join followed at once: no second scan ran first (a backoff round would add one)
+    assert scan_events(n) == ["start (will wedge)", "stop"], scan_events(n)
     assert "ssid=home" in wait_status(c, "connected")
 
 
@@ -403,7 +403,7 @@ def test_a_wedged_scan_does_not_stall_the_main_loop(nodes, env):
     configure(c, [("home", "", 50)])
     e.scan("wedge")
     c = reboot(n, c)
-    assert wait_event(n, "up", "home", timeout=30)        # after the controller's own 5 s bound
+    assert wait_event(n, "up", "home", timeout=10)        # the controller's own 5 s bound, not the core's 20 s backstop
     gaps = loop_gaps(n)
     print("longest main-loop gap %d ms" % max(gaps or [0]))
     assert max(gaps or [0]) < 200, "the main loop stalled %s ms during a scan that never ended" % gaps

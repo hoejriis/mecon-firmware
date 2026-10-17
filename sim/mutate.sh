@@ -646,7 +646,7 @@ mutate wifi_scan_not_stopped_in_the_driver_first $WIFI_CTL "  _scanning = false;
   esp_wifi_scan_stop();
 }" "  _scanning = false;
 }" $WIFI_SIM::test_a_scan_that_never_ends_is_stopped_and_the_best_profile_is_joined_directly
-mutate wifi_scan_not_bounded $WIFI_CTL "const uint32_t SCAN_BOUND_MS = 5000;" "const uint32_t SCAN_BOUND_MS = 5000000;" $WIFI_SIM::test_a_scan_that_never_ends_is_stopped_and_the_best_profile_is_joined_directly
+mutate wifi_scan_not_bounded $WIFI_CTL "const uint32_t SCAN_BOUND_MS = 5000;" "const uint32_t SCAN_BOUND_MS = 5000000;" $WIFI_SIM::test_a_wedged_scan_does_not_stall_the_main_loop
 mutate wifi_scan_timeout_taken_for_empty $WIFI_CTL '    WIFICTL_LOG("scan did not report");
     scanAbort();
     _core.scanFailed(now);' '    WIFICTL_LOG("scan did not report");
