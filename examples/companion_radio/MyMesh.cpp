@@ -1308,6 +1308,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       // start iterator
       _iter = startContactsIterator();
       _iter_started = true;
+      _iter_src = _cmd_src;
       _most_recent_lastmod = 0;
     }
   } else if (cmd_frame[0] == CMD_SET_ADVERT_NAME && len >= 2) {
@@ -2629,11 +2630,16 @@ void MyMesh::checkCLIRescueCmd() {
 void MyMesh::checkSerialInterface() {
   size_t len = _serial->checkRecvFrame(cmd_frame);
   if (len > 0) {
+    // the reply, and the trust decision, belong to the interface this frame arrived on (a multiplexed interface)
+    _cmd_src = _serial->rxSource();
+    _serial->bindReply(_cmd_src);
     handleCmdFrame(len);
+    _serial->bindReply(nullptr);
   } else if (_iter_started              // check if our ContactsIterator is 'running'
              && !_serial->isWriteBusy() // don't spam the Serial Interface too quickly!
   ) {
     ContactInfo contact;
+    _serial->bindReply(_iter_src);   // the rest of the contact list goes to whoever asked for it
     if (_iter.hasNext(this, contact)) {
       if (contact.lastmod > _iter_filter_since) { // apply the 'since' filter
         writeContactRespFrame(RESP_CODE_CONTACT, contact);
@@ -2648,6 +2654,7 @@ void MyMesh::checkSerialInterface() {
       _serial->writeFrame(out_frame, 5);
       _iter_started = false;
     }
+    _serial->bindReply(nullptr);
   //} else if (!_serial->isWriteBusy()) {
   //  checkConnections();    // TODO - deprecate the 'Connections' stuff
   }

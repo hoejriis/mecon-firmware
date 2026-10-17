@@ -25,7 +25,8 @@ private:
   };
 
   bool _enabled = false;
-  const BaseSerialInterface* _last_rx = nullptr;   // interface the most recent frame came from
+  const BaseSerialInterface* _last_rx = nullptr;   // interface the most recent frame came from (only rxSource() reads it)
+  const BaseSerialInterface* _bound = nullptr;     // interface the command being handled came from: where its reply goes, whose trust applies
   RegisteredInterface _interfaces[MAX_INTERFACES] = {};
 
 public:
@@ -146,12 +147,15 @@ public:
   }
 
   bool isTrustedTransport() const override {
-    return _last_rx == nullptr || _last_rx->isTrustedTransport();
+    return _bound != nullptr && _bound->isTrustedTransport();   // fails closed: no bound command, no trust
   }
 
   bool isCableTransport() const override {
-    return _last_rx != nullptr && _last_rx->isCableTransport();
+    return _bound != nullptr && _bound->isCableTransport();
   }
+
+  const BaseSerialInterface* rxSource() const override { return _last_rx; }
+  void bindReply(const BaseSerialInterface* src) override { _bound = src; }
 
   // loop all interfaces
   void loop() override {
@@ -185,9 +189,12 @@ public:
       return 0;
     }
 
-    // write frame to all enabled interfaces
+    // a reply goes to the interface its request came from; an unbound frame (a push) to all enabled interfaces
     bool allSuccessful = true;
     for(auto iface : _interfaces){
+      if(_bound != nullptr && iface.instance != _bound){
+        continue;
+      }
       if(iface.instance && iface.instance->isEnabled()){
         if(iface.instance->writeFrame(src, len) != len){
           allSuccessful = false;

@@ -11,8 +11,8 @@ What it does not verify: the radio, advertising, the real GATT/NimBLE stack and 
 link, a phone's behaviour. Those need a board and a phone.
 
 Setup note: the PIN is set over the USB console and takes effect at the next boot (the display build otherwise draws a
-random one each boot). A test reads BLE only after the USB client is closed, because the Companion answers every
-interface at once.
+random one each boot). A reply goes only to the interface its request arrived on (the last test group below
+interleaves both transports with no pause).
 """
 import socket
 import struct
@@ -38,10 +38,8 @@ def usb(node):
 
 
 def usb_after_ble(node):
-    """A USB client attached after a BLE one. The node writes each reply to every interface in turn (BLE first, then the
-    USB port), so a USB client that connects in the instant between the two would be handed the BLE client's reply;
-    wait for the node to finish writing before attaching."""
-    time.sleep(0.5)
+    """A USB client attached while a BLE client has just been served: no pause is needed, because a reply goes only to
+    the interface its request came from."""
     return usb(node)
 
 
@@ -261,3 +259,77 @@ def test_the_bluetooth_page_switches_the_link_off_and_on(nodes):
             time.sleep(0.3)
     else:
         raise AssertionError("Bluetooth did not come back")
+
+
+# ------------------------------------------------------------------ replies stay on their own transport
+
+def drain(*clients, secs=1.5):
+    """Everything each client receives for `secs` (pushes included), as a list of frames per client."""
+    out = []
+    for c in clients:
+        got = []
+        end = time.time() + secs
+        while time.time() < end:
+            f = c._read_frame(0.2)
+            if f is not None:
+                got.append(f)
+        out.append(got)
+    return out
+
+
+def test_interleaved_requests_are_answered_on_their_own_transport(nodes):
+    n = boot(nodes, "r1", PIN)
+    b = n.connect_ble(PIN)
+    b.app_start()
+    u = usb(n)
+    drain(b, u, secs=0.5)
+    key = u.export_private_key()
+    drain(b, u, secs=0.5)
+    for _ in range(15):                                          # no pause between the two transports' requests
+        u._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY]))         # the cable asks for the key ...
+        b._send(bytes([harness.CMD_RUN_CLI_COMMAND]) + b"ver")   # ... and the phone for a CLI line, back to back
+        u._send(bytes([harness.CMD_DEVICE_QUERY, 3]))
+        b._send(bytes([harness.CMD_DEVICE_QUERY, 3]))
+    gu, gb = drain(u, b, secs=3.0)
+    cu, cb = [f[0] for f in gu], [f[0] for f in gb]
+    assert cu.count(harness.RESP_PRIVATE_KEY) == 15 and len(cu) == 30, cu
+    assert cb.count(harness.RESP_CLI_REPLY) == 15 and len(cb) == 30, cb
+    assert not any(f[0] == harness.RESP_PRIVATE_KEY or key in f for f in gb), "the cable's key export reached BLE"
+    assert harness.RESP_CLI_REPLY not in cu, "the phone's CLI reply reached the cable"
+
+
+def test_a_default_pin_ble_frame_is_never_decided_with_the_cables_trust(nodes):
+    n = boot(nodes, "r2", DEFAULT)
+    b = n.connect_ble(DEFAULT)
+    b.app_start()
+    u = usb(n)
+    drain(b, u, secs=0.5)
+    key = u.export_private_key()
+    drain(b, u, secs=0.5)
+    for _ in range(15):                                          # a cable frame, then untrusted BLE frames, no pause
+        u._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY]))
+        b._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY]))
+        b._send(bytes([harness.CMD_RUN_CLI_COMMAND]) + b"set name pwned")
+    gu, gb = drain(u, b, secs=3.0)
+    assert [f[0] for f in gu] == [harness.RESP_PRIVATE_KEY] * 15, [f[0] for f in gu]
+    assert len(gb) == 30 and all(refused(f) for f in gb), gb
+    assert not any(key in f for f in gb)
+    assert u.cli("get name") != "> pwned"
+
+
+def test_a_contact_list_streams_only_to_the_client_that_asked_for_it(nodes):
+    n = boot(nodes, "r3", PIN)
+    b = n.connect_ble(PIN)
+    b.app_start()
+    u = usb(n)
+    for i in range(5):
+        assert u.add_contact(bytes([i + 1]) * 32, "c%d" % i)[0] == 0
+    drain(b, u, secs=0.5)
+    u._send(bytes([harness.CMD_GET_CONTACTS]))
+    for _ in range(10):                                          # BLE traffic while the list is still streaming
+        b._send(bytes([harness.CMD_DEVICE_QUERY, 3]))
+    gu, gb = drain(u, b, secs=3.0)
+    cu, cb = [f[0] for f in gu], [f[0] for f in gb]
+    assert cu.count(harness.RESP_CONTACT) == 5 and cu[0] == harness.RESP_CONTACTS_START and cu[-1] == harness.RESP_END_OF_CONTACTS, cu
+    assert harness.RESP_CONTACT not in cb and harness.RESP_CONTACTS_START not in cb and harness.RESP_END_OF_CONTACTS not in cb, cb
+    assert len(cb) == 10
