@@ -35,6 +35,7 @@ inline const char* refusalText(uint8_t reason, const Resolved& r) {
     case R_LOCAL_ONLY: return r.msg_local ? r.msg_local : "ERR: not permitted";
     case R_MQTT_UNVERIFIED: return "ERR: management needs a TLS-verified broker";
     case R_MQTT_READONLY: return "ERR: management is off for this broker profile";
+    case R_NETCON_OFF: return "ERR: the Ethernet console is off in hardened posture";
     default: return "ERR: not permitted";
   }
 }
@@ -47,6 +48,7 @@ inline uint8_t auditWhat(uint8_t reason, const Resolved& r) {
     case R_HARDENED:
     case R_MQTT_READONLY: return Posture::W_REMOTE_WRITE;
     case R_CLI_OFF: return Posture::W_REMOTE_CLI;
+    case R_NETCON_OFF: return Posture::W_CLI;
     case R_DEFAULT_PW: return Posture::W_DEFAULT_PASSWORD;
     case R_MQTT_UNVERIFIED: return Posture::W_MQTT_SESSION;
     case R_LOCAL_ONLY: return r.what != Posture::W_NONE ? r.what : Posture::W_REMOTE_WRITE;

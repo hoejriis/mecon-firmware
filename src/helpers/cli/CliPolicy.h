@@ -26,7 +26,8 @@ enum Transport : uint8_t {
   T_TCP,        // the Companion TCP server (Wi-Fi, Ethernet), and any local transport that did not say what it is
   T_MQTT,       // a request from the broker
   T_LORA,       // over the air: remote admin login (repeater, room server) or a flagged contact (Companion)
-  T_BUTTON      // the device button: not a command line, it only reaches the connectivity-mode switch
+  T_BUTTON,     // the device button: not a command line, it only reaches the connectivity-mode switch
+  T_NETCON      // the Ethernet TCP console of a repeater or room server (a plain-text line protocol on the network)
 };
 
 enum Auth : uint8_t {
@@ -40,7 +41,8 @@ enum Auth : uint8_t {
   A_ADMIN_DEFAULT_PW,     // admin login while the admin password is still the stock default
   A_GUEST,                // guest login
   A_CONTACT_FLAG,         // a Companion contact flagged for remote CLI
-  A_BUTTON                // the device button
+  A_BUTTON,               // the device button
+  A_NETCON_ADMIN          // `login <admin password>` on one Ethernet console connection, password set, Normal posture
 };
 
 enum Class : uint8_t {
@@ -70,7 +72,8 @@ enum Reason : uint8_t {
   R_LOCAL_ONLY,         // the command exists only on the local console
   R_MQTT_UNVERIFIED,    // the broker session is not TLS-verified
   R_MQTT_READONLY,      // Hardened and the broker profile is not flagged for management
-  R_NEEDS_FLAG          // table-internal: allowed when the broker profile is flagged for management
+  R_NEEDS_FLAG,         // table-internal: allowed when the broker profile is flagged for management
+  R_NETCON_OFF          // the Ethernet console is off in Hardened
 };
 
 // Who the context resolves to: one row of the table.
@@ -85,6 +88,7 @@ enum Principal : uint8_t {
   P_MQTT,             // TLS-verified broker session
   P_MQTT_UNVERIFIED,
   P_BUTTON,
+  P_NETCON_ADMIN,     // Ethernet console, logged in with the admin password
   P_COUNT
 };
 
@@ -121,6 +125,7 @@ inline Principal principalOf(const Context& c) {
         default: return P_UNTRUSTED;
       }
     case T_BUTTON: return c.auth == A_BUTTON ? P_BUTTON : P_UNTRUSTED;
+    case T_NETCON: return c.auth == A_NETCON_ADMIN ? P_NETCON_ADMIN : P_UNTRUSTED;   // no login: the untrusted row
     default: return P_UNTRUSTED;   // T_TCP, T_NONE, anything else
   }
 }
@@ -166,6 +171,8 @@ inline Reason tableCell(Principal p, bool hardened, uint8_t cls) {
     /* MQTT unverified H */   CLI_ROW(MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED) },
     /* button         N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED),
     /* button         H */   CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED) },
+    /* Ethernet admin N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW),
+    /* Ethernet admin H */   CLI_ROW(NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF) },
   };
   if (p >= P_COUNT || cls >= C_COUNT) return R_NOT_PERMITTED;
   return (Reason)T[p][hardened ? 1 : 0][cls];
