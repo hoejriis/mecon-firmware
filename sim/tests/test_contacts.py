@@ -422,6 +422,87 @@ def test_a_damaged_bucket_loses_only_what_is_in_it(nodes):
     assert c.contacts_line()["damaged"] == 1
 
 
+# ------------------------------------------------------------------------------------------------ boot file system work
+# A real SPIFFS is flat and scans its file table on every lookup, so a boot that probes every possible bucket took
+# 87-170 s on a Heltec V3 (the simulated file system is a host directory, where the same calls are instant). These
+# tests count the file system calls of a boot: they must follow the files present, never the store's capacity.
+
+def _counted(nodes, tmp_path, name, extra=None):
+    calls = str(tmp_path / (name + ".calls"))
+    return start(nodes, name, extra=["--fs-calls", calls, "--heap-budget", "400000"] + (extra or [])), calls
+
+
+def _calls_after_boot(node, calls):
+    c = connect(node)                                   # the node answers only once its boot (and the store) is done
+    c.device_query()
+    with open(calls) as f:
+        got = {k: int(v) for k, v in (kv.split("=") for kv in f.read().split())}
+    got["all"] = sum(got.values())
+    print("FSCALLS", os.path.basename(calls), got, "files", len(os.listdir(node.dir)))
+    return c, got
+
+
+def _files_present(node):
+    return len(os.listdir(node.dir))
+
+
+def test_boot_file_system_calls_do_not_grow_with_the_capacity_empty_store(nodes, tmp_path):
+    node, calls = _counted(nodes, tmp_path, "empty")
+    node.start()
+    c, got = _calls_after_boot(node, calls)
+    files = _files_present(node)
+    assert got["exists"] <= 30 and got["all"] <= 60 + 4 * files, "boot used %r file system calls for %d files" % (got, files)
+
+
+def test_boot_file_system_calls_follow_the_files_present_with_350_contacts(nodes, tmp_path):
+    node, calls = _counted(nodes, tmp_path, "full")
+    node.start()
+    c = connect(node)
+    for i in range(350):
+        assert c.add_contact_full(key(i), "c-%d" % i, lastmod=RTC + i)[0] == 0
+    reboot_and_wait(node, c)
+    assert len([f for f in os.listdir(node.dir) if f.startswith("ct")]) >= 43
+    node.start()
+    c, got = _calls_after_boot(node, calls)
+    files = _files_present(node)
+    assert got["exists"] <= 30 and got["all"] <= 60 + 4 * files, "boot used %r file system calls for %d files" % (got, files)
+    count, _ = c.get_contacts()
+    assert count == 350, "every contact is still loaded"
+
+
+def test_a_swap_left_by_a_power_cut_in_a_high_bucket_is_recovered_at_boot(nodes, tmp_path):
+    donor = start(nodes, "donor")                        # four contacts with other keys: one bucket, ct0
+    donor.start()
+    c = connect(donor)
+    for i in range(100, 104):
+        assert c.add_contact_full(key(i), "donor-%d" % i, lastmod=RTC + i)[0] == 0
+    reboot_and_wait(donor, c)
+    verified = open(p(donor, "/ct0"), "rb").read()
+    donor.stop()
+    node, calls = _counted(nodes, tmp_path, "cut")
+    node.start()
+    c = connect(node)
+    for i in range(12):
+        assert c.add_contact_full(key(i), "before-%d" % i, lastmod=RTC + i)[0] == 0
+    reboot_and_wait(node, c)
+    node.stop()
+    with open(p(node, "/ct40.new"), "wb") as f:          # cut after the old ct40 was removed: a verified copy is all that is left
+        f.write(verified)
+    with open(p(node, "/ct41.tmp"), "wb") as f:          # cut while writing: never verified, to be dropped
+        f.write(b"\x01" * 300)
+    with open(p(node, "/ct1.new"), "wb") as f:           # cut after the live file was kept: the live file wins
+        f.write(b"\x02" * 300)
+    node.start()
+    c, got = _calls_after_boot(node, calls)
+    assert os.path.exists(p(node, "/ct40")) and not os.path.exists(p(node, "/ct40.new"))
+    assert not os.path.exists(p(node, "/ct41.tmp")) and not os.path.exists(p(node, "/ct1.new")) and os.path.exists(p(node, "/ct1"))
+    count, got_contacts = c.get_contacts()
+    names = {x["key"]: x["name"] for x in got_contacts}
+    assert count == 16 and names[key(101)] == "donor-101" and names[key(7)] == "before-7"
+    files = _files_present(node)
+    assert got["exists"] <= 30 and got["all"] <= 60 + 4 * files, "boot used %r file system calls for %d files" % (got, files)
+
+
 # ------------------------------------------------------------------------------------------------ rescue "rebuild"
 
 def _standalone(nodes, extra=None, fault=None, name="r"):
