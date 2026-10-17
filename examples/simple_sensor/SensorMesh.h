@@ -37,8 +37,10 @@
   #define FIRMWARE_BUILD_DATE   "15 Oct 2026"
 #endif
 
+#include <helpers/MeconVersion.h>
+
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "v1.18.0"
+  #define FIRMWARE_VERSION   mecon::versionShort()
 #endif
 
 #define FIRMWARE_ROLE "sensor"
@@ -54,7 +56,7 @@ public:
   void handleCommand(ClientInfo* from, uint32_t sender_timestamp, char* command, char* reply);
 
   // CommonCLI callbacks
-  const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
+  const char* getFirmwareVer() override { return mecon::versionFull(); }
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
   const char* getRole() override { return FIRMWARE_ROLE; }
   const char* getNodeName() { return _prefs.node_name; }

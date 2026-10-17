@@ -13,8 +13,10 @@
 #define FIRMWARE_BUILD_DATE "15 Oct 2026"
 #endif
 
+#include <helpers/MeconVersion.h>
+
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v1.18.0"
+#define FIRMWARE_VERSION mecon::versionShort()
 #endif
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
