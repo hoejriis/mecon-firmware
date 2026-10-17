@@ -1,0 +1,2 @@
+# Home page order, BLE mode, as clicked on the simulated board
+home -> recent -> radio -> bluetooth -> connectivity -> advert -> discovery -> hibernate -> (back to home)

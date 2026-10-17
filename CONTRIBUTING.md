@@ -1,10 +1,10 @@
 # Contributing
 
-This public repository currently contains documentation and contracts. Useful first contributions are clear use cases, contract questions, documentation corrections and reproducible hardware evidence from an authorized test build. No public build path exists yet.
+This public repository contains the firmware source (MeshCore 1.18.0 plus standalone improvements), its simulated-board test suite, documentation and target contracts. There are no binaries yet. Useful contributions are hardware evidence (testing has started on a Heltec V3 and no target has passed acceptance yet; see issue #43 for the first finding), bug reports with a reproduction, tests, documentation corrections, and contract questions. To build and test, follow "Getting started" in the [README](README.md); every change to a file that exists upstream is added to [`docs/UPSTREAM_DELTA.md`](docs/UPSTREAM_DELTA.md) in the same pull request.
 
 Use [Discussions](https://github.com/hoejriis/mecon-firmware/discussions) for firmware questions and ideas, and [Issues](https://github.com/hoejriis/mecon-firmware/issues) for a specific contract question, documentation correction or hardware evidence. General conversation about MECON lives in [MeshContinuum's Discussions](https://github.com/hoejriis/MeshContinuum/discussions), and beta interest in [its interest form](https://github.com/hoejriis/MeshContinuum/issues/new?template=beta-interest.yml); no invitation or date is promised.
 
-Contributions here use the [MIT licence](LICENSE). Do not post secrets, private traffic or provisioning exports. See [security reporting](SECURITY.md).
+Contributions here use the [MIT licence](LICENSE), with upstream MeshCore's copyright retained. Do not post secrets, private traffic or provisioning exports. See [security reporting](SECURITY.md).
 
 mecon-firmware is an upstream-derived MeshCore firmware project with a public backend-neutral integration contract.
 
@@ -13,6 +13,7 @@ mecon-firmware is an upstream-derived MeshCore firmware project with a public ba
 - Preserve native MeshCore behavior and offline independence.
 - Prefer changes in the shared MECON runtime over role-specific duplication.
 - Keep Companion/Repeater and hardware adapters thin.
+- A new behaviour change needs a test that fails on stock 1.18.0 and passes here, and the mutation check (`sim/mutate.sh`) should show the test can fail.
 - Do not introduce MeshContinuum-specific hosts, credentials, database concepts or private deployment names into firmware.
 - Treat `docs/contract/` as the public device API.
 

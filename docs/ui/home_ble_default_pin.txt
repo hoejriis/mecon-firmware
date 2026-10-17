@@ -1,0 +1,11 @@
+# Home page, BLE mode, default PIN (drawn as a warning)
++---------------------+
+|ExampleNode          |
+|                     |
+|    Unread Msg: 0    |
+|                     |
+|  BLE (default PIN!) |
+|    < Connected >    |
+|                     |
+|                     |
++---------------------+

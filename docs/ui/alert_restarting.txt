@@ -1,0 +1,11 @@
+# Alert after the confirming long press
++---------------------+
+|ExampleNode          |
+|                     |
+| +-----------------+ |
+| |  Restarting...  | |
+| |                 | |
+| +-----------------+ |
+|  to BLE: long press |
+|                     |
++---------------------+

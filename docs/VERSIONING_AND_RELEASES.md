@@ -17,6 +17,8 @@ The private 0.9x firmware reports the same four identities today: `mecon_firmwar
 
 Clients gate protocol behaviour on contract/profile versions and capabilities, not firmware release numbers.
 
+*Built today:* the firmware reports one string that carries the firmware tag and the upstream base (next section). Separate machine-readable `meshcore_base_version`, contract/profile versions and hardware-target fields belong to the MECON stage and are not emitted by any build in this repository.
+
 ## The version string a build reports
 
 One source: the build script `bin/mecon_version.py` (a PlatformIO `pre:` script on every platform base and the simulator base) passes `git describe --tags --match 'v[0-9]*' --dirty` as `-D MECON_VERSION`. `src/helpers/MeconVersion.h` turns it into two strings. The upstream base stays first, so an app that reads the leading `v1.18.0` still does.
@@ -37,11 +39,11 @@ One source: the build script `bin/mecon_version.py` (a PlatformIO `pre:` script 
 
 ## Release artifacts
 
-Each supported board/role publishes flash/OTA artifacts, machine-readable manifest, digest/signature metadata, hardware/role/variant identifiers, exact MeshCore base, MECON contract versions and measured resource limits such as contact capacity.
+*Target.* The releases published so far (0.1.0, 0.1.1, 0.1.2) are source-only pre-releases with release notes and no binaries, manifest or signatures. Each supported board/role publishes flash/OTA artifacts, machine-readable manifest, digest/signature metadata, hardware/role/variant identifiers, exact MeshCore base, MECON contract versions and measured resource limits such as contact capacity.
 
 ## Release gate
 
-Before a public release: the pinned MeshCore 1.18.0 baseline must be proven on V3/V4; the IDF5/NimBLE migration must preserve stock-derived behaviour; and each advertised board/role must pass the hardware gate with realistic persisted state.
+Before a release is promoted from pre-release or advertises a board (target; no release has passed it): the pinned MeshCore 1.18.0 baseline must be proven on V3/V4; the IDF5/NimBLE migration must preserve stock-derived behaviour; and each advertised board/role must pass the hardware gate with realistic persisted state.
 
 ## OTA
 
@@ -55,10 +57,10 @@ Builds based on upstream `dev`, dirty trees or unpinned revisions identify thems
 
 ## Staged migration and public availability
 
-No public release artifacts exist in this repository yet. Follow the [shared roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md):
+The public releases so far are source-only pre-releases (0.1.0, 0.1.1, 0.1.2) with no binaries. Follow the [shared roadmap](https://github.com/hoejriis/MeshContinuum/blob/main/docs/ROADMAP.md):
 
 1. MeshCore 1.18.0 pinned (upstream commit 81dbae5) as this repository's baseline.
-2. **0.1.0**, the first public release: the pinned baseline plus closed gaps in stock 1.18 (unauthenticated management paths, secret read-back, storage integrity, packet bounds), verified on simulated boards. Then 0.1.x releases work through the ranked standalone targets in [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md) (Stage A).
+2. **0.1.0**, the first public release: the pinned baseline plus closed gaps in stock 1.18 (unauthenticated management paths, secret read-back, storage integrity, packet bounds), verified on simulated boards. 0.1.1 added duty-cycle enforcement and postures, and 0.1.2 the Wi-Fi and MQTT controllers; the remaining Stage A work is merged but not yet tagged. The 0.1.x releases work through the ranked standalone targets in [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md) (Stage A).
 3. MECON-specific functionality (Stage B), up to **0.8.0**, the first version planned to serve a MECON fleet: Heltec V3/V4 Companion Gateway, SenseCAP T1000-E BLE Companion, Seeed Wio Tracker L1 RF repeater and ESP32 Repeater Observer. The version plan before 0.8.0 may change. No dates are announced.
 4. Backend support for the public firmware's interfaces follows the firmware; it is not a precondition for it.
 

@@ -1,0 +1,11 @@
+# Connectivity page in Wi-Fi mode, switch armed
++---------------------+
+|ExampleNode          |
+|                     |
+|    Switch to BLE?   |
+|                     |
+|   Device restarts   |
+|   yes: long press   |
+|      no: click      |
+|                     |
++---------------------+

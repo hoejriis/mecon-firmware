@@ -1,6 +1,6 @@
 # Architecture
 
-> **Target documentation:** this public repository has no installable release yet. Public releases start at **0.1.0**, a standalone enhanced MeshCore on 1.18.0 (see [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md)); the first version to serve a MECON fleet is planned as 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards (hardware testing has started on a Heltec V3; no target has passed acceptance yet), and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../README.md) and the [documentation index](README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 ## Upstream foundation
 
@@ -127,7 +127,7 @@ MQTT, USB, BLE and applicable MeshCore RF/LoRa are transports for one logical ca
 
 ### MECON IP
 
-Initial Heltec targets store up to three ordered Wi-Fi profiles and use one MQTT session at a time. Broker selection is compatible authenticated local broker first, then configured primary cloud broker, then secondary cloud broker, with backoff/anti-flapping; the private 0.9x reference firmware already behaves this way (see [Connectivity](CONNECTIVITY.md#mqtt-and-broker-selection)). Boards without IP omit MECON IP and may use Reader BLE/USB bridging.
+Initial Heltec targets store up to three ordered Wi-Fi profiles (the standalone firmware stores up to ten) and use one MQTT session at a time. Broker selection is compatible authenticated local broker first, then configured primary cloud broker, then secondary cloud broker, with backoff/anti-flapping; the private 0.9x reference firmware already behaves this way (see [Connectivity](CONNECTIVITY.md#mqtt-and-broker-selection)). Boards without IP omit MECON IP and may use Reader BLE/USB bridging.
 
 ### MECON BLE
 

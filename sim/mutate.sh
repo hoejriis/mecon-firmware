@@ -622,6 +622,10 @@ mutate ver_get_command_missing src/helpers/cli/MeconCli.h 'strcmp(cmd, "get meco
 mutate ver_script_ignores_dirty bin/mecon_version.py '"--match", "v[0-9]*", "--dirty"]' '"--match", "v[0-9]*"]' sim/tests/test_mecon_version.py::test_build_script_defines_the_describe_string_for_tag_dev_dirty_and_no_git
 mutate ver_script_any_tag bin/mecon_version.py '"--match", "v[0-9]*"' '"--match", "*"' sim/tests/test_mecon_version.py::test_build_script_defines_the_describe_string_for_tag_dev_dirty_and_no_git
 
+# the CLI reference page is checked against the registry and the MECON handlers
+mutate cli_reference_registry_row_misspelt docs/CLI_REFERENCE.md '| `neighbors` | List nearby repeaters heard.' '| `neighbours` | List nearby repeaters heard.' sim/tests/test_cli_reference_sync.py
+mutate cli_reference_mecon_command_renamed src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.mem") == 0' 'strcmp(cmd, "get mecon.memx") == 0' sim/tests/test_cli_reference_sync.py
+
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries after a full run
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi

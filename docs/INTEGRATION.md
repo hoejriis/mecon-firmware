@@ -1,6 +1,6 @@
 # Integrating with mecon-firmware
 
-> **Target documentation:** this public repository has no installable release yet. Public releases start at **0.1.0**, a standalone enhanced MeshCore on 1.18.0 (see [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md)); the first version to serve a MECON fleet is planned as 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards (hardware testing has started on a Heltec V3; no target has passed acceptance yet), and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../README.md) and the [documentation index](README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 The public line (first release mecon-firmware 0.8.0) is based on released MeshCore 1.18.0 and is designed for MeshContinuum and independent integrations. The vocabulary below is the target; a backend that must talk to the private 0.9x reference firmware today needs the legacy vocabulary described in [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
 
@@ -17,7 +17,7 @@ Do not infer behaviour from board name, role or firmware version. Read protocol/
 
 ## Provisioning
 
-Public builds do not compile in a MeshContinuum service dependency. Provisioning supplies up to three Wi-Fi profiles, cloud MQTT endpoint/credentials/namespace, local-broker discovery/authority configuration, device identity metadata and authorization grants.
+Public builds do not compile in a MeshContinuum service dependency. Provisioning supplies up to three Wi-Fi profiles (the standalone firmware stores up to ten), cloud MQTT endpoint/credentials/namespace, local-broker discovery/authority configuration, device identity metadata and authorization grants.
 
 The device maintains one MQTT session at a time. Local discovery changes the preferred endpoint, not the authority model.
 

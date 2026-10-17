@@ -1,0 +1,11 @@
+# Recent adverts page with nothing heard yet
++---------------------+
+|ExampleNode          |
+|                     |
+|                     |
+|                     |
+|                     |
+|                     |
+|                     |
+|                     |
++---------------------+

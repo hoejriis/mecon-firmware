@@ -1,10 +1,12 @@
 # Connectivity and operating modes
 
-> **Target documentation:** this public repository has no installable release yet. Public releases start at **0.1.0**, a standalone enhanced MeshCore on 1.18.0 (see [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md)); the first version to serve a MECON fleet is planned as 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards (hardware testing has started on a Heltec V3; no target has passed acceptance yet), and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../README.md) and the [documentation index](README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 Connectivity is additive to the underlying MeshCore role, but MECON security posture controls which management transports may be initialized. RF operation must continue independently of IP connectivity.
 
 ## Security posture
+
+> *Built differently.* The standalone Normal and Hardened postures that exist today are described in [Standalone security postures](STANDALONE_POSTURES.md). They differ from this MECON model: Hardened keeps USB management (for a cable holder, including `set posture normal confirm` and factory reset) and needs no Deployment, whereas the text below withholds stock USB management in Hardened and requires Deployment authority. Connectivity is BLE or Wi-Fi one at a time ([Connectivity mode](CONNECTIVITY_MODE.md)).
 
 MECON defines two persistent operating postures plus a fail-secure recovery state:
 
@@ -30,7 +32,7 @@ Non-Wi-Fi targets expose only modes supported by their hardware. In the referenc
 
 ## Wi-Fi
 
-MECON extends the MeshCore Wi-Fi/configuration infrastructure to store up to three ordered profiles. The device connects to the highest-priority available configured network and falls back as availability changes without interrupting RF operation. Configuration changes should preserve a known-working path where practical.
+MECON extends the MeshCore Wi-Fi/configuration infrastructure to store ordered profiles (three in the target; the standalone firmware implements up to ten, see [Wi-Fi profiles](WIFI.md)). The device connects to the highest-priority available configured network and falls back as availability changes without interrupting RF operation. Configuration changes should preserve a known-working path where practical.
 
 In Hardened posture Wi-Fi is infrastructure/outbound only: MQTT and supporting DNS/NTP/OTA as required. Stock-app TCP/HTTP/Web UI or other inbound convenience-management surfaces are not exposed.
 

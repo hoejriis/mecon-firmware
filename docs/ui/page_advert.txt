@@ -1,0 +1,11 @@
+# Advert page (icon not recorded)
++---------------------+
+|ExampleNode          |
+|                     |
+|                     |
+|                     |
+|                     |
+|                     |
+|  advert: long press |
+|                     |
++---------------------+
