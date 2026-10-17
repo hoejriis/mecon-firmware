@@ -120,6 +120,9 @@ void setup() {
   modem = new KissModem(Serial, identity, rng, radio_driver, board, sensors);
 #endif
 
+#if defined(LORA_FREQ) && defined(LORA_BW)
+  modem->setChannel(LORA_FREQ, LORA_BW);   // what radio_init() tuned the radio to; the host's SET_RADIO replaces it
+#endif
   modem->setRadioCallback(onSetRadio);
   modem->setTxPowerCallback(onSetTxPower);
   modem->setGetCurrentRssiCallback(onGetCurrentRssi);

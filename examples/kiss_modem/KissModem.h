@@ -1,5 +1,6 @@
 #pragma once
 
+#include <helpers/DutyWindow.h>
 #include <Arduino.h>
 #include <Identity.h>
 #include <Utils.h>
@@ -138,6 +139,16 @@ class KissModem {
   GetStatsCallback _getStatsCallback;
 
   RadioConfig _config;
+  // Duty cycle: every raw send is held to the regulatory floor of the channel the radio is on (no user airtime
+  // factor here: the host owns pacing, the floor is the one limit the firmware must not let it exceed).
+  mesh::DutyWindow _duty;
+  float _chan_freq_mhz;      // 0 = unknown: transmission is refused (fail closed)
+  float _chan_bw_khz;
+  uint32_t _tx_est_ms;       // estimated airtime of the frame being sent
+  uint32_t getDutyLimitMs() const;
+  void recordAirtime();
+  bool dutyAllowsSend(uint32_t est_ms);   // false: hold the frame; sets _duty_refuse when it can never be sent
+  bool _duty_refuse;
   bool _signal_report_enabled;
   uint8_t _tx_frame_buf[KISS_TX_FRAME_QUEUE_DEPTH][KISS_MAX_ENCODED_FRAME_SIZE];
   uint16_t _tx_frame_len[KISS_TX_FRAME_QUEUE_DEPTH];
@@ -199,6 +210,11 @@ public:
 
   void begin();
   void loop();
+
+  /** Tell the modem which channel the radio is tuned to at boot (a later SET_RADIO updates it). Until a channel is
+   *  known every frame from the host is refused rather than sent without the duty-cycle floor. */
+  void setChannel(float freq_mhz, float bw_khz) { _chan_freq_mhz = freq_mhz; _chan_bw_khz = bw_khz; }
+  uint32_t getTrailingAirtimeMs();
 
   void setRadioCallback(SetRadioCallback cb) { _setRadioCallback = cb; }
   void setTxPowerCallback(SetTxPowerCallback cb) { _setTxPowerCallback = cb; }

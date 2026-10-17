@@ -1,5 +1,6 @@
 #include "KissModem.h"
 #include <CayenneLPP.h>
+#include <helpers/RegulatoryDutyCycle.h>
 
 KissModem::KissModem(Stream& serial, mesh::LocalIdentity& identity, mesh::RNG& rng,
                      mesh::Radio& radio, mesh::MainBoard& board, SensorManager& sensors)
@@ -21,6 +22,11 @@ KissModem::KissModem(Stream& serial, mesh::LocalIdentity& identity, mesh::RNG& r
   _getCurrentRssiCallback = nullptr;
   _getStatsCallback = nullptr;
   _config = {0, 0, 0, 0, 0};
+  _chan_freq_mhz = 0;
+  _chan_bw_khz = 0;
+  _tx_est_ms = 0;
+  _duty_refuse = false;
+  _duty.reset(millis());
   _signal_report_enabled = true;
   resetOutputQueue();
 }
@@ -387,6 +393,41 @@ void KissModem::handleHardwareCommand(uint8_t sub_cmd, const uint8_t* data, uint
   }
 }
 
+// Charge the larger of the estimated time on air and the time the send actually took, the latter capped at the
+// send timeout (the same rule as mesh::Dispatcher).
+void KissModem::recordAirtime() {
+  if (regulatory::dutyFloor(_chan_freq_mhz, _chan_bw_khz).limit_bp >= REG_DUTY_NONE_BP) return;   // not duty-limited
+  uint32_t took = millis() - _tx_timer;
+  uint32_t cap = _tx_est_ms + _tx_est_ms / 2;
+  if (took > cap) took = cap;
+  getTrailingAirtimeMs();   // seeds and advances
+  _duty.record(millis(), took > _tx_est_ms ? took : _tx_est_ms);
+}
+
+// The regulatory floor for the channel the radio is on, as milliseconds of airtime per hour.
+uint32_t KissModem::getDutyLimitMs() const {
+  uint32_t bp = regulatory::dutyFloor(_chan_freq_mhz, _chan_bw_khz).limit_bp;
+  return (uint32_t)((uint64_t)DUTY_WINDOW_MS * bp / 10000);
+}
+
+uint32_t KissModem::getTrailingAirtimeMs() {
+  if (!_duty.seeded()) _duty.seed(getDutyLimitMs());
+  _duty.advance(millis());
+  return _duty.sum();
+}
+
+// May a frame of `est_ms` airtime go out now?  false with _duty_refuse set: never (unknown channel, or longer than
+// the whole limit): the frame is failed.  false without it: not yet, the frame is held until enough airtime has
+// aged out of the trailing hour.
+bool KissModem::dutyAllowsSend(uint32_t est_ms) {
+  _duty_refuse = false;
+  if (!(_chan_freq_mhz > 0)) { _duty_refuse = true; return false; }   // unknown channel: fail closed
+  if (regulatory::dutyFloor(_chan_freq_mhz, _chan_bw_khz).limit_bp >= REG_DUTY_NONE_BP) return true;   // no floor here
+  uint32_t limit = getDutyLimitMs();
+  if (est_ms > limit) { _duty_refuse = true; return false; }
+  return getTrailingAirtimeMs() + est_ms <= limit;
+}
+
 void KissModem::processTx() {
   switch (_tx_state) {
     case TX_IDLE:
@@ -427,6 +468,11 @@ void KissModem::processTx() {
 
     case TX_DELAY:
       if (millis() - _tx_timer >= (uint32_t)_txdelay * 10) {
+        _tx_est_ms = _radio.getEstAirtimeFor(_pending_tx_len);
+        if (!dutyAllowsSend(_tx_est_ms)) {
+          if (_duty_refuse) setTxDonePending(0x00);   // can never be sent: fail it
+          break;                                       // otherwise hold it until the trailing hour has room
+        }
         if (_radio.startSendRaw(_pending_tx, _pending_tx_len)) {
           _tx_timer = millis();
           _tx_state = TX_SENDING;
@@ -439,9 +485,11 @@ void KissModem::processTx() {
     case TX_SENDING:
       if (_radio.isSendComplete()) {
         _radio.onSendFinished();
+        recordAirtime();
         setTxDonePending(0x01);
       } else if (millis() - _tx_timer >= _radio.getEstAirtimeFor(_pending_tx_len) * KISS_TX_TIMEOUT_FACTOR) {
         _radio.onSendFinished();
+        recordAirtime();   // the radio was keyed: count it
         setTxDonePending(0x00);
       }
       break;
@@ -587,6 +635,8 @@ void KissModem::handleSetRadio(const uint8_t* data, uint16_t len) {
   _config.cr = data[9];
 
   _setRadioCallback(_config.freq_hz / 1000000.0f, _config.bw_hz / 1000.0f, _config.sf, _config.cr);
+  _chan_freq_mhz = _config.freq_hz / 1000000.0f;   // the floor follows the radio at once
+  _chan_bw_khz = _config.bw_hz / 1000.0f;
   writeHardwareFrame(HW_RESP_OK, nullptr, 0);
 }
 
