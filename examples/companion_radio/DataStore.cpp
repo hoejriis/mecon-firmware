@@ -340,6 +340,59 @@ bool DataStore::bucketExists(uint16_t b) {
   return _getContactsChannelsFS()->exists(path);
 }
 
+// Parses "ct<N>" (suffix NULL) or "ct<N>.tmp" / "ct<N>.new" (suffix ".tmp" / ".new") from a directory entry name, which is
+// "ct5" or "/ct5" depending on the file system (a nested path keeps only its last part). Returns the bucket or -1.
+static int bucketFromName(const char* name, int* kind) {   // kind: 0 bucket file, 1 swap file, 2 anything else of ours (.bad)
+  if (!name) return -1;
+  const char* s = strrchr(name, '/');
+  s = s ? s + 1 : name;
+  if (s[0] != 'c' || s[1] != 't' || s[2] < '0' || s[2] > '9') return -1;
+  long n = 0;
+  const char* p = s + 2;
+  while (*p >= '0' && *p <= '9' && n < 70000) n = n * 10 + (*p++ - '0');
+  if (*p == 0) *kind = 0;
+  else if (strcmp(p, ".tmp") == 0 || strcmp(p, ".new") == 0) *kind = 1;
+  else if (strcmp(p, ".bad") == 0) *kind = 2;
+  else return -1;
+  return (int)n;
+}
+
+// Lists the contacts file system once. SPIFFS is flat (every file is in the root listing, whatever its name) and
+// LittleFS / InternalFS keep these files in the root too; a nested layout would still be found by the last path part.
+// Only a bucket with a leftover .tmp / .new gets AtomicFile::recover(); no other lookup is made for the rest.
+bool DataStore::listBuckets(uint16_t limit, uint8_t* present) {
+  FILESYSTEM* fs = _getContactsChannelsFS();
+  uint8_t* swap = (uint8_t*)calloc((limit + 7) / 8 + 1, 1);
+  if (!swap) return false;
+  bool listed = false;
+  {
+    File root = fs->open("/");
+    if (root && root.isDirectory()) {
+      listed = true;
+      for (File f = root.openNextFile(); f; f = root.openNextFile()) {
+        int kind = 0;
+        int b = bucketFromName(f.name(), &kind);
+        if (b < 0 || b >= limit) continue;
+        if (kind == 0 && !f.isDirectory()) present[b >> 3] |= (uint8_t)(1u << (b & 7));
+        else if (kind == 1) swap[b >> 3] |= (uint8_t)(1u << (b & 7));
+      }
+      root.close();
+    }
+  }
+  if (listed) {
+    for (int b = 0; b < limit; b++) {     // recovery runs after the listing, never while the directory is open
+      if (!(swap[b >> 3] & (1u << (b & 7)))) continue;
+      char path[16];
+      bucketPath(path, sizeof(path), (uint16_t)b);
+      AtomicFile::recover(fs, path);
+      if (fs->exists(path)) present[b >> 3] |= (uint8_t)(1u << (b & 7));
+      else present[b >> 3] &= (uint8_t)~(1u << (b & 7));
+    }
+  }
+  free(swap);
+  return listed;
+}
+
 bool DataStore::readBucket(uint16_t b, uint8_t* buf, uint32_t len) {
   char path[16];
   bucketPath(path, sizeof(path), b);

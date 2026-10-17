@@ -89,7 +89,7 @@ int ContactStore::meaningClass(const Idx& e, uint32_t now) {
 ContactStore::ContactStore() {
   _ready = _persistent = false;
   _be = NULL; _listener = NULL;
-  _idx = NULL; _slots = NULL; _scratch = NULL; _bdirty = NULL;
+  _idx = NULL; _slots = NULL; _scratch = NULL; _bdirty = NULL; _bpresent = NULL; _bpresent_bits = 0;
   _scratch_bucket = -1;
   _cap = _nslots = _count = _pinned = _pin_limit = _first_free = _nbuckets = 0;
   _tick = 0;
@@ -105,8 +105,8 @@ void ContactStore::release() {
   if (!_static_storage) {
     free(_idx); free(_slots);
   }
-  free(_scratch); free(_bdirty);
-  _idx = NULL; _slots = NULL; _scratch = NULL; _bdirty = NULL;
+  free(_scratch); free(_bdirty); free(_bpresent);
+  _idx = NULL; _slots = NULL; _scratch = NULL; _bdirty = NULL; _bpresent = NULL; _bpresent_bits = 0;
   _static_storage = false;
 }
 
@@ -137,8 +137,19 @@ bool ContactStore::begin(ContactBackend* backend, ContactStoreListener* listener
   } else {
     int limit = (cfg.store_ceiling + K - 1) / K;
     int found = 0;
-    for (int b = 0; b < limit; b++) {
-      if (_be->bucketExists((uint16_t)b)) { max_bucket = b; found++; }
+    // One listing of the file system finds every bucket (and recovers the ones with a swap file). Probing each
+    // possible bucket costs a lookup apiece, and a flat SPIFFS scans its whole file table for each: ~87 s at boot.
+    _bpresent = (uint8_t*)calloc((limit + 7) / 8 + 1, 1);
+    if (_bpresent && _be->listBuckets((uint16_t)limit, _bpresent)) {
+      _bpresent_bits = limit;
+      for (int b = 0; b < limit; b++) {
+        if (_bpresent[b >> 3] & (1u << (b & 7))) { max_bucket = b; found++; }
+      }
+    } else {
+      free(_bpresent); _bpresent = NULL;
+      for (int b = 0; b < limit; b++) {
+        if (_be->bucketExists((uint16_t)b)) { max_bucket = b; found++; }
+      }
     }
     uint64_t avail = _be->freeBytes();
     if (avail != 0xFFFFFFFFull) avail += (uint64_t)found * BUCKET_BYTES;   // our own files are free space too
@@ -206,6 +217,7 @@ bool ContactStore::begin(ContactBackend* backend, ContactStoreListener* listener
   _ready = true;
 
   if (_persistent && max_bucket >= 0) loadFromBackend();
+  free(_bpresent); _bpresent = NULL; _bpresent_bits = 0;
   if (_persistent) {                                   // favourites are resident from the start
     for (int r = 0; r < _cap && _pinned < _pin_limit; r++) {
       if ((_idx[r].flags & F_USED) && (_idx[r].flags & F_FAV)) get(r);
@@ -216,7 +228,8 @@ bool ContactStore::begin(ContactBackend* backend, ContactStoreListener* listener
 
 bool ContactStore::loadFromBackend() {
   for (int b = 0; b < _nbuckets; b++) {
-    if (!_be->bucketExists((uint16_t)b)) continue;
+    bool have = _bpresent ? (b < _bpresent_bits && (_bpresent[b >> 3] & (1u << (b & 7)))) : _be->bucketExists((uint16_t)b);
+    if (!have) continue;
     if (!_be->readBucket((uint16_t)b, _scratch, BUCKET_BYTES)) { _damaged += CONTACT_RECORD_BUCKET; continue; }
     for (int i = 0; i < CONTACT_RECORD_BUCKET; i++) {
       const uint8_t* r = _scratch + i * REC;

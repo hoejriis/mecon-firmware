@@ -399,6 +399,12 @@ mutate contacts_hash_lookup_inverted $CS '    if (memcmp(e.key, hash, PATH_HASH_
 mutate contacts_flush_writes_every_bucket $CS '    if (_bdirty[b >> 3] & (1u << (b & 7))) {' '    if (true) {' unit:test_contact_store
 mutate contacts_cache_ignores_heap $CS '    uint32_t slots = cache_budget / sizeof(Slot);' '    uint32_t slots = cfg.cache_ceiling;' unit:test_contact_store
 mutate contacts_cache_ignores_heap_sim $CS '    uint32_t slots = cache_budget / sizeof(Slot);' '    uint32_t slots = cfg.cache_ceiling;' $CT_SIM::test_capacity_and_cache_follow_the_heap_the_board_reports
+mutate contacts_boot_probes_every_bucket $CS '    if (_bpresent && _be->listBuckets((uint16_t)limit, _bpresent)) {' '    if (false && _bpresent && _be->listBuckets((uint16_t)limit, _bpresent)) {' $CT_SIM::test_boot_file_system_calls_do_not_grow_with_the_capacity_empty_store $CT_SIM::test_boot_file_system_calls_follow_the_files_present_with_350_contacts
+mutate contacts_boot_probes_every_bucket_unit $CS '    if (_bpresent && _be->listBuckets((uint16_t)limit, _bpresent)) {' '    if (false && _bpresent && _be->listBuckets((uint16_t)limit, _bpresent)) {' unit:test_contact_store
+mutate contacts_boot_recovers_every_bucket examples/companion_radio/DataStore.cpp '      if (!(swap[b >> 3] & (1u << (b & 7)))) continue;
+' '' $CT_SIM::test_boot_file_system_calls_do_not_grow_with_the_capacity_empty_store
+mutate contacts_boot_swap_not_recovered examples/companion_radio/DataStore.cpp '      AtomicFile::recover(fs, path);
+      if (fs->exists(path)) present' '      if (fs->exists(path)) present' $CT_SIM::test_a_swap_left_by_a_power_cut_in_a_high_bucket_is_recovered_at_boot
 mutate contacts_capacity_ignores_filesystem $CS '    if (cap > cap_fs) cap = (uint32_t)cap_fs;' '' unit:test_contact_store
 mutate contacts_capacity_ignores_filesystem_sim $CS '    if (cap > cap_fs) cap = (uint32_t)cap_fs;' '' $CT_SIM::test_a_full_store_evicts_the_least_meaningful_and_never_a_favourite
 mutate contacts_capacity_below_what_is_stored $CS '    if (cap < (uint32_t)(max_bucket + 1) * K) cap = (uint32_t)(max_bucket + 1) * K;   // never smaller than what is stored' '' unit:test_contact_store
