@@ -2,7 +2,7 @@
 
 The Companion `_wifi` and `_standalone` builds join a network to serve the TCP companion port and, where the MQTT controller is built in, to carry its broker session. They hold up to **ten profiles** (SSID, password, priority) and a controller that picks among them. The decision logic is platform-free (`src/helpers/wifi/WifiCore.*`, unit-tested natively); `WifiController.*` is a thin layer over the Arduino `WiFi` API that ESP32 and RP2040 share; `WifiProfiles.*` is the profile store and its CLI. Later modules (the MQTT controller, connectivity-mode switching) ask the same controller for the link instead of joining a network themselves.
 
-What is verified, and how: the decision rules by unit tests against a fake radio and by the simulated-board suite against simulated access points ([Simulated-board test harness](SIMULATION.md)). **Not verified on hardware:** the ESP32 disconnect reasons the controller maps (wrong password, network not found) and the RP2040 status polling are written from the platform sources and compiled for the Heltec V3 and V4 and the Pico W, but no real access point has been joined.
+What is verified, and how: the decision rules by unit tests against a fake radio and by the simulated-board suite against simulated access points ([Simulated-board test harness](SIMULATION.md)). **Not verified on hardware:** the controller's own scan (`esp_wifi_scan_start`, its done event, the stop after a bound and the direct join after a failed scan: the cause of the first hardware session's failing scans is not established from the sources), the ESP32 disconnect reasons the controller maps (wrong password, network not found) and the RP2040 status polling are written from the platform sources and compiled for the Heltec V3 and V4 and the Pico W, but no real access point has been joined.
 
 ## Selection and failover
 
@@ -13,6 +13,18 @@ What is verified, and how: the decision rules by unit tests against a fake radio
 - With nothing reachable it backs off (5 s, doubling to 5 min) and scans again.
 
 The timings are `WifiTiming` defaults in `WifiCore.h`.
+
+## Scanning
+
+On ESP32 the controller runs the scan itself instead of using Arduino's `scanNetworks(true)`. The first hardware session (a Heltec V3, standalone build in Wi-Fi mode) saw Arduino's asynchronous scan never report: `scanComplete()` gave up after exactly 6 s (Arduino's per-scan timeout is 20 times the per-channel dwell, 300 ms by default), and every later scan, even a blocking one, found nothing.
+
+- **The scan** is `esp_wifi_scan_start` (active, 40 ms minimum and 120 ms maximum dwell per channel, so a sweep of the 2.4 GHz channels takes about 1.5 s) and returns at once; the main loop is never blocked.
+- **Its end** is taken from a `WIFI_EVENT_SCAN_DONE` handler the controller registers on the default event loop itself, so the scan does not depend on Arduino's own scan-done path. The results are read from Arduino's table when its handler ran, because it frees the driver's list when it reads it; if Arduino has not filled its table 300 ms after the event, the controller reads the list from the driver (strongest 48 access points).
+- **Its bound** is 5 s. A scan that has not ended by then, or was refused by the driver, or ended with an error status, is **stopped in the driver** (`esp_wifi_scan_stop`), so the next scan can run, and counts as a failed scan.
+- **A failed scan** says nothing about what is in range. Instead of waiting for the next backoff round, the controller joins the highest-priority profile that is not cooling down directly (equal priorities go to the lower number). This also joins a hidden network when the scan is broken. A direct join that misses cools its profile down for 15 s, so the next attempt takes the next profile. While connected, a failed upgrade scan changes nothing: the link stays and nothing is guessed.
+- On RP2040 the controller keeps Arduino's asynchronous scan, with the same 5 s bound and the same failure handling.
+
+The simulated scan hardware can wedge (a scan that never ends, and a driver that refuses another until it is stopped) and can withhold the event from Arduino's tables; the simulated-board suite covers the stop, the direct join, the next scan working and a main loop that is never held up ([Simulated-board test harness](SIMULATION.md)).
 
 ## Storage
 
