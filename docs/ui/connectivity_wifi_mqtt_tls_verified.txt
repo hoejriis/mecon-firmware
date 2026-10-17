@@ -1,0 +1,11 @@
+# Connectivity page, Wi-Fi mode, MQTT over TLS, certificate verified
++---------------------+
+|ExampleNode          |
+|                     |
+|Mode: Wi-Fi, Normal  |
+|Wi-Fi p0 ExNet -61dBm|
+|IP: 192.0.2.10       |
+|MQTT0 TLS verified   |
+|  to BLE: long press |
+|                     |
++---------------------+

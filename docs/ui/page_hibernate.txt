@@ -1,0 +1,11 @@
+# Hibernate page (icon not recorded)
++---------------------+
+|ExampleNode          |
+|                     |
+|                     |
+|                     |
+|                     |
+|                     |
+| hibernate:long press|
+|                     |
++---------------------+

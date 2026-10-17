@@ -1,0 +1,2 @@
+# Home page order, Wi-Fi mode, as clicked on the simulated board
+home -> recent -> radio -> connectivity -> advert -> discovery -> hibernate -> (back to home)

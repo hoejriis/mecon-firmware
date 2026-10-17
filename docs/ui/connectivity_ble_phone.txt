@@ -1,0 +1,11 @@
+# Connectivity page, BLE mode, phone connected
++---------------------+
+|ExampleNode          |
+|                     |
+|Mode: BLE, Normal    |
+|Pin: per-device      |
+|Phone: connected     |
+|Wi-Fi, MQTT: off     |
+| to Wi-Fi: long press|
+|                     |
++---------------------+

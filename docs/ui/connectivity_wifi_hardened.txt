@@ -1,0 +1,11 @@
+# Connectivity page, Wi-Fi mode, Hardened, no MQTT profile Hardened permits
++---------------------+
+|ExampleNode          |
+|                     |
+|Mode: Wi-Fi, Hardened|
+|Wi-Fi: off           |
+|IP: -                |
+|MQTT: no profile     |
+|  to BLE: long press |
+|                     |
++---------------------+

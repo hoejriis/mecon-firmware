@@ -1,0 +1,11 @@
+# Bluetooth page (the 32x32 icon is a graphic and is not recorded)
++---------------------+
+|ExampleNode          |
+|                     |
+|                     |
+|                     |
+|                     |
+|                     |
+|  toggle: long press |
+|                     |
++---------------------+
