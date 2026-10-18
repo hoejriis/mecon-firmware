@@ -13,7 +13,7 @@ This is a **clean implementation on a pinned upstream MeshCore 1.18.0 baseline**
 | # | Target | State |
 |---|---|---|
 | 1 | Platform and portability | Baseline pinned and reproducible container build; full board set compiled in CI (594 of 618 environments, the 24 failures are stock's). NimBLE and heap work not started; the hardware-verified board matrix does not exist yet |
-| 2 | Security and duty cycle | Built: [postures and audit log](STANDALONE_POSTURES.md), transport trust, regulatory duty-cycle enforcement. BLE rules covered by unit tests only |
+| 2 | Security and duty cycle | Built: [postures and audit log](STANDALONE_POSTURES.md), transport trust, regulatory duty-cycle enforcement, command replies bound to the transport the command arrived on. BLE rules covered by unit tests and a simulated pairing link, not yet by a real BLE stack |
 | 3 | Wi-Fi controller | Built: up to ten prioritised profiles ([WIFI](WIFI.md)) |
 | 4 | MQTT controller | Built: up to six broker profiles, one session, failover by priority, TLS pinning (fingerprint or CA, SNI), LAN discovery ([MQTT](MQTT.md)); credentials are write-only. DNS and dynamic DNS are handled by re-resolving on every attempt |
 | 5 | Screen UI and interfaces | Built for the Heltec V3/V4 standalone Companion: BLE or Wi-Fi mode switching, connectivity page, button gesture ([CONNECTIVITY_MODE](CONNECTIVITY_MODE.md)). USB in both modes is assumed, not verified on hardware |
