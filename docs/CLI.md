@@ -61,7 +61,7 @@ Rows are the callers; per caller the left cell is Normal and the right is Harden
 - *flag*: allowed only when the broker profile the session runs on is flagged for management (`set mqtt.profile <n> manage on`); otherwise the request is answered `refused` with `ERR: management is off for this broker profile`.
 - *local only* and *refused* are explicit replies and audit entries; `set prv.key` from the air is explained but, as it always was, not logged.
 - The button reaches the connectivity-mode switch and nothing else; it is not a command line.
-- "A paired phone" is only a BLE session paired with a PIN other than 0 or `123456`. The firmware cannot tell BLE with a default PIN from the TCP port at this layer and treats both as untrusted, which is what it always did.
+- "A paired phone" is only a BLE session paired with a PIN other than 0 or `123456`. BLE with a default PIN gets the same *untrusted* row as the TCP port, which is what it always did; the audit still names the transport (`ble` or `net`).
 
 A refusal's reply text (the strings are those the individual checks always gave):
 
@@ -146,7 +146,7 @@ The registry and the table are `const` data in flash. Not in the static figure: 
 
 ## Known limits
 
-- BLE with a default PIN and the TCP port are one *untrusted* row; the audit records both as `net`.
+- BLE with a default PIN and the TCP port share one *untrusted* row: the table cannot grant one of them anything without granting the other.
 - A remote `erase` or `get prv.key` on a repeater or room server used to fall through to an unknown-command reply and now gets `ERR: not permitted` and an audit entry. The only behavioural difference from before the engine; no test relied on the old reply.
 - The sensor example reaches the same gate through the common CLI. It had no front door before, so Hardened now applies its remote read-only rule there too. The sensor role is not verified on hardware or in the simulator.
 - No rate limit on requests. A flood of refused requests folds into one audit entry but each is answered.
