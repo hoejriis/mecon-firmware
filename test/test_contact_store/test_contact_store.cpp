@@ -30,7 +30,7 @@ public:
     memcpy(buf, it->second.data(), len);
     return true;
   }
-  bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len) override {
+  bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len, bool) override {
     if (fail_after >= 0 && writes >= fail_after) return false;   // the old file stays, as with the atomic swap
     writes++;
     files[b] = std::vector<uint8_t>(buf, buf + len);

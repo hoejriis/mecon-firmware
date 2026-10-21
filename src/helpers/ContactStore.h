@@ -43,7 +43,8 @@ public:
   // lookup (several on a flat file system such as SPIFFS) per possible bucket.
   virtual bool listBuckets(uint16_t limit, uint8_t* present) { (void)limit; (void)present; return false; }
   virtual bool readBucket(uint16_t b, uint8_t* buf, uint32_t len) = 0;    // false when absent or short
-  virtual bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len) = 0;   // atomic: old or new content, never a mix
+  // atomic: old or new content, never a mix. is_new: the store knows bucket b has no file yet (a hint; see AtomicFile::save)
+  virtual bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len, bool is_new) = 0;
   virtual bool removeBucket(uint16_t b) = 0;
   // Keeps a copy of a damaged bucket's bytes under a separate name (never read back as a bucket) before it is rewritten.
   // false = could not; the bucket is then left as it is. The default cannot, so a backend that wants repairs overrides it.
@@ -169,7 +170,7 @@ private:
   Slot* _slots;
   uint8_t* _scratch;               // one bucket
   int _scratch_bucket;
-  uint8_t* _bpresent;              // bit per bucket found by the boot listing; only while begin() runs
+  uint8_t* _bpresent;              // bit per bucket file that exists: the boot listing, kept by writeB()/removeB()
   int _bpresent_bits;
   uint8_t* _bdirty;                // bit per bucket: needs a rewrite
   int _cap, _nslots, _count, _pinned, _pin_limit, _first_free, _nbuckets;
@@ -194,6 +195,12 @@ private:
   bool readRecord(int rec, ContactInfo& out, uint32_t& last_msg);
   bool loadScratch(int b);
   bool flushBucket(int b);
+  // Which bucket files exist, from the boot listing and kept up to date by every write and removal below, so a save
+  // never looks up a bucket that is not there (each such lookup scans the whole file table on SPIFFS). NULL when the
+  // listing failed: then every bucket "may exist" and is looked up as before.
+  bool knownAbsent(int b) const { return _bpresent && b < _bpresent_bits && !(_bpresent[b >> 3] & (1u << (b & 7))); }
+  bool writeB(int b);
+  bool removeB(int b);
   void markBucket(int b) { if (_bdirty) _bdirty[b >> 3] |= (uint8_t)(1u << (b & 7)); }
   int  freeRecord();
   int  pickVictim(uint32_t now);

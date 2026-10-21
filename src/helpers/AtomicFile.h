@@ -116,13 +116,20 @@ inline void discard(FS_T* fs, const char* path) {
 }
 
 // writer: bool(Stream&) writes the complete content. Returns true once the new file is in place.
+// is_new: the caller knows <path> does not exist yet (a new contact bucket), so the ESP32 swap skips removing it, a
+// lookup of a missing name that scans the whole SPIFFS file table. A wrong hint costs a retry, never the save.
 template <typename FS_T, typename WRITER>
-inline bool save(FS_T* fs, const char* path, WRITER writer) {
+inline bool save(FS_T* fs, const char* path, WRITER writer, bool is_new = false) {
   char tmp[48], nw[48];
   nameWith(tmp, sizeof(tmp), path, ".tmp");
   nameWith(nw, sizeof(nw), path, ".new");
-  if (BootPresence::mayExist(tmp) && fs->exists(tmp)) fs->remove(tmp);
-  if (BootPresence::mayExist(nw) && fs->exists(nw)) fs->remove(nw);
+#ifndef ATOMIC_FILE_TWO_STEP_SWAP
+  if (fs->exists(tmp)) fs->remove(tmp);
+  if (fs->exists(nw)) fs->remove(nw);
+#endif
+  // ESP32 SPIFFS: no lookups up front. Each lookup of a name that is not there scans the whole file table, and a
+  // leftover is rare (a power cut, normally completed or dropped by recover() at boot). The write below truncates a
+  // leftover <path>.tmp, and a leftover <path>.new or an existing <path> makes a rename fail: only then is it removed.
 
   uint32_t want_crc;
   size_t want_len;
@@ -153,9 +160,18 @@ inline bool save(FS_T* fs, const char* path, WRITER writer) {
     if (len != want_len || crc != want_crc) { fs->remove(tmp); return false; }
   }
 #ifdef ATOMIC_FILE_TWO_STEP_SWAP
-  if (!fs->rename(tmp, nw)) { fs->remove(tmp); return false; }
-  if (BootPresence::mayExist(path)) fs->remove(path);   // SPIFFS does not replace an existing destination
+  if (!fs->rename(tmp, nw)) {   // a leftover <path>.new is in the way
+    fs->remove(nw);
+    if (!fs->rename(tmp, nw)) { fs->remove(tmp); return false; }
+  }
+  // SPIFFS does not replace an existing destination. A file the caller or the boot listing knows is new is not looked up.
+  const bool skip_remove = is_new || !BootPresence::mayExist(path);
+  if (!skip_remove) fs->remove(path);
   bool ok = fs->rename(nw, path);   // if cut here, recover() completes it from <path>.new
+  if (!ok && skip_remove) {          // the hint was wrong: an old <path> is there after all
+    fs->remove(path);
+    ok = fs->rename(nw, path);
+  }
   if (ok) BootPresence::note(path);
   return ok;
 #else

@@ -437,7 +437,7 @@ def _calls_after_boot(node, calls):
     c.device_query()
     with open(calls) as f:
         got = {k: int(v) for k, v in (kv.split("=") for kv in f.read().split())}
-    got["all"] = sum(v for k, v in got.items() if k != "missing")   # "missing" re-counts calls already counted
+    got["all"] = sum(v for k, v in got.items() if k not in ("missing", "create"))   # both re-count calls already counted
     print("FSCALLS", os.path.basename(calls), got, "files", len(os.listdir(node.dir)))
     return c, got
 
@@ -490,6 +490,41 @@ def test_boot_looks_up_no_file_that_is_not_there(nodes, tmp_path):
         l for l in node_log(node).splitlines()[before:] if l.startswith("SIMFS missing")]
     count, _ = c.get_contacts()
     assert count == 20, "every contact is still loaded"
+
+
+def test_a_contact_save_looks_up_no_file_that_is_not_there(nodes, tmp_path):
+    # Measured on a Heltec V3 with 230+ contacts: each new bucket's save held the loop 5.4 s. Saving a bucket looked
+    # up names that were not there (the bucket itself when new, its .tmp and .new leftovers, and the old file to
+    # remove), each a scan of the whole SPIFFS file table. Now a save makes only the three name checks a swap cannot
+    # avoid (creating the temp file and two renames), whether the bucket is new or already there.
+    node, calls = _counted(nodes, tmp_path, "savelookup")
+    node.start()
+    c, _ = _calls_after_boot(node, calls)
+    for i in range(16):                                   # buckets 0 and 1 full
+        assert c.add_contact_full(key(i), "s-%d" % i, lastmod=RTC + i)[0] == 0
+
+    def creates(lines):
+        return [l for l in lines if l.startswith("SIMFS create")]
+
+    def wait_settled(before, want_creates):
+        end = time.time() + 30
+        while time.time() < end:
+            if len(creates(node_log(node).splitlines()[before:])) >= want_creates:
+                break
+            time.sleep(0.2)
+        time.sleep(1.0)                                   # anything else that save would do
+        return node_log(node).splitlines()[before:]
+
+    wait_settled(0, 6)                                    # both buckets saved at least once
+    for label, idx in (("new bucket", 16), ("existing bucket", 17)):
+        before = len(node_log(node).splitlines())
+        assert c.add_contact_full(key(idx), "s-%d" % idx, lastmod=RTC + idx)[0] == 0
+        got = wait_settled(before, 3)
+        missing = [l for l in got if l.startswith("SIMFS missing")]
+        assert missing == [], "%s: the save looked up missing files: %r" % (label, missing)
+        assert len(creates(got)) == 3, "%s: %r" % (label, creates(got))
+    count, _ = c.get_contacts()
+    assert count == 18
 
 
 def test_a_swap_left_by_a_power_cut_in_a_high_bucket_is_recovered_at_boot(nodes, tmp_path):
