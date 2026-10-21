@@ -255,7 +255,8 @@ bool DataStore::savePrefs(NodePrefs& _prefs) {
 
 void DataStore::loadContacts(DataStoreHost* host) {
     AtomicFile::recover(_getContactsChannelsFS(), "/contacts3");   // finish or drop a save that was cut by a power loss
-    File file = AtomicFile::exists(_getContactsChannelsFS(), "/contacts3") ? openRead(_getContactsChannelsFS(), "/contacts3") : File();
+    if (!AtomicFile::exists(_getContactsChannelsFS(), "/contacts3")) return;   // at boot: not in the listing (BootPresence.h)
+    File file = openRead(_getContactsChannelsFS(), "/contacts3");
     if (file) {
       bool full = false;
       while (!full) {
@@ -430,7 +431,8 @@ uint32_t DataStore::freeBytes() {
 
 void DataStore::loadChannels(DataStoreHost* host) {
     AtomicFile::recover(_getContactsChannelsFS(), "/channels2");
-    File file = AtomicFile::exists(_getContactsChannelsFS(), "/channels2") ? openRead(_getContactsChannelsFS(), "/channels2") : File();
+    if (!AtomicFile::exists(_getContactsChannelsFS(), "/channels2")) return;   // at boot: not in the listing (BootPresence.h)
+    File file = openRead(_getContactsChannelsFS(), "/channels2");
     if (file) {
       bool full = false;
       uint8_t channel_idx = 0;
