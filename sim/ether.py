@@ -8,6 +8,13 @@ that is transmitting hears nothing.
 
 Time inside the broker is "virtual microseconds" = wall clock * time_scale, matching the
 node's --time-scale option, so airtime and node clocks stay consistent.
+
+With ``lockstep=True`` time is a counter the broker owns instead (docs/SIMULATION.md, "Lock-step virtual
+time"): every node runs with ``--lockstep``, reports after each loop() how far it wants to go, and blocks
+until granted. The broker advances to the smallest request only once every connected node has reported,
+and sends every reception due by then before the grant, so node clocks and ``now_us()`` agree exactly and a
+run with the same seeds is repeatable. A node without ``--lockstep`` cannot join such an ether (nor the
+reverse); the attempt is recorded in ``errors`` and the connection closed.
 """
 import heapq
 import os
@@ -60,10 +67,13 @@ class _Conn:
         self.params = None            # (freq, bw, sf, cr) the node listens on
         self.tx_until_us = 0.0
         self.receptions = []          # active reception dicts
+        self.lockstep = False         # joined with 'L' (lock-step clock)
+        self.want = None              # lock-step: the broker time this node asked to reach (None: still running)
+        self.kill = False             # refused: close after this read
 
 
 class Ether:
-    def __init__(self, path, time_scale=1.0, seed=1):
+    def __init__(self, path, time_scale=1.0, seed=1, lockstep=False, start_after=0):
         self.path = path
         self.scale = float(time_scale)
         self.rng = random.Random(seed)
@@ -77,6 +87,14 @@ class Ether:
         self._thread = None
         self._t0 = time.monotonic()
         self._srv = None
+        # lock-step virtual time
+        self.lockstep = bool(lockstep)
+        self.start_after = int(start_after)   # time stays at 0 until this many lock-step nodes have joined
+        self.errors = []                      # protocol violations (e.g. a real-time node on a lock-step ether)
+        self.barriers = 0                     # number of times virtual time advanced
+        self._vnow = 0                        # broker time in integer microseconds
+        self._ls = []                         # connected lock-step nodes
+        self._ls_joined = 0
 
     # ------------------------------------------------------------------ control API
     def set_link(self, a, b, rssi=-80.0, snr=8.0, loss=0.0, both=True):
@@ -103,7 +121,18 @@ class Ether:
             self._send(c, "R", struct.pack("<ff", rssi, snr) + bytes(data))
 
     def now_us(self):
+        if self.lockstep:
+            return float(self._vnow)
         return (time.monotonic() - self._t0) * 1e6 * self.scale
+
+    def wait_until_us(self, t_us, timeout=60.0):
+        """Wait (wall clock, at most `timeout` s) until the broker's time reaches `t_us`. True if it did."""
+        end = time.monotonic() + timeout
+        while self.now_us() < t_us:
+            if time.monotonic() > end:
+                return False
+            time.sleep(0.005)
+        return True
 
     def wait_for_nodes(self, names, timeout=10.0):
         end = time.monotonic() + timeout
@@ -185,7 +214,9 @@ class Ether:
         while not self._stop.is_set():
             timeout = 0.005
             with self.lock:
-                if self._pending:
+                if self.lockstep:
+                    timeout = 0.05            # nothing is due on the wall clock: deliveries happen at barriers
+                elif self._pending:
                     timeout = max(0.0, min(timeout, self._pending[0][0] - time.monotonic()))
             for key, _ in sel.select(timeout):
                 if key.data is None:
@@ -193,7 +224,10 @@ class Ether:
                         s, _ = self._srv.accept()
                     except BlockingIOError:
                         continue
-                    s.setblocking(False)
+                    if self.lockstep:
+                        s.settimeout(5.0)   # a grant must never be dropped on a full buffer (sendall waits instead)
+                    else:
+                        s.setblocking(False)
                     c = _Conn(s)
                     socks[s] = c
                     sel.register(s, selectors.EVENT_READ, c)
@@ -205,19 +239,24 @@ class Ether:
                         continue
                     except OSError:
                         data = b""
-                    if not data:
+                    if data:
+                        c.buf += data
+                        self._parse(c)
+                    if not data or c.kill:
                         sel.unregister(c.sock)
                         c.sock.close()
                         with self.lock:
                             if c.name and self._conns.get(c.name) is c:
                                 del self._conns[c.name]
+                            if c in self._ls:
+                                self._ls.remove(c)
+                                self._barrier()   # the nodes left may all be waiting already
                         continue
-                    c.buf += data
-                    self._parse(c)
-            self._deliver_due()
+            if not self.lockstep:
+                self._deliver_due(None)
 
     def _parse(self, c):
-        while len(c.buf) >= 5:
+        while len(c.buf) >= 5 and not c.kill:
             (ln,) = struct.unpack_from("<I", c.buf, 0)
             if len(c.buf) < 4 + ln:
                 return
@@ -225,14 +264,54 @@ class Ether:
             payload = c.buf[5:4 + ln]
             c.buf = c.buf[4 + ln:]
             with self.lock:
-                if typ == "H":
+                if typ == "L":
+                    if not self.lockstep:
+                        self._refuse(c, "a --lockstep node joined a real-time ether")
+                        return
+                    c.lockstep = True
+                    self._ls.append(c)
+                    self._ls_joined += 1
+                    self._send(c, "G", struct.pack("<Q", self._vnow))
+                elif typ == "A" and len(payload) >= 8:
+                    (want,) = struct.unpack_from("<Q", payload, 0)
+                    if not c.lockstep or want < self._vnow:
+                        self._refuse(c, "bad advance request %d at %d from %s" % (want, self._vnow, c.name))
+                        return
+                    c.want = want
+                    self._barrier()
+                elif typ == "H":
                     c.name = payload.decode()
+                    if self.lockstep and not c.lockstep:
+                        self._refuse(c, "a real-time node (%s) joined a lock-step ether" % c.name)
+                        return
                     self._conns[c.name] = c
                 elif typ == "P" and len(payload) >= 10:
                     f, bw = struct.unpack_from("<ff", payload, 0)
                     c.params = (round(f, 3), round(bw, 3), payload[8], payload[9])
                 elif typ == "T" and len(payload) > 14:
                     self._on_tx(c, payload)
+
+    def _refuse(self, c, why):
+        self.errors.append(why)
+        c.kill = True
+
+    # ------------------------------------------------------------------ lock-step barrier
+    def _barrier(self):
+        """Advance virtual time once every lock-step node has reported: to the smallest requested time, after
+        sending every reception due by then. Called with the lock held."""
+        if not self._ls or self._ls_joined < self.start_after:
+            return
+        if any(c.want is None for c in self._ls):
+            return
+        t = min(c.want for c in self._ls)
+        self._deliver_due(t)
+        self._vnow = t
+        self.barriers += 1
+        grant = struct.pack("<Q", t)
+        for c in self._ls:
+            self._send(c, "G", grant)    # also to a node still asleep: its clock follows the broker's
+            if c.want <= t:
+                c.want = None
 
     @staticmethod
     def _send(c, typ, payload):
@@ -279,11 +358,16 @@ class Ether:
                     r["corrupt"] = r["corrupt"] or "collision"
             dst.receptions.append(r)
             self._seq += 1
-            heapq.heappush(self._pending, (time.monotonic() + toa / 1e6 / self.scale, self._seq, id(r), r))
+            if self.lockstep:
+                # due in virtual time; ties broken by names, not by the wall-clock order frames happened to arrive in
+                heapq.heappush(self._pending, (end, (src.name, dst.name), id(r), r))
+            else:
+                heapq.heappush(self._pending, (time.monotonic() + toa / 1e6 / self.scale, self._seq, id(r), r))
 
-    def _deliver_due(self):
+    def _deliver_due(self, until):
+        """Deliver receptions due by `until` (virtual us under lock-step; None = now on the wall clock)."""
         with self.lock:
-            now = time.monotonic()
+            now = time.monotonic() if until is None else until
             while self._pending and self._pending[0][0] <= now:
                 _, _, _, r = heapq.heappop(self._pending)
                 dst = r["dst"]

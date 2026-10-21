@@ -29,7 +29,7 @@ attached. For long jobs run it detached with output redirected to a file under
 | SimRadio | `variants/sim/sim_radio.cpp` | `mesh::Radio` that sends/receives raw packets through the ether over a unix socket |
 | Ether broker | `sim/ether.py` | decides who hears whom, per-link RSSI/SNR/loss, holds the channel busy for the packet's time on air, delivers at end of airtime, destroys overlapping receptions |
 | Time on air | `variants/sim/sim_toa.h` | Semtech formula (explicit header, CRC on, low-data-rate optimisation when Tsym > 16 ms) |
-| Clock | `variants/sim/sim_clock.h` | `SimClock` interface behind `millis()`/`micros()`/`delay()` and the RTC |
+| Clock | `variants/sim/sim_clock.h` | `SimClock` interface behind `millis()`/`micros()`/`delay()` and the RTC: the scaled wall clock by default, or with `--lockstep` a clock the ether broker advances (see [Lock-step virtual time](#lock-step-virtual-time)) |
 | Wi-Fi | `variants/sim/sim_wifi.cpp`, `shims/WiFi.h` | the ESP32 `WiFi` API subset the Wi-Fi controller uses, over access points the test defines (`WifiEnv` in `sim/harness.py`: SSID, password, RSSI, up/down at run time, in a file the node re-reads); scans take 0.3 s and joins 0.4 s of node time; the ESP-IDF scan calls the controller drives (`shims/esp_wifi.h`, `shims/esp_event.h`) sit over a simulated driver that a test can make wedge (the scan never ends and the driver refuses another until it is stopped) or make deaf (Arduino's tables never fill; `WifiEnv.scan(mode)`); failures use the ESP32 reasons; every transition is logged with the SSID only |
 | MQTT network | `variants/sim/sim_mqtt_net.cpp`, `shims/Client.h`, `shims/IPAddress.h` | the `MqttNet` interface of the MQTT controller ([MQTT broker profiles](MQTT.md)) over real host sockets, so a real Mosquitto started by the test is the broker; TLS is OpenSSL (certificate checked against the pinned fingerprint, as on the device); DNS names and mDNS responders come from a file the test rewrites at run time (`MqttEnv` in `sim/harness.py`: name to address; responder with service type, site ID, address and port; removing a line withdraws it); a browse takes 0.2 s of node time and never blocks; every transport event is logged as `SIMMQTT ...` with addresses only. Built into `sim_companion_wifi_usb` and `sim_companion_wifi`. The connect runs on a worker thread (`SimWorker`: created on first use, reused, one job at a time) as the ESP32 adapter runs it on a FreeRTOS task, so the asynchrony is testable; the name table is read under a mutex because the worker and the main loop both read it |
 | Loop-gap probe | `variants/sim/sim_main.cpp` | logs `SIMLOOP gap_ms=<n>` for each new longest gap (at least 5 ms) between two main-loop iterations, in wall-clock time whatever `--time-scale` is; `sim.harness.loop_gaps(node)` reads it. The last value is the longest stall of the run |
@@ -39,7 +39,7 @@ attached. For long jobs run it detached with output redirected to a file under
 | Serial | `variants/sim/sim_runtime.cpp` | the USB serial port is a loopback TCP listener; Companion frames and the repeater CLI pass through unchanged |
 | Runner | `sim/harness.py`, `sim/tests/` | starts the broker and N nodes (each in its own temp dir) and drives them with a small Companion client and a CLI client |
 
-Node command line: `--dir`, `--ether`, `--wifi-env`, `--mqtt-env`, `--name`, `--port-file`, `--seed`, `--time-scale`,
+Node command line: `--dir`, `--ether`, `--wifi-env`, `--mqtt-env`, `--name`, `--port-file`, `--seed`, `--time-scale`, `--lockstep` and `--quantum-us N` (lock-step virtual time, below),
 `--rtc`, `--heap-budget BYTES` (the free heap the node reports at boot; the contact cache is sized from it; default 300000), `--heap-file FILE` (a file `FREE [LARGEST]` the test rewrites while the node runs, `Node.heap(free, largest)`: what `get mecon.mem` and the heap-floor check read from then on; the contact store keeps the boot budget), `--fs-size BYTES` (size of the simulated file system; default 1.5 MB), `--fs-calls FILE` (rewrites FILE with the running counts of file system calls, `exists=N open=N remove=N rename=N`, so a test can bound the work of a boot; a real SPIFFS scans its file table on every call, which the host directory hides), `--fault /path:BYTES`, and `--toa SF BW CR PREAMBLE LEN` (print time on air in
 microseconds and exit). A node exits with status 75 on `reboot` and 0 on `poweroff`.
 
@@ -50,10 +50,11 @@ microseconds and exit). A node exits with status 75 on `reboot` and 0 on `powero
   libraries are built without it. `variants/sim/sim_prelude.h` is force-included to keep
   the Crypto library's portable software AES (its header otherwise selects an ESP32
   hardware class).
-* **Time is real time, scaled.** `SimClock` is an interface and `--time-scale` multiplies
-  the wall clock (the broker takes the same scale), so long windows can run faster, but
-  runs are *not* lock-step deterministic. A runner-driven virtual clock can replace the
-  real one through `sim_set_clock()` without touching the shims.
+* **Time is real time, scaled, unless a test asks for lock-step.** `SimClock` is an interface
+  and `--time-scale` multiplies the wall clock (the broker takes the same scale), so long
+  windows can run faster, but such runs are not repeatable: a node and the broker stamp
+  time independently and drift apart whenever a process is starved. LoRa-only tests can
+  opt into [lock-step virtual time](#lock-step-virtual-time) instead.
 * **Static-init order.** The examples construct their mesh object before `main()`, so the
   clock and the config are function-local statics.
 * **Channel model.** Receivers that are tuned to the transmission's frequency, bandwidth and
@@ -76,6 +77,54 @@ identity and channel table survive a cut at any byte or between write and rename
 
 Tests that wait on a node's first transmission after a boot are marked `@pytest.mark.timescale(10)`: the duty-cycle window is seeded at the limit on boot, so the first packet can wait for up to one 30 s bin of airtime to age out, and these tests run ten times faster than real time to keep that wait short.
 
+## Lock-step virtual time
+
+`--lockstep` replaces a node's clock with one the ether broker owns (`LockstepClock` in `variants/sim/sim_radio.cpp`;
+`Ether(..., lockstep=True)` in `sim/ether.py`). It is opt-in per test with `@pytest.mark.lockstep(quantum_us=1000,
+start_after=0)`, which puts both the `ether` fixture and every node made by `nodes` on it.
+
+* **The barrier.** A node runs one `loop()`, then tells the broker how far it wants to go (the end of the current
+  quantum, on a grid shared by all nodes) and blocks. `delay()` and `delayMicroseconds()` ask for now + the delay
+  instead, so a sleeping node does not hold the barrier quantum by quantum. The broker advances its time, a plain
+  microsecond counter, to the smallest request only once every connected lock-step node has reported, sends every
+  reception due by then, and then sends the grant. A node's `millis()` is the granted time minus the broker time at
+  which it joined, so it starts at 0 at every boot as on a board, and a transmission started at node time t is
+  stamped join + t by the broker: the two clocks agree exactly.
+* **Frames are applied only at a barrier.** Under lock-step the node reads the ether socket only while it waits for
+  a grant, and stops after the grant, so a busy or receive frame becomes visible to the firmware at the same virtual
+  time in every run, whatever the wall-clock moment it arrived. Receptions due at the same time are delivered in
+  the order of sender and receiver names, not in the order their frames reached the broker. With the same seeds,
+  stored prefs and inputs, the broker's `tx_log` is identical from run to run (`test_lockstep.py`).
+* **Joining.** A node connects to the broker before `setup()` (after publishing its serial port) with an `L` frame
+  and gets the broker's current time in a `G` frame. `start_after=N` holds time at 0 until N lock-step nodes have
+  joined, so nodes started one after another still boot at the same virtual instant. A node that leaves (a reboot)
+  is dropped from the barrier; while no lock-step node is connected, time stands still. Protocol additions:
+  node to broker `L` (join) and `A` (u64 microseconds wanted); broker to node `G` (u64 microseconds granted).
+* **No mixing.** A node without `--lockstep` on a lock-step ether, or the reverse, is refused: the broker records
+  it in `Ether.errors` and closes the connection (a lock-step node then exits with status 3), and the `ether`
+  fixture fails a test whose broker recorded any error.
+* **What stays on the wall clock.** The test itself (its waits are wall-clock timeouts; use `Ether.wait_until_us()`
+  to wait for virtual time) and everything that talks to a real peer: the serial and BLE TCP ports, Wi-Fi, MQTT and
+  TLS. Commands sent over the serial port reach the node at whatever virtual time it has reached, so a run that
+  depends on them is exact but not repeatable. The Wi-Fi, MQTT, TLS and BLE tests therefore stay on scaled real
+  time; nothing in the firmware may busy-wait on `millis()` under lock-step, since time does not move inside a
+  quantum.
+* **Speed and the default quantum.** Virtual time runs as fast as the barriers allow. Measured with
+  `sim/lockstep_speed.py` (idle Repeaters in range of each other, in the dev container on an Apple-silicon laptop):
+
+  | nodes | quantum 1 ms | quantum 10 ms |
+  |---|---|---|
+  | 1 | 199 virtual s per wall s | 1,917 |
+  | 3 | 26 to 29 | 275 to 306 |
+  | 7 | 14 | 165 |
+
+  The cost is per barrier (about 29,000 a second with three nodes), so the quantum buys speed almost linearly. The
+  default is **1 ms**: it is the resolution of `millis()`, so the firmware never sees its clock jump, a timer fires
+  in the millisecond it is due, a send is charged its time on air rounded up by less than 1 ms, and a node sees
+  another's transmission begin within 1 ms (10 ms would delay each of these by up to 10 ms). Three nodes at 1 ms
+  already run faster than the 10x scaled real time most tests use. A test that needs hours of virtual time with
+  little traffic can ask for `quantum_us=10000`.
+
 ## Test inventory
 
 * `test_boot_times.py` – `get mecon.boot` on every role: the stage times are present and in order (store ≤ mesh ≤ setup on the Companion; `n/a` for the store stage on the Repeater and Room server).
@@ -92,7 +141,8 @@ Tests that wait on a node's first transmission after a boot are marked `@pytest.
 * `test_companion_cli_secrets.py` – `get wifi.pwd` does not reveal the password.
 * `test_companion_remote_cli.py` – remote Companion CLI limited to reads and `reboot`.
 * `test_malformed_input.py` – runs the `sim_*_asan` sanitizer builds: hand-built truncated TRACE packets injected through the ether broker (`Ether.inject`) and over-long CLI arguments must not crash the node; a well-formed TRACE is still forwarded / delivered.
-* `test_duty_cycle.py` – regulatory duty cycle, measured by the ether broker (`Ether.max_duty_in_any_hour`: the largest share of any sliding hour a node spent on the air, from the transmissions the broker saw, not from node counters). Seven nodes under sustained load for 1.25 virtual hours at time scale 60 (75 s): 869.525 MHz BW 250 (10 %), with a looser and with a stricter user setting, 868.1 MHz BW 125 (1 %, also with the CLI's strictest factor 9), a channel straddling two bands (0.1 %), 915 MHz (no floor; the user's 10 % rules) and a Repeater at 868.1 MHz; a Room Server at 868.1 MHz; a live frequency change on a Companion; two Companions power-cycled every 5 virtual minutes (15 times) that must stay within their limit across boots; the delay before the first advert after a boot; `get dutycycle` on both roles; and a self-test of the sliding-window instrument. Time scale 60 is coarse enough that the broker stamps a transmission up to a few real milliseconds (a fraction of a virtual second) late; the node's gate leaves more margin than that, but a limit needing sub-second exactness would need the virtual clock `sim_set_clock()` allows.
+* `test_lockstep.py` – lock-step virtual time: two Repeaters (one given a 2 % duty cycle beforehand, so they do not always collide) booted together run ten virtual minutes three times; the same seeds give the identical `tx_log` (sender, start in microseconds, length and bytes) and the same receptions, and other seeds give other packets; every start lies on the 1 ms grid and no node starts a packet before its previous one ended; a real-time node on a lock-step ether and a lock-step node on a real-time ether are both refused.
+* `test_duty_cycle.py` – regulatory duty cycle, measured by the ether broker (`Ether.max_duty_in_any_hour`: the largest share of any sliding hour a node spent on the air, from the transmissions the broker saw, not from node counters). Seven nodes under sustained load for 1.25 virtual hours at time scale 60 (75 s): 869.525 MHz BW 250 (10 %), with a looser and with a stricter user setting, 868.1 MHz BW 125 (1 %, also with the CLI's strictest factor 9), a channel straddling two bands (0.1 %), 915 MHz (no floor; the user's 10 % rules) and a Repeater at 868.1 MHz; a Room Server at 868.1 MHz; a live frequency change on a Companion; two Companions power-cycled every 5 virtual minutes (15 times) that must stay within their limit across boots; the delay before the first advert after a boot; `get dutycycle` on both roles; and a self-test of the sliding-window instrument. Time scale 60 is coarse enough that the broker stamps a transmission up to a few real milliseconds (a fraction of a virtual second) late; the node's gate leaves more margin than that. The Room Server test also runs on lock-step virtual time (1 ms quanta, 1.25 virtual hours), where the stamps are exact: the busiest sliding hour must not exceed the limit by a microsecond, and must use at least the limit minus what the firmware's window is documented to leave unused (one 30 s bin, the largest packet, and under 1 ms of rounding per packet).
 * `test_repeater_prvkey.py` – `set prv.key` refused for a remote admin, allowed on the local console.
 * `test_postures_admin.py` – the standalone postures on a Repeater and a Room server ([Standalone security postures](STANDALONE_POSTURES.md)): the stock default password opens nothing in either posture (blank-password re-login of a stored admin entry included) and a set password opens remote admin (read-only in Hardened); Hardened remote admin is read-only plus `reboot` with every refusal an explicit reply; a remote caller can neither raise nor lower the posture or read the audit log, and each attempt is audited; key export and import are refused on the console in Hardened; an attempted password appears in no file of the node directory and not in its log; posture and audit survive a reboot; a power cut while lowering leaves the device Hardened and a cut while raising keeps the previous prefs (three cut points each); `erase` recovers a Hardened device and the audit log keeps its history through the reset; repeats fold into one audit entry with a count.
 * `test_postures_companion.py` – the same on a Companion: key export and import refused over USB in Hardened and allowed again after `set posture normal confirm`; the remote CLI off in Hardened and back on in Normal; a remote CLI caller cannot change the posture or read the audit log; a Wi-Fi-class build with a stored Hardened posture does not serve its TCP port (the same build in Normal does); untrusted-transport refusals are audited in the file; the USB factory-reset frame recovers Hardened and keeps the audit history; posture survives a reboot and a power cut while lowering. BLE is covered by `test_companion_ble.py`.
@@ -137,6 +187,8 @@ A fourth group breaks each MQTT rule (priority ignored, a tie to the higher numb
 A fifth group breaks each connectivity-mode rule (a damaged byte read as Wi-Fi, BLE or Wi-Fi started in the wrong mode, a remote caller allowed to switch, a refusal or a change not audited, the mode not persisted, prefs written in place, no restart after a switch, a button switch with no confirmation, any key confirming, a confirmation that never times out, the Bluetooth page not skipped, a default PIN not flagged, the posture not shown, USB counted as a BLE phone, unverified TLS shown as verified, a Wi-Fi or MQTT password drawn) and expects the connectivity tests or the unit tests to go red.
 
 A sixth group breaks each heap-floor rule (the total free heap used instead of the largest block, no hysteresis, no audit entry, the first look a period late, the period ignored, an unmeasurable platform firing, the fields or the marker dropped, the check not started or not run from the main loop) and expects the heap-floor tests to go red.
+
+A lock-step mutant makes the node read the wall clock instead of the broker's grants; the determinism test in `test_lockstep.py` must go red.
 
 A seventh group breaks each BLE rule (a wrong PIN accepted, data before pairing accepted, the default PIN classed as trusted, a link surviving `disable()`, BLE started in Hardened with the default PIN or in Wi-Fi mode, the frame context trusting every interface, a paired link allowed key export or factory reset in Hardened) and expects `test_companion_ble.py` to go red.
 

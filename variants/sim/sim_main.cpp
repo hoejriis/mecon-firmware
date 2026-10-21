@@ -10,6 +10,8 @@
 
 void setup();
 void loop();
+void sim_lockstep_begin();
+void sim_lockstep_step();
 
 // Main-loop gap probe: the real (wall-clock) time between two consecutive loop() starts. Each new longest gap of at
 // least 5 ms is logged as "SIMLOOP gap_ms=<n>" (so the last line is the longest stall of the run), independent of
@@ -41,6 +43,8 @@ int main(int argc, char** argv) {
     else if (a == "--port-file") g_sim.port_file = next();
     else if (a == "--seed") g_sim.seed = strtoul(next(), nullptr, 10);
     else if (a == "--time-scale") g_sim.time_scale = atof(next());
+    else if (a == "--lockstep") g_sim.lockstep = true;
+    else if (a == "--quantum-us") g_sim.quantum_us = strtoul(next(), nullptr, 10);
     else if (a == "--wifi-env") g_sim.wifi_env = next();
     else if (a == "--mqtt-env") g_sim.mqtt_env = next();
     else if (a == "--ui-frames") g_sim.ui_frames = next();
@@ -63,11 +67,18 @@ int main(int argc, char** argv) {
   }
   if (g_sim.dir.empty()) { fprintf(stderr, "--dir is required\n"); return 2; }
   randomSeed(g_sim.seed);
+  if (g_sim.lockstep) {
+    if (g_sim.ether.empty()) { fprintf(stderr, "--lockstep needs --ether (the broker owns the clock)\n"); return 2; }
+    if (g_sim.quantum_us == 0) { fprintf(stderr, "--quantum-us must be at least 1\n"); return 2; }
+    Serial.available();      // publish the serial port first: the broker may hold time at 0 until every node has joined
+    sim_lockstep_begin();
+  }
   setup();
   for (;;) {
     simLoopProbe();
     loop();
     sim_poll();
-    usleep(200);
+    if (g_sim.lockstep) sim_lockstep_step();   // one loop() per quantum, then wait at the barrier
+    else usleep(200);
   }
 }

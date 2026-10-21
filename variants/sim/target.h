@@ -72,6 +72,16 @@ public:
   uint32_t getPacketsSent() const { return _n_sent; }
   void resetStats() { _n_recv = _n_sent = _n_err = 0; }
   static uint16_t preambleSymbols(uint8_t sf) { return sf <= 8 ? 32 : 16; }
+
+  // Lock-step virtual time (--lockstep): the broker owns the clock. lockstepJoin() connects before setup() and
+  // returns the broker's time at the join; lockstepAdvance() reports "done, next due at abs_us" and blocks, reading
+  // the socket, until the broker grants a time >= abs_us. Both return the granted (broker) time.
+  uint64_t lockstepJoin();
+  uint64_t lockstepAdvance(uint64_t abs_us);
+private:
+  void connectEther();
+  bool readEther(bool block);
+  bool parseFrames(bool stop_at_grant);
 };
 
 extern SimBoard board;
