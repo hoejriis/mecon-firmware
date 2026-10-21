@@ -22,11 +22,7 @@ void Dispatcher::begin() {
   _err_flags = 0;
   radio_nonrx_start = _ms->getMillis();
 
-  memset(duty_bins, 0, sizeof(duty_bins));
-  duty_sum = 0;
-  duty_seeded = false;
-  duty_cur = 0;
-  duty_cur_start = _ms->getMillis();
+  duty.reset(_ms->getMillis());
 
   _radio->begin();
   prev_isrecv_mode = _radio->isInRecvMode();
@@ -38,55 +34,21 @@ float Dispatcher::getAirtimeBudgetFactor() const {
 
 // ---- duty-cycle window ---------------------------------------------------------------------------------
 
-// The window lives in RAM and is not persisted, so a reboot or crash loop would otherwise start every hour empty
-// and exceed the limit across boots.  On first use after boot the hour is seeded as if the previous hour had used
-// exactly the limit, spread evenly over the bins; capacity then accrues at the limit rate as those bins age out,
-// and a sliding hour that crosses a reboot cannot exceed the limit.  (Done on first use rather than in begin(),
-// because the roles learn their channel, and so their limit, only after begin().)
-void Dispatcher::dutySeed() {
-  if (duty_seeded) return;
-  duty_seeded = true;
-  uint32_t limit = getDutyLimitMs();
-  uint32_t each = limit / DUTY_NUM_BINS, rest = limit % DUTY_NUM_BINS;
-  duty_sum = 0;
-  for (uint32_t i = 0; i < DUTY_NUM_BINS; i++) {
-    duty_bins[i] = each + (i < rest ? 1 : 0);
-    duty_sum += duty_bins[i];
-  }
-}
-
-// Rotate the ring forward so that the bin being filled is the one `now` falls in.
+// Seeding happens on first use rather than in begin(), because the roles learn their channel, and so their limit,
+// only after begin() (see DutyWindow::seed()).
 void Dispatcher::dutyAdvance(unsigned long now) {
-  dutySeed();
-  unsigned long elapsed = now - duty_cur_start;
-  if (elapsed < DUTY_BIN_MS) return;
-  unsigned long steps = elapsed / DUTY_BIN_MS;
-  if (steps >= DUTY_NUM_BINS) {   // idle for longer than the window: nothing left to count
-    memset(duty_bins, 0, sizeof(duty_bins));
-    duty_sum = 0;
-    duty_cur = 0;
-    duty_cur_start = now;
-    return;
-  }
-  for (unsigned long i = 0; i < steps; i++) {
-    duty_cur = (duty_cur + 1) % DUTY_NUM_BINS;
-    duty_sum -= duty_bins[duty_cur];     // the oldest bin falls out of the window
-    duty_bins[duty_cur] = 0;
-  }
-  duty_cur_start += steps * DUTY_BIN_MS;
+  if (!duty.seeded()) duty.seed(getDutyLimitMs());
+  duty.advance(now);
 }
 
 void Dispatcher::dutyRecord(unsigned long now, uint32_t air_ms) {
   dutyAdvance(now);
-  uint32_t room = 0xFFFF - duty_bins[duty_cur];
-  if (air_ms > room) air_ms = room;
-  duty_bins[duty_cur] += air_ms;
-  duty_sum += air_ms;
+  duty.record(now, air_ms);
 }
 
 uint32_t Dispatcher::getTrailingAirtimeMs() {
   dutyAdvance(_ms->getMillis());
-  return duty_sum;
+  return duty.sum();
 }
 
 // The stricter of what the user asked for (airtime factor af means a duty of 1/(1+af)) and the regulatory
@@ -111,22 +73,6 @@ uint32_t Dispatcher::getDutyLimitMs() const {
 unsigned long Dispatcher::getRemainingTxBudget() {
   uint32_t used = getTrailingAirtimeMs(), limit = getDutyLimitMs();
   return used >= limit ? 0 : limit - used;
-}
-
-// How long until enough of the oldest airtime has left the window for `need_ms` to be freed.
-// Bin j (0 = the one being filled) is counted until the last moment in it is an hour old, i.e. until
-// duty_cur_start - j*BIN + BIN + WINDOW.
-uint32_t Dispatcher::dutyWaitMs(unsigned long now, uint32_t need_ms, uint32_t limit_ms) const {
-  (void)limit_ms;
-  uint32_t freed = 0;
-  for (int j = DUTY_NUM_BINS - 1; j >= 0; j--) {
-    freed += duty_bins[(duty_cur + DUTY_NUM_BINS - j) % DUTY_NUM_BINS];
-    if (freed >= need_ms) {
-      long wait = (long)(DUTY_BIN_MS + DUTY_WINDOW_MS) - (long)j * (long)DUTY_BIN_MS - (long)(now - duty_cur_start);
-      return (wait < 1 ? 1 : (uint32_t)wait) + 1;
-    }
-  }
-  return DUTY_WINDOW_MS;   // not reachable when the packet alone fits the limit
 }
 
 static void fmtBp(char* out, uint32_t bp) {   // 1000 -> "10.00%"
@@ -430,8 +376,8 @@ void Dispatcher::checkSend() {
       }
       unsigned long now = _ms->getMillis();
       dutyAdvance(now);
-      if (duty_sum + est > limit_ms) {
-        uint32_t wait = dutyWaitMs(now, duty_sum + est - limit_ms, limit_ms);
+      if (duty.sum() + est > limit_ms) {
+        uint32_t wait = duty.waitMs(now, duty.sum() + est - limit_ms);
         _mgr->queueOutbound(outbound, 0, futureMillis(wait));
         outbound = NULL;
         next_tx_time = futureMillis(wait);

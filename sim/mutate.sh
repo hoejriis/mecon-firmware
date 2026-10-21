@@ -57,6 +57,7 @@ PY
     git show "HEAD:$file" > "$file"; return 0
   fi
   case "$target" in
+    unit:test_kiss_modem) sim/run.sh pio test -e native_kiss_modem -f test_kiss_modem > ".sim-logs/mut_$name.log" 2>&1 ;;   # its own env
     unit:*) sim/run.sh pio test -e native -f "${target#unit:}" > ".sim-logs/mut_$name.log" 2>&1 ;;
     *) sim/run.sh python3 -m pytest $target -q -x -p no:cacheprovider > ".sim-logs/mut_$name.log" 2>&1 ;;
   esac
@@ -91,8 +92,8 @@ mutate trace_short_payload_accepted src/Mesh.cpp "pkt->path_len < MAX_PATH_SIZE 
 mutate radio_parse_unbounded src/helpers/CommonRadioPrefs.cpp "StrHelper::strncpy(tmp, &command[10], sizeof(tmp));" "strcpy(tmp, &command[10]);" sim/tests/test_malformed_input.py::test_overlong_radio_argument_on_repeater_console
 # --- duty-cycle rules (these run the 1.25 virtual hour load test, about 2.5 minutes each)
 DC_LOAD="sim/tests/test_duty_cycle.py::test_sustained_load_stays_within_the_regulatory_limit"
-mutate dutycycle_window_is_a_bucket src/Dispatcher.cpp "      if (duty_sum + est > limit_ms) {
-        uint32_t wait = dutyWaitMs(now, duty_sum + est - limit_ms, limit_ms);" "      static unsigned long bk_t = 0; static double bk_level = 0; static unsigned long bk_prev = 0;
+mutate dutycycle_window_is_a_bucket src/Dispatcher.cpp "      if (duty.sum() + est > limit_ms) {
+        uint32_t wait = duty.waitMs(now, duty.sum() + est - limit_ms);" "      static unsigned long bk_t = 0; static double bk_level = 0; static unsigned long bk_prev = 0;
       double bk_rate = (double)limit_ms / DUTY_WINDOW_MS;
       bk_level += (double)(total_air_time - bk_prev); bk_prev = total_air_time;
       bk_level -= (double)(now - bk_t) * bk_rate; if (bk_level < 0) bk_level = 0; bk_t = now;
@@ -103,9 +104,9 @@ mutate dutycycle_floor_clamped_like_the_cli src/Dispatcher.cpp "if (floor_bp < l
 mutate dutycycle_straddle_uses_the_looser_band src/helpers/RegulatoryDutyCycle.cpp "if (ov_hi - ov_lo > EDGE_TOLERANCE_KHZ && b.limit_bp < out.limit_bp) {" "if ((double)freq_mhz * 1000.0 >= b.lo_khz && (double)freq_mhz * 1000.0 < b.hi_khz && b.limit_bp < out.limit_bp) {" $DC_LOAD
 mutate dutycycle_straddle_unit src/helpers/RegulatoryDutyCycle.cpp "if (ov_hi - ov_lo > EDGE_TOLERANCE_KHZ && b.limit_bp < out.limit_bp) {" "if ((double)freq_mhz * 1000.0 >= b.lo_khz && (double)freq_mhz * 1000.0 < b.hi_khz && b.limit_bp < out.limit_bp) {" unit:test_regulatory_duty_cycle
 mutate dutycycle_radio_change_not_applied examples/companion_radio/MyMesh.cpp "_radio_freq = _prefs.freq; _radio_bw = _prefs.bw;   // the duty-cycle floor follows at once" "" sim/tests/test_duty_cycle.py::test_frequency_change_applies_without_reboot
-mutate dutycycle_hour_not_seeded_at_boot src/Dispatcher.cpp "  if (duty_seeded) return;
-  duty_seeded = true;" "  duty_seeded = true;
-  return;" sim/tests/test_duty_cycle.py::test_reboots_do_not_reset_the_hour
+mutate dutycycle_hour_not_seeded_at_boot src/helpers/DutyWindow.h "    if (is_seeded) return;
+    is_seeded = true;" "    is_seeded = true;
+    return;" sim/tests/test_duty_cycle.py::test_reboots_do_not_reset_the_hour
 mutate dutycycle_room_server_floor_missing examples/simple_room_server/MyMesh.h "    return radio_freq > 0;" "    return false;" sim/tests/test_duty_cycle.py::test_room_server_gets_the_floor_too
 # --- standalone postures: undo each rule and its tests must go red (docs/STANDALONE_POSTURES.md)
 mutate posture_damaged_value_fails_open src/helpers/Posture.h "inline bool isHardened(uint8_t posture) { return posture != NORMAL; }" "inline bool isHardened(uint8_t posture) { return posture == HARDENED; }" unit:test_posture
@@ -736,6 +737,17 @@ if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; fi   # restore the binaries aft
 mutate audit_default_pin_ble_recorded_as_net src/helpers/cli/CliPolicy.h "v.caller = (p == P_UNTRUSTED && c.transport == T_BLE) ? Posture::CALLER_BLE : auditCaller(p);" "v.caller = auditCaller(p);" unit:test_cli_engine
 mutate audit_default_pin_ble_frame_context_is_tcp examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isBleTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_DEFAULT_PIN, _prefs.posture);" "" sim/tests/test_companion_ble.py
 mutate audit_multi_interface_ble_not_forwarded src/helpers/MultiSerialInterface.h "return _bound != nullptr && _bound->isBleTransport();" "return false;" sim/tests/test_companion_ble.py
+# duty-cycle floor for the KISS modem, sensor and secure-chat roles (#20)
+mutate duty_kiss_sends_without_the_gate examples/kiss_modem/KissModem.cpp "if (!dutyAllowsSend(_tx_est_ms)) {" "if (false) {" unit:test_kiss_modem
+mutate duty_kiss_unknown_channel_sends examples/kiss_modem/KissModem.cpp "if (!(_chan_freq_mhz > 0)) { _duty_refuse = true; return false; }" "if (!(_chan_freq_mhz > 0)) { return true; }" unit:test_kiss_modem
+mutate duty_kiss_airtime_never_recorded examples/kiss_modem/KissModem.cpp "  _duty.record(millis(), took > _tx_est_ms ? took : _tx_est_ms);" "" unit:test_kiss_modem
+mutate duty_kiss_set_radio_keeps_old_channel examples/kiss_modem/KissModem.cpp "  _chan_freq_mhz = _config.freq_hz / 1000000.0f;   // the floor follows the radio at once" "" unit:test_kiss_modem
+mutate duty_kiss_floor_ignored examples/kiss_modem/KissModem.cpp "uint32_t bp = regulatory::dutyFloor(_chan_freq_mhz, _chan_bw_khz).limit_bp;" "uint32_t bp = 10000;" unit:test_kiss_modem
+mutate duty_kiss_oversized_frame_held_forever examples/kiss_modem/KissModem.cpp "  if (est_ms > limit) { _duty_refuse = true; return false; }" "" unit:test_kiss_modem
+mutate duty_sensor_channel_not_reported examples/simple_sensor/SensorMesh.h "return radio_freq > 0;" "return false;" sim/tests/test_duty_roles.py
+mutate duty_sensor_temp_radio_not_tracked examples/simple_sensor/SensorMesh.cpp "    radio_freq = pending_freq; radio_bw = pending_bw;" "" sim/tests/test_duty_roles.py
+mutate duty_secure_chat_channel_not_reported examples/simple_secure_chat/main.cpp "return _radio_freq > 0;" "return false;" sim/tests/test_duty_roles.py
+mutate duty_secure_chat_channel_not_noted examples/simple_secure_chat/main.cpp "  the_mesh.noteRadioApplied(the_mesh.getFreqPref(), LORA_BW);" "" sim/tests/test_duty_roles.py
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 
