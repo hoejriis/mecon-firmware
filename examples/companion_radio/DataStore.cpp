@@ -366,7 +366,7 @@ bool DataStore::listBuckets(uint16_t limit, uint8_t* present) {
   if (!swap) return false;
   bool listed = false;
   {
-    File root = fs->open("/");
+    File root = openRead(fs, "/");
     if (root && root.isDirectory()) {
       listed = true;
       for (File f = root.openNextFile(); f; f = root.openNextFile()) {
