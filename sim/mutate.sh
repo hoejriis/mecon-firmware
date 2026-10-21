@@ -83,9 +83,7 @@ mutate radio_drops_all variants/sim/sim_radio.cpp "if (_i->rxq.empty() || _i->tx
 mutate fs_write_discarded variants/sim/sim_fs.cpp "size_t w = fwrite(buf, 1, n, _p->fp);" "size_t w = n;" sim/tests/test_repeater_cli.py
 mutate fault_hook_disabled variants/sim/sim_fs.cpp "if (g_sim.fault_after >= 0 && _p->fs_path == g_sim.fault_path) {" "if (false) {" sim/tests/test_atomic_storage.py::test_prefs_cut_in_temp_file_keeps_previous_prefs
 # --- the stock-gap fixes: undo each fix and its test must go red
-mutate swap_not_recovered src/helpers/AtomicFile.h "  if (fs->exists(nw)) {
-    if (!fs->exists(path)) fs->rename(nw, path);" "  if (false) {
-    if (!fs->exists(path)) fs->rename(nw, path);" sim/tests/test_atomic_storage.py
+mutate swap_not_recovered src/helpers/AtomicFile.h "  if (BootPresence::mayExist(nw) && fs->exists(nw)) {" "  if (false) {" sim/tests/test_atomic_storage.py
 mutate damaged_identity_deleted src/helpers/IdentityStore.cpp "_fs->rename(filename, damaged);" "_fs->remove(filename);" sim/tests/test_atomic_storage.py::test_damaged_identity_is_kept_aside_not_overwritten
 mutate prefs_written_in_place src/helpers/CommonCLI.cpp 'return AtomicFile::save(fs, "/prefs.json", [this](Stream& s) { return _prefs->saveSerial(s); });' 'File f = fs->open("/prefs.json", "w", true); bool ok = f && _prefs->saveSerial(f); if (f) f.close(); return ok;' sim/tests/test_atomic_storage.py::test_prefs_cut_in_temp_file_keeps_previous_prefs
 mutate trace_short_payload_accepted src/Mesh.cpp "pkt->path_len < MAX_PATH_SIZE && pkt->payload_len >= 9" "pkt->path_len < MAX_PATH_SIZE" sim/tests/test_malformed_input.py::test_truncated_trace_packets_do_not_crash_the_node
@@ -627,6 +625,14 @@ mutate boot_get_command_missing src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mec
 mutate boot_companion_setup_unmarked examples/companion_radio/main.cpp 'mecon::boot::mark(mecon::boot::SETUP, millis());' '/* unmarked */' sim/tests/test_boot_times.py::test_companion_reports_store_mesh_and_setup_in_order
 mutate boot_repeater_mesh_unmarked examples/simple_repeater/main.cpp 'mecon::boot::mark(mecon::boot::MESH, millis());' '/* unmarked */' sim/tests/test_boot_times.py::test_repeater_and_room_server_report_mesh_and_setup
 
+# boot looks up no file that is not there (#43): one listing at boot answers the lookups
+mutate boot_presence_never_listed examples/companion_radio/main.cpp '  BootPresence::begin(SPIFFS);   // one listing' '  // BootPresence::begin(SPIFFS);   // one listing' $CT_SIM::test_boot_looks_up_no_file_that_is_not_there
+mutate boot_presence_recover_ignores_listing src/helpers/AtomicFile.h '  if (BootPresence::mayExist(tmp) && fs->exists(tmp)) fs->remove(tmp);   // never verified' '  if (fs->exists(tmp)) fs->remove(tmp);   // never verified' $CT_SIM::test_boot_looks_up_no_file_that_is_not_there
+mutate boot_presence_says_absent_for_everything src/helpers/BootPresence.h '  if (!s.active) return true;
+  const char* b = baseName(path);' '  if (!s.active) return true;
+  return false;
+  const char* b = baseName(path);' $CT_SIM::test_a_swap_left_by_a_power_cut_in_a_high_bucket_is_recovered_at_boot
+
 # the CLI reference page is checked against the registry and the MECON handlers
 mutate cli_reference_registry_row_misspelt docs/CLI_REFERENCE.md '| `neighbors` | List nearby repeaters heard.' '| `neighbours` | List nearby repeaters heard.' sim/tests/test_cli_reference_sync.py
 mutate cli_reference_mecon_command_renamed src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.mem") == 0' 'strcmp(cmd, "get mecon.memx") == 0' sim/tests/test_cli_reference_sync.py
@@ -754,6 +760,17 @@ mutate duty_secure_chat_channel_not_reported examples/simple_secure_chat/main.cp
 mutate duty_secure_chat_channel_not_noted examples/simple_secure_chat/main.cpp "  the_mesh.noteRadioApplied(the_mesh.getFreqPref(), LORA_BW);" "" sim/tests/test_duty_roles.py
 # lock-step virtual time (Issue #65): a node that reads the wall clock under --lockstep is not repeatable
 mutate lockstep_node_reads_the_wall_clock variants/sim/sim_radio.cpp "  uint64_t nowUs() override { return g_ls_now - g_ls_join; }" "  uint64_t nowUs() override { return sim_real_clock()->nowUs(); }" sim/tests/test_lockstep.py::test_the_same_seeds_give_the_same_transmissions
+# --- the Companion's mesh path (sim/tests/test_mesh_protocol.py, #63): ACK, path learning, advert auto-add
+mutate mesh_ack_not_sent_in_the_returned_path src/helpers/BaseChatMesh.cpp "PAYLOAD_TYPE_ACK, (uint8_t *) &ack_hash, 6);
+        if (path) sendFloodScoped(from, path, TXT_ACK_DELAY);" "PAYLOAD_TYPE_ACK, (uint8_t *) &ack_hash, 6);" sim/tests/test_mesh_protocol.py::test_direct_message_is_acknowledged_flood_and_direct
+mutate mesh_direct_ack_not_sent src/helpers/BaseChatMesh.cpp "    if (a2) sendDirect(a2, dest.out_path, dest.out_path_len, d);" "" sim/tests/test_mesh_protocol.py::test_direct_message_is_acknowledged_flood_and_direct
+mutate mesh_path_not_stored src/helpers/BaseChatMesh.cpp "  from.out_path_len = mesh::Packet::copyPath(from.out_path, out_path, out_path_len);  // store a copy of path, for sendDirect()" "  from.out_path_len = OUT_PATH_UNKNOWN;" sim/tests/test_mesh_protocol.py::test_path_is_learned_from_the_first_flood_and_the_next_message_goes_direct
+mutate mesh_autoadd_flag_ignored_always_add examples/companion_radio/MyMesh.cpp "  if ((_prefs.manual_add_contacts & 1) == 0) {
+    return true;" "  if (true) {
+    return true;" sim/tests/test_mesh_protocol.py::test_heard_advert_is_only_reported_when_auto_add_is_off
+mutate mesh_autoadd_flag_ignored_never_add examples/companion_radio/MyMesh.cpp "  if ((_prefs.manual_add_contacts & 1) == 0) {
+    return true;" "  if (false) {
+    return true;" sim/tests/test_mesh_protocol.py::test_heard_advert_is_added_as_a_contact_when_auto_add_is_on
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

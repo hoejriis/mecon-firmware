@@ -7,7 +7,7 @@ bool IdentityStore::load(const char *name, mesh::LocalIdentity& id) {
   sprintf(filename, "%s/%s.id", _dir, name);
   _damaged = false;
   AtomicFile::recover(_fs, filename);   // finish or drop a save that was cut by a power loss
-  if (_fs->exists(filename)) {
+  if (AtomicFile::exists(_fs, filename)) {
 #if defined(RP2040_PLATFORM)
     File file = _fs->open(filename, "r");
 #else
@@ -28,7 +28,7 @@ bool IdentityStore::load(const char *name, mesh::LocalIdentity& id, char display
   sprintf(filename, "%s/%s.id", _dir, name);
   _damaged = false;
   AtomicFile::recover(_fs, filename);   // finish or drop a save that was cut by a power loss
-  if (_fs->exists(filename)) {
+  if (AtomicFile::exists(_fs, filename)) {
 #if defined(RP2040_PLATFORM)
     File file = _fs->open(filename, "r");
 #else

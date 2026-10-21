@@ -1,5 +1,6 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <helpers/BootTimes.h>
+#include <helpers/BootPresence.h>
 #include <Mesh.h>
 
 #include "MyMesh.h"
@@ -66,6 +67,7 @@ void setup() {
   store.begin();
 #elif defined(ESP32)
   SPIFFS.begin(true);
+  BootPresence::begin(SPIFFS);   // one listing, so boot looks up no file that is not there (helpers/BootPresence.h)
   fs = &SPIFFS;
   IdentityStore store(SPIFFS, "/identity");
 #else
@@ -91,6 +93,7 @@ void setup() {
   sensors.begin();
 
   the_mesh.begin(fs);
+  BootPresence::end();
 
   mecon::boot::mark(mecon::boot::MESH, millis());
 

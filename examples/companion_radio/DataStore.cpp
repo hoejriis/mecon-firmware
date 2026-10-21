@@ -192,13 +192,13 @@ bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
 
 void DataStore::loadPrefs(NodePrefs& prefs) {
   AtomicFile::recover(_fs, "/prefs.json");   // finish or drop a save that was cut by a power loss
-  if (_fs->exists("/prefs.json")) {
+  if (AtomicFile::exists(_fs, "/prefs.json")) {
     File file = openRead(_fs, "/prefs.json");
     if (file) {
       prefs.loadSerial(file);   // new Serial prefs
       file.close();
     }
-  } else if (_fs->exists("/new_prefs")) {
+  } else if (AtomicFile::exists(_fs, "/new_prefs")) {
     loadPrefsInt("/new_prefs", prefs);
     if (savePrefs(prefs) ) {                // save to new format
       //_fs->remove("/new_prefs"); // remove old
@@ -255,6 +255,7 @@ bool DataStore::savePrefs(NodePrefs& _prefs) {
 
 void DataStore::loadContacts(DataStoreHost* host) {
     AtomicFile::recover(_getContactsChannelsFS(), "/contacts3");   // finish or drop a save that was cut by a power loss
+    if (!AtomicFile::exists(_getContactsChannelsFS(), "/contacts3")) return;   // at boot: not in the listing (BootPresence.h)
     File file = openRead(_getContactsChannelsFS(), "/contacts3");
     if (file) {
       bool full = false;
@@ -320,7 +321,7 @@ void DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactIn
 
 bool DataStore::legacyContactsExist() {
   AtomicFile::recover(_getContactsChannelsFS(), "/contacts3");
-  return _getContactsChannelsFS()->exists("/contacts3");
+  return AtomicFile::exists(_getContactsChannelsFS(), "/contacts3");
 }
 
 bool DataStore::removeLegacyContacts() {
@@ -430,6 +431,7 @@ uint32_t DataStore::freeBytes() {
 
 void DataStore::loadChannels(DataStoreHost* host) {
     AtomicFile::recover(_getContactsChannelsFS(), "/channels2");
+    if (!AtomicFile::exists(_getContactsChannelsFS(), "/channels2")) return;   // at boot: not in the listing (BootPresence.h)
     File file = openRead(_getContactsChannelsFS(), "/channels2");
     if (file) {
       bool full = false;
@@ -487,7 +489,7 @@ struct BlobRec {
 
 void DataStore::checkAdvBlobFile() {
   AtomicFile::recover(_getContactsChannelsFS(), "/adv_blobs");   // finish or drop a save that was cut by a power loss
-  if (!_getContactsChannelsFS()->exists("/adv_blobs")) {
+  if (!AtomicFile::exists(_getContactsChannelsFS(), "/adv_blobs")) {
     File file = openWrite(_getContactsChannelsFS(), "/adv_blobs");
     if (file) {
       BlobRec zeroes;
