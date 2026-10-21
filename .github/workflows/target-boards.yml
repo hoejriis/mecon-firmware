@@ -92,6 +92,7 @@ jobs:
           if [ -n "$id" ]; then gh run download "$id" -R "$GITHUB_REPOSITORY" -p 'memory-*' -D base || true; fi
       - name: Memory table
         run: |
+          set -o pipefail
           python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
           import glob, json, os
           def load(root):
@@ -111,4 +112,41 @@ jobs:
               print(f'| {env} | {cell(now[env], base.get(env), "ram")} | {cell(now[env], base.get(env), "flash")} |')
           print()
           print('Differences are against the latest successful run on main. Static RAM only; heap at run time needs hardware.')
+          PY
+      - uses: actions/checkout@v4
+        with:
+          path: src
+          sparse-checkout: ci
+      - name: Size budget
+        run: |
+          set -o pipefail   # an over-budget exit must fail the step, not be hidden by tee
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import glob, json, sys
+          budget = {}
+          for line in open('src/ci/size-budget.txt'):
+              f = line.split('#', 1)[0].split()
+              if f: budget[f[0]] = (int(f[1]), int(f[2]))
+          now = {}
+          for p in glob.glob('now/*/memory.json'):
+              d = json.load(open(p)); now[d['env']] = d
+          bad = []
+          for env in sorted(now):
+              d = now[env]
+              if env not in budget:
+                  bad.append(f'{env}: no budget in ci/size-budget.txt'); continue
+              for i, k in enumerate(('flash', 'ram')):
+                  if not d.get(k):
+                      bad.append(f'{env}: {k} not reported by the build'); continue
+                  if d[k][0] > budget[env][i]:
+                      bad.append(f'{env}: {k} {d[k][0]:,} B is over its budget of {budget[env][i]:,} B '
+                                 f'(+{d[k][0] - budget[env][i]:,} B)')
+          for env in sorted(set(budget) - set(now)):
+              bad.append(f'{env}: in ci/size-budget.txt but not built by this workflow')
+          print()
+          if bad:
+              print('**Size budget: over** (raise the budget in this PR if the growth is intended)')
+              for b in bad: print('- ' + b)
+              for b in bad: print('::error::' + b, file=sys.stderr)
+              sys.exit(1)
+          print(f'Size budget: all {len(now)} targets within ci/size-budget.txt.')
           PY
