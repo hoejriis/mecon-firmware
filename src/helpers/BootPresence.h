@@ -16,6 +16,7 @@
 
 namespace BootPresence {
 
+#if defined(ESP32)
 static const int MAX_NAMES = 160;
 static const int NAME_LEN = 32;
 
@@ -68,7 +69,6 @@ inline void end() {
 // /identity/; SPIFFS is flat and lists every file at the root).
 template <typename FS_T>
 inline void begin(FS_T& fs) {
-#if defined(ESP32)
   end();
   State& s = state();
   s.names = new (std::nothrow) char[MAX_NAMES][NAME_LEN];
@@ -85,9 +85,15 @@ inline void begin(FS_T& fs) {
   }
   if (!complete) { end(); return; }
   s.active = true;
-#else
-  (void)fs;
-#endif
 }
+
+#else
+// Elsewhere every file "may exist" and is looked up as before: LittleFS lookups do not scan a flat table.
+template <typename FS_T>
+inline void begin(FS_T&) { }
+inline void end() { }
+inline bool note(const char*) { return true; }
+inline bool mayExist(const char*) { return true; }
+#endif
 
 }  // namespace BootPresence
