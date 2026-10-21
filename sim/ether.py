@@ -364,7 +364,7 @@ class Ether:
             else:
                 heapq.heappush(self._pending, (time.monotonic() + toa / 1e6 / self.scale, self._seq, id(r), r))
 
-    def _deliver_due(self, until):
+    def _deliver_due(self, until=None):
         """Deliver receptions due by `until` (virtual us under lock-step; None = now on the wall clock)."""
         with self.lock:
             now = time.monotonic() if until is None else until
