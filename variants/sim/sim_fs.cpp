@@ -14,15 +14,23 @@ fs::SPIFFSFS SPIFFS;
 namespace fs {
 
 // Call counts for tests that bound the file system work of a boot (--fs-calls FILE): the file holds
-// "exists=N open=N remove=N rename=N", rewritten after each call. A real SPIFFS scans its file table on each call.
-static unsigned long g_calls[4];
-static void count_call(int which) {
-  g_calls[which]++;
+// "exists=N open=N remove=N rename=N missing=N", rewritten after each call. A real SPIFFS scans its file table on each
+// call, and a lookup that finds nothing scans all of it (about 0.9 s per lookup on a Heltec V4's 3.4 MB partition), so
+// "missing" counts the exists/open/remove calls that found no file, and each one is logged as "SIMFS missing <path>".
+static unsigned long g_calls[5];
+static void write_calls() {
   if (g_sim.fs_calls.empty()) return;
   if (FILE* f = fopen(g_sim.fs_calls.c_str(), "w")) {
-    fprintf(f, "exists=%lu open=%lu remove=%lu rename=%lu\n", g_calls[0], g_calls[1], g_calls[2], g_calls[3]);
+    fprintf(f, "exists=%lu open=%lu remove=%lu rename=%lu missing=%lu\n", g_calls[0], g_calls[1], g_calls[2], g_calls[3],
+            g_calls[4]);
     fclose(f);
   }
+}
+static void count_call(int which) { g_calls[which]++; write_calls(); }
+static void count_missing(const char* path) {
+  g_calls[4]++;
+  if (!g_sim.fs_calls.empty()) fprintf(stderr, "SIMFS missing %s\n", path ? path : "");
+  write_calls();
 }
 
 FileImpl::~FileImpl() { if (fp) fclose(fp); }
@@ -64,11 +72,17 @@ File FS::open(const char* path, const char* mode, const bool create) {
   }
   if (writing) mkdirs(hp);
   impl->fp = fopen(hp.c_str(), mode && mode[0] == 'w' ? "w+b" : mode && mode[0] == 'a' ? "ab+" : "rb");
-  if (!impl->fp) return File();
+  if (!impl->fp) { count_missing(path); return File(); }
   return File(impl);
 }
 
-bool FS::exists(const char* path) { count_call(0); struct stat st; return stat(hostPath(path).c_str(), &st) == 0; }
+bool FS::exists(const char* path) {
+  count_call(0);
+  struct stat st;
+  if (stat(hostPath(path).c_str(), &st) == 0) return true;
+  count_missing(path);
+  return false;
+}
 // Power cut just before a filesystem operation (--fault-before OP:PATH).
 static void fault_before(const char* op, const char* path) {
   if (!g_sim.fault_op.empty() && g_sim.fault_op == op && g_sim.fault_op_path == (path ? path : "")) {
@@ -76,7 +90,13 @@ static void fault_before(const char* op, const char* path) {
     _exit(99);
   }
 }
-bool FS::remove(const char* path) { count_call(2); fault_before("remove", path); return ::unlink(hostPath(path).c_str()) == 0; }
+bool FS::remove(const char* path) {
+  count_call(2);
+  fault_before("remove", path);
+  if (::unlink(hostPath(path).c_str()) == 0) return true;
+  count_missing(path);
+  return false;
+}
 // Like ESP32 SPIFFS (not like POSIX or littlefs), rename does not replace an existing destination:
 // the simulated board must not let firmware rely on rename-over.
 bool FS::rename(const char* a, const char* b) {

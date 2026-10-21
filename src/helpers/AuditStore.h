@@ -25,7 +25,7 @@ public:
     Posture::AuditRing& ring = Posture::audit();
     ring.clear();
     AtomicFile::recover(fs, path());
-    if (!fs->exists(path())) return;
+    if (!AtomicFile::exists(fs, path())) return;
     uint8_t buf[Posture::AuditRing::FILE_SIZE + 1];
     size_t got = 0;
     File f = AtomicFile::openForRead(fs, path());

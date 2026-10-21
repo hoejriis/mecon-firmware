@@ -15,6 +15,7 @@
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
+#include "BootPresence.h"
 
 #if defined(ESP32)
   #define ATOMIC_FILE_TWO_STEP_SWAP 1
@@ -85,11 +86,22 @@ inline void recover(FS_T* fs, const char* path) {
   char tmp[48], nw[48];
   nameWith(tmp, sizeof(tmp), path, ".tmp");
   nameWith(nw, sizeof(nw), path, ".new");
-  if (fs->exists(tmp)) fs->remove(tmp);   // never verified: not promoted
-  if (fs->exists(nw)) {
-    if (!fs->exists(path)) fs->rename(nw, path);   // verified copy; the cut came after the old file was removed
-    else fs->remove(nw);
+  // At boot, a leftover that the one listing did not show is not looked up (BootPresence.h): almost always neither exists.
+  if (BootPresence::mayExist(tmp) && fs->exists(tmp)) fs->remove(tmp);   // never verified: not promoted
+  if (BootPresence::mayExist(nw) && fs->exists(nw)) {
+    if (!fs->exists(path)) {
+      fs->rename(nw, path);   // verified copy; the cut came after the old file was removed
+      BootPresence::note(path);
+    } else {
+      fs->remove(nw);
+    }
   }
+}
+
+// fs->exists(path), except that at boot a file the one listing did not show is not looked up (BootPresence.h).
+template <typename FS_T>
+inline bool exists(FS_T* fs, const char* path) {
+  return BootPresence::mayExist(path) && fs->exists(path);
 }
 
 // Removes <path> together with any leftover temp or swap file: for a file that is deleted on purpose.
@@ -109,8 +121,8 @@ inline bool save(FS_T* fs, const char* path, WRITER writer) {
   char tmp[48], nw[48];
   nameWith(tmp, sizeof(tmp), path, ".tmp");
   nameWith(nw, sizeof(nw), path, ".new");
-  if (fs->exists(tmp)) fs->remove(tmp);
-  if (fs->exists(nw)) fs->remove(nw);
+  if (BootPresence::mayExist(tmp) && fs->exists(tmp)) fs->remove(tmp);
+  if (BootPresence::mayExist(nw) && fs->exists(nw)) fs->remove(nw);
 
   uint32_t want_crc;
   size_t want_len;
@@ -142,8 +154,10 @@ inline bool save(FS_T* fs, const char* path, WRITER writer) {
   }
 #ifdef ATOMIC_FILE_TWO_STEP_SWAP
   if (!fs->rename(tmp, nw)) { fs->remove(tmp); return false; }
-  fs->remove(path);
-  return fs->rename(nw, path);   // if cut here, recover() completes it from <path>.new
+  if (BootPresence::mayExist(path)) fs->remove(path);   // SPIFFS does not replace an existing destination
+  bool ok = fs->rename(nw, path);   // if cut here, recover() completes it from <path>.new
+  if (ok) BootPresence::note(path);
+  return ok;
 #else
   if (!fs->rename(tmp, path)) { fs->remove(tmp); return false; }
   return true;
