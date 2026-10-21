@@ -1,10 +1,12 @@
 """Two Companions that cannot hear each other talk through a Repeater."""
-import time
+import pytest
 
 from sim.harness import CompanionClient
 
 SECRET = bytes(range(16))
 RTC = 1760000000
+
+pytestmark = pytest.mark.lockstep()     # LoRa only: lock-step virtual time (docs/SIMULATION.md)
 
 
 def _setup(ether, nodes):
@@ -56,6 +58,9 @@ def test_no_delivery_without_repeater_link(ether, nodes):
     a.add_contact(b.pub_key, "bob")
     b.add_contact(a.pub_key, "alice")
     a.send_direct(b.pub_key, "lost", RTC + 10)
-    time.sleep(3)
+    # 120 virtual s: past the first duty-cycle bin after boot (30 s), the flood, any relay and any delivery
+    assert ether.wait_until_us(ether.now_us() + 120e6, timeout=60)
+    assert any(tx.src == "ca" and (tx.data[0] >> 2) & 0x0F == 0x02 for tx in ether.tx_log), \
+        "the message was never sent: the checks below would prove nothing"
     assert b.request(bytes([10]))[0] == 10    # RESP_NO_MORE_MESSAGES
     assert all(not tx.delivered_to for tx in ether.tx_log)

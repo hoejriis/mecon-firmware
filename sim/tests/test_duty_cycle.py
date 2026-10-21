@@ -4,9 +4,12 @@ The instrument is the ether broker: it stamps every transmission with its own cl
 largest share of any sliding hour a node spent on the air (``Ether.max_duty_in_any_hour``). The nodes'
 own counters are never consulted for a verdict.
 
-Time runs at 60x (``SCALE``): one virtual hour is one real minute, so a run of 1.25 virtual hours is
-75 s. Every load test runs longer than an hour so that a burst at the start (a full bucket) shows up as
-an overshoot inside one sliding hour.
+Every test with nodes runs on lock-step virtual time (docs/SIMULATION.md): the broker owns the clock and
+stamps each transmission with the exact time the node started it, so the limits are asserted on the channel
+without slack for clock drift, and the runs are driven and timed in broker time, never on the wall clock.
+The seven-node load test uses 10 ms quanta (a send is charged up to 10 ms more than its time on air, which
+only makes the node more conservative); the others use the 1 ms default. Every load test runs longer than an
+hour so that a burst at the start (a full bucket) shows up as an overshoot inside one sliding hour.
 
 Radio configurations (all SF10, CR 4/5):
   869.525 MHz BW250   channel 869.400-869.650, the 10 % sub-band exactly
@@ -14,6 +17,7 @@ Radio configurations (all SF10, CR 4/5):
   869.55  MHz BW250   channel 869.425-869.675, straddles the 10 % band and the 0.1 % gap above it
   915.0   MHz BW250   outside 863-870 and 433: no regulatory floor
 """
+import math
 import re
 import time
 
@@ -22,18 +26,9 @@ import pytest
 from sim.ether import Ether, Tx
 from sim.harness import CompanionClient, CliClient
 
-SCALE = 60.0
 HOUR_S = 3600.0
 RTC = 1760000000
 RESP_ERR = 1
-
-
-# ---------------------------------------------------------------------------------------------- fixtures
-@pytest.fixture
-def fast_ether(tmp_path):
-    e = Ether(str(tmp_path / "ether.sock"), time_scale=SCALE, seed=5).start()
-    yield e
-    e.stop()
 
 
 class Companion:
@@ -41,7 +36,7 @@ class Companion:
 
     def __init__(self, nodes, ether, name, seed, freq, bw, sf=10, user=None):
         self.name = name
-        self.node = nodes("companion", name, ether_path=ether.path, seed=seed, rtc=RTC, time_scale=SCALE).start()
+        self.node = nodes("companion", name, ether_path=ether.path, seed=seed, rtc=RTC).start()
         self.c = CompanionClient(self.node)
         self.c.device_query()
         self.c.app_start()
@@ -74,7 +69,7 @@ class Repeater:
 
     def __init__(self, nodes, ether, name, seed, freq, bw, sf=10, user=None, kind="repeater"):
         self.name = name
-        node = nodes(kind, name, ether_path=ether.path, seed=seed, rtc=RTC, time_scale=SCALE).start()
+        node = nodes(kind, name, ether_path=ether.path, seed=seed, rtc=RTC).start()
         cli = CliClient(node)
         assert cli.command("set radio %s,%s,%d,5" % (freq, bw, sf)).startswith("OK")
         if user:
@@ -99,9 +94,10 @@ class Repeater:
         return self.cli_c.command(text)
 
 
-def drive(loads, virtual_hours):
-    end = time.time() + virtual_hours * HOUR_S / SCALE
-    while time.time() < end:
+def drive(ether, loads, virtual_hours):
+    """Keep every load's queue full for `virtual_hours` of broker time."""
+    end = ether.now_us() + virtual_hours * HOUR_S * 1e6
+    while ether.now_us() < end:
         for ld in loads:
             ld.pump()
         time.sleep(0.003)
@@ -115,8 +111,9 @@ def report(label, ether, name, limit):
 
 
 # ---------------------------------------------------------------------------------------------- the load test
-def test_sustained_load_stays_within_the_regulatory_limit(fast_ether, nodes):
-    e = fast_ether
+@pytest.mark.lockstep(quantum_us=10000)
+def test_sustained_load_stays_within_the_regulatory_limit(ether, nodes):
+    e = ether
     c10 = Companion(nodes, e, "c10", 1, 869.525, 250, user="set af 0")            # user setting: no limit
     c10s = Companion(nodes, e, "c10s", 2, 869.525, 250, user="set dutycycle 5")    # user 5 % is stricter than the 10 % floor
     c1 = Companion(nodes, e, "c1", 3, 868.1, 125, user="set af 0")
@@ -126,7 +123,7 @@ def test_sustained_load_stays_within_the_regulatory_limit(fast_ether, nodes):
     rr = Repeater(nodes, e, "rr", 7, 868.1, 125, user="set af 0")
     loads = [c10, c10s, c1, c1b, c915, cstr, rr]
 
-    drive(loads, 1.25)
+    drive(e, loads, 1.25)
 
     rows = [  # (label, node, limit as a fraction of the hour)
         ("c10", "c10", 0.10), ("c10s", "c10s", 0.05), ("c1", "c1", 0.01), ("c1b", "c1b", 0.01),
@@ -142,14 +139,15 @@ def test_sustained_load_stays_within_the_regulatory_limit(fast_ether, nodes):
     assert results["cstr"][1] >= 2, "the 0.1 % node never transmitted"
 
 
-def test_frequency_change_applies_without_reboot(fast_ether, nodes):
-    e = fast_ether
+@pytest.mark.lockstep()
+def test_frequency_change_applies_without_reboot(ether, nodes):
+    e = ether
     cl = Companion(nodes, e, "cl", 1, 868.1, 125, user="set af 0")
-    drive([cl], 0.4)
+    drive(e, [cl], 0.4)
     before = e.max_duty_in_any_hour("cl")
     t_switch = e.now_us()
     cl.c.set_radio(869.525, 250, 10)            # live, no reboot
-    drive([cl], 0.85)
+    drive(e, [cl], 0.85)
     total = e.max_duty_in_any_hour("cl")
     after = e.airtime_us("cl", since_us=t_switch) / 3600e6
     print("MEASURED live-change  before-switch max hour %.3f %% (limit 1)  after-switch airtime %.3f %% of an hour  "
@@ -160,20 +158,9 @@ def test_frequency_change_applies_without_reboot(fast_ether, nodes):
 
 
 # ---------------------------------------------------------------------------------------------- room server
-def test_room_server_gets_the_floor_too(fast_ether, nodes):
-    e = fast_ether
-    room = Repeater(nodes, e, "room", 11, 868.1, 125, user="set af 0", kind="room_server")
-    m = BAND.match(room.cli("get dutycycle"))
-    assert m and m.group(1) == "868.000-868.600" and m.group(2) == "1.00" and m.group(3) == "1.00%", m
-    drive([room], 1.25)
-    duty, n = report("room", e, "room", 0.01)
-    assert duty <= 0.01, "room server reached %.3f %%" % (duty * 100)
-    assert duty >= 0.004
-
-
 @pytest.mark.lockstep()
-def test_room_server_gets_the_floor_too_lockstep(ether, nodes):
-    """The room-server test on lock-step virtual time (1 ms quanta). The broker stamps every transmission with the
+def test_room_server_gets_the_floor_too(ether, nodes):
+    """The room server keeps the 1 % floor of its band. On lock-step virtual time (1 ms quanta) the broker stamps every transmission with the
     time the node started it, so the limit is asserted on the channel without slack, and the use of the limit is
     bounded from below by what the firmware's window is documented to give away, not by a tolerance."""
     e = ether
@@ -207,101 +194,108 @@ def test_room_server_gets_the_floor_too_lockstep(ether, nodes):
 
 
 # ---------------------------------------------------------------------------------------------- reboots
-def test_reboots_do_not_reset_the_hour(fast_ether, nodes):
+@pytest.mark.lockstep(quantum_us=10000)
+def test_reboots_do_not_reset_the_hour(ether, nodes):
     """A node at full rate that is power-cycled every 5 virtual minutes stays within its limit in every sliding
     hour, measured on the channel across all its boots."""
-    e = fast_ether
+    e = ether
     a = Companion(nodes, e, "r10", 1, 869.525, 250, user="set af 0")
     b = Companion(nodes, e, "r1", 2, 868.1, 125, user="set af 0")
-    end = time.time() + 1.3 * HOUR_S / SCALE
-    next_reboot = time.time() + 5 * 60 / SCALE
+    end = e.now_us() + 1.3 * HOUR_S * 1e6
+    next_reboot = e.now_us() + 5 * 60e6
     boots = 0
-    while time.time() < end:
+    while e.now_us() < end:
         for ld in (a, b):
             ld.pump()
-        if time.time() >= next_reboot:
+        if e.now_us() >= next_reboot:
             a.reboot()
             b.reboot()
             boots += 1
-            next_reboot = time.time() + 5 * 60 / SCALE
+            next_reboot = e.now_us() + 5 * 60e6
         time.sleep(0.003)
     ra = report("r10", e, "r10", 0.10)
     rb = report("r1", e, "r1", 0.01)
     print("MEASURED reboots: %d power cycles per node" % boots)
-    assert boots >= 12
+    assert boots == 15            # every 5 virtual minutes in 1.3 virtual hours, counted on the broker's clock
     assert ra[0] <= 0.10, "10 %% node reached %.3f %% across reboots" % (ra[0] * 100)
     assert rb[0] <= 0.01, "1 %% node reached %.3f %% across reboots" % (rb[0] * 100)
     assert ra[0] >= 0.03 and rb[0] >= 0.003, "the nodes barely transmitted"
 
 
+@pytest.mark.lockstep()
 @pytest.mark.parametrize("freq,bw", [(868.1, 125), (869.525, 250)])
-def test_first_advert_delay_after_boot(fast_ether, nodes, freq, bw):
+def test_first_advert_delay_after_boot(ether, nodes, freq, bw):
     """Time from boot to the first transmission (the boot advert), with the hour seeded at the limit."""
-    e = fast_ether
+    e = ether
     name = "fa%d" % int(freq)
     rp = Repeater(nodes, e, name, 9, freq, bw, user="set af 0")      # ends with a reboot
-    end = time.time() + 5 * 60 * 60 / SCALE
+    end = rp.t_boot + 5 * 60 * 60e6
     first = None
-    while time.time() < end and first is None:
+    while e.now_us() < end and first is None:
         txs = [t for t in e.tx_of(name) if t.start_us >= rp.t_boot]
         if txs:
             first = txs[0]
-        time.sleep(0.05)
+        time.sleep(0.005)
     assert first is not None, "no transmission within 5 virtual hours of boot"
     delay_s = (first.start_us - rp.t_boot) / 1e6
-    print("MEASURED first advert after boot at %s MHz BW %s: %.1f virtual s (packet %d bytes, %.0f ms on air)"
-          % (freq, bw, delay_s, first.length, first.toa_us / 1000))
-    assert delay_s < 600
+    # The hour is seeded at the limit, spread over the 121 bins of 30 s (DutyWindow.h), so the boot advert waits for
+    # as many bins to age out as its charge needs. With nothing else running, the broker's time stands still while
+    # the node restarts, so t_boot is its boot instant exactly, and the wait is exact: a whole number of bins after
+    # the window's first use, 1.002 s after boot (the same at both frequencies, and in every run).
+    limit_ms = {868.1: 36000, 869.525: 360000}[freq]
+    bins = math.ceil(round(first.toa_us / 1000) / (limit_ms // 121))
+    print("MEASURED first advert after boot at %s MHz BW %s: %.6f virtual s (packet %d bytes, %.0f ms on air, %d bins)"
+          % (freq, bw, delay_s, first.length, first.toa_us / 1000, bins))
+    assert first.start_us - rp.t_boot == bins * 30000000 + 1002000, (delay_s, bins)
 
 
 # ---------------------------------------------------------------------------------------------- the CLI
 BAND = re.compile(r"^> band (\S+?)(?: MHz)?, limit (\d+\.\d\d)%, floor (\S+), user (\d+\.\d\d)%, used (\d+) ms \((\d+\.\d\d)%\)$")
 
 
-def test_get_dutycycle_reports_band_limit_floor_and_use(tmp_path, nodes):
-    e = Ether(str(tmp_path / "ether.sock"), seed=3).start()
-    try:
-        node = nodes("companion", "cc", ether_path=e.path, seed=1, rtc=RTC).start()
-        c = CompanionClient(node)
-        c.device_query()
-        c.app_start()
-        c.set_radio(868.1, 125, 10)
-        assert c.cli("set af 0").startswith("OK")
-        m = BAND.match(c.cli("get dutycycle"))
-        assert m, "unexpected reply"
-        assert m.group(1) == "868.000-868.600" and m.group(2) == "1.00" and m.group(3) == "1.00%" and m.group(4) == "100.00"
-        assert m.group(5) == "36000"          # the hour is seeded at the limit on boot: 1 % of 3600 s
-        c.set_radio(869.525, 250, 10)                     # live: the answer follows at once
-        m = BAND.match(c.cli("get dutycycle"))
-        assert m.group(1) == "869.400-869.650" and m.group(2) == "10.00" and m.group(3) == "10.00%"
-        c.set_radio(915.0, 250, 10)
-        m = BAND.match(c.cli("get dutycycle"))
-        assert m.group(1) == "none" and m.group(3) == "none" and m.group(2) == "100.00"
-        c.set_radio(869.55, 250, 10)                      # straddling
-        m = BAND.match(c.cli("get dutycycle"))
-        assert m.group(2) == "0.10" and m.group(3) == "0.10%"
-        assert c.cli("set af 9").startswith("OK")
-        c.set_radio(868.1, 125, 10)
-        m = BAND.match(c.cli("get dutycycle"))
-        assert m.group(2) == "1.00" and m.group(4) == "10.00"      # CLI clamp at 10 %, floor still 1 %
+@pytest.mark.lockstep()
+def test_get_dutycycle_reports_band_limit_floor_and_use(ether, nodes):
+    e = ether
+    node = nodes("companion", "cc", ether_path=e.path, seed=1, rtc=RTC).start()
+    c = CompanionClient(node)
+    c.device_query()
+    c.app_start()
+    c.set_radio(868.1, 125, 10)
+    assert c.cli("set af 0").startswith("OK")
+    m = BAND.match(c.cli("get dutycycle"))
+    assert m, "unexpected reply"
+    assert m.group(1) == "868.000-868.600" and m.group(2) == "1.00" and m.group(3) == "1.00%" and m.group(4) == "100.00"
+    assert m.group(5) == "36000"          # the hour is seeded at the limit on boot: 1 % of 3600 s
+    c.set_radio(869.525, 250, 10)                     # live: the answer follows at once
+    m = BAND.match(c.cli("get dutycycle"))
+    assert m.group(1) == "869.400-869.650" and m.group(2) == "10.00" and m.group(3) == "10.00%"
+    c.set_radio(915.0, 250, 10)
+    m = BAND.match(c.cli("get dutycycle"))
+    assert m.group(1) == "none" and m.group(3) == "none" and m.group(2) == "100.00"
+    c.set_radio(869.55, 250, 10)                      # straddling
+    m = BAND.match(c.cli("get dutycycle"))
+    assert m.group(2) == "0.10" and m.group(3) == "0.10%"
+    assert c.cli("set af 9").startswith("OK")
+    c.set_radio(868.1, 125, 10)
+    m = BAND.match(c.cli("get dutycycle"))
+    assert m.group(2) == "1.00" and m.group(4) == "10.00"      # CLI clamp at 10 %, floor still 1 %
 
-        # repeater: `set radio` applies at boot; `tempradio` applies live
-        rep = nodes("repeater", "rp", ether_path=e.path, seed=2, rtc=RTC).start()
-        cli = CliClient(rep)
-        assert cli.command("set radio 868.1,125,10,5").startswith("OK")
-        assert cli.command("set af 0").startswith("OK")
-        cli.close()
-        rep.restart()
-        cli = CliClient(rep)
-        m = BAND.match(cli.command("get dutycycle"))
-        assert m and m.group(1) == "868.000-868.600" and m.group(2) == "1.00"
-        assert cli.command("tempradio 869.525,250,10,5,30").startswith("OK")
-        time.sleep(4)                                     # applied 2 s after the reply
-        m = BAND.match(cli.command("get dutycycle"))
-        assert m and m.group(1) == "869.400-869.650" and m.group(2) == "10.00", m
-        cli.close()
-    finally:
-        e.stop()
+    # repeater: `set radio` applies at boot; `tempradio` applies live
+    rep = nodes("repeater", "rp", ether_path=e.path, seed=2, rtc=RTC).start()
+    cli = CliClient(rep)
+    assert cli.command("set radio 868.1,125,10,5").startswith("OK")
+    assert cli.command("set af 0").startswith("OK")
+    cli.close()
+    rep.restart()
+    cli = CliClient(rep)
+    m = BAND.match(cli.command("get dutycycle"))
+    assert m and m.group(1) == "868.000-868.600" and m.group(2) == "1.00"
+    assert cli.command("tempradio 869.525,250,10,5,30").startswith("OK")
+    # applied 2 s of node time after the reply: on the broker's clock that is at most 2 s from now
+    assert e.wait_until_us(e.now_us() + 2.001e6)
+    m = BAND.match(cli.command("get dutycycle"))
+    assert m and m.group(1) == "869.400-869.650" and m.group(2) == "10.00", m
+    cli.close()
 
 
 # ---------------------------------------------------------------------------------------------- the instrument

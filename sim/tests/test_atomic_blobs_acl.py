@@ -52,6 +52,8 @@ def _acl_setup(ether, nodes, kind):
     adm = nodes("companion", "ad", seed=42, rtc=RTC, ether_path=ether.path).start()
     assert ether.wait_for_nodes(["rp", "ad"])
     ether.set_link("rp", "ad")
+    # the server's boot advert first: both nodes booted together hold their first packet to the same 30 s bin edge
+    assert ether.wait_tx("rp") and ether.wait_quiet(), "the server never advertised"
     cli = CliClient(rep)
     pub = bytes.fromhex(cli.command("get public.key").lstrip("> ").strip())
     assert cli.command("password " + PW).startswith("password now")
@@ -76,7 +78,7 @@ def _cut_acl_save(rep, cli_cls, fault=None, fault_before=None):
     return CliClient(rep)
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 @pytest.mark.parametrize("kind", ["repeater", "room_server"])
 @pytest.mark.parametrize("cut", [0, 1, 40, 135])
 def test_acl_cut_in_temp_file_keeps_logged_in_client(ether, nodes, kind, cut):
@@ -94,6 +96,7 @@ def test_acl_cut_in_temp_file_keeps_logged_in_client(ether, nodes, kind, cut):
     ("remove:/s_contacts", 136),        # verified new copy exists, old not yet removed: old stays
     ("rename:/s_contacts.new", 272),    # old removed: boot must finish the swap, not lose the list
 ])
+@pytest.mark.lockstep()
 def test_acl_cut_between_write_and_rename(ether, nodes, kind, op, size_after):
     rep, cli, c, pub = _acl_setup(ether, nodes, kind)
     _cut_acl_save(rep, CliClient, fault_before=op)
@@ -111,7 +114,7 @@ def test_acl_cut_between_write_and_rename(ether, nodes, kind, op, size_after):
     assert c.login(pub, "", timeout=30)
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 def test_acl_is_never_written_in_place(ether, nodes):
     rep, cli, c, pub = _acl_setup(ether, nodes, "repeater")
     rep.stop()

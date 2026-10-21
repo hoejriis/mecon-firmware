@@ -31,6 +31,7 @@ def remote(r, v, text):
     return msgs[0]["text"]
 
 
+@pytest.mark.lockstep()
 def test_remote_reads_work_and_writes_are_refused(ether, nodes):
     victim, _, v, r = _pair(ether, nodes, "a")
     assert "v1." in remote(r, v, "ver")                       # allowed: read
@@ -51,6 +52,7 @@ def test_remote_reads_work_and_writes_are_refused(ether, nodes):
     assert victim.proc.poll() is None
 
 
+@pytest.mark.lockstep()
 def test_remote_poweroff_refused(ether, nodes):
     victim, _, v, r = _pair(ether, nodes, "b")
     assert REFUSED in remote(r, v, "poweroff")
@@ -59,7 +61,7 @@ def test_remote_poweroff_refused(ether, nodes):
     assert v.cli("get name").startswith("> ")                 # still serving
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 def test_remote_reboot_allowed(ether, nodes):
     victim, _, v, r = _pair(ether, nodes, "c")
     assert r.send_cli_command(v.pub_key, "reboot")[0] == 6

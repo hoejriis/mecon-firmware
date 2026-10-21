@@ -25,6 +25,7 @@ def truncated_traces():
     return out
 
 
+@pytest.mark.lockstep()
 @pytest.mark.parametrize("kind", ["repeater_asan", "companion_asan"])
 def test_truncated_trace_packets_do_not_crash_the_node(ether, nodes, kind):
     n = nodes(kind, "victim", seed=3, rtc=RTC, ether_path=ether.path).start()
@@ -44,7 +45,7 @@ def test_truncated_trace_packets_do_not_crash_the_node(ether, nodes, kind):
         assert c.device_query()[0] != 1
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 def test_wellformed_trace_is_still_forwarded_by_repeater(ether, nodes):
     n = nodes("repeater_asan", "rp", seed=3, rtc=RTC, ether_path=ether.path).start()
     other = nodes("repeater", "obs", seed=4, rtc=RTC, ether_path=ether.path).start()
@@ -64,6 +65,7 @@ def test_wellformed_trace_is_still_forwarded_by_repeater(ether, nodes):
     assert n.proc.poll() is None and n.sanitizer_report() == ""
 
 
+@pytest.mark.lockstep()
 def test_wellformed_trace_reaches_companion_app(ether, nodes):
     n = nodes("companion_asan", "co", seed=3, rtc=RTC, ether_path=ether.path).start()
     assert ether.wait_for_nodes(["co"])

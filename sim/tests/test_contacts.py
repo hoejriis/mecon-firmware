@@ -178,7 +178,7 @@ def test_device_query_reports_half_the_capacity_capped_at_one_byte(nodes):
     assert c.device_query()[2] == cap // 2
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 def test_favourites_stay_resident_and_reachable_under_a_small_heap(ether, nodes):
     a = nodes("companion", "ca", ether_path=ether.path, seed=11, rtc=RTC, extra=["--heap-budget", "50000"]).start()
     b = nodes("companion", "cb", ether_path=ether.path, seed=22, rtc=RTC).start()
@@ -201,6 +201,8 @@ def test_favourites_stay_resident_and_reachable_under_a_small_heap(ether, nodes)
     assert [m["text"] for m in msgs] == ["from the favourite"]
     mid = ca.contacts_line()
     assert mid["loads"] == before["loads"], "a favourite's message needed the file system: it was not resident"
+    # cb's path return (direct, to ca) follows ca's flood PATH; cd cannot hear cb, so a send now collides with it at ca
+    assert ether.wait_quiet(), "the channel never went quiet"
     cd.send_direct(ca.pub_key, "from the plain contact", RTC + 6)
     msgs = ca.sync_messages(timeout=90, want=1)
     assert [m["text"] for m in msgs] == ["from the plain contact"], "a contact that is only in the store must still be reachable"
@@ -302,7 +304,7 @@ def test_without_the_overwrite_setting_a_full_store_refuses_and_keeps_everything
     assert c.get_contacts()[0] == cap
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 def test_a_contact_that_wrote_to_us_outlives_advert_only_ones(ether, nodes):
     a = nodes("companion", "ca", ether_path=ether.path, seed=11, rtc=RTC,
               extra=["--fs-size", str(8192 + 3000 + 16 * 200), "--heap-budget", "50000"]).start()

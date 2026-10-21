@@ -134,6 +134,31 @@ class Ether:
             time.sleep(0.005)
         return True
 
+    def wait_quiet(self, seconds=3.0, timeout=60.0):
+        """Wait (wall clock, at most `timeout` s) until nothing has been on the air for `seconds` of broker time. For a
+        test that is about to send: the previous exchange's follow-ups (a path return, a relay) are over, so the new
+        packet cannot collide with them at a node that hears both senders. True if the channel went quiet."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            with self.lock:
+                last = max((t.start_us + t.toa_us for t in self.tx_log), default=None)
+                if last is None or self.now_us() - last >= seconds * 1e6:
+                    return True
+            time.sleep(0.005)
+        return False
+
+    def wait_tx(self, src, timeout=60.0):
+        """Wait (wall clock) until `src` has started a transmission; True if it did. A node's first packet after boot
+        waits for the first 30 s duty-cycle bin (the hour is seeded at the limit), so two nodes booted at the same
+        broker time release their first packets in the same quantum and collide: a test waits for a server's boot
+        advert before it sends anything that needs an answer."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if self.tx_of(src):
+                return True
+            time.sleep(0.005)
+        return False
+
     def wait_for_nodes(self, names, timeout=10.0):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
