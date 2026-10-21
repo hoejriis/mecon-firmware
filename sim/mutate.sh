@@ -758,6 +758,17 @@ mutate duty_sensor_channel_not_reported examples/simple_sensor/SensorMesh.h "ret
 mutate duty_sensor_temp_radio_not_tracked examples/simple_sensor/SensorMesh.cpp "    radio_freq = pending_freq; radio_bw = pending_bw;" "" sim/tests/test_duty_roles.py
 mutate duty_secure_chat_channel_not_reported examples/simple_secure_chat/main.cpp "return _radio_freq > 0;" "return false;" sim/tests/test_duty_roles.py
 mutate duty_secure_chat_channel_not_noted examples/simple_secure_chat/main.cpp "  the_mesh.noteRadioApplied(the_mesh.getFreqPref(), LORA_BW);" "" sim/tests/test_duty_roles.py
+# --- the Companion's mesh path (sim/tests/test_mesh_protocol.py, #63): ACK, path learning, advert auto-add
+mutate mesh_ack_not_sent_in_the_returned_path src/helpers/BaseChatMesh.cpp "PAYLOAD_TYPE_ACK, (uint8_t *) &ack_hash, 6);
+        if (path) sendFloodScoped(from, path, TXT_ACK_DELAY);" "PAYLOAD_TYPE_ACK, (uint8_t *) &ack_hash, 6);" sim/tests/test_mesh_protocol.py::test_direct_message_is_acknowledged_flood_and_direct
+mutate mesh_direct_ack_not_sent src/helpers/BaseChatMesh.cpp "    if (a2) sendDirect(a2, dest.out_path, dest.out_path_len, d);" "" sim/tests/test_mesh_protocol.py::test_direct_message_is_acknowledged_flood_and_direct
+mutate mesh_path_not_stored src/helpers/BaseChatMesh.cpp "  from.out_path_len = mesh::Packet::copyPath(from.out_path, out_path, out_path_len);  // store a copy of path, for sendDirect()" "  from.out_path_len = OUT_PATH_UNKNOWN;" sim/tests/test_mesh_protocol.py::test_path_is_learned_from_the_first_flood_and_the_next_message_goes_direct
+mutate mesh_autoadd_flag_ignored_always_add examples/companion_radio/MyMesh.cpp "  if ((_prefs.manual_add_contacts & 1) == 0) {
+    return true;" "  if (true) {
+    return true;" sim/tests/test_mesh_protocol.py::test_heard_advert_is_only_reported_when_auto_add_is_off
+mutate mesh_autoadd_flag_ignored_never_add examples/companion_radio/MyMesh.cpp "  if ((_prefs.manual_add_contacts & 1) == 0) {
+    return true;" "  if (false) {
+    return true;" sim/tests/test_mesh_protocol.py::test_heard_advert_is_added_as_a_contact_when_auto_add_is_on
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
