@@ -211,12 +211,12 @@ def test_reboots_do_not_reset_the_hour(ether, nodes):
             a.reboot()
             b.reboot()
             boots += 1
-            next_reboot = e.now_us() + 5 * 60e6
+            next_reboot += 5 * 60e6   # a fixed schedule: the virtual time a reboot itself takes does not push it
         time.sleep(0.003)
     ra = report("r10", e, "r10", 0.10)
     rb = report("r1", e, "r1", 0.01)
     print("MEASURED reboots: %d power cycles per node" % boots)
-    assert boots == 15            # every 5 virtual minutes in 1.3 virtual hours, counted on the broker's clock
+    assert boots == 15            # at 5, 10, ... 75 virtual minutes of the 78, on the broker's clock
     assert ra[0] <= 0.10, "10 %% node reached %.3f %% across reboots" % (ra[0] * 100)
     assert rb[0] <= 0.01, "1 %% node reached %.3f %% across reboots" % (rb[0] * 100)
     assert ra[0] >= 0.03 and rb[0] >= 0.003, "the nodes barely transmitted"
