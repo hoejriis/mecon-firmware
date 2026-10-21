@@ -102,8 +102,12 @@ inline const char* reasonName(uint8_t r) {
 // The reply to `get mecon.mem`. Split out so the native unit tests can feed it a measured heap.
 inline void formatMem(const MemStats& m, const HeapFloor& floor, char* reply, size_t max) {
   if (!m.known) snprintf(reply, max, "> heap: not measurable on this platform");
-  else snprintf(reply, max, "> heap free=%lu largest=%lu min_free=%lu heap_low=%d floor=%lu", (unsigned long)m.free,
-                (unsigned long)m.largest, (unsigned long)m.min_free, floor.low() ? 1 : 0, (unsigned long)floor.floorBytes());
+  else {
+    int n = snprintf(reply, max, "> heap free=%lu largest=%lu min_free=%lu heap_low=%d floor=%lu", (unsigned long)m.free,
+                     (unsigned long)m.largest, (unsigned long)m.min_free, floor.low() ? 1 : 0,
+                     (unsigned long)floor.floorBytes());
+    if (m.psram && n > 0 && (size_t)n < max) snprintf(reply + n, max - n, " psram_free=%lu", (unsigned long)m.psram);
+  }
 }
 
 // Returns true when `cmd` is one of the MECON commands and `reply` holds the answer.
