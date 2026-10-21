@@ -24,15 +24,32 @@ def _scale(request):
     return float(m.args[0]) if m else 1.0
 
 
+def _lockstep(request):
+    """@pytest.mark.lockstep(quantum_us=1000, start_after=0) runs the `ether` fixture and every node from `nodes` on
+    lock-step virtual time (docs/SIMULATION.md): the broker owns the clock and advances it only when every node has
+    finished its quantum. For LoRa-only tests: the serial port, Wi-Fi, MQTT and BLE stay on the wall clock. Returns
+    None without the marker, else (quantum_us, start_after)."""
+    m = request.node.get_closest_marker("lockstep")
+    if not m:
+        return None
+    return int(m.kwargs.get("quantum_us", 1000)), int(m.kwargs.get("start_after", 0))
+
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "timescale(n): run the broker and nodes n times faster than real time")
+    config.addinivalue_line("markers", "lockstep(quantum_us=1000, start_after=0): lock-step virtual time, broker-driven")
 
 
 @pytest.fixture
 def ether(tmp_path, request):
-    e = Ether(str(tmp_path / "ether.sock"), seed=7, time_scale=_scale(request)).start()
+    ls = _lockstep(request)
+    if ls:
+        e = Ether(str(tmp_path / "ether.sock"), seed=7, lockstep=True, start_after=ls[1]).start()
+    else:
+        e = Ether(str(tmp_path / "ether.sock"), seed=7, time_scale=_scale(request)).start()
     yield e
     e.stop()
+    assert not e.errors, e.errors
 
 
 @pytest.fixture
@@ -42,6 +59,10 @@ def nodes(tmp_path, request):
 
     def make(kind, name, **kw):
         kw.setdefault("time_scale", _scale(request))
+        ls = _lockstep(request)
+        if ls:
+            kw.setdefault("lockstep", True)
+            kw.setdefault("quantum_us", ls[0])
         n = harness.Node(kind, name, tmp_path, **kw)
         made.append(n)
         return n

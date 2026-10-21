@@ -11,6 +11,8 @@ struct SimConfig {
   std::string port_file;      // file the TCP serial port number is written to
   uint32_t seed = 1;          // seeds randomSeed() and identity generation
   double time_scale = 1.0;    // virtual ms per real ms (1.0 = real time)
+  bool lockstep = false;      // --lockstep: time is granted by the ether broker (variants/sim/sim_radio.cpp), not the wall clock
+  uint32_t quantum_us = 1000; // --quantum-us: how far a lock-step node runs between two barriers
   uint32_t rtc_epoch = 1760000000;  // RTC value at process start (unix seconds)
   std::string wifi_env;       // file listing the simulated Wi-Fi access points (variants/sim/sim_wifi.cpp)
   std::string mqtt_env;       // file with the simulated DNS names and mDNS responders (variants/sim/sim_mqtt_net.cpp)

@@ -6,6 +6,12 @@
 //                   'T' transmit   f32 freq, f32 bw, u8 sf, u8 cr, u32 toa_us, raw packet
 //   broker -> node  'B' busy       u32 duration_us   (a transmission this node can hear began)
 //                   'R' receive    f32 rssi, f32 snr, raw packet   (delivered at the end of airtime)
+// Lock-step virtual time (--lockstep, sim/ether.py with lockstep=True):
+//   node -> broker  'L' join       (before 'H'; the broker answers with a 'G' carrying its current time)
+//                   'A' advance    u64 abs_us   (done up to now; the next thing to do is due at abs_us)
+//   broker -> node  'G' grant      u64 abs_us   (the broker's time; every reception due by then was sent first)
+// Under lock-step the socket is read only while waiting for a grant, never inside loop(): a frame becomes visible to
+// the firmware at a barrier, whatever the wall-clock moment it arrived, which is what makes a run repeatable.
 #include "target.h"
 #include "sim_config.h"
 #include "sim_clock.h"
@@ -17,6 +23,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <poll.h>
 
 struct SimRadio::Impl {
   int fd = -1;
@@ -26,7 +33,12 @@ struct SimRadio::Impl {
   uint64_t tx_end_us = 0;
   bool tx_active = false;
   float last_rssi = 0, last_snr = 0;
+  bool began = false;
+  uint64_t granted_us = 0;   // lock-step: the broker time of the last grant
+  bool got_grant = false;
 };
+
+static void lockstep_set_now(uint64_t abs_us);
 
 static void put_f32(uint8_t* p, float v) { memcpy(p, &v, 4); }
 static float get_f32(const uint8_t* p) { float v; memcpy(&v, p, 4); return v; }
@@ -49,15 +61,21 @@ static void send_frame(int fd, char type, const uint8_t* payload, size_t n) {
 SimRadio::SimRadio() : _i(new Impl()), _freq(LORA_FREQ), _bw(LORA_BW), _sf(LORA_SF), _cr(LORA_CR), _tx_dbm(0),
                        _n_recv(0), _n_sent(0), _n_err(0) {}
 
-void SimRadio::begin() {
-  if (_i->fd >= 0 || g_sim.ether.empty()) return;
+void SimRadio::connectEther() {
   int fd = socket(AF_UNIX, SOCK_STREAM, 0);
   sockaddr_un a{}; a.sun_family = AF_UNIX;
   strncpy(a.sun_path, g_sim.ether.c_str(), sizeof(a.sun_path) - 1);
   if (connect(fd, (sockaddr*)&a, sizeof a) != 0) { perror("ether connect"); exit(3); }
   fcntl(fd, F_SETFL, O_NONBLOCK);
   _i->fd = fd;
+  if (g_sim.lockstep) send_frame(fd, 'L', nullptr, 0);
   send_frame(fd, 'H', (const uint8_t*)g_sim.name.data(), g_sim.name.size());
+}
+
+void SimRadio::begin() {
+  if (_i->began || g_sim.ether.empty()) return;
+  _i->began = true;
+  if (_i->fd < 0) connectEther();
   sendParams();
 }
 
@@ -68,17 +86,30 @@ void SimRadio::sendParams() {
   send_frame(_i->fd, 'P', f, 10);
 }
 
-void SimRadio::loop() {
-  if (_i->fd < 0) return;
+// Append whatever the socket holds to the input buffer. `block`: wait (bounded) for at least one byte first.
+// Returns false once the broker has gone away.
+bool SimRadio::readEther(bool block) {
+  if (_i->fd < 0) return false;
+  if (block) {
+    pollfd p{_i->fd, POLLIN, 0};
+    if (poll(&p, 1, 1000) <= 0) return true;
+  }
   uint8_t tmp[2048];
   for (;;) {
     ssize_t n = recv(_i->fd, tmp, sizeof tmp, 0);
     if (n > 0) _i->inbuf.insert(_i->inbuf.end(), tmp, tmp + n);
-    else if (n == 0) { close(_i->fd); _i->fd = -1; break; }
+    else if (n == 0) { close(_i->fd); _i->fd = -1; return false; }
     else break;
   }
+  return true;
+}
+
+// Apply the complete frames in the input buffer, in order. With `stop_at_grant` it stops right after a 'G' (and
+// returns true), leaving later frames for the next barrier.
+bool SimRadio::parseFrames(bool stop_at_grant) {
   auto& b = _i->inbuf;
   size_t pos = 0;
+  bool grant = false;
   while (b.size() - pos >= 5) {
     uint32_t len; memcpy(&len, &b[pos], 4);
     if (b.size() - pos < 4 + len) break;
@@ -94,10 +125,44 @@ void SimRadio::loop() {
       r.len = (int)std::min<size_t>(plen - 8, sizeof r.data);
       memcpy(r.data, p + 8, r.len);
       _i->rxq.push_back(r);
+    } else if (type == 'G' && plen >= 8) {
+      memcpy(&_i->granted_us, p, 8);
+      _i->got_grant = true;
+      grant = true;
     }
     pos += 4 + len;
+    if (grant && stop_at_grant) break;
   }
   b.erase(b.begin(), b.begin() + pos);
+  return grant;
+}
+
+void SimRadio::loop() {
+  if (_i->fd < 0 || g_sim.lockstep) return;   // under lock-step the socket is read only at a barrier
+  readEther(false);
+  parseFrames(false);
+}
+
+uint64_t SimRadio::lockstepJoin() {
+  if (_i->fd < 0) connectEther();
+  _i->got_grant = false;
+  for (;;) {
+    if (parseFrames(true)) return _i->granted_us;
+    if (!readEther(true)) { fprintf(stderr, "lockstep: the ether closed the connection at join\n"); exit(3); }
+  }
+}
+
+uint64_t SimRadio::lockstepAdvance(uint64_t abs_us) {
+  if (_i->fd < 0) { fprintf(stderr, "lockstep: no ether connection\n"); exit(3); }
+  send_frame(_i->fd, 'A', (const uint8_t*)&abs_us, 8);
+  for (;;) {
+    // grants below the target only move the clock (another node's barrier came first); keep waiting
+    while (parseFrames(true)) {
+      lockstep_set_now(_i->granted_us);
+      if (_i->granted_us >= abs_us) return _i->granted_us;
+    }
+    if (!readEther(true)) { fprintf(stderr, "lockstep: the ether closed the connection\n"); exit(3); }
+  }
 }
 
 int SimRadio::recvRaw(uint8_t* bytes, int sz) {
@@ -147,3 +212,36 @@ float SimRadio::getLastSNR() const { return _i->last_snr; }
 uint32_t SimRadio::getRngSeed() { return g_sim.seed; }
 
 void sim_radio_poll() { radio_driver.loop(); }
+
+// ---------------------------------------------------------------- lock-step clock
+// Virtual time owned by the broker. A node's clock reads (granted broker time - broker time at the join), so it
+// starts at 0 at every boot as millis() does on a board, and a transmission the node starts at node time t is
+// stamped join + t by the broker, exactly.
+namespace {
+uint64_t g_ls_join = 0, g_ls_now = 0;
+
+class LockstepClock : public SimClock {
+public:
+  uint64_t nowUs() override { return g_ls_now - g_ls_join; }
+  void sleepUs(uint64_t us) override {
+    if (us == 0) return;
+    radio_driver.lockstepAdvance(g_ls_now + us);
+  }
+};
+LockstepClock g_lockstep_clock;
+}  // namespace
+
+static void lockstep_set_now(uint64_t abs_us) { if (abs_us > g_ls_now) g_ls_now = abs_us; }
+
+// Called from main() before setup(): join the broker's clock.
+void sim_lockstep_begin() {
+  g_ls_now = g_ls_join = radio_driver.lockstepJoin();
+  sim_set_clock(&g_lockstep_clock);
+}
+
+// Called after every loop(): report the end of the current quantum (on the broker's grid, so nodes stay aligned after
+// a delay()) and wait for it.
+void sim_lockstep_step() {
+  uint64_t q = g_sim.quantum_us ? g_sim.quantum_us : 1;
+  radio_driver.lockstepAdvance((g_ls_now / q + 1) * q);
+}

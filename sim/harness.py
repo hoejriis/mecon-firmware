@@ -243,7 +243,7 @@ def wifi_events(node):
 
 class Node:
     def __init__(self, kind, name, workdir, ether_path=None, seed=1, time_scale=1.0, fault=None, rtc=None, fault_before=None,
-                 binary=None, wifi=None, mqtt=None, extra=None):
+                 binary=None, wifi=None, mqtt=None, extra=None, lockstep=False, quantum_us=None):
         self.kind, self.name = kind, name
         self.dir = os.path.join(str(workdir), name)
         os.makedirs(self.dir, exist_ok=True)
@@ -258,6 +258,7 @@ class Node:
             wifi.set("sim")
         self.wifi = wifi
         self.mqtt = mqtt
+        self.lockstep, self.quantum_us = lockstep, quantum_us   # --lockstep: the ether broker owns the clock
         self.extra = list(extra or [])   # further node command-line options, e.g. ["--heap-budget", "60000"]
         self.ui = UiProbe(workdir, name) if kind == "companion_standalone" else None
         self.heap_path = os.path.join(str(workdir), name + ".heap")   # --heap-file: the heap the node reports at run time
@@ -274,6 +275,10 @@ class Node:
                "--seed", str(self.seed), "--time-scale", str(self.time_scale)]
         if self.ether_path:
             cmd += ["--ether", self.ether_path]
+        if self.lockstep:
+            cmd += ["--lockstep"]
+            if self.quantum_us:
+                cmd += ["--quantum-us", str(int(self.quantum_us))]
         if self.fault:
             cmd += ["--fault", self.fault]
         if self.fault_before:

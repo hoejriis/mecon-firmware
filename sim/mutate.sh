@@ -758,6 +758,8 @@ mutate duty_sensor_channel_not_reported examples/simple_sensor/SensorMesh.h "ret
 mutate duty_sensor_temp_radio_not_tracked examples/simple_sensor/SensorMesh.cpp "    radio_freq = pending_freq; radio_bw = pending_bw;" "" sim/tests/test_duty_roles.py
 mutate duty_secure_chat_channel_not_reported examples/simple_secure_chat/main.cpp "return _radio_freq > 0;" "return false;" sim/tests/test_duty_roles.py
 mutate duty_secure_chat_channel_not_noted examples/simple_secure_chat/main.cpp "  the_mesh.noteRadioApplied(the_mesh.getFreqPref(), LORA_BW);" "" sim/tests/test_duty_roles.py
+# lock-step virtual time (Issue #65): a node that reads the wall clock under --lockstep is not repeatable
+mutate lockstep_node_reads_the_wall_clock variants/sim/sim_radio.cpp "  uint64_t nowUs() override { return g_ls_now - g_ls_join; }" "  uint64_t nowUs() override { return sim_real_clock()->nowUs(); }" sim/tests/test_lockstep.py::test_the_same_seeds_give_the_same_transmissions
 # --- the Companion's mesh path (sim/tests/test_mesh_protocol.py, #63): ACK, path learning, advert auto-add
 mutate mesh_ack_not_sent_in_the_returned_path src/helpers/BaseChatMesh.cpp "PAYLOAD_TYPE_ACK, (uint8_t *) &ack_hash, 6);
         if (path) sendFloodScoped(from, path, TXT_ACK_DELAY);" "PAYLOAD_TYPE_ACK, (uint8_t *) &ack_hash, 6);" sim/tests/test_mesh_protocol.py::test_direct_message_is_acknowledged_flood_and_direct

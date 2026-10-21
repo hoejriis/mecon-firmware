@@ -171,6 +171,41 @@ def test_room_server_gets_the_floor_too(fast_ether, nodes):
     assert duty >= 0.004
 
 
+@pytest.mark.lockstep()
+def test_room_server_gets_the_floor_too_lockstep(ether, nodes):
+    """The room-server test on lock-step virtual time (1 ms quanta). The broker stamps every transmission with the
+    time the node started it, so the limit is asserted on the channel without slack, and the use of the limit is
+    bounded from below by what the firmware's window is documented to give away, not by a tolerance."""
+    e = ether
+    room = Repeater(nodes, e, "room", 11, 868.1, 125, user="set af 0", kind="room_server")
+    m = BAND.match(room.cli("get dutycycle"))
+    assert m and m.group(1) == "868.000-868.600" and m.group(2) == "1.00" and m.group(3) == "1.00%", m
+    t_boot = room.t_boot
+    end = t_boot + 1.25 * HOUR_S * 1e6
+    while e.now_us() < end:
+        room.pump()
+        time.sleep(0.003)
+    limit_us = 0.01 * HOUR_S * 1e6
+    txs = [t for t in e.tx_of("room") if t.start_us >= t_boot and t.start_us + t.toa_us <= end]
+    worst = e.max_airtime_in_window_us("room", 3600e6, since_us=t_boot)
+    # Everything the node can leave unused in the busiest hour, from DutyWindow.h and Dispatcher.cpp:
+    #  * the window has 121 bins of 30 s, so up to one bin more than the hour is counted: 30/3630 of the limit;
+    #  * the hour is seeded at the limit on boot and the seed ages out over the 3630 s window, so the hour that ends
+    #    the run (1.25 h after boot) still overlaps the window's first 900 s: (3630 - 3600) s at the limit rate is
+    #    the same 30 s, already counted above;
+    #  * a packet that does not fit waits, so the last one may be missing: the largest packet sent;
+    #  * each packet is charged max(estimate rounded to 1 ms, the send's duration on the 1 ms clock), at most
+    #    1 ms more than its time on air: 1 ms per packet in the hour.
+    unused = limit_us * 30 / 3630 + max(t.toa_us for t in txs) + 1000 * len(txs)
+    print("MEASURED room lock-step: max sliding hour %.6f s of %.0f s (%.4f %%), %d packets, floor %.6f s"
+          % (worst / 1e6, limit_us / 1e6, worst / limit_us * 100, len(txs), (limit_us - unused) / 1e6))
+    # exact stamps: every start on the 1 ms grid of a barrier, no packet before the previous one ended
+    assert all(t.start_us % 1000 == 0 for t in txs)
+    assert all(b.start_us >= a.start_us + a.toa_us for a, b in zip(txs, txs[1:]))
+    assert worst <= limit_us, "room server reached %.6f s of a %.0f s hour" % (worst / 1e6, limit_us / 1e6)
+    assert worst >= limit_us - unused, "room server used only %.6f s of %.0f s" % (worst / 1e6, limit_us / 1e6)
+
+
 # ---------------------------------------------------------------------------------------------- reboots
 def test_reboots_do_not_reset_the_hour(fast_ether, nodes):
     """A node at full rate that is power-cycled every 5 virtual minutes stays within its limit in every sliding
