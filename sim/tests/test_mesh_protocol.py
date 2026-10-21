@@ -59,6 +59,10 @@ def _pair(ether, nodes):
     assert ether.wait_for_nodes(["ca", "cb", "rr"])
     ether.set_link("ca", "rr")
     ether.set_link("cb", "rr")
+    _ETHER[:] = [ether]
+    # the repeater's boot advert goes out about 16 s (virtual) after start; a message sent while it is on air can lose
+    # its ACK to the collision, and the stock Companion never resends. Start once it has gone out.
+    assert _wait_for(lambda: any(_ptype(t) == PT_ADVERT for t in ether.tx_of("rr"))), "the repeater never advertised"
     a, b = CompanionClient(ca), CompanionClient(cb)
     for c in (a, b):
         c.device_query()
@@ -75,8 +79,16 @@ def _send(client, to_pub, text, ts, attempt=0):
     return {"flood": f[1] == 1, "ack": f[2:6], "est_timeout": struct.unpack_from("<I", f, 6)[0]}
 
 
+_ETHER = []   # the ether of the running test, for the diagnostic dump below
+
+
 def _confirmed(client, timeout=60.0):
     f = client.wait_push(PUSH_SEND_CONFIRMED, timeout=timeout)
+    if f is None and _ETHER:
+        # what was on air, so a lost ACK names its cause (collision, loss, never sent) instead of a bare timeout
+        tail = ["%s t=%.2fs type=%d route=%d delivered=%s lost=%s" % (t.src, t.start_us / 1e6, _ptype(t), _route(t),
+                                                                       t.delivered_to, t.lost) for t in _ETHER[0].tx_log[-20:]]
+        raise AssertionError("no PUSH_CODE_SEND_CONFIRMED; last transmissions:\n  " + "\n  ".join(tail))
     assert f is not None, "no PUSH_CODE_SEND_CONFIRMED"
     return {"ack": f[1:5], "rtt": struct.unpack_from("<I", f, 5)[0]}
 
