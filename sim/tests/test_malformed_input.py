@@ -32,9 +32,13 @@ def test_truncated_trace_packets_do_not_crash_the_node(ether, nodes, kind):
     assert ether.wait_for_nodes(["victim"])
     for _ in range(3):
         for pkt in truncated_traces():
-            ether.inject("victim", pkt)
+            try:
+                ether.inject("victim", pkt)
+            except KeyError:
+                break             # the node died and the broker dropped it: the assertion below reports why
             time.sleep(0.05)
-    time.sleep(1.0)
+    # 5 virtual s to process the last ones (time stands still once a dead node has left, hence the short timeout)
+    ether.wait_until_us(ether.now_us() + 5e6, timeout=10)
     assert n.proc.poll() is None, "node died: " + n.sanitizer_report()[:2000]
     assert n.sanitizer_report() == ""
     # and it still serves its console / app protocol
