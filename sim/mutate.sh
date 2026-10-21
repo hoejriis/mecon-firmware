@@ -83,9 +83,7 @@ mutate radio_drops_all variants/sim/sim_radio.cpp "if (_i->rxq.empty() || _i->tx
 mutate fs_write_discarded variants/sim/sim_fs.cpp "size_t w = fwrite(buf, 1, n, _p->fp);" "size_t w = n;" sim/tests/test_repeater_cli.py
 mutate fault_hook_disabled variants/sim/sim_fs.cpp "if (g_sim.fault_after >= 0 && _p->fs_path == g_sim.fault_path) {" "if (false) {" sim/tests/test_atomic_storage.py::test_prefs_cut_in_temp_file_keeps_previous_prefs
 # --- the stock-gap fixes: undo each fix and its test must go red
-mutate swap_not_recovered src/helpers/AtomicFile.h "  if (fs->exists(nw)) {
-    if (!fs->exists(path)) fs->rename(nw, path);" "  if (false) {
-    if (!fs->exists(path)) fs->rename(nw, path);" sim/tests/test_atomic_storage.py
+mutate swap_not_recovered src/helpers/AtomicFile.h "  if (BootPresence::mayExist(nw) && fs->exists(nw)) {" "  if (false) {" sim/tests/test_atomic_storage.py
 mutate damaged_identity_deleted src/helpers/IdentityStore.cpp "_fs->rename(filename, damaged);" "_fs->remove(filename);" sim/tests/test_atomic_storage.py::test_damaged_identity_is_kept_aside_not_overwritten
 mutate prefs_written_in_place src/helpers/CommonCLI.cpp 'return AtomicFile::save(fs, "/prefs.json", [this](Stream& s) { return _prefs->saveSerial(s); });' 'File f = fs->open("/prefs.json", "w", true); bool ok = f && _prefs->saveSerial(f); if (f) f.close(); return ok;' sim/tests/test_atomic_storage.py::test_prefs_cut_in_temp_file_keeps_previous_prefs
 mutate trace_short_payload_accepted src/Mesh.cpp "pkt->path_len < MAX_PATH_SIZE && pkt->payload_len >= 9" "pkt->path_len < MAX_PATH_SIZE" sim/tests/test_malformed_input.py::test_truncated_trace_packets_do_not_crash_the_node
@@ -626,6 +624,14 @@ mutate ver_script_any_tag bin/mecon_version.py '"--match", "v[0-9]*"' '"--match"
 mutate boot_get_command_missing src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.boot") == 0' 'strcmp(cmd, "get mecon.bootx") == 0' sim/tests/test_boot_times.py
 mutate boot_companion_setup_unmarked examples/companion_radio/main.cpp 'mecon::boot::mark(mecon::boot::SETUP, millis());' '/* unmarked */' sim/tests/test_boot_times.py::test_companion_reports_store_mesh_and_setup_in_order
 mutate boot_repeater_mesh_unmarked examples/simple_repeater/main.cpp 'mecon::boot::mark(mecon::boot::MESH, millis());' '/* unmarked */' sim/tests/test_boot_times.py::test_repeater_and_room_server_report_mesh_and_setup
+
+# boot looks up no file that is not there (#43): one listing at boot answers the lookups
+mutate boot_presence_never_listed examples/companion_radio/main.cpp '  BootPresence::begin(SPIFFS);   // one listing' '  // BootPresence::begin(SPIFFS);   // one listing' $CT_SIM::test_boot_looks_up_no_file_that_is_not_there
+mutate boot_presence_recover_ignores_listing src/helpers/AtomicFile.h '  if (BootPresence::mayExist(tmp) && fs->exists(tmp)) fs->remove(tmp);   // never verified' '  if (fs->exists(tmp)) fs->remove(tmp);   // never verified' $CT_SIM::test_boot_looks_up_no_file_that_is_not_there
+mutate boot_presence_says_absent_for_everything src/helpers/BootPresence.h '  if (!s.active) return true;
+  const char* b = baseName(path);' '  if (!s.active) return true;
+  return false;
+  const char* b = baseName(path);' $CT_SIM::test_a_swap_left_by_a_power_cut_in_a_high_bucket_is_recovered_at_boot
 
 # the CLI reference page is checked against the registry and the MECON handlers
 mutate cli_reference_registry_row_misspelt docs/CLI_REFERENCE.md '| `neighbors` | List nearby repeaters heard.' '| `neighbours` | List nearby repeaters heard.' sim/tests/test_cli_reference_sync.py

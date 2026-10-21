@@ -1,5 +1,6 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <helpers/BootTimes.h>
+#include <helpers/BootPresence.h>
 #include <Mesh.h>
 #include "MyMesh.h"
 #include <helpers/HeapFloor.h>
@@ -185,9 +186,11 @@ void setup() {
   mecon::boot::mark(mecon::boot::MESH, millis());
 #elif defined(ESP32)
   SPIFFS.begin(true);
+  BootPresence::begin(SPIFFS);   // one listing, so boot looks up no file that is not there (helpers/BootPresence.h)
   store.begin();
   mecon::boot::mark(mecon::boot::STORE, millis());
   the_mesh.begin();
+  BootPresence::end();
   mecon::boot::mark(mecon::boot::MESH, millis());
 #else
   #error "need to define filesystem"

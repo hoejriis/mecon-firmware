@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from sim.harness import (CompanionClient, ERR_TABLE_FULL, PUSH_CONTACT_DELETED, RESP_ERR)
+from sim.harness import (node_log, CompanionClient, ERR_TABLE_FULL, PUSH_CONTACT_DELETED, RESP_ERR)
 
 RTC = 1760000000
 DAY = 86400
@@ -437,7 +437,7 @@ def _calls_after_boot(node, calls):
     c.device_query()
     with open(calls) as f:
         got = {k: int(v) for k, v in (kv.split("=") for kv in f.read().split())}
-    got["all"] = sum(got.values())
+    got["all"] = sum(v for k, v in got.items() if k != "missing")   # "missing" re-counts calls already counted
     print("FSCALLS", os.path.basename(calls), got, "files", len(os.listdir(node.dir)))
     return c, got
 
@@ -468,6 +468,28 @@ def test_boot_file_system_calls_follow_the_files_present_with_350_contacts(nodes
     assert got["exists"] <= 30 and got["all"] <= 60 + 4 * files, "boot used %r file system calls for %d files" % (got, files)
     count, _ = c.get_contacts()
     assert count == 350, "every contact is still loaded"
+
+
+def test_boot_looks_up_no_file_that_is_not_there(nodes, tmp_path):
+    # On SPIFFS a lookup that finds nothing scans the whole file table: about 0.9 s per lookup on a Heltec V4, and a
+    # steady-state boot used to make 15 of them (the .tmp/.new leftovers recover() checks for, and data files not yet
+    # written). One listing at boot (helpers/BootPresence.h) now answers those: none is looked up.
+    node, calls = _counted(nodes, tmp_path, "nolookup")
+    node.start()
+    c, first = _calls_after_boot(node, calls)
+    assert first["missing"] == 0, "first boot looked up missing files: %r" % [
+        l for l in node_log(node).splitlines() if l.startswith("SIMFS missing")]
+    for i in range(20):
+        assert c.add_contact_full(key(i), "n-%d" % i, lastmod=RTC + i)[0] == 0
+    reboot_and_wait(node, c)
+    open(calls, "w").close()
+    before = len(node_log(node).splitlines())
+    node.start()
+    c, again = _calls_after_boot(node, calls)
+    assert again["missing"] == 0, "a steady-state boot looked up missing files: %r" % [
+        l for l in node_log(node).splitlines()[before:] if l.startswith("SIMFS missing")]
+    count, _ = c.get_contacts()
+    assert count == 20, "every contact is still loaded"
 
 
 def test_a_swap_left_by_a_power_cut_in_a_high_bucket_is_recovered_at_boot(nodes, tmp_path):
