@@ -62,8 +62,10 @@ class SerialBLEInterface : public BaseSerialInterface {
     }
   }
 
-  void dropClient(const char* why) {
-    if (_client >= 0) { close(_client); logLine(why); }
+  // The log line is written before the central can observe the outcome (the reply or the close), so a test that reads
+  // the node log as soon as its connection returns always finds it.
+  void dropClient(const char* why, bool logged = false) {
+    if (_client >= 0) { if (!logged) logLine(why); close(_client); }
     _client = -1;
     _paired = false;
     _line_len = 0;
@@ -71,6 +73,7 @@ class SerialBLEInterface : public BaseSerialInterface {
   }
 
   void sendText(const char* s) { send(_client, s, strlen(s), MSG_NOSIGNAL); }
+  void reject(const char* why) { logLine(why); sendText("REJECT\n"); dropClient(why, true); }
 
   // Accept a central; read the pairing line; detect a dropped link. Called every main-loop pass.
   void pump() {
@@ -97,8 +100,8 @@ class SerialBLEInterface : public BaseSerialInterface {
         return;
       }
       if (ch != '\n') {
-        if (_line_len == 0 && ch != 'P') { sendText("REJECT\n"); dropClient("pairing rejected: data before pairing"); return; }
-        if (_line_len >= sizeof(_line) - 1) { sendText("REJECT\n"); dropClient("pairing rejected: not a pairing line"); return; }
+        if (_line_len == 0 && ch != 'P') { reject("pairing rejected: data before pairing"); return; }
+        if (_line_len >= sizeof(_line) - 1) { reject("pairing rejected: not a pairing line"); return; }
         _line[_line_len++] = ch;
         continue;
       }
@@ -108,11 +111,10 @@ class SerialBLEInterface : public BaseSerialInterface {
       const unsigned long given = shaped ? strtoul(_line + 5, &end, 10) : 0;
       if (shaped && end && end != _line + 5 && *end == 0 && (uint32_t)given == _pin) {
         _paired = true;
-        sendText("PAIRED\n");
         logLine("paired");
+        sendText("PAIRED\n");
       } else {
-        sendText("REJECT\n");
-        dropClient("pairing rejected");
+        reject("pairing rejected");
       }
       return;
     }
