@@ -1,4 +1,5 @@
 #include <Arduino.h>   // needed for PlatformIO
+#include <helpers/BootTimes.h>
 #include <Mesh.h>
 #include "MyMesh.h"
 #include <helpers/HeapFloor.h>
@@ -173,15 +174,21 @@ void setup() {
   #endif
   #endif
   store.begin();
+  mecon::boot::mark(mecon::boot::STORE, millis());
   the_mesh.begin();
+  mecon::boot::mark(mecon::boot::MESH, millis());
 #elif defined(RP2040_PLATFORM)
   LittleFS.begin();
   store.begin();
+  mecon::boot::mark(mecon::boot::STORE, millis());
   the_mesh.begin();
+  mecon::boot::mark(mecon::boot::MESH, millis());
 #elif defined(ESP32)
   SPIFFS.begin(true);
   store.begin();
+  mecon::boot::mark(mecon::boot::STORE, millis());
   the_mesh.begin();
+  mecon::boot::mark(mecon::boot::MESH, millis());
 #else
   #error "need to define filesystem"
 #endif
@@ -312,6 +319,7 @@ void setup() {
 #endif
 
   board.onBootComplete();
+  mecon::boot::mark(mecon::boot::SETUP, millis());
 }
 
 void loop() {

@@ -9,6 +9,7 @@
 //   get mecon.mem                 heap free now, largest allocatable block, lowest free since boot (where tracked), and the
 //                                 heap floor check: heap_low=1|0 and floor=<bytes> (0 = no check on this role or platform)
 //   get mecon.version             the build's full identity and the upstream base it carries (helpers/MeconVersion.h)
+//   get mecon.boot                millis() when the store was loaded, the mesh started and setup ended (helpers/BootTimes.h)
 //
 // All are reads. Pure logic: runs in the native unit tests.
 
@@ -18,6 +19,7 @@
 #include "../MemStats.h"
 #include "../HeapFloor.h"
 #include "../MeconVersion.h"
+#include "../BootTimes.h"
 
 namespace Cli {
 
@@ -108,6 +110,10 @@ inline void formatMem(const MemStats& m, const HeapFloor& floor, char* reply, si
 inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char* reply, size_t max) {
   if (strcmp(cmd, "get mecon.mem") == 0) {
     formatMem(memStats(), heapFloor(), reply, max);
+    return true;
+  }
+  if (strcmp(cmd, "get mecon.boot") == 0) {
+    mecon::boot::format(reply, max);
     return true;
   }
   if (strcmp(cmd, "get mecon.version") == 0) {

@@ -78,6 +78,7 @@ Tests that wait on a node's first transmission after a boot are marked `@pytest.
 
 ## Test inventory
 
+* `test_boot_times.py` – `get mecon.boot` on every role: the stage times are present and in order (store ≤ mesh ≤ setup on the Companion; `n/a` for the store stage on the Repeater and Room server).
 * `test_toa.py` – node's time on air against an independent restatement of the Semtech
   formula for five SF/BW/CR/length combinations (within 1 ms) and two published values.
 * `test_repeater_cli.py` – `ver`, `get name`, `set name` and persistence across a restart.

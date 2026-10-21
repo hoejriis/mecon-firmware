@@ -623,6 +623,10 @@ mutate ver_get_command_missing src/helpers/cli/MeconCli.h 'strcmp(cmd, "get meco
 mutate ver_script_ignores_dirty bin/mecon_version.py '"--match", "v[0-9]*", "--dirty"]' '"--match", "v[0-9]*"]' sim/tests/test_mecon_version.py::test_build_script_defines_the_describe_string_for_tag_dev_dirty_and_no_git
 mutate ver_script_any_tag bin/mecon_version.py '"--match", "v[0-9]*"' '"--match", "*"' sim/tests/test_mecon_version.py::test_build_script_defines_the_describe_string_for_tag_dev_dirty_and_no_git
 
+mutate boot_get_command_missing src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.boot") == 0' 'strcmp(cmd, "get mecon.bootx") == 0' sim/tests/test_boot_times.py
+mutate boot_companion_setup_unmarked examples/companion_radio/main.cpp 'mecon::boot::mark(mecon::boot::SETUP, millis());' '/* unmarked */' sim/tests/test_boot_times.py::test_companion_reports_store_mesh_and_setup_in_order
+mutate boot_repeater_mesh_unmarked examples/simple_repeater/main.cpp 'mecon::boot::mark(mecon::boot::MESH, millis());' '/* unmarked */' sim/tests/test_boot_times.py::test_repeater_and_room_server_report_mesh_and_setup
+
 # the CLI reference page is checked against the registry and the MECON handlers
 mutate cli_reference_registry_row_misspelt docs/CLI_REFERENCE.md '| `neighbors` | List nearby repeaters heard.' '| `neighbours` | List nearby repeaters heard.' sim/tests/test_cli_reference_sync.py
 mutate cli_reference_mecon_command_renamed src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.mem") == 0' 'strcmp(cmd, "get mecon.memx") == 0' sim/tests/test_cli_reference_sync.py
