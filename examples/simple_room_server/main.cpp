@@ -1,4 +1,5 @@
 #include <Arduino.h>   // needed for PlatformIO
+#include <helpers/BootTimes.h>
 #include <Mesh.h>
 
 #include "MyMesh.h"
@@ -91,6 +92,8 @@ void setup() {
 
   the_mesh.begin(fs);
 
+  mecon::boot::mark(mecon::boot::MESH, millis());
+
 #ifdef DISPLAY_CLASS
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
 #endif
@@ -105,6 +108,7 @@ void setup() {
 #endif
 
   board.onBootComplete();
+  mecon::boot::mark(mecon::boot::SETUP, millis());
 }
 
 void loop() {

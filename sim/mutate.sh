@@ -467,7 +467,6 @@ mutate contacts_rebuild_damaged_not_reported_unit $CS '  if (damaged_out) *damag
   if (isolated_out)' '  if (isolated_out)' unit:test_contact_store
 mutate contacts_device_query_wraps examples/companion_radio/MyMesh.cpp '      out_frame[i++] = half > 255 ? 255 : half;   // v3+' '      out_frame[i++] = half;   // v3+' $CT_SIM::test_device_query_reports_half_the_capacity_capped_at_one_byte
 
-if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 # --- the unified command-line engine (docs/CLI.md): one mutant per rule of the privilege table, one per rule of the
 # --- registry and the adapters. The rules that used to sit in the paths below (transport trust, the remote CLI limits, the
 # --- postures, the default-password rule, set prv.key, the write-only secrets) now live in the table; each mutant breaks
@@ -623,6 +622,11 @@ mutate ver_get_command_missing src/helpers/cli/MeconCli.h 'strcmp(cmd, "get meco
 mutate ver_script_ignores_dirty bin/mecon_version.py '"--match", "v[0-9]*", "--dirty"]' '"--match", "v[0-9]*"]' sim/tests/test_mecon_version.py::test_build_script_defines_the_describe_string_for_tag_dev_dirty_and_no_git
 mutate ver_script_any_tag bin/mecon_version.py '"--match", "v[0-9]*"' '"--match", "*"' sim/tests/test_mecon_version.py::test_build_script_defines_the_describe_string_for_tag_dev_dirty_and_no_git
 
+mutate mem_psram_not_reported src/helpers/cli/MeconCli.h 'if (m.psram && n > 0' 'if (false && n > 0' unit:test_heap_floor
+mutate boot_get_command_missing src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.boot") == 0' 'strcmp(cmd, "get mecon.bootx") == 0' sim/tests/test_boot_times.py
+mutate boot_companion_setup_unmarked examples/companion_radio/main.cpp 'mecon::boot::mark(mecon::boot::SETUP, millis());' '/* unmarked */' sim/tests/test_boot_times.py::test_companion_reports_store_mesh_and_setup_in_order
+mutate boot_repeater_mesh_unmarked examples/simple_repeater/main.cpp 'mecon::boot::mark(mecon::boot::MESH, millis());' '/* unmarked */' sim/tests/test_boot_times.py::test_repeater_and_room_server_report_mesh_and_setup
+
 # the CLI reference page is checked against the registry and the MECON handlers
 mutate cli_reference_registry_row_misspelt docs/CLI_REFERENCE.md '| `neighbors` | List nearby repeaters heard.' '| `neighbours` | List nearby repeaters heard.' sim/tests/test_cli_reference_sync.py
 mutate cli_reference_mecon_command_renamed src/helpers/cli/MeconCli.h 'strcmp(cmd, "get mecon.mem") == 0' 'strcmp(cmd, "get mecon.memx") == 0' sim/tests/test_cli_reference_sync.py
@@ -697,8 +701,8 @@ mutate heap_floor_first_look_a_period_late_sim src/helpers/HeapFloor.h "return e
 mutate heap_floor_period_ignored src/helpers/HeapFloor.h "return enabled() && (!_primed || (uint32_t)(now_ms - _last) >= _period); }" "return enabled(); }" unit:test_heap_floor
 mutate heap_floor_unmeasurable_fires src/helpers/HeapFloor.h "if (!enabled() || !m.known) return false;" "if (!enabled()) return false;" unit:test_heap_floor
 mutate heap_floor_default_value_changed src/helpers/HeapFloor.h "#define HEAP_FLOOR_BYTES 20480 " "#define HEAP_FLOOR_BYTES 10240 " sim/tests/test_heap_floor.py::test_a_healthy_heap_reports_no_low_state_and_the_default_floor
-mutate heap_floor_flag_not_reported src/helpers/cli/MeconCli.h "floor.low() ? 1 : 0, (unsigned long)floor.floorBytes());" "0, (unsigned long)floor.floorBytes());" unit:test_heap_floor
-mutate heap_floor_flag_not_reported_sim src/helpers/cli/MeconCli.h "floor.low() ? 1 : 0, (unsigned long)floor.floorBytes());" "0, (unsigned long)floor.floorBytes());" sim/tests/test_heap_floor.py::test_an_episode_starts_below_the_floor_holds_until_the_hysteresis_and_ends
+mutate heap_floor_flag_not_reported src/helpers/cli/MeconCli.h "floor.low() ? 1 : 0," "0," unit:test_heap_floor
+mutate heap_floor_flag_not_reported_sim src/helpers/cli/MeconCli.h "floor.low() ? 1 : 0," "0," sim/tests/test_heap_floor.py::test_an_episode_starts_below_the_floor_holds_until_the_hysteresis_and_ends
 mutate heap_floor_value_not_reported src/helpers/cli/MeconCli.h "(unsigned long)floor.floorBytes());" "0UL);" unit:test_heap_floor
 mutate heap_floor_marker_dropped src/helpers/connmode/ConnStatus.h "  if (!s.heap_low) return;" "  return;" unit:test_heap_floor
 mutate heap_floor_marker_dropped_sim src/helpers/connmode/ConnStatus.h "  if (!s.heap_low) return;" "  return;" sim/tests/test_heap_floor.py::test_the_marker_is_on_the_home_status_line_only_while_low
@@ -759,6 +763,8 @@ mutate mesh_autoadd_flag_ignored_always_add examples/companion_radio/MyMesh.cpp 
 mutate mesh_autoadd_flag_ignored_never_add examples/companion_radio/MyMesh.cpp "  if ((_prefs.manual_add_contacts & 1) == 0) {
     return true;" "  if (false) {
     return true;" sim/tests/test_mesh_protocol.py::test_heard_advert_is_added_as_a_contact_when_auto_add_is_on
+# --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
+if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 

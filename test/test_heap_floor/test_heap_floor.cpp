@@ -151,6 +151,21 @@ TEST(HeapFloorReply, MemReportsTheFlagAndTheFloor) {
   EXPECT_STREQ(r, "> heap: not measurable on this platform");
 }
 
+// On a board with PSRAM (Heltec V4) the figures are internal RAM and the PSRAM is reported beside them, so a large
+// PSRAM block can never hide internal RAM running out.
+TEST(HeapFloorReply, PsramIsReportedApartAndDoesNotMaskLowInternalRam) {
+  char r[200];
+  HeapFloor h;
+  h.begin(FLOOR, HYST, PERIOD);
+  MemStats m = mem(40000, 100);
+  m.psram = 2031604;
+  Posture::AuditRing a;
+  h.check(0, 1, m, a);
+  EXPECT_TRUE(h.low());
+  Cli::formatMem(m, h, r, sizeof(r));
+  EXPECT_STREQ(r, "> heap free=40000 largest=100 min_free=0 heap_low=1 floor=20480 psram_free=2031604");
+}
+
 TEST(HeapFloorScreen, TheHomeLineCarriesLowMemWhenItFitsAndAloneWhenItDoesNot) {
   ConnMode::ConnStatus s;
   char out[64];

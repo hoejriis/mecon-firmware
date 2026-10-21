@@ -1,0 +1,23 @@
+# Size budget per target environment: the most flash and static RAM a build may use, in bytes.
+# The target-boards workflow fails when a build goes over its budget. Raise a budget in the same PR that
+# needs it, and say why in the commit message. Seeded 2026-10-21 from main (dd5c9c44): use + 4 KB, rounded up
+# to a whole KB.
+# environment                             flash        ram
+Heltec_v3_companion_radio_ble           1704960     135168
+Heltec_v3_companion_radio_standalone    1881088     141312
+Heltec_v3_companion_radio_usb            685056      43008
+Heltec_v3_companion_radio_wifi          1314816     118784
+Heltec_v3_repeater                      1195008      67584
+Heltec_v3_room_server                   1189888      71680
+heltec_v4_companion_radio_ble           1703936     135168
+heltec_v4_companion_radio_standalone    1880064     141312
+heltec_v4_companion_radio_usb            683008      43008
+heltec_v4_companion_radio_wifi          1312768     118784
+heltec_v4_repeater                      1192960      67584
+heltec_v4_room_server                   1187840      71680
+t1000e_companion_radio_ble               352256      84992
+t1000e_companion_radio_usb               346112      80896
+t1000e_repeater                          318464      37888
+WioTrackerL1_companion_radio_ble         448512      88064
+WioTrackerL1_companion_radio_usb         440320      83968
+WioTrackerL1_repeater                    401408      40960
