@@ -467,7 +467,6 @@ mutate contacts_rebuild_damaged_not_reported_unit $CS '  if (damaged_out) *damag
   if (isolated_out)' '  if (isolated_out)' unit:test_contact_store
 mutate contacts_device_query_wraps examples/companion_radio/MyMesh.cpp '      out_frame[i++] = half > 255 ? 255 : half;   // v3+' '      out_frame[i++] = half;   // v3+' $CT_SIM::test_device_query_reports_half_the_capacity_capped_at_one_byte
 
-if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 # --- the unified command-line engine (docs/CLI.md): one mutant per rule of the privilege table, one per rule of the
 # --- registry and the adapters. The rules that used to sit in the paths below (transport trust, the remote CLI limits, the
 # --- postures, the default-password rule, set prv.key, the write-only secrets) now live in the table; each mutant breaks
@@ -699,8 +698,8 @@ mutate heap_floor_first_look_a_period_late_sim src/helpers/HeapFloor.h "return e
 mutate heap_floor_period_ignored src/helpers/HeapFloor.h "return enabled() && (!_primed || (uint32_t)(now_ms - _last) >= _period); }" "return enabled(); }" unit:test_heap_floor
 mutate heap_floor_unmeasurable_fires src/helpers/HeapFloor.h "if (!enabled() || !m.known) return false;" "if (!enabled()) return false;" unit:test_heap_floor
 mutate heap_floor_default_value_changed src/helpers/HeapFloor.h "#define HEAP_FLOOR_BYTES 20480 " "#define HEAP_FLOOR_BYTES 10240 " sim/tests/test_heap_floor.py::test_a_healthy_heap_reports_no_low_state_and_the_default_floor
-mutate heap_floor_flag_not_reported src/helpers/cli/MeconCli.h "floor.low() ? 1 : 0, (unsigned long)floor.floorBytes());" "0, (unsigned long)floor.floorBytes());" unit:test_heap_floor
-mutate heap_floor_flag_not_reported_sim src/helpers/cli/MeconCli.h "floor.low() ? 1 : 0, (unsigned long)floor.floorBytes());" "0, (unsigned long)floor.floorBytes());" sim/tests/test_heap_floor.py::test_an_episode_starts_below_the_floor_holds_until_the_hysteresis_and_ends
+mutate heap_floor_flag_not_reported src/helpers/cli/MeconCli.h "floor.low() ? 1 : 0," "0," unit:test_heap_floor
+mutate heap_floor_flag_not_reported_sim src/helpers/cli/MeconCli.h "floor.low() ? 1 : 0," "0," sim/tests/test_heap_floor.py::test_an_episode_starts_below_the_floor_holds_until_the_hysteresis_and_ends
 mutate heap_floor_value_not_reported src/helpers/cli/MeconCli.h "(unsigned long)floor.floorBytes());" "0UL);" unit:test_heap_floor
 mutate heap_floor_marker_dropped src/helpers/connmode/ConnStatus.h "  if (!s.heap_low) return;" "  return;" unit:test_heap_floor
 mutate heap_floor_marker_dropped_sim src/helpers/connmode/ConnStatus.h "  if (!s.heap_low) return;" "  return;" sim/tests/test_heap_floor.py::test_the_marker_is_on_the_home_status_line_only_while_low
@@ -750,6 +749,8 @@ mutate duty_sensor_channel_not_reported examples/simple_sensor/SensorMesh.h "ret
 mutate duty_sensor_temp_radio_not_tracked examples/simple_sensor/SensorMesh.cpp "    radio_freq = pending_freq; radio_bw = pending_bw;" "" sim/tests/test_duty_roles.py
 mutate duty_secure_chat_channel_not_reported examples/simple_secure_chat/main.cpp "return _radio_freq > 0;" "return false;" sim/tests/test_duty_roles.py
 mutate duty_secure_chat_channel_not_noted examples/simple_secure_chat/main.cpp "  the_mesh.noteRadioApplied(the_mesh.getFreqPref(), LORA_BW);" "" sim/tests/test_duty_roles.py
+# --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
+if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 
