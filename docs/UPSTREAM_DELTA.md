@@ -125,3 +125,7 @@ Temporary space: a save needs room for one extra copy of the file being replaced
 | `MeshTracker_X1_kiss_modem` | `MicroNMEA.h` not found |
 | `ThinkNode_M5_companion_radio_serial` | `D6`/`D7` not declared |
 | `examples/companion_radio/MyMesh.h`, `examples/simple_repeater/MyMesh.h`, `examples/simple_room_server/MyMesh.h`, `examples/simple_sensor/SensorMesh.h`, `examples/companion_radio/MyMesh.cpp` (`ver`), `platformio.ini`, `build.sh` | `FIRMWARE_VERSION` defaults to `mecon::versionShort()` (`v1.18.0-mecon.<tag>`) instead of the literal `v1.18.0`; `getFirmwareVer()` and the Companion `ver` return the full form; the platform bases run `bin/mecon_version.py`; `build.sh` no longer sets `-DFIRMWARE_VERSION`. `FIRMWARE_VER_CODE` is unchanged | A build identifies itself as mecon-firmware while keeping the upstream base first. See VERSIONING_AND_RELEASES.md. |
+
+## Board exceptions
+
+- `LilyGo_TLora_V2_1_1_6_companion_radio_ble` is built without the VL53L0X distance-sensor driver (`-UENV_INCLUDE_VL53L0X`). With it, the image is 1,974,577 B, 8,497 B over the 1,966,080 B app partition of `min_spiffs.csv`. A larger partition would mean dropping OTA on a 4 MB board. Without the driver the image is 1,931,673 B (98.2 %). Every other sensor driver is kept. The repeater and room-server builds of the board are unchanged.
