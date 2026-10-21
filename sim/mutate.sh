@@ -771,6 +771,9 @@ mutate mesh_autoadd_flag_ignored_always_add examples/companion_radio/MyMesh.cpp 
 mutate mesh_autoadd_flag_ignored_never_add examples/companion_radio/MyMesh.cpp "  if ((_prefs.manual_add_contacts & 1) == 0) {
     return true;" "  if (false) {
     return true;" sim/tests/test_mesh_protocol.py::test_heard_advert_is_added_as_a_contact_when_auto_add_is_on
+# lock-step (Issue #65 phase 4): a node whose clock picks up a few ms of the wall clock still runs and transmits, so the
+# precondition holds and only the identical-tx_log comparison can catch it (its timers fire at wall-dependent quanta)
+mutate lockstep_node_clock_jitters_with_the_wall_clock variants/sim/sim_radio.cpp "  uint64_t nowUs() override { return g_ls_now - g_ls_join; }" "  uint64_t nowUs() override { return g_ls_now - g_ls_join + sim_real_clock()->nowUs() % 5000; }" sim/tests/test_lockstep.py::test_the_same_seeds_give_the_same_transmissions
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
