@@ -65,7 +65,7 @@ The firmware does not require MECON. The pieces below are written to be reused o
 To build on or borrow from the code:
 
 - **Fork or merge:** the history is MeshCore's; [`docs/UPSTREAM_DELTA.md`](docs/UPSTREAM_DELTA.md) is the register of every change to an upstream file, so you can see the patch surface before you merge, and cherry-pick one concern. [`docs/UPSTREAM_AND_PORTING.md`](docs/UPSTREAM_AND_PORTING.md) covers the upstream relationship.
-- **Build:** inside the container, see [Getting started](#getting-started). Board environments are the upstream ones; 594 of the 618 compile (the 24 that fail also fail on stock 1.18.0 and are listed in `ci/known-upstream-failures.txt`).
+- **Build:** inside the container, see [Getting started](#getting-started). Board environments are the upstream ones; 594 of the 618 compile (the 24 that fail also fail on stock 1.18.0 and are listed in `ci/known-upstream-failures.txt`). The 18 target environments have their flash and static RAM reported on every pull request and held to `ci/size-budget.txt`: a build over its budget fails, and a budget is raised only in the pull request that needs it. Current figures for `main` are in the job summary of the latest *Target boards* run on `main`.
 - **Licence:** MIT. The licence file keeps the upstream MeshCore copyright (Scott Powell / rippleradios.com) and states the additions' authorship separately; see [`LICENSE`](LICENSE) and [`NOTICE.md`](NOTICE.md). Third-party libraries (for example PubSubClient 2.8.0, MIT) keep their own licences.
 - **Contribute back:** generic improvements are meant to go upstream where practical. Nothing here is submitted upstream yet.
 
