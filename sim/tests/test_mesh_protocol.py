@@ -98,7 +98,13 @@ def test_direct_message_is_acknowledged_flood_and_direct(ether, nodes):
     assert c1["rtt"] > 0
     assert [m["text"] for m in b.sync_messages(timeout=60, want=1)] == ["first"]
 
-    # second message: the path is known, so it goes direct, and its ACK is a plain ACK packet
+    # the receiver learns its own path back only from a message of its own: b writes to a (flood, ACKed)
+    s_b = _send(b, a.pub_key, "reply", RTC + 10)
+    assert s_b["flood"]
+    assert _confirmed(b)["ack"] == s_b["ack"]
+    assert [m["text"] for m in a.sync_messages(timeout=60, want=1)] == ["reply"]
+
+    # second message: the path is known on both sides, so it goes direct and b's ACK goes back direct too
     s2 = _send(a, b.pub_key, "second", RTC + 11)
     assert not s2["flood"]
     assert s2["ack"] != s1["ack"]
@@ -106,8 +112,9 @@ def test_direct_message_is_acknowledged_flood_and_direct(ether, nodes):
     assert c2["ack"] == s2["ack"], (c2, s2)
     assert [m["text"] for m in b.sync_messages(timeout=60, want=1)] == ["second"]
 
-    # the ether shows the ACK for the direct message being sent by the receiver, not just a push appearing
-    assert any(_ptype(t) == PT_ACK for t in ether.tx_of("cb")), "cb never transmitted an ACK packet"
+    # the ether shows the receiver sending the ACK as a plain direct ACK packet, not just a push appearing
+    acks = _txs(ether, "cb", PT_ACK)
+    assert [_route(t) for t in acks] == [ROUTE_DIRECT], acks
 
 
 @pytest.mark.timescale(10)
