@@ -23,7 +23,11 @@ def _p(node, path):
 
 
 def _size(node, path):
-    return os.path.getsize(_p(node, path)) if os.path.exists(_p(node, path)) else None
+    # One stat, not exists() then getsize(): boot recovery may rename or remove the file between the two calls.
+    try:
+        return os.path.getsize(_p(node, path))
+    except FileNotFoundError:
+        return None
 
 
 def _exit_code(node, timeout):
