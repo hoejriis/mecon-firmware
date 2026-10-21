@@ -270,6 +270,10 @@ class Ether:
             if dst.tx_until_us > start:
                 r["corrupt"] = "dst transmitting"
             for other in dst.receptions:
+                # A node's own transmissions cannot overlap on air (the radio sends one at a time); an overlap with
+                # its previous one is clock jitter between the node and the broker, not a collision.
+                if other["src"] is src:
+                    continue
                 if other["end_us"] > start:       # overlap in time at this receiver
                     other["corrupt"] = other["corrupt"] or "collision"
                     r["corrupt"] = r["corrupt"] or "collision"
