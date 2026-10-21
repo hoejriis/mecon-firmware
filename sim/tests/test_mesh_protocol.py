@@ -51,6 +51,18 @@ def _wait_for(pred, timeout=60.0):
     return False
 
 
+def _quiet(ether, seconds=3.0, timeout=60.0):
+    """Wait until nothing has been on air for `seconds` (virtual): the previous exchange's own follow-ups (the path
+    return a node sends after a flood PATH, the repeater's relays) are done. Sending into them makes a real collision
+    with the next ACK, and the stock Companion never resends (CI, 2026-10-21: ca's path return hit cb's ACK at rr)."""
+    def idle():
+        if not ether.tx_log:
+            return True
+        last = ether.tx_log[-1]
+        return ether.now_us() - (last.start_us + last.toa_us) >= seconds * 1e6
+    assert _wait_for(idle, timeout), "the channel never went quiet"
+
+
 def _pair(ether, nodes):
     """Two Companions that only hear one Repeater, each holding the other as a contact (no path known)."""
     ca = nodes("companion", "ca", ether_path=ether.path, seed=11, rtc=RTC).start()
@@ -110,13 +122,16 @@ def test_direct_message_is_acknowledged_flood_and_direct(ether, nodes):
     assert c1["rtt"] > 0
     assert [m["text"] for m in b.sync_messages(timeout=60, want=1)] == ["first"]
 
-    # the receiver learns its own path back only from a message of its own: b writes to a (flood, ACKed)
+    # once the first exchange is over, a's path return (sent after b's flood PATH) has taught b the way back, so b's
+    # reply already goes direct and is ACKed
+    _quiet(ether)
     s_b = _send(b, a.pub_key, "reply", RTC + 10)
-    assert s_b["flood"]
+    assert not s_b["flood"]
     assert _confirmed(b)["ack"] == s_b["ack"]
     assert [m["text"] for m in a.sync_messages(timeout=60, want=1)] == ["reply"]
 
     # second message: the path is known on both sides, so it goes direct and b's ACK goes back direct too
+    _quiet(ether)
     s2 = _send(a, b.pub_key, "second", RTC + 11)
     assert not s2["flood"]
     assert s2["ack"] != s1["ack"]
@@ -148,6 +163,7 @@ def test_lost_ack_gives_no_confirmation_and_the_apps_retry_goes_out_again(ether,
 
     # the app's retry: same text and timestamp, attempt 1, over a link that works again
     ether.set_loss("rr", "ca", 0.0, both=False)
+    _quiet(ether)
     s2 = _send(a, b.pub_key, "needs an ack", RTC + 10, attempt=1)
     assert s2["ack"] != s1["ack"]             # the attempt number is part of what the ACK covers
     c = _confirmed(a)
@@ -174,6 +190,7 @@ def test_path_is_learned_from_the_first_flood_and_the_next_message_goes_direct(e
     bob = _contact(a, b.pub_key)
     assert bob["path_len"] != OUT_PATH_UNKNOWN and bob["path_len"] >= 1, bob   # one hop: the repeater
 
+    _quiet(ether)
     s2 = _send(a, b.pub_key, "two", RTC + 11)
     assert not s2["flood"]
     _confirmed(a)
