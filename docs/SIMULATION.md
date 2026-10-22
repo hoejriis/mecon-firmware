@@ -144,7 +144,9 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
   duty-cycle bin has aged out, so their first packets start in the same quantum and collide, in every run rather
   than now and then: wait for a server's boot advert (`Ether.wait_tx()`) before sending it anything that needs an
   answer, and for a quiet channel (`Ether.wait_quiet()`) before a sender that cannot hear the previous exchange's
-  follow-ups (a path return). When a test fails, the `ether` fixture prints the broker's last 40 transmissions
+  follow-ups (a path return). `Ether.joined_us[name]` is the broker time of a node's latest join, the instant its
+  `millis()` read 0; a time read before a restart is earlier by however many quanta the old process still ran.
+  When a test fails, the `ether` fixture prints the broker's last 40 transmissions
   (sender, start, type, who heard it, who lost it and why) under "Captured stdout teardown".
 
 ## Test inventory
