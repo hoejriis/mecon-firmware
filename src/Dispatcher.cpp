@@ -22,7 +22,8 @@ void Dispatcher::begin() {
   _err_flags = 0;
   radio_nonrx_start = _ms->getMillis();
 
-  duty.reset(_ms->getMillis());
+  // A per-node phase, so nodes that boot together do not share bin edges (unsigned arithmetic: wrap-safe).
+  duty.reset(_ms->getMillis() - (getDutyPhaseMs() % DUTY_BIN_MS));
 
   _radio->begin();
   prev_isrecv_mode = _radio->isInRecvMode();

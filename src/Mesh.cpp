@@ -7,6 +7,12 @@ void Mesh::begin() {
   Dispatcher::begin();
 }
 
+// A random duty-window phase per node (Dispatcher::getDutyPhaseMs): each node's bins start somewhere in the first
+// 30 s, so nodes restarted together by a power restore do not release their duty-held packets on the same edges.
+uint32_t Mesh::getDutyPhaseMs() {
+  return _rng->nextInt(0, DUTY_BIN_MS);
+}
+
 void Mesh::loop() {
   Dispatcher::loop();
 }

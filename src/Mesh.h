@@ -38,6 +38,7 @@ protected:
   DispatcherAction onRecvPacket(Packet* pkt) override;
 
   virtual uint32_t getCADFailRetryDelay() const override;
+  uint32_t getDutyPhaseMs() override;
 
   /**
    * \brief  Decide what to do with received packet, ie. discard, forward, or hold

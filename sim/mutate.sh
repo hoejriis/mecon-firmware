@@ -781,6 +781,9 @@ mutate save_preclean_lookups_back src/helpers/AtomicFile.h '#ifndef ATOMIC_FILE_
 mutate save_reads_absent_bucket src/helpers/ContactStore.cpp '  bool have = !knownAbsent(b) && _be->readBucket(' '  bool have = _be->readBucket(' $CT_SIM::test_a_contact_save_looks_up_no_file_that_is_not_there
 mutate save_new_bucket_hint_dropped src/helpers/ContactStore.cpp '_scratch, BUCKET_BYTES, knownAbsent(b))) return false;' '_scratch, BUCKET_BYTES, false)) return false;' $CT_SIM::test_a_contact_save_looks_up_no_file_that_is_not_there
 mutate bucket_map_not_set_on_write src/helpers/ContactStore.cpp '  if (_bpresent && b < _bpresent_bits) _bpresent[b >> 3] |= (uint8_t)(1u << (b & 7));' '' $CT_SIM
+# nodes booted together do not share duty-window bin edges (#79)
+mutate duty_phase_always_zero src/Mesh.cpp '  return _rng->nextInt(0, DUTY_BIN_MS);' '  return 0;' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
+mutate duty_phase_not_applied src/Dispatcher.cpp '  duty.reset(_ms->getMillis() - (getDutyPhaseMs() % DUTY_BIN_MS));' '  duty.reset(_ms->getMillis());' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
