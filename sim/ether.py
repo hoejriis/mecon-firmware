@@ -69,6 +69,7 @@ class _Conn:
         self.receptions = []          # active reception dicts
         self.lockstep = False         # joined with 'L' (lock-step clock)
         self.want = None              # lock-step: the broker time this node asked to reach (None: still running)
+        self.join_us = None           # lock-step: the broker time granted at the join
         self.kill = False             # refused: close after this read
 
 
@@ -95,6 +96,7 @@ class Ether:
         self._vnow = 0                        # broker time in integer microseconds
         self._ls = []                         # connected lock-step nodes
         self._ls_joined = 0
+        self.joined_us = {}                   # lock-step: node name -> broker time of its latest join (its millis() 0)
 
     # ------------------------------------------------------------------ control API
     def set_link(self, a, b, rssi=-80.0, snr=8.0, loss=0.0, both=True):
@@ -294,6 +296,7 @@ class Ether:
                         self._refuse(c, "a --lockstep node joined a real-time ether")
                         return
                     c.lockstep = True
+                    c.join_us = self._vnow
                     self._ls.append(c)
                     self._ls_joined += 1
                     self._send(c, "G", struct.pack("<Q", self._vnow))
@@ -310,6 +313,10 @@ class Ether:
                         self._refuse(c, "a real-time node (%s) joined a lock-step ether" % c.name)
                         return
                     self._conns[c.name] = c
+                    if c.lockstep:
+                        # 'L' and 'H' are sent together before setup(), and time cannot advance between them (this
+                        # node has not asked for any), so this is the instant the node's clock reads 0
+                        self.joined_us[c.name] = c.join_us
                 elif typ == "P" and len(payload) >= 10:
                     f, bw = struct.unpack_from("<ff", payload, 0)
                     c.params = (round(f, 3), round(bw, 3), payload[8], payload[9])
