@@ -27,7 +27,7 @@ attached. For long jobs run it detached with output redirected to a file under
 | `sim` variant | `variants/sim/` | `platform = native` envs `sim_companion`, `sim_repeater` (and `sim_repeater_eth`, `sim_room_server_eth`, which add the RAK4631 Ethernet TCP console over a loopback listener); `target.h/.cpp` replace the board layer |
 | Arduino/FS shims | `variants/sim/shims/` | just enough `Arduino.h`, `FS.h`, `SPIFFS.h`, `RTClib.h` to compile the examples; no upstream file is edited |
 | SimRadio | `variants/sim/sim_radio.cpp` | `mesh::Radio` that sends/receives raw packets through the ether over a unix socket |
-| Ether broker | `sim/ether.py` | decides who hears whom, per-link RSSI/SNR/loss, holds the channel busy for the packet's time on air, delivers at end of airtime, destroys overlapping receptions |
+| Ether broker | `sim/ether.py` | decides who hears whom, per-link RSSI/SNR/loss, holds the channel busy for the packet's time on air, delivers at end of airtime, resolves overlapping receptions (capture effect, below), tells every node that can hear a transmission that the channel is busy |
 | Time on air | `variants/sim/sim_toa.h` | Semtech formula (explicit header, CRC on, low-data-rate optimisation when Tsym > 16 ms) |
 | Clock | `variants/sim/sim_clock.h` | `SimClock` interface behind `millis()`/`micros()`/`delay()` and the RTC: the scaled wall clock by default, or with `--lockstep` a clock the ether broker advances (see [Lock-step virtual time](#lock-step-virtual-time)) |
 | Wi-Fi | `variants/sim/sim_wifi.cpp`, `shims/WiFi.h` | the ESP32 `WiFi` API subset the Wi-Fi controller uses, over access points the test defines (`WifiEnv` in `sim/harness.py`: SSID, password, RSSI, up/down at run time, in a file the node re-reads); scans take 0.3 s and joins 0.4 s of node time; the ESP-IDF scan calls the controller drives (`shims/esp_wifi.h`, `shims/esp_event.h`) sit over a simulated driver that a test can make wedge (the scan never ends and the driver refuses another until it is stopped) or make deaf (Arduino's tables never fill; `WifiEnv.scan(mode)`); failures use the ESP32 reasons; every transition is logged with the SSID only |
@@ -58,10 +58,45 @@ microseconds and exit). A node exits with status 75 on `reboot` and 0 on `powero
 * **Static-init order.** The examples construct their mesh object before `main()`, so the
   clock and the config are function-local statics.
 * **Channel model.** Receivers that are tuned to the transmission's frequency, bandwidth and
-  SF and have a link hear it; two overlapping receptions at one node, or a node that
-  transmits during a reception, lose the packet. There is no capture effect and no noise
-  floor model; RSSI/SNR are whatever the link says.
-* Not simulated: the BLE radio and stack (the transport and its PIN pairing are, see above), the Wi-Fi radio itself (association timing, roaming, DHCP; only the access-point model above), displays, GPS/sensors, the real SX126x state machine, CAD,
+  SF and have a link hear it; a node that transmits during a reception loses the packet. There
+  is no noise floor model; RSSI/SNR are whatever the link says.
+* **Capture effect.** When two receptions overlap at one node, strength is the link SNR
+  (`set_link(..., snr=)`) and the threshold is `Ether(capture_db=6.0)` (the `capture_db`
+  attribute can be changed on a running ether):
+  * neither is the threshold stronger than the other (equal strength included): both are lost
+    (`collision`);
+  * the earlier one is at least the threshold stronger: it survives, the later one is lost
+    (`captured`);
+  * the later one is at least the threshold stronger: it survives only if it starts before the
+    last 5 symbols of the earlier packet's preamble (the preamble the firmware programs: 32
+    symbols at SF ≤ 8, 16 above), and the earlier one is lost (`captured`). Starting later, it
+    finds the receiver locked onto the earlier packet, which it destroys: both are lost
+    (`collision`).
+
+  Sources: the 6 dB threshold and the 5-symbol critical section at the end of the preamble are
+  the model of Bor, Roedig, Voigt and Alonso, "Do LoRa Low-Power Wide-Area Networks Scale?"
+  (MSWiM 2016) and its LoRaSim simulator. The timing rule for a later, stronger packet follows
+  the SX1276 measurement in Gu, Jiang and Tan, "Attack-Aware Data Timestamping in Low-Power
+  Synchronization-Free LoRaWAN" (ICDCS 2020, arXiv:1905.01679): with an 8-symbol preamble a
+  stronger frame that starts before the victim's 5th chirp is received instead, and one that
+  starts later is not, because the receiver locks onto the victim's preamble from the 6th chirp.
+  The two differ by one symbol on an 8-symbol preamble; the simulator uses Bor's 5 symbols,
+  which on MeshCore's 16- and 32-symbol preambles leaves 11 and 27 symbols in which the receiver
+  can still be taken over. The rule is pairwise: a packet survives only if it wins against every
+  reception it overlaps. One node's own back-to-back transmissions never collide (broker/node
+  clock jitter, not an overlap on air).
+* **Channel activity (listen-before-talk).** At the start of every transmission the broker
+  sends each node that can hear it (tuned, with a link, whether or not loss or a collision will
+  later spoil the packet) a busy notice with the airtime. SimRadio's `isReceiving()` reports
+  busy until that airtime is over, and that is all the firmware asks before transmitting:
+  `Dispatcher::checkSend()` calls `isReceiving()` and, while it is true, retries every
+  `getCADFailRetryDelay()` (200 ms) for up to `getCADFailMaxDuration()` (4 s). On a real board
+  `RadioLibWrapper::isReceiving()` is the radio's preamble/header detection plus
+  `isChannelActive()` (the RSSI interference threshold and, when enabled, hardware CAD); the
+  simulator models the outcome (the channel is busy while a transmission is audible), not the
+  SX126x CAD procedure itself. Under lock-step the notice is read at the next barrier, so the
+  busy span may end up to one quantum late.
+* Not simulated: the BLE radio and stack (the transport and its PIN pairing are, see above), the Wi-Fi radio itself (association timing, roaming, DHCP; only the access-point model above), displays, GPS/sensors, the real SX126x state machine and its CAD procedure (only its result, above),
   power saving, flash wear/latency.
 
 ## Storage fault injection
@@ -137,7 +172,8 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
   `test_connectivity_mode.py` (Wi-Fi, Mosquitto, BLE), `test_companion_ble.py` (the BLE link) and
   `test_companion_transport.py` (the app on the Wi-Fi TCP server). The Wi-Fi, MQTT, TLS, Ethernet and UI tests
   without an ether stay on real time too, and `test_ether_physics.py`
-  drives the real-time broker's physics without nodes.
+  drives the broker's physics without nodes (on real time, or on a lock-step clock the test sets
+  itself for exact start times).
 * **Writing a lock-step test.** Wait on broker time (`Ether.wait_until_us()`), not on `time.sleep()`: an absence
   check such as "no login success" then holds for a fixed span of virtual time however slowly the host runs. Two
   nodes started together join at the same broker instant, and each holds its first packet until the first 30 s
@@ -146,6 +182,9 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
   answer, and for a quiet channel (`Ether.wait_quiet()`) before a sender that cannot hear the previous exchange's
   follow-ups (a path return). `Ether.joined_us[name]` is the broker time of a node's latest join, the instant its
   `millis()` read 0; a time read before a restart is earlier by however many quanta the old process still ran.
+  To make something happen at a known broker time, `Ether.hold_at(t)` lets time advance no further than `t` and
+  waits until every node is blocked on its grant; a CLI line sent then is read by the node's first `loop()` after
+  `Ether.release()` (`test_lockstep.py`'s deferral test queues two adverts 200 ms apart this way).
   When a test fails, the `ether` fixture prints the broker's last 40 transmissions
   (sender, start, type, who heard it, who lost it and why) under "Captured stdout teardown".
 
@@ -171,7 +210,8 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
 * `test_companion_cli_secrets.py` – `get wifi.pwd` does not reveal the password.
 * `test_companion_remote_cli.py` – remote Companion CLI limited to reads and `reboot`.
 * `test_malformed_input.py` – runs the `sim_*_asan` sanitizer builds: hand-built truncated TRACE packets injected through the ether broker (`Ether.inject`) and over-long CLI arguments must not crash the node; a well-formed TRACE is still forwarded / delivered.
-* `test_lockstep.py` – lock-step virtual time: two Repeaters (one given a 2 % duty cycle beforehand, so they do not always collide) booted together run ten virtual minutes three times; the same seeds give the identical `tx_log` (sender, start in microseconds, length and bytes) and the same receptions, and other seeds give other packets; every start lies on the 1 ms grid and no node starts a packet before its previous one ended; a real-time node on a lock-step ether and a lock-step node on a real-time ether are both refused.
+* `test_lockstep.py` – lock-step virtual time: two Repeaters (one given a 2 % duty cycle beforehand, so they do not always collide) booted together run ten virtual minutes three times; the same seeds give the identical `tx_log` (sender, start in microseconds, length and bytes) and the same receptions, and other seeds give other packets; every start lies on the 1 ms grid and no node starts a packet before its previous one ended; a real-time node on a lock-step ether and a lock-step node on a real-time ether are both refused; listen-before-talk: two Repeaters in range, the second's advert falls due 200 ms after the first's has started, and on the ether log it starts after the first one ends (within one 200 ms CAD retry period plus 100 ms) instead of overlapping it, and both are heard.
+* `test_ether_physics.py` – the broker's channel model without nodes: overlapping transmissions of two nodes collide, one node's own back-to-back ones do not; capture (the lock window is the preamble less its last 5 symbols; equal strength collides; the earlier packet 6 dB stronger survives and the later is `captured`; a later packet 6 dB stronger survives if it starts at the same instant or one symbol before the lock, but both are lost when it starts at the lock or in the payload; 5.9 dB either way loses both; the threshold is configurable; packets that do not overlap are both delivered); and the busy notice goes, with the airtime, to every tuned node with a link, lossy included, and to nobody else (not the sender, a node out of range or on another SF), with nothing delivered before the airtime is over.
 * `test_duty_cycle.py` – regulatory duty cycle, measured by the ether broker (`Ether.max_duty_in_any_hour`: the largest share of any sliding hour a node spent on the air, from the transmissions the broker saw, not from node counters). On lock-step virtual time, every run length and reboot interval in broker time. Seven nodes under sustained load for 1.25 virtual hours (10 ms quanta): 869.525 MHz BW 250 (10 %), with a looser and with a stricter user setting, 868.1 MHz BW 125 (1 %, also with the CLI's strictest factor 9), a channel straddling two bands (0.1 %), 915 MHz (no floor; the user's 10 % rules) and a Repeater at 868.1 MHz; a Room Server at 868.1 MHz; a live frequency change on a Companion; two Companions power-cycled every 5 virtual minutes (exactly 15 times) that must stay within their limit across boots; the delay before the first advert after a boot, exactly a whole number of 30 s bins (as many as the advert's charge needs from a hour seeded at the limit) plus 1.002 s; `get dutycycle` on both roles; and a self-test of the sliding-window instrument. The broker's stamps are exact, so every limit is asserted without slack. For the Room Server (1 ms quanta, 1.25 virtual hours) the busiest sliding hour must not exceed the limit by a microsecond, and must use at least the limit minus what the firmware's window is documented to leave unused (one 30 s bin, the largest packet, and under 1 ms of rounding per packet).
 * `test_repeater_prvkey.py` – `set prv.key` refused for a remote admin, allowed on the local console.
 * `test_postures_admin.py` – the standalone postures on a Repeater and a Room server ([Standalone security postures](STANDALONE_POSTURES.md)): the stock default password opens nothing in either posture (blank-password re-login of a stored admin entry included) and a set password opens remote admin (read-only in Hardened); Hardened remote admin is read-only plus `reboot` with every refusal an explicit reply; a remote caller can neither raise nor lower the posture or read the audit log, and each attempt is audited; key export and import are refused on the console in Hardened; an attempted password appears in no file of the node directory and not in its log; posture and audit survive a reboot; a power cut while lowering leaves the device Hardened and a cut while raising keeps the previous prefs (three cut points each); `erase` recovers a Hardened device and the audit log keeps its history through the reset; repeats fold into one audit entry with a count.
@@ -221,6 +261,8 @@ A sixth group breaks each heap-floor rule (the total free heap used instead of t
 Two lock-step mutants must turn the determinism test in `test_lockstep.py` red. One makes the node read the wall clock instead of the broker's grants; the node then falls behind virtual time and stops transmitting, so the test's precondition catches it. The other adds up to 5 ms of the wall clock to the node's lock-step clock: the node keeps time and keeps transmitting, and only the comparison of the two runs' `tx_log` can see that its timers now fire in host-dependent quanta.
 
 A seventh group breaks each BLE rule (a wrong PIN accepted, data before pairing accepted, the default PIN classed as trusted, a link surviving `disable()`, BLE started in Hardened with the default PIN or in Wi-Fi mode, the frame context trusting every interface, a paired link allowed key export or factory reset in Hardened) and expects `test_companion_ble.py` to go red.
+
+An eighth group breaks the ether's capture and channel-activity rules (a later, stronger packet never winning; an earlier, stronger one never winning; equal strength surviving; 5.8 dB counted as enough; a later, stronger packet winning after the receiver has locked; the lock window the whole preamble; the broker's busy notice not sent, against both the physics tests and the deferral test; SimRadio never reporting busy) and expects `test_ether_physics.py` or the deferral test in `test_lockstep.py` to go red.
 
 ## Matching the target toolchains
 
