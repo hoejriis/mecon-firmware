@@ -3,8 +3,26 @@
 Nodes connect over a unix socket (see variants/sim/sim_radio.cpp for the frame format).
 The broker decides who hears whom (``set_link``), applies loss, reports RSSI/SNR, holds
 the channel busy for the packet's time on air and delivers the packet when the
-transmission ends. Overlapping receptions at one node destroy each other, and a node
-that is transmitting hears nothing.
+transmission ends. Overlapping receptions at one node destroy each other unless one is at
+least ``capture_db`` stronger (the capture effect, below), and a node that is transmitting
+hears nothing. Every node that can hear a transmission is told at once ('B', busy), which is
+what its radio reports to the firmware's listen-before-talk check (``isReceiving()``).
+
+Capture model (docs/SIMULATION.md, "Channel model"). Strength is the link SNR from ``set_link``.
+When two receptions overlap at a node:
+  * if neither is ``capture_db`` (default 6 dB) stronger than the other, both are lost;
+  * if the earlier one is that much stronger, it survives and the later one is lost;
+  * if the later one is that much stronger, it survives only if it starts while the receiver
+    can still re-lock: before the last LOCK_SYMBOLS (5) symbols of the earlier packet's
+    preamble. Starting later, it finds the receiver locked onto the earlier packet, which it
+    then destroys: both are lost.
+Sources: the 6 dB power threshold and the 5-symbol critical section at the end of the
+preamble are those of Bor, Roedig, Voigt, Alonso, "Do LoRa Low-Power Wide-Area Networks
+Scale?", MSWiM 2016 (their LoRaSim simulator, powerCollision/timingCollision). Gu, Jiang, Tan,
+"Attack-Aware Data Timestamping in Low-Power Synchronization-Free LoRaWAN" (ICDCS 2020,
+arXiv:1905.01679) measured the late-arrival case on an SX1276 with an 8-symbol preamble: a
+stronger frame starting before the victim's 5th chirp is received instead, one starting after
+it is not, because the receiver locks the victim's preamble from the 6th chirp.
 
 Time inside the broker is "virtual microseconds" = wall clock * time_scale, matching the
 node's --time-scale option, so airtime and node clocks stay consistent.
@@ -37,6 +55,22 @@ def toa_us(sf, bw_khz, cr, preamble, payload_len):
     num = 8.0 * payload_len - 4.0 * sf + 28.0 + 16.0
     blocks = max(math.ceil(num / (4.0 * (sf - 2 * de))), 0)
     return (t_pre + (8.0 + blocks * cr) * tsym_ms) * 1000.0
+
+
+# The capture effect (module docstring): a reception survives an overlap if it is at least this much stronger (dB),
+# and a later, stronger packet takes the receiver over only before the last LOCK_SYMBOLS of the earlier's preamble.
+CAPTURE_DB = 6.0
+LOCK_SYMBOLS = 5
+
+
+def preamble_symbols(sf):
+    """The preamble the firmware programs (RadioLibWrapper::preambleLengthForSF, variants/sim/target.h)."""
+    return 32 if sf <= 8 else 16
+
+
+def lock_window_us(sf, bw_khz):
+    """How long after a packet's start a stronger packet can still take the receiver over (us)."""
+    return max(preamble_symbols(sf) - LOCK_SYMBOLS, 0) * (1 << sf) / bw_khz * 1000.0
 
 
 @dataclass
@@ -74,8 +108,9 @@ class _Conn:
 
 
 class Ether:
-    def __init__(self, path, time_scale=1.0, seed=1, lockstep=False, start_after=0):
+    def __init__(self, path, time_scale=1.0, seed=1, lockstep=False, start_after=0, capture_db=CAPTURE_DB):
         self.path = path
+        self.capture_db = float(capture_db)   # capture threshold in dB of link SNR (module docstring)
         self.scale = float(time_scale)
         self.rng = random.Random(seed)
         self.links = {}               # (src, dst) -> Link
@@ -97,6 +132,7 @@ class Ether:
         self._ls = []                         # connected lock-step nodes
         self._ls_joined = 0
         self.joined_us = {}                   # lock-step: node name -> broker time of its latest join (its millis() 0)
+        self._hold_us = None                  # lock-step: time advances no further than this (hold_at), None: free
 
     # ------------------------------------------------------------------ control API
     def set_link(self, a, b, rssi=-80.0, snr=8.0, loss=0.0, both=True):
@@ -160,6 +196,28 @@ class Ether:
                 return True
             time.sleep(0.005)
         return False
+
+    def hold_at(self, t_us, timeout=60.0):
+        """Lock-step only: let broker time advance no further than `t_us` until release(), and wait (wall clock, at most
+        `timeout` s) until it is there with every node blocked on its next grant. Input sent to a node while held (a CLI
+        line) is then read by its first loop() after the release, at a known broker time. True if the hold was reached."""
+        assert self.lockstep, "hold_at needs a lock-step ether"
+        with self.lock:
+            self._hold_us = int(t_us)
+            self._barrier()
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            with self.lock:
+                if self._vnow >= self._hold_us and self._ls and all(c.want is not None for c in self._ls):
+                    return True
+            time.sleep(0.005)
+        return False
+
+    def release(self):
+        """End a hold_at(): time advances again."""
+        with self.lock:
+            self._hold_us = None
+            self._barrier()
 
     def wait_for_nodes(self, names, timeout=10.0):
         end = time.monotonic() + timeout
@@ -336,6 +394,10 @@ class Ether:
         if any(c.want is None for c in self._ls):
             return
         t = min(c.want for c in self._ls)
+        if self._hold_us is not None:
+            t = min(t, self._hold_us)
+            if t <= self._vnow:
+                return                   # held (hold_at): the nodes wait for their grants until release()
         self._deliver_due(t)
         self._vnow = t
         self.barriers += 1
@@ -377,7 +439,8 @@ class Ether:
                 continue   # not tuned to this transmission
             tx.heard_by.append(dst.name)
             self._send(dst, "B", struct.pack("<I", int(toa)))
-            r = dict(dst=dst, src=src, tx=tx, end_us=end, link=link, data=data, corrupt=None)
+            r = dict(dst=dst, src=src, tx=tx, end_us=end, link=link, data=data, corrupt=None,
+                     lock_us=start + lock_window_us(sf, bw))
             if dst.tx_until_us > start:
                 r["corrupt"] = "dst transmitting"
             for other in dst.receptions:
@@ -386,8 +449,14 @@ class Ether:
                 if other["src"] is src:
                     continue
                 if other["end_us"] > start:       # overlap in time at this receiver
-                    other["corrupt"] = other["corrupt"] or "collision"
-                    r["corrupt"] = r["corrupt"] or "collision"
+                    lead = link.snr - other["link"].snr   # how much stronger the new packet is here
+                    if lead >= self.capture_db and start < other["lock_us"]:
+                        other["corrupt"] = other["corrupt"] or "captured"   # the receiver re-locks onto the new one
+                    elif -lead >= self.capture_db:
+                        r["corrupt"] = r["corrupt"] or "captured"           # the earlier one holds the receiver
+                    else:
+                        other["corrupt"] = other["corrupt"] or "collision"
+                        r["corrupt"] = r["corrupt"] or "collision"
             dst.receptions.append(r)
             self._seq += 1
             if self.lockstep:

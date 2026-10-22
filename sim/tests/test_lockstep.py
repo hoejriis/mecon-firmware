@@ -118,6 +118,53 @@ def test_a_lock_step_node_cannot_join_a_real_time_ether(tmp_path):
         e.stop()
 
 
+ADVERT_DELAY_US = 1500e3      # CommonCLI: `advert.zerohop` queues the advert 1500 ms ahead
+OFFSET_US = 200e3             # db's advert is due this long after da's has started: inside da's airtime
+CAD_RETRY_US = 200e3          # Dispatcher::getCADFailRetryDelay()
+
+
+@pytest.mark.lockstep()
+def test_a_node_defers_its_transmission_while_a_neighbour_transmits(ether, nodes):
+    """Listen-before-talk on the channel: db's advert falls due while da's is on the air, db's radio reports the
+    channel busy (the broker's busy notice), the Dispatcher retries every 200 ms, and the packet starts after da's
+    has ended instead of overlapping it. Both are heard. Broker time is held (Ether.hold_at) while each CLI line is
+    sent, so each advert is queued at a known broker time."""
+    ether.set_link("da", "db")
+    da = nodes("repeater", "da", ether_path=ether.path, seed=1, rtc=RTC).start()
+    db = nodes("repeater", "db", ether_path=ether.path, seed=2, rtc=RTC).start()
+    assert ether.wait_tx("da", timeout=120) and ether.wait_tx("db", timeout=120), "no boot adverts"
+    assert ether.wait_quiet(3.0, timeout=120)
+    cli_a, cli_b = harness.CliClient(da), harness.CliClient(db)
+    try:
+        t0 = ether.now_us() + 10e3
+        assert ether.hold_at(t0)
+        cli_a.sock.sendall(b"advert.zerohop\r")
+        assert ether.hold_at(t0 + OFFSET_US)
+        cli_b.sock.sendall(b"advert.zerohop\r")
+        ether.release()
+        assert ether.wait_until_us(t0 + OFFSET_US + ADVERT_DELAY_US + 3e6, timeout=120)
+    finally:
+        ether.release()
+        cli_a.close()
+        cli_b.close()
+    ta = [t for t in ether.tx_of("da") if t.start_us >= t0]
+    tb = [t for t in ether.tx_of("db") if t.start_us >= t0 + OFFSET_US]
+    assert len(ta) == 1 and len(tb) == 1, (ta, tb)
+    a, b = ta[0], tb[0]
+    a_end = a.start_us + a.toa_us
+    b_due = t0 + OFFSET_US + ADVERT_DELAY_US
+    print("MEASURED deferral: da line sent at %.3f s, on air %.3f-%.3f s; db line sent at %.3f s, due %.3f s, started %.3f s"
+          " (deferred %.0f ms)" % (t0 / 1e6, a.start_us / 1e6, a_end / 1e6, (t0 + OFFSET_US) / 1e6, b_due / 1e6,
+                                   b.start_us / 1e6, (b.start_us - b_due) / 1e3))
+    # the scenario has power: db's packet fell due while da's was on the air (it would have overlapped)
+    assert a.start_us < b_due < a_end - 50e3, (a.start_us, b_due, a_end)
+    # and db waited: its packet starts after da's ends, within one 200 ms CAD retry period of it (plus a 100 ms margin:
+    # the restart was measured 45 ms after da's end at a 400 ms offset and 207 ms after it at this one), and both are
+    # heard
+    assert a_end <= b.start_us <= a_end + CAD_RETRY_US + 100e3, (a_end, b.start_us)
+    assert a.delivered_to == ["db"] and b.delivered_to == ["da"], (a.lost, b.lost)
+
+
 def _first_transmissions(tmp, seeds, run_us=75_000_000):
     """Two Repeaters with default prefs, joined to a lock-step ether at the same broker instant (a power restore).
     Returns each node's first transmission as (start_us, end_us), or None if it sent nothing in run_us."""
