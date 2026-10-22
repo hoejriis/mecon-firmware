@@ -66,6 +66,7 @@ void SerialNimBLEInterface::begin(const char* prefix, char* name, uint32_t pin_c
   NimBLECharacteristic * pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX,
       NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN);
   pRxCharacteristic->setCallbacks(this);
+  pService->start();
 
   // Advertising. Bluedroid puts the name and the service UUID in the advertisement and repeats them in the scan
   // response. NimBLE puts nothing but the flags in by default, and a 128-bit UUID plus a long name do not fit one
@@ -74,6 +75,10 @@ void SerialNimBLEInterface::begin(const char* prefix, char* name, uint32_t pin_c
   adv->enableScanResponse(true);
   adv->addServiceUUID(SERVICE_UUID);
   adv->setName(dev_name);
+
+  // Register the GATT table now. On hardware (v3test, NimBLE-Arduino 2.3.9) starting advertising alone left only
+  // the GAP and GATT services: the Nordic UART service was never exposed, so no app could exchange frames.
+  pServer->start();
 }
 
 // -------- security callbacks, mapped from Bluedroid's BLESecurityCallbacks
@@ -169,8 +174,8 @@ void SerialNimBLEInterface::enable() {
   _isEnabled = true;
   clearBuffers();
 
-  // Bluedroid starts the service here. NimBLE registers the GATT table once, when advertising first starts
-  // (NimBLEAdvertising::start calls NimBLEServer::start), and has no per-service start/stop.
+  // Bluedroid starts the service here. NimBLE has no per-service start/stop; the GATT table is registered once, in
+  // begin() (NimBLEServer::start).
   pServer->getAdvertising()->start();
   adv_restart_time = 0;
 }
