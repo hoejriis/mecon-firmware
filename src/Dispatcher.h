@@ -171,6 +171,12 @@ protected:
    * Roles override this and report the parameters last applied to the radio, not merely stored in prefs.
   */
   virtual bool getRadioChannel(float& freq_mhz, float& bw_khz) const { return false; }
+  /**
+   * \brief  Where this node's duty-window bins start, as an offset in ms into the first 30 s bin. A packet held for
+   *          duty is released when a bin ages out, so nodes that boot together (a power restore) would otherwise all
+   *          release on the same bin edges and collide. Mesh draws a random phase; 0 keeps the grid at boot.
+  */
+  virtual uint32_t getDutyPhaseMs() { return 0; }
   virtual int calcRxDelay(float score, uint32_t air_time) const;
   virtual uint32_t getCADFailRetryDelay() const;
   virtual uint32_t getCADFailMaxDuration() const;

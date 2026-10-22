@@ -240,14 +240,17 @@ def test_first_advert_delay_after_boot(ether, nodes, freq, bw):
     boot_us = e.joined_us[name]          # the broker time at which the new process's clock read 0
     delay_s = (first.start_us - boot_us) / 1e6
     # The hour is seeded at the limit, spread over the 121 bins of 30 s (DutyWindow.h), so the boot advert waits for
-    # as many bins to age out as its charge needs. Measured from the broker time of the node's join (t_boot is read
-    # before the old process has stopped, which may still run a few quanta), the wait is exact: a whole number of
-    # bins after the window's first use, 1.002 s after boot (the same at both frequencies, and in every run).
+    # as many bins to age out as its charge needs. Each node's bins start at a random phase within the first 30 s
+    # (Dispatcher::getDutyPhaseMs, so nodes restarted together do not share bin edges), which moves every edge
+    # earlier by up to one bin. Measured from the broker time of the node's join (t_boot is read before the old
+    # process has stopped), the wait is therefore within one bin of a whole number of bins after the window's first
+    # use, 1.002 s after boot.
     limit_ms = {868.1: 36000, 869.525: 360000}[freq]
     bins = math.ceil(round(first.toa_us / 1000) / (limit_ms // 121))
     print("MEASURED first advert after boot at %s MHz BW %s: %.6f virtual s (packet %d bytes, %.0f ms on air, %d bins)"
           % (freq, bw, delay_s, first.length, first.toa_us / 1000, bins))
-    assert first.start_us - boot_us == bins * 30000000 + 1002000, (delay_s, bins)
+    waited = first.start_us - boot_us
+    assert (bins - 1) * 30000000 + 1002000 < waited <= bins * 30000000 + 1002000, (delay_s, bins)
 
 
 # ---------------------------------------------------------------------------------------------- the CLI
