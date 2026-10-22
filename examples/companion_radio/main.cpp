@@ -25,6 +25,9 @@ MultiSerialInterface interface_manager;
     // include esp32 bluetooth interface
     #ifdef SIM_BLE_STUB
       #include "sim_ble.h"    // the simulated board has no BLE stack: a stub (variants/sim/sim_ble.h)
+    #elif defined(USE_NIMBLE)
+      #include <helpers/esp32/SerialNimBLEInterface.h>   // NimBLE twin, same interface (docs/NIMBLE_EVALUATION.md)
+      typedef SerialNimBLEInterface SerialBLEInterface;
     #else
       #include <helpers/esp32/SerialBLEInterface.h>
     #endif

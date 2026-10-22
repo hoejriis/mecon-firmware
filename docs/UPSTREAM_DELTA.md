@@ -58,6 +58,8 @@ This register lists **every change this repository makes to a file that exists u
 | `examples/companion_radio/main.cpp` | The heap-floor check is configured just before the interfaces are started (`heapFloor().begin(HEAP_FLOOR_BYTES)`) and run once per `loop()` pass (`heapFloor().loop(...)`); it looks at most once a minute | Makes a shrinking heap margin visible at run time (`get mecon.mem`, one audit entry per low episode, a status-line marker). |
 | `examples/companion_radio/ui-new/UITask.cpp` | With `ENABLE_CONNMODE`: the home status line is drawn as a warning while the heap is low (the text itself comes from `formatHome`) | The `LOW MEM` marker of the heap floor. |
 | `examples/companion_radio/NodePrefs.h` | With `ENABLE_MQTT`: the per-profile management flag is saved as `g<i>` in the `mqtt` section | A broker profile can be flagged for management ([Command-line engine](CLI.md)). |
+| `examples/companion_radio/main.cpp` | With `USE_NIMBLE` (ESP32): the NimBLE interface (`src/helpers/esp32/SerialNimBLEInterface.*`, new) is used under the name `SerialBLEInterface`; without it the Bluedroid header is included as before | A build option to compare NimBLE with Bluedroid ([NimBLE evaluation](NIMBLE_EVALUATION.md)). |
+| `platformio.ini`, `variants/heltec_v3/platformio.ini`, `variants/heltec_v4/platformio.ini`, `variants/lilygo_tlora_v2_1/platformio.ini` | New `[esp32_nimble]` section and four `_nimble` environments, each extending a Bluedroid BLE Companion environment | The same comparison; the Bluedroid environments are unchanged. |
 
 Upstream's `stale-bot.yml` is kept unchanged; it only runs in the upstream repository.
 

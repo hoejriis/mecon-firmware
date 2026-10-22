@@ -21,3 +21,9 @@ t1000e_repeater                          318464      37888
 WioTrackerL1_companion_radio_ble         448512      88064
 WioTrackerL1_companion_radio_usb         440320      83968
 WioTrackerL1_repeater                    401408      40960
+# NimBLE twins (Issue #68, docs/NIMBLE_EVALUATION.md) and the LilyGo T-LoRa Bluedroid build they are compared with.
+Heltec_v3_companion_radio_ble_nimble                1294336     123904
+Heltec_v3_companion_radio_standalone_nimble         1470464     130048
+heltec_v4_companion_radio_standalone_nimble         1468416     130048
+LilyGo_TLora_V2_1_1_6_companion_radio_ble           1940480      79872
+LilyGo_TLora_V2_1_1_6_companion_radio_ble_nimble    1453056      81920
