@@ -17,6 +17,7 @@ mecon-firmware is MeshCore 1.18.0 with standalone improvements; it needs no back
 - [Connectivity mode](CONNECTIVITY_MODE.md): BLE or Wi-Fi one at a time, switched by command or by the device button, with a status screen
 - [Adaptive contact memory](CONTACTS.md): a persistent contact store with a RAM cache sized from the free heap, favourites resident, atomic saves
 - [Supported hardware and roles](SUPPORTED_HARDWARE.md): the target role matrix (what is intended, not what is verified)
+- [Hardware-verified matrix](HARDWARE_VERIFIED.md): what has been checked on real boards, on which board and build, and what is only compiled
 
 Upstream MeshCore's own protocol and CLI documents ([companion protocol](companion_protocol.md), [CLI commands](cli_commands.md), [packet format](packet_format.md), the FAQ and others in this folder) are unchanged except where this firmware changes behaviour.
 
