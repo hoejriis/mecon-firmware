@@ -217,7 +217,7 @@ bool ContactStore::begin(ContactBackend* backend, ContactStoreListener* listener
   _ready = true;
 
   if (_persistent && max_bucket >= 0) loadFromBackend();
-  free(_bpresent); _bpresent = NULL; _bpresent_bits = 0;
+  // _bpresent stays: writeB()/removeB() keep it exact, and flushBucket() uses it to skip reading a bucket that does not exist
   if (_persistent) {                                   // favourites are resident from the start
     for (int r = 0; r < _cap && _pinned < _pin_limit; r++) {
       if ((_idx[r].flags & F_USED) && (_idx[r].flags & F_FAV)) get(r);
@@ -364,9 +364,21 @@ bool ContactStore::readRecord(int rec, ContactInfo& out, uint32_t& last_msg) {
 
 // Rewrites one bucket: the resident records are taken from RAM, the others stay as they are in the file, free
 // records are zeroed. An empty bucket is removed. The write itself is the backend's atomic swap.
+bool ContactStore::writeB(int b) {
+  if (!_be->writeBucket((uint16_t)b, _scratch, BUCKET_BYTES, knownAbsent(b))) return false;
+  if (_bpresent && b < _bpresent_bits) _bpresent[b >> 3] |= (uint8_t)(1u << (b & 7));
+  return true;
+}
+
+bool ContactStore::removeB(int b) {
+  if (!_be->removeBucket((uint16_t)b)) return false;
+  if (_bpresent && b < _bpresent_bits) _bpresent[b >> 3] &= (uint8_t)~(1u << (b & 7));
+  return true;
+}
+
 bool ContactStore::flushBucket(int b) {
   const int K = CONTACT_RECORD_BUCKET;
-  bool have = _be->readBucket((uint16_t)b, _scratch, BUCKET_BYTES);
+  bool have = !knownAbsent(b) && _be->readBucket((uint16_t)b, _scratch, BUCKET_BYTES);
   _scratch_bucket = -1;
   if (!have) memset(_scratch, 0, BUCKET_BYTES);
   bool any = false;
@@ -384,8 +396,8 @@ bool ContactStore::flushBucket(int b) {
     for (int k = 0; k < REC && !any; k++) if (r[k]) any = true;
   }
   bool ok;
-  if (any) ok = _be->writeBucket((uint16_t)b, _scratch, BUCKET_BYTES);
-  else ok = have ? _be->removeBucket((uint16_t)b) : true;
+  if (any) ok = writeB(b);
+  else ok = have ? removeB(b) : true;
   if (!ok) { _write_errors++; return false; }
   if (any) _scratch_bucket = b;
   for (int i = 0; i < K; i++) {
@@ -691,8 +703,8 @@ int ContactStore::rebuild(int* damaged_out, int* isolated_out) {
       for (int k = 0; k < REC && !any; k++) if (r[k]) any = true;
     }
     bool ok;
-    if (any) ok = _be->writeBucket((uint16_t)b, _scratch, BUCKET_BYTES);
-    else ok = have ? _be->removeBucket((uint16_t)b) : true;
+    if (any) ok = writeB(b);
+    else ok = have ? removeB(b) : true;
     if (!ok) { _write_errors++; continue; }
     if (any) _scratch_bucket = b;
     for (int i = 0; i < K; i++) {
@@ -725,7 +737,7 @@ bool ContactStore::importFlushBucket() {
   int b = _import_bucket;
   _import_bucket = -1;
   _scratch_bucket = -1;
-  if (!_be->writeBucket((uint16_t)b, _scratch, BUCKET_BYTES)) { _write_errors++; return false; }
+  if (!writeB(b)) { _write_errors++; return false; }
   _scratch_bucket = b;
   return true;
 }
@@ -778,7 +790,7 @@ bool ContactStore::clearAll() {
   bool ok = true;
   if (_persistent) {
     for (int b = 0; b < _nbuckets; b++) {
-      if (_be->bucketExists((uint16_t)b) && !_be->removeBucket((uint16_t)b)) ok = false;
+      if (_be->bucketExists((uint16_t)b) && !removeB(b)) ok = false;
     }
     memset(_bdirty, 0, (_nbuckets + 7) / 8 + 1);
   }

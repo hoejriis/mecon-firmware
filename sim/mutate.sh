@@ -372,7 +372,7 @@ mutate connmode_mqtt_password_drawn $UI "      int ly = 19;" "      int ly = 19;
 CS=src/helpers/ContactStore.cpp
 CT_SIM=sim/tests/test_contacts.py
 mutate contacts_bucket_written_in_place examples/companion_radio/DataStore.cpp '  bucketPath(path, sizeof(path), b);
-  return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; });
+  return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; }, is_new);
 }
 
 bool DataStore::removeBucket' '  bucketPath(path, sizeof(path), b);
@@ -451,11 +451,11 @@ mutate contacts_rebuild_damaged_record_kept $CS '          if (e.flags & F_USED)
           memset(r, 0, REC);' '          if (e.flags & F_USED) { memset(&e, 0, sizeof(Idx)); e.slot = NOSLOT; _count--; }' "$CT_ISO"
 mutate contacts_rebuild_damaged_record_kept_unit $CS '          if (e.flags & F_USED) { memset(&e, 0, sizeof(Idx)); e.slot = NOSLOT; _count--; }
           memset(r, 0, REC);' '          if (e.flags & F_USED) { memset(&e, 0, sizeof(Idx)); e.slot = NOSLOT; _count--; }' unit:test_contact_store
-mutate contacts_rebuild_rewritten_after_remove $CS '    if (any) ok = _be->writeBucket((uint16_t)b, _scratch, BUCKET_BYTES);
-    else ok = have ? _be->removeBucket((uint16_t)b) : true;
-    if (!ok) { _write_errors++; continue; }' '    _be->removeBucket((uint16_t)b);
-    if (any) ok = _be->writeBucket((uint16_t)b, _scratch, BUCKET_BYTES);
-    else ok = have ? _be->removeBucket((uint16_t)b) : true;
+mutate contacts_rebuild_rewritten_after_remove $CS '    if (any) ok = writeB(b);
+    else ok = have ? removeB(b) : true;
+    if (!ok) { _write_errors++; continue; }' '    removeB(b);
+    if (any) ok = writeB(b);
+    else ok = have ? removeB(b) : true;
     if (!ok) { _write_errors++; continue; }' "$CT_CUT"
 mutate contacts_rebuild_formats_filesystem examples/companion_radio/MyMesh.cpp '      int damaged = 0, isolated = 0;' '      _store->formatFileSystem();
       int damaged = 0, isolated = 0;' "$CT_KEEP $CT_ISO"
@@ -774,6 +774,13 @@ mutate mesh_autoadd_flag_ignored_never_add examples/companion_radio/MyMesh.cpp "
 # lock-step (Issue #65 phase 4): a node whose clock picks up a few ms of the wall clock still runs and transmits, so the
 # precondition holds and only the identical-tx_log comparison can catch it (its timers fire at wall-dependent quanta)
 mutate lockstep_node_clock_jitters_with_the_wall_clock variants/sim/sim_radio.cpp "  uint64_t nowUs() override { return g_ls_now - g_ls_join; }" "  uint64_t nowUs() override { return g_ls_now - g_ls_join + sim_real_clock()->nowUs() % 5000; }" sim/tests/test_lockstep.py::test_the_same_seeds_give_the_same_transmissions
+# a contact save looks up no file that is not there (#76)
+mutate save_preclean_lookups_back src/helpers/AtomicFile.h '#ifndef ATOMIC_FILE_TWO_STEP_SWAP
+  if (fs->exists(tmp)) fs->remove(tmp);' '#if 1
+  if (fs->exists(tmp)) fs->remove(tmp);' $CT_SIM::test_a_contact_save_looks_up_no_file_that_is_not_there
+mutate save_reads_absent_bucket src/helpers/ContactStore.cpp '  bool have = !knownAbsent(b) && _be->readBucket(' '  bool have = _be->readBucket(' $CT_SIM::test_a_contact_save_looks_up_no_file_that_is_not_there
+mutate save_new_bucket_hint_dropped src/helpers/ContactStore.cpp '_scratch, BUCKET_BYTES, knownAbsent(b))) return false;' '_scratch, BUCKET_BYTES, false)) return false;' $CT_SIM::test_a_contact_save_looks_up_no_file_that_is_not_there
+mutate bucket_map_not_set_on_write src/helpers/ContactStore.cpp '  if (_bpresent && b < _bpresent_bits) _bpresent[b >> 3] |= (uint8_t)(1u << (b & 7));' '' $CT_SIM
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

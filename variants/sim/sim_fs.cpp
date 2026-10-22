@@ -17,16 +17,23 @@ namespace fs {
 // "exists=N open=N remove=N rename=N missing=N", rewritten after each call. A real SPIFFS scans its file table on each
 // call, and a lookup that finds nothing scans all of it (about 0.9 s per lookup on a Heltec V4's 3.4 MB partition), so
 // "missing" counts the exists/open/remove calls that found no file, and each one is logged as "SIMFS missing <path>".
-static unsigned long g_calls[5];
+static unsigned long g_calls[6];
 static void write_calls() {
   if (g_sim.fs_calls.empty()) return;
   if (FILE* f = fopen(g_sim.fs_calls.c_str(), "w")) {
-    fprintf(f, "exists=%lu open=%lu remove=%lu rename=%lu missing=%lu\n", g_calls[0], g_calls[1], g_calls[2], g_calls[3],
-            g_calls[4]);
+    fprintf(f, "exists=%lu open=%lu remove=%lu rename=%lu missing=%lu create=%lu\n", g_calls[0], g_calls[1], g_calls[2],
+            g_calls[3], g_calls[4], g_calls[5]);
     fclose(f);
   }
 }
 static void count_call(int which) { g_calls[which]++; write_calls(); }
+// A write that creates its file, or a rename, makes SPIFFS look the new name up too (it must not exist yet): a full
+// scan as well, but one a save cannot avoid. Counted apart as "create" and logged as "SIMFS create <path>".
+static void count_create(const char* path) {
+  g_calls[5]++;
+  if (!g_sim.fs_calls.empty()) fprintf(stderr, "SIMFS create %s\n", path ? path : "");
+  write_calls();
+}
 static void count_missing(const char* path) {
   g_calls[4]++;
   if (!g_sim.fs_calls.empty()) fprintf(stderr, "SIMFS missing %s\n", path ? path : "");
@@ -70,7 +77,10 @@ File FS::open(const char* path, const char* mode, const bool create) {
     }
     return File(impl);
   }
-  if (writing) mkdirs(hp);
+  if (writing) {
+    mkdirs(hp);
+    if (stat(hp.c_str(), &st) != 0) count_create(path);
+  }
   impl->fp = fopen(hp.c_str(), mode && mode[0] == 'w' ? "w+b" : mode && mode[0] == 'a' ? "ab+" : "rb");
   if (!impl->fp) { count_missing(path); return File(); }
   return File(impl);
@@ -105,6 +115,7 @@ bool FS::rename(const char* a, const char* b) {
   std::string hb = hostPath(b);
   struct stat st;
   if (stat(hb.c_str(), &st) == 0) return false;
+  count_create(b);
   mkdirs(hb);
   return ::rename(hostPath(a).c_str(), hb.c_str()) == 0;
 }

@@ -404,10 +404,10 @@ bool DataStore::readBucket(uint16_t b, uint8_t* buf, uint32_t len) {
   return ok;
 }
 
-bool DataStore::writeBucket(uint16_t b, const uint8_t* buf, uint32_t len) {
+bool DataStore::writeBucket(uint16_t b, const uint8_t* buf, uint32_t len, bool is_new) {
   char path[16];
   bucketPath(path, sizeof(path), b);
-  return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; });
+  return AtomicFile::save(_getContactsChannelsFS(), path, [buf, len](Stream& s) { return s.write(buf, len) == len; }, is_new);
 }
 
 bool DataStore::removeBucket(uint16_t b) {
