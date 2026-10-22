@@ -12,6 +12,8 @@ def _setup(ether, nodes):
     adm = nodes("companion", "ad", seed=42, rtc=RTC, ether_path=ether.path).start()
     assert ether.wait_for_nodes(["rp", "ad"])
     ether.set_link("rp", "ad")
+    # the server's boot advert first: both nodes booted together hold their first packet to the same 30 s bin edge
+    assert ether.wait_tx("rp") and ether.wait_quiet(), "the server never advertised"
     cli = CliClient(rep)
     pub_hex = cli.command("get public.key").lstrip("> ").strip()
     assert len(pub_hex) == 64, pub_hex
@@ -24,7 +26,7 @@ def _setup(ether, nodes):
     return rep, cli, c, bytes.fromhex(pub_hex)
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 def test_remote_admin_cannot_replace_identity(ether, nodes):
     rep, cli, c, pub = _setup(ether, nodes)
     # positive: the remote admin session works for an ordinary command
@@ -38,7 +40,7 @@ def test_remote_admin_cannot_replace_identity(ether, nodes):
     assert cli.command("get public.key").lstrip("> ").strip().lower() == pub.hex()      # identity unchanged
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 def test_local_console_can_still_replace_identity(ether, nodes):
     rep, cli, c, pub = _setup(ether, nodes)
     new_key = c.export_private_key()

@@ -23,6 +23,8 @@ def _setup(ether, nodes, kind="repeater"):
     adm = nodes("companion", "ad", seed=42, rtc=RTC, ether_path=ether.path).start()
     assert ether.wait_for_nodes(["rp", "ad"])
     ether.set_link("rp", "ad")
+    # the server's boot advert first: both nodes booted together hold their first packet to the same 30 s bin edge
+    assert ether.wait_tx("rp") and ether.wait_quiet(), "the server never advertised"
     cli = CliClient(rep)
     pub_hex = cli.command("get public.key").lstrip("> ").strip()
     assert len(pub_hex) == 64, pub_hex
@@ -32,6 +34,15 @@ def _setup(ether, nodes, kind="repeater"):
     pub = bytes.fromhex(pub_hex)
     assert c.add_contact(pub, "srv", ctype=2 if kind == "repeater" else 3)[0] == 0
     return rep, cli, c, pub
+
+
+def _login_refused(ether, c, pub, password):
+    """True if no PUSH_CODE_LOGIN_SUCCESS arrives within 60 s of broker time after the login request (a granted login
+    is answered within about 3 s). The window is virtual time, so it holds however slowly the host runs."""
+    f = c.request(bytes([harness.CMD_SEND_LOGIN]) + pub + password.encode())
+    assert f[0] == harness.RESP_SENT, f
+    assert ether.wait_until_us(ether.now_us() + 60e6, timeout=120), "virtual time stalled"
+    return c.wait_push(harness.PUSH_LOGIN_SUCCESS, timeout=0.5) is None
 
 
 def _audit(cli):
@@ -51,25 +62,25 @@ def _wait_audit_file(node, pred, timeout=8.0):
 KINDS = ["repeater", "room_server"]
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 @pytest.mark.parametrize("kind", KINDS)
 def test_stock_default_password_does_not_open_remote_admin(ether, nodes, kind):
     """The stock gap itself, with no posture command involved: 1.18.0 gives full admin over the air to anyone
     who sends "password" (the compiled-in default). Positive control: the same login with a set password works."""
     rep, cli, c, pub = _setup(ether, nodes, kind)
-    assert not c.login(pub, "password", timeout=15)
+    assert _login_refused(ether, c, pub, "password")
     cli.command("password " + PW)
     assert c.login(pub, PW)
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 @pytest.mark.parametrize("kind", KINDS)
 def test_default_admin_password_refuses_remote_admin_in_both_postures(ether, nodes, kind):
     rep, cli, c, pub = _setup(ether, nodes, kind)
     assert cli.command("get posture") == "> normal"              # the default
-    assert not c.login(pub, "password", timeout=15)              # Normal: the stock password gets nothing
+    assert _login_refused(ether, c, pub, "password")              # Normal: the stock password gets nothing
     assert cli.command("set posture hardened") == "OK - posture hardened"
-    assert not c.login(pub, "password", timeout=15)              # Hardened: nothing either
+    assert _login_refused(ether, c, pub, "password")              # Hardened: nothing either
     log = _audit(cli)
     assert any("login-fail remote-admin default-password" in ln for ln in log), log
 
@@ -81,7 +92,7 @@ def test_default_admin_password_refuses_remote_admin_in_both_postures(ether, nod
     assert cli.command("get name") == "> Remote1"
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 @pytest.mark.parametrize("kind", KINDS)
 def test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session(ether, nodes, kind):
     # a session that predates the rule: log in with a real password, then the password goes back to the default
@@ -95,13 +106,13 @@ def test_remote_commands_are_refused_while_the_password_is_default_even_with_a_s
     assert cli.command("get name") == "> Open"
     assert any("refused remote-admin default-password" in ln for ln in _audit(cli))
     # a blank-password login re-opens a stored admin entry: also refused while the password is default ...
-    assert not c.login(pub, "", timeout=15)
+    assert _login_refused(ether, c, pub, "")
     # ... and works again once a password is set (positive control)
     cli.command("password " + PW)
     assert c.login(pub, "")
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 @pytest.mark.parametrize("kind", KINDS)
 def test_hardened_remote_admin_is_read_only_plus_reboot(ether, nodes, kind):
     rep, cli, c, pub = _setup(ether, nodes, kind)
@@ -125,7 +136,7 @@ def test_hardened_remote_admin_is_read_only_plus_reboot(ether, nodes, kind):
     assert rep.wait_exit(30) == 75
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 def test_remote_admin_cannot_change_the_posture_and_it_is_audited(ether, nodes):
     rep, cli, c, pub = _setup(ether, nodes)
     cli.command("password " + PW)
@@ -165,13 +176,13 @@ def test_key_export_and_import_are_refused_in_hardened_even_on_the_console(nodes
     assert cli.command("get prv.key").lstrip("> ").strip() == key       # recoverable from the console
 
 
-@pytest.mark.timescale(10)
+@pytest.mark.lockstep()
 def test_attempted_passwords_are_audited_but_never_kept(ether, nodes):
     rep, cli, c, pub = _setup(ether, nodes)
     cli.command("password " + PW)
     wrong = "Wr0ngPw-QQ7zK"           # at most 15 characters: the login request carries no more
-    assert not c.login(pub, wrong, timeout=15)
-    assert not c.login(pub, "password", timeout=15)
+    assert _login_refused(ether, c, pub, wrong)
+    assert _login_refused(ether, c, pub, "password")
     entries = _wait_audit_file(rep, lambda e: any(x[1] == 3 for x in e))      # EV_LOGIN_FAILED reached the flash
     assert entries is not None and any(x[1] == 3 and x[2] == 4 for x in entries), entries
     log = _audit(cli)

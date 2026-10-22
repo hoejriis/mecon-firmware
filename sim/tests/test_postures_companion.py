@@ -81,6 +81,7 @@ def _remote(r, v, text):
     return msgs[0]["text"]
 
 
+@pytest.mark.lockstep()
 def test_hardened_turns_the_remote_cli_off(ether, nodes):
     victim, v, r = _pair(ether, nodes, "a")
     assert "v1." in _remote(r, v, "ver")                          # Normal: reads work for a flagged contact
@@ -94,6 +95,7 @@ def test_hardened_turns_the_remote_cli_off(ether, nodes):
     assert "v1." in _remote(r, v, "ver")                          # positive control: back in Normal
 
 
+@pytest.mark.lockstep()
 def test_remote_cli_cannot_change_the_posture_and_it_is_audited(ether, nodes):
     victim, v, r = _pair(ether, nodes, "b")
     assert "not permitted" in _remote(r, v, "set posture hardened")      # Normal: not even raising

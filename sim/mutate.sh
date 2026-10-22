@@ -723,7 +723,7 @@ mutate heap_floor_not_started examples/companion_radio/main.cpp "heapFloor().beg
 # --- the simulated BLE transport: each BLE rule that was unit-only, broken end to end (docs/SIMULATION.md)
 mutate ble_wrong_pin_accepted variants/sim/sim_ble.h "&& (uint32_t)given == _pin) {" "&& true) {" sim/tests/test_companion_ble.py::test_a_wrong_pin_is_disconnected_and_nothing_is_carried
 mutate ble_paired_on_connect variants/sim/sim_ble.h "_client = c; _paired = false; _line_len = 0; _state = IDLE;" "_client = c; _paired = true; _line_len = 0; _state = IDLE;" sim/tests/test_companion_ble.py::test_frames_before_pairing_are_not_accepted
-mutate ble_data_before_pairing_waits_for_a_line variants/sim/sim_ble.h "if (_line_len == 0 && ch != 'P') { sendText(\"REJECT\n\"); dropClient(\"pairing rejected: data before pairing\"); return; }" "" sim/tests/test_companion_ble.py::test_frames_before_pairing_are_not_accepted
+mutate ble_data_before_pairing_waits_for_a_line variants/sim/sim_ble.h "if (_line_len == 0 && ch != 'P') { reject(\"pairing rejected: data before pairing\"); return; }" "" sim/tests/test_companion_ble.py::test_frames_before_pairing_are_not_accepted
 mutate ble_default_pin_is_trusted variants/sim/sim_ble.h "return _pin != 0 && _pin != 123456; }   // as the real class" "return _pin != 0; }" sim/tests/test_companion_ble.py::test_with_the_default_pin_management_is_refused_and_messaging_works
 mutate ble_every_pin_is_trusted variants/sim/sim_ble.h "return _pin != 0 && _pin != 123456; }   // as the real class" "return true; }" sim/tests/test_companion_ble.py::test_with_the_default_pin_management_is_refused_and_messaging_works
 mutate ble_link_survives_disable variants/sim/sim_ble.h "    dropClient(\"disabled: link dropped\");
@@ -771,6 +771,9 @@ mutate mesh_autoadd_flag_ignored_always_add examples/companion_radio/MyMesh.cpp 
 mutate mesh_autoadd_flag_ignored_never_add examples/companion_radio/MyMesh.cpp "  if ((_prefs.manual_add_contacts & 1) == 0) {
     return true;" "  if (false) {
     return true;" sim/tests/test_mesh_protocol.py::test_heard_advert_is_added_as_a_contact_when_auto_add_is_on
+# lock-step (Issue #65 phase 4): a node whose clock picks up a few ms of the wall clock still runs and transmits, so the
+# precondition holds and only the identical-tx_log comparison can catch it (its timers fire at wall-dependent quanta)
+mutate lockstep_node_clock_jitters_with_the_wall_clock variants/sim/sim_radio.cpp "  uint64_t nowUs() override { return g_ls_now - g_ls_join; }" "  uint64_t nowUs() override { return g_ls_now - g_ls_join + sim_real_clock()->nowUs() % 5000; }" sim/tests/test_lockstep.py::test_the_same_seeds_give_the_same_transmissions
 # a contact save looks up no file that is not there (#76)
 mutate save_preclean_lookups_back src/helpers/AtomicFile.h '#ifndef ATOMIC_FILE_TWO_STEP_SWAP
   if (fs->exists(tmp)) fs->remove(tmp);' '#if 1

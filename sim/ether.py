@@ -69,6 +69,7 @@ class _Conn:
         self.receptions = []          # active reception dicts
         self.lockstep = False         # joined with 'L' (lock-step clock)
         self.want = None              # lock-step: the broker time this node asked to reach (None: still running)
+        self.join_us = None           # lock-step: the broker time granted at the join
         self.kill = False             # refused: close after this read
 
 
@@ -95,6 +96,7 @@ class Ether:
         self._vnow = 0                        # broker time in integer microseconds
         self._ls = []                         # connected lock-step nodes
         self._ls_joined = 0
+        self.joined_us = {}                   # lock-step: node name -> broker time of its latest join (its millis() 0)
 
     # ------------------------------------------------------------------ control API
     def set_link(self, a, b, rssi=-80.0, snr=8.0, loss=0.0, both=True):
@@ -133,6 +135,31 @@ class Ether:
                 return False
             time.sleep(0.005)
         return True
+
+    def wait_quiet(self, seconds=3.0, timeout=60.0):
+        """Wait (wall clock, at most `timeout` s) until nothing has been on the air for `seconds` of broker time. For a
+        test that is about to send: the previous exchange's follow-ups (a path return, a relay) are over, so the new
+        packet cannot collide with them at a node that hears both senders. True if the channel went quiet."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            with self.lock:
+                last = max((t.start_us + t.toa_us for t in self.tx_log), default=None)
+                if last is None or self.now_us() - last >= seconds * 1e6:
+                    return True
+            time.sleep(0.005)
+        return False
+
+    def wait_tx(self, src, timeout=60.0):
+        """Wait (wall clock) until `src` has started a transmission; True if it did. A node's first packet after boot
+        waits for the first 30 s duty-cycle bin (the hour is seeded at the limit), so two nodes booted at the same
+        broker time release their first packets in the same quantum and collide: a test waits for a server's boot
+        advert before it sends anything that needs an answer."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if self.tx_of(src):
+                return True
+            time.sleep(0.005)
+        return False
 
     def wait_for_nodes(self, names, timeout=10.0):
         end = time.monotonic() + timeout
@@ -269,6 +296,7 @@ class Ether:
                         self._refuse(c, "a --lockstep node joined a real-time ether")
                         return
                     c.lockstep = True
+                    c.join_us = self._vnow
                     self._ls.append(c)
                     self._ls_joined += 1
                     self._send(c, "G", struct.pack("<Q", self._vnow))
@@ -285,6 +313,10 @@ class Ether:
                         self._refuse(c, "a real-time node (%s) joined a lock-step ether" % c.name)
                         return
                     self._conns[c.name] = c
+                    if c.lockstep:
+                        # 'L' and 'H' are sent together before setup(), and time cannot advance between them (this
+                        # node has not asked for any), so this is the instant the node's clock reads 0
+                        self.joined_us[c.name] = c.join_us
                 elif typ == "P" and len(payload) >= 10:
                     f, bw = struct.unpack_from("<ff", payload, 0)
                     c.params = (round(f, 3), round(bw, 3), payload[8], payload[9])

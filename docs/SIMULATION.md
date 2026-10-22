@@ -124,6 +124,30 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
   another's transmission begin within 1 ms (10 ms would delay each of these by up to 10 ms). Three nodes at 1 ms
   already run faster than the 10x scaled real time most tests use. A test that needs hours of virtual time with
   little traffic can ask for `quantum_us=10000`.
+* **Which tests run in lock-step.** Every test whose nodes talk only over the simulated ether:
+  `test_mesh.py`, `test_mesh_protocol.py` and `test_lockstep.py` whole; in `test_duty_cycle.py` every test with
+  nodes (the seven-node load test and the reboot test at `quantum_us=10000`, the rest at 1 ms); and the radio tests
+  of `test_contacts.py` (favourites reachable, a contact that wrote to us), `test_postures_admin.py` (remote admin of
+  a Repeater and a Room server), `test_repeater_prvkey.py`, `test_atomic_blobs_acl.py` (the client ACL power
+  cuts), `test_malformed_input.py` (TRACE packets injected through the broker), `test_companion_remote_cli.py` and
+  the remote-CLI tests of `test_postures_companion.py` (the `companion_wifi_usb` build there has no network
+  configured, so its only peer is the other node). The tests of those files that use no ether are unchanged.
+  Tests that use the ether but stay on scaled real time, deliberately, because a node in them also has a peer on a
+  real socket with wall-clock timeouts: `test_cli_unified.py` and `test_mqtt_nonblocking.py` (Mosquitto),
+  `test_connectivity_mode.py` (Wi-Fi, Mosquitto, BLE), `test_companion_ble.py` (the BLE link) and
+  `test_companion_transport.py` (the app on the Wi-Fi TCP server). The Wi-Fi, MQTT, TLS, Ethernet and UI tests
+  without an ether stay on real time too, and `test_ether_physics.py`
+  drives the real-time broker's physics without nodes.
+* **Writing a lock-step test.** Wait on broker time (`Ether.wait_until_us()`), not on `time.sleep()`: an absence
+  check such as "no login success" then holds for a fixed span of virtual time however slowly the host runs. Two
+  nodes started together join at the same broker instant, and each holds its first packet until the first 30 s
+  duty-cycle bin has aged out, so their first packets start in the same quantum and collide, in every run rather
+  than now and then: wait for a server's boot advert (`Ether.wait_tx()`) before sending it anything that needs an
+  answer, and for a quiet channel (`Ether.wait_quiet()`) before a sender that cannot hear the previous exchange's
+  follow-ups (a path return). `Ether.joined_us[name]` is the broker time of a node's latest join, the instant its
+  `millis()` read 0; a time read before a restart is earlier by however many quanta the old process still ran.
+  When a test fails, the `ether` fixture prints the broker's last 40 transmissions
+  (sender, start, type, who heard it, who lost it and why) under "Captured stdout teardown".
 
 ## Test inventory
 
@@ -132,12 +156,13 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
   formula for five SF/BW/CR/length combinations (within 1 ms) and two published values.
 * `test_repeater_cli.py` – `ver`, `get name`, `set name` and persistence across a restart.
 * `test_mesh.py` – two Companions that cannot hear each other exchange a direct message
-  and a channel message through a Repeater; and nothing is delivered with no links.
+  and a channel message through a Repeater; and nothing is delivered with no links (the message is on the air, and
+  120 virtual s later nobody has it). Lock-step.
 * `test_mesh_protocol.py` – the Companion's mesh path: a direct message is acknowledged
   (flood and direct ACK, `PUSH_CODE_SEND_CONFIRMED`); a lost ACK leaves the sender unconfirmed, the
   firmware does not resend by itself and the app's retry (attempt 1) is a second transmission with its own
   ACK; the first flood teaches the sender an out-path and the next message goes direct (ether log); a heard
-  advert becomes a contact with auto-add on and is only reported (`PUSH_CODE_NEW_ADVERT`) with it off.
+  advert becomes a contact with auto-add on and is only reported (`PUSH_CODE_NEW_ADVERT`) with it off. Lock-step.
 * `test_atomic_storage.py` – power cuts in the temp file and between write and rename for repeater prefs, Companion identity and channel table; a damaged identity is kept aside.
 * `test_atomic_blobs_acl.py` – power cuts for a Companion blob (the contact's last advert, byte-identical after the cut) and for the Repeater and Room server client ACL (a logged-in client is still recognised): at four byte offsets of the temp file and before the rename, the remove and the second rename of the SPIFFS-style swap, and a fault armed on the live file that must never fire.
 * `test_contacts.py` – the adaptive contact memory ([Adaptive contact memory](CONTACTS.md)): migration of a stock `/contacts3` (fields unchanged, a cut before the old file is removed, a merge into a filled store), app sync returning every stored contact beyond the cache, capacity and cache following the reported heap, RAM against the stock array, favourites resident and reachable over the radio under a small heap, eviction of the least meaningful non-favourite (the overwrite push names it, favourites and contacts with message history either way survive), refusal when only favourites remain, power cuts at any byte of a bucket's temp file and between write and rename, a damaged bucket, the file system calls of a boot (empty store and 350 contacts, bounded by the files present, not the capacity) and a swap left in a high-numbered bucket recovered at boot, and the `CONTACTS_STOCK_ARRAY` build (RAM-only, atomic, stock eviction). `sim_companion_stockcontacts` is the opt-out build.
@@ -147,7 +172,7 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
 * `test_companion_remote_cli.py` – remote Companion CLI limited to reads and `reboot`.
 * `test_malformed_input.py` – runs the `sim_*_asan` sanitizer builds: hand-built truncated TRACE packets injected through the ether broker (`Ether.inject`) and over-long CLI arguments must not crash the node; a well-formed TRACE is still forwarded / delivered.
 * `test_lockstep.py` – lock-step virtual time: two Repeaters (one given a 2 % duty cycle beforehand, so they do not always collide) booted together run ten virtual minutes three times; the same seeds give the identical `tx_log` (sender, start in microseconds, length and bytes) and the same receptions, and other seeds give other packets; every start lies on the 1 ms grid and no node starts a packet before its previous one ended; a real-time node on a lock-step ether and a lock-step node on a real-time ether are both refused.
-* `test_duty_cycle.py` – regulatory duty cycle, measured by the ether broker (`Ether.max_duty_in_any_hour`: the largest share of any sliding hour a node spent on the air, from the transmissions the broker saw, not from node counters). Seven nodes under sustained load for 1.25 virtual hours at time scale 60 (75 s): 869.525 MHz BW 250 (10 %), with a looser and with a stricter user setting, 868.1 MHz BW 125 (1 %, also with the CLI's strictest factor 9), a channel straddling two bands (0.1 %), 915 MHz (no floor; the user's 10 % rules) and a Repeater at 868.1 MHz; a Room Server at 868.1 MHz; a live frequency change on a Companion; two Companions power-cycled every 5 virtual minutes (15 times) that must stay within their limit across boots; the delay before the first advert after a boot; `get dutycycle` on both roles; and a self-test of the sliding-window instrument. Time scale 60 is coarse enough that the broker stamps a transmission up to a few real milliseconds (a fraction of a virtual second) late; the node's gate leaves more margin than that. The Room Server test also runs on lock-step virtual time (1 ms quanta, 1.25 virtual hours), where the stamps are exact: the busiest sliding hour must not exceed the limit by a microsecond, and must use at least the limit minus what the firmware's window is documented to leave unused (one 30 s bin, the largest packet, and under 1 ms of rounding per packet).
+* `test_duty_cycle.py` – regulatory duty cycle, measured by the ether broker (`Ether.max_duty_in_any_hour`: the largest share of any sliding hour a node spent on the air, from the transmissions the broker saw, not from node counters). On lock-step virtual time, every run length and reboot interval in broker time. Seven nodes under sustained load for 1.25 virtual hours (10 ms quanta): 869.525 MHz BW 250 (10 %), with a looser and with a stricter user setting, 868.1 MHz BW 125 (1 %, also with the CLI's strictest factor 9), a channel straddling two bands (0.1 %), 915 MHz (no floor; the user's 10 % rules) and a Repeater at 868.1 MHz; a Room Server at 868.1 MHz; a live frequency change on a Companion; two Companions power-cycled every 5 virtual minutes (exactly 15 times) that must stay within their limit across boots; the delay before the first advert after a boot, exactly a whole number of 30 s bins (as many as the advert's charge needs from a hour seeded at the limit) plus 1.002 s; `get dutycycle` on both roles; and a self-test of the sliding-window instrument. The broker's stamps are exact, so every limit is asserted without slack. For the Room Server (1 ms quanta, 1.25 virtual hours) the busiest sliding hour must not exceed the limit by a microsecond, and must use at least the limit minus what the firmware's window is documented to leave unused (one 30 s bin, the largest packet, and under 1 ms of rounding per packet).
 * `test_repeater_prvkey.py` – `set prv.key` refused for a remote admin, allowed on the local console.
 * `test_postures_admin.py` – the standalone postures on a Repeater and a Room server ([Standalone security postures](STANDALONE_POSTURES.md)): the stock default password opens nothing in either posture (blank-password re-login of a stored admin entry included) and a set password opens remote admin (read-only in Hardened); Hardened remote admin is read-only plus `reboot` with every refusal an explicit reply; a remote caller can neither raise nor lower the posture or read the audit log, and each attempt is audited; key export and import are refused on the console in Hardened; an attempted password appears in no file of the node directory and not in its log; posture and audit survive a reboot; a power cut while lowering leaves the device Hardened and a cut while raising keeps the previous prefs (three cut points each); `erase` recovers a Hardened device and the audit log keeps its history through the reset; repeats fold into one audit entry with a count.
 * `test_postures_companion.py` – the same on a Companion: key export and import refused over USB in Hardened and allowed again after `set posture normal confirm`; the remote CLI off in Hardened and back on in Normal; a remote CLI caller cannot change the posture or read the audit log; a Wi-Fi-class build with a stored Hardened posture does not serve its TCP port (the same build in Normal does); untrusted-transport refusals are audited in the file; the USB factory-reset frame recovers Hardened and keeps the audit history; posture survives a reboot and a power cut while lowering. BLE is covered by `test_companion_ble.py`.
@@ -193,7 +218,7 @@ A fifth group breaks each connectivity-mode rule (a damaged byte read as Wi-Fi, 
 
 A sixth group breaks each heap-floor rule (the total free heap used instead of the largest block, no hysteresis, no audit entry, the first look a period late, the period ignored, an unmeasurable platform firing, the fields or the marker dropped, the check not started or not run from the main loop) and expects the heap-floor tests to go red.
 
-A lock-step mutant makes the node read the wall clock instead of the broker's grants; the determinism test in `test_lockstep.py` must go red.
+Two lock-step mutants must turn the determinism test in `test_lockstep.py` red. One makes the node read the wall clock instead of the broker's grants; the node then falls behind virtual time and stops transmitting, so the test's precondition catches it. The other adds up to 5 ms of the wall clock to the node's lock-step clock: the node keeps time and keeps transmitting, and only the comparison of the two runs' `tx_log` can see that its timers now fire in host-dependent quanta.
 
 A seventh group breaks each BLE rule (a wrong PIN accepted, data before pairing accepted, the default PIN classed as trusted, a link surviving `disable()`, BLE started in Hardened with the default PIN or in Wi-Fi mode, the frame context trusting every interface, a paired link allowed key export or factory reset in Hardened) and expects `test_companion_ble.py` to go red.
 

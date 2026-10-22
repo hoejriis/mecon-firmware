@@ -17,6 +17,10 @@ import pytest
 from sim.harness import CMD_SEND_TXT_MSG, CompanionClient
 
 RTC = 1760000000
+
+# LoRa only: every node talks over the simulated ether, so the whole module runs on lock-step virtual time
+# (docs/SIMULATION.md). The waits below are wall-clock timeouts; the nodes' clocks and the broker's agree exactly.
+pytestmark = pytest.mark.lockstep()
 OUT_PATH_UNKNOWN = 0xFF
 
 PUSH_ADVERT = 0x80            # PUSH_CODE_ADVERT: an advert from a node that is already a contact
@@ -55,12 +59,7 @@ def _quiet(ether, seconds=3.0, timeout=60.0):
     """Wait until nothing has been on air for `seconds` (virtual): the previous exchange's own follow-ups (the path
     return a node sends after a flood PATH, the repeater's relays) are done. Sending into them makes a real collision
     with the next ACK, and the stock Companion never resends (CI, 2026-10-21: ca's path return hit cb's ACK at rr)."""
-    def idle():
-        if not ether.tx_log:
-            return True
-        last = ether.tx_log[-1]
-        return ether.now_us() - (last.start_us + last.toa_us) >= seconds * 1e6
-    assert _wait_for(idle, timeout), "the channel never went quiet"
+    assert ether.wait_quiet(seconds, timeout), "the channel never went quiet"
 
 
 def _pair(ether, nodes):
@@ -72,8 +71,9 @@ def _pair(ether, nodes):
     ether.set_link("ca", "rr")
     ether.set_link("cb", "rr")
     _ETHER[:] = [ether]
-    # the repeater's boot advert goes out about 16 s (virtual) after start; a message sent while it is on air can lose
-    # its ACK to the collision, and the stock Companion never resends. Start once it has gone out.
+    # the repeater's boot advert goes out 31 s (virtual) after start (scheduled at 16 s, held for the first duty-cycle
+    # bin); a message sent while it is on air can lose its ACK to the collision, and the stock Companion never resends.
+    # Start once it has gone out.
     assert _wait_for(lambda: any(_ptype(t) == PT_ADVERT for t in ether.tx_of("rr"))), "the repeater never advertised"
     a, b = CompanionClient(ca), CompanionClient(cb)
     for c in (a, b):
@@ -110,7 +110,6 @@ def _contact(client, pub_key):
     return next((c for c in contacts if c["key"] == pub_key), None)
 
 
-@pytest.mark.timescale(10)
 def test_direct_message_is_acknowledged_flood_and_direct(ether, nodes):
     a, b = _pair(ether, nodes)
 
@@ -144,7 +143,6 @@ def test_direct_message_is_acknowledged_flood_and_direct(ether, nodes):
     assert [_route(t) for t in acks] == [ROUTE_DIRECT], acks
 
 
-@pytest.mark.timescale(10)
 def test_lost_ack_gives_no_confirmation_and_the_apps_retry_goes_out_again(ether, nodes):
     a, b = _pair(ether, nodes)
     # the way back to the sender is dead: the message arrives, its ACK is lost
@@ -176,7 +174,6 @@ def test_lost_ack_gives_no_confirmation_and_the_apps_retry_goes_out_again(ether,
     assert ca_txt[1].heard_by == ["rr"]
 
 
-@pytest.mark.timescale(10)
 def test_path_is_learned_from_the_first_flood_and_the_next_message_goes_direct(ether, nodes):
     a, b = _pair(ether, nodes)
 
@@ -220,7 +217,6 @@ def _advertise(adv):
     assert adv.request(bytes([CMD_SEND_SELF_ADVERT, 0]))[0] == 0   # zero-hop
 
 
-@pytest.mark.timescale(10)
 def test_heard_advert_is_added_as_a_contact_when_auto_add_is_on(ether, nodes):
     adv, lis = _two_in_range(ether, nodes)
     assert lis.request(bytes([CMD_SET_OTHER_PARAMS, 0]))[0] == 0   # manual_add_contacts = 0: auto-add on
@@ -238,7 +234,6 @@ def test_heard_advert_is_added_as_a_contact_when_auto_add_is_on(ether, nodes):
     assert any(_ptype(t) == PT_ADVERT and t.delivered_to == ["lis"] for t in ether.tx_of("adv"))
 
 
-@pytest.mark.timescale(10)
 def test_heard_advert_is_only_reported_when_auto_add_is_off(ether, nodes):
     adv, lis = _two_in_range(ether, nodes)
     assert lis.request(bytes([CMD_SET_OTHER_PARAMS, 1]))[0] == 0   # manual_add_contacts = 1, no per-type bits set

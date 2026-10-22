@@ -40,6 +40,23 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "lockstep(quantum_us=1000, start_after=0): lock-step virtual time, broker-driven")
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    if rep.when == "call":
+        item.sim_call_failed = rep.failed
+
+
+def _ether_log(e, last=40):
+    """The broker's last transmissions, one per line: who sent what when, and who heard, lost or never got it."""
+    with e.lock:
+        txs = list(e.tx_log)[-last:]
+    return "\n".join("  %-8s t=%.6fs toa=%dus len=%d type=%d route=%d heard=%s delivered=%s lost=%s"
+                     % (t.src, t.start_us / 1e6, t.toa_us, t.length, (t.data[0] >> 2) & 0x0F, t.data[0] & 0x03,
+                        t.heard_by, t.delivered_to, t.lost) for t in txs if t.data)
+
+
 @pytest.fixture
 def ether(tmp_path, request):
     ls = _lockstep(request)
@@ -48,6 +65,11 @@ def ether(tmp_path, request):
     else:
         e = Ether(str(tmp_path / "ether.sock"), seed=7, time_scale=_scale(request)).start()
     yield e
+    if getattr(request.node, "sim_call_failed", False):
+        # the evidence for a failed radio test: what was on the air (shown under "Captured stdout teardown")
+        print("ETHER LOG at broker time %.6f s (%s), last %d of %d transmissions:\n%s"
+              % (e.now_us() / 1e6, "lock-step" if e.lockstep else "real time", min(40, len(e.tx_log)), len(e.tx_log),
+                 _ether_log(e)))
     e.stop()
     assert not e.errors, e.errors
 
