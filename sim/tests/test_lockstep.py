@@ -163,3 +163,43 @@ def test_a_node_defers_its_transmission_while_a_neighbour_transmits(ether, nodes
     # heard
     assert a_end <= b.start_us <= a_end + CAD_RETRY_US + 100e3, (a_end, b.start_us)
     assert a.delivered_to == ["db"] and b.delivered_to == ["da"], (a.lost, b.lost)
+
+
+def _first_transmissions(tmp, seeds, run_us=75_000_000):
+    """Two Repeaters with default prefs, joined to a lock-step ether at the same broker instant (a power restore).
+    Returns each node's first transmission as (start_us, end_us), or None if it sent nothing in run_us."""
+    os.makedirs(tmp, exist_ok=True)
+    e = Ether(os.path.join(tmp, "ether.sock"), seed=7, lockstep=True, start_after=2).start()
+    made = []
+    try:
+        e.set_link("pa", "pb")
+        for name, seed in zip(("pa", "pb"), seeds):
+            made.append(harness.Node("repeater", name, tmp, ether_path=e.path, seed=seed, rtc=RTC, lockstep=True,
+                                     quantum_us=10000).start())
+        assert e.wait_until_us(run_us, timeout=120), "virtual time stalled at %.3f s" % (e.now_us() / 1e6)
+        with e.lock:
+            first = {}
+            for t in e.tx_log:
+                first.setdefault(t.src, (t.start_us, t.start_us + t.toa_us))
+        assert not e.errors, e.errors
+        return first.get("pa"), first.get("pb")
+    finally:
+        for n in made:
+            n.stop()
+        e.stop()
+
+
+def test_nodes_booted_together_do_not_release_on_the_same_bin_edge(tmp_path):
+    # A packet held for duty is released when a 30 s bin ages out. Every node's window is seeded full at boot, so two
+    # nodes restarted together (a power restore) used to release their first packets on the same edge and collide
+    # every time. Each node now draws its own bin phase. Ten seed pairs (deterministic under lock-step): a few may still
+    # overlap by chance (a ~1 s advert in a 30 s phase range, 2 of 10 when written); the shared grid made all ten
+    # collide. The bound leaves room for a change in random draws without hiding a return of the shared grid.
+    collisions = []
+    for i in range(10):
+        a, b = _first_transmissions(str(tmp_path / ("pair%d" % i)), (100 + 2 * i, 101 + 2 * i))
+        assert a and b, "a node sent nothing: %r %r" % (a, b)
+        if a[0] < b[1] and b[0] < a[1]:
+            collisions.append((i, a, b))
+    print("MEASURED first-packet collisions of nodes booted together: %d of 10" % len(collisions))
+    assert len(collisions) <= 4, collisions
