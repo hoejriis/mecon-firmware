@@ -37,6 +37,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Default-PIN BLE refusals | key export and CLI refused, audited `refused ble …` | 2026-10-21, ce77034d |
 | Connectivity mode | `set connectivity.mode wifi|ble` switches and restarts; the USB console answers in both modes | 2026-10-21, ce77034d |
 | Wi-Fi profile priority | with a higher-priority profile whose network does not exist, the scan skips it and the board joins the lower-priority one, about 8 s from boot | 2026-10-23, ed890932 |
+| Wi-Fi failover between two access points | joins the priority-90 network about 8 s from boot; with that profile's passphrase broken on the running board, fails over to the priority-10 network in about 9 s; with the passphrase restored, returns to the priority-90 network in about 3 s | 2026-10-23, ed890932 |
 
 ## Seeed Wio Tracker L1 (wiotest)
 
@@ -54,8 +55,7 @@ gives about 450 at the capacity rule, above stock's 350.
 - The device screen and the button gesture for switching connectivity mode (the rendering is covered by the
   simulator's UI captures).
 - A phone pairing with the MeshCore app, and the app reading the `v1.18.0-mecon` version string.
-- Wi-Fi failover when a joined network disappears: the second bench access point (mithrandir) was not on the air on
-  2026-10-23, leaving one visible network; re-run when it is. The failover logic is covered by the simulated Wi-Fi tests.
+- Wi-Fi failover when the access point itself goes off the air (the verified run breaks the joined profile instead).
 - USB recovery through the Companion's rescue console (`rebuild`, `erase`): it is entered by a long press of the user
   button within 8 s of power-up, so it needs a person at the board. Covered by the simulated suite.
 - Any board not listed above.
