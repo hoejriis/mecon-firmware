@@ -54,7 +54,8 @@ gives about 450 at the capacity rule, above stock's 350.
 - The device screen and the button gesture for switching connectivity mode (the rendering is covered by the
   simulator's UI captures).
 - A phone pairing with the MeshCore app, and the app reading the `v1.18.0-mecon` version string.
-- Wi-Fi failover when a joined network disappears: the bench has a single access point.
+- Wi-Fi failover when a joined network disappears: the second bench access point (mithrandir) was not on the air on
+  2026-10-23, leaving one visible network; re-run when it is. The failover logic is covered by the simulated Wi-Fi tests.
 - USB recovery through the Companion's rescue console (`rebuild`, `erase`): it is entered by a long press of the user
   button within 8 s of power-up, so it needs a person at the board. Covered by the simulated suite.
 - Any board not listed above.
