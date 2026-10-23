@@ -22,6 +22,8 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | CLI over LoRa (Repeater build) | remote-admin login; `ver`, `get name`, `get mecon.mem`, `get dutycycle` answer; `get mecon.cli.who` → `transport=lora … principal=remote-admin`; `erase` refused; `get prv.key` refused and audited | 2026-10-22, adf36c80 |
 | Duty-cycle floor (Repeater) | `get dutycycle` reports the band's floor; boot seed holds the full hour | 2026-10-17, 4fbc85b8 |
 | BLE: NimBLE build (`_nimble`) | GATT service, PIN and default-PIN pairing, re-pairing after a forgotten bond, CLI over BLE, refusals audited as `ble`; +28 KB internal heap against Bluedroid | 2026-10-22, 09c044f2 (GATT fix included) |
+| Hardened posture (default PIN) | persists across a reboot; key export over USB refused and audited (`refused cable key-export`); lowering without `confirm` refused, with `confirm` it lowers; BLE never starts with the default PIN (no advertisement, audited `refused ble ble-start`) | 2026-10-23, ed890932 |
+| Companion-to-Companion messaging over LoRa (with v4test) | direct messages both ways, each delivered with the ACK confirmed at the sender: 4 of 5 over two runs, the miss being the first transmission after the first boot (the firmware does not resend; the app does) | 2026-10-23, ed890932 |
 
 ## Heltec V4 (v4test)
 
@@ -34,6 +36,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Reply routing | 22 USB replies on USB, 3 BLE replies on BLE, interleaved, none crossed | 2026-10-21, ce77034d |
 | Default-PIN BLE refusals | key export and CLI refused, audited `refused ble …` | 2026-10-21, ce77034d |
 | Connectivity mode | `set connectivity.mode wifi|ble` switches and restarts; the USB console answers in both modes | 2026-10-21, ce77034d |
+| Wi-Fi profile priority | with a higher-priority profile whose network does not exist, the scan skips it and the board joins the lower-priority one, about 8 s from boot | 2026-10-23, ed890932 |
 
 ## Seeed Wio Tracker L1 (wiotest)
 
@@ -51,10 +54,10 @@ gives about 450 at the capacity rule, above stock's 350.
 - The device screen and the button gesture for switching connectivity mode (the rendering is covered by the
   simulator's UI captures).
 - A phone pairing with the MeshCore app, and the app reading the `v1.18.0-mecon` version string.
-- Wi-Fi priority failover between several Wi-Fi profiles.
-- The Hardened posture on a real board.
-- USB recovery (`rebuild`, factory reset over the cable).
-- Ordinary Companion-to-Companion messaging over LoRa between two mecon-firmware boards.
+- Wi-Fi failover when a joined network disappears: the second bench access point (mithrandir) was not on the air on
+  2026-10-23, leaving one visible network; re-run when it is. The failover logic is covered by the simulated Wi-Fi tests.
+- USB recovery through the Companion's rescue console (`rebuild`, `erase`): it is entered by a long press of the user
+  button within 8 s of power-up, so it needs a person at the board. Covered by the simulated suite.
 - Any board not listed above.
 
 ## Board exceptions
