@@ -297,3 +297,11 @@ def test_settings_over_ble_follow_the_cli_table(nodes):
     j = mecon_iface.IfaceClient(d._send, d._read_frame)
     assert j.request("config.get", {"keys": ["name"]})["status"] == "refused"
     assert j.request("config.apply", {"set": {"name": "Nope"}})["status"] == "refused"
+
+
+def test_the_recorded_schema_is_what_the_firmware_answers(nodes):
+    rec = fixture("config_schema.recorded.json")
+    n, (c, i) = start(nodes, "rs")
+    for page in rec["pages"]:
+        assert i.request("config.schema", {"cursor": page["cursor"]})["result"] == page["result"], (
+            "config.schema drifted from docs/contract/fixtures/config_schema.recorded.json; re-record it with the change")
