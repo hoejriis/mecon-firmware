@@ -65,4 +65,13 @@ struct ProvisionContext {
 // authority set. On P_DUPLICATE nothing is to be written.
 ProvErr checkProvision(const ProvisionPayload& p, const ProvisionContext& ctx, Record* out, AuthoritySet* set);
 
+// authority_update (contract section 9.1): a newer authority set, with any DAK rotations before it, for a device
+// that already holds a record. DAK-signed itself, so it needs no issuer signature and no job id. On P_OK *out is the
+// record to persist (key, epoch, set, replay state reconciled); P_DUPLICATE (the same revision) writes nothing.
+// Errors: P_UNTRUSTED_AUTHORITY_KEY, P_WRONG_DEPLOYMENT, P_BAD_AUTHORITY_SIGNATURE, P_BAD_AUTHORITY_SET,
+// P_STALE_REVISION.
+ProvErr checkAuthorityUpdate(const Loaded& current, const Rotation* rotations, uint8_t n_rotations,
+                             const char* set_text, size_t set_len, const uint8_t set_sig[SIG_LEN], Record* out,
+                             AuthoritySet* set);
+
 }  // namespace Dep

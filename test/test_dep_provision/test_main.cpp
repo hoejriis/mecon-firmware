@@ -234,6 +234,36 @@ TEST_F(Fx, MigratingIssuerMustBeAMember) {
   EXPECT_EQ(P_OK, run(p));
 }
 
+// authority_update: rotation plus a newer set onto a provisioned device.
+TEST_F(Fx, AuthorityUpdateRotatesAndAdmits) {
+  ProvisionPayload p = first();
+  ASSERT_EQ(P_OK, run(p));
+  rec.replay[0].wm[JC_SETTINGS] = { 9, 1 };
+  commit(p);
+  Rotation r;
+  r.text = rot.data();
+  r.len = rot.size();
+  base64ToSig(ROTATION_1_TO_2_SIG, 88, r.sig);
+  uint8_t sig2[SIG_LEN];
+  base64ToSig(AUTHORITY_SET_REV2_SIG, 88, sig2);
+  ASSERT_EQ(P_OK, checkAuthorityUpdate(cur, &r, 1, set2.data(), set2.size(), sig2, &rec, &set));
+  EXPECT_EQ(2u, rec.authority_epoch);
+  EXPECT_EQ(2u, rec.authority_revision);
+  EXPECT_EQ(1u, rec.provision_revision);          // an update is not a provisioning
+  ASSERT_EQ(2, rec.n_replay);
+  EXPECT_EQ(9u, rec.replay[0].wm[JC_SETTINGS].mark);
+  // Without the rotation the new set does not verify against the pinned key.
+  EXPECT_EQ(P_BAD_AUTHORITY_SIGNATURE, checkAuthorityUpdate(cur, nullptr, 0, set2.data(), set2.size(), sig2, &rec, &set));
+  // The set already held: a duplicate.
+  uint8_t sig1[SIG_LEN];
+  base64ToSig(AUTHORITY_SET_REV1_SIG, 88, sig1);
+  EXPECT_EQ(P_DUPLICATE, checkAuthorityUpdate(cur, nullptr, 0, set1.data(), set1.size(), sig1, &rec, &set));
+  // Nothing pinned: refused.
+  Loaded none;
+  memset(&none, 0, sizeof(none));
+  EXPECT_EQ(P_UNTRUSTED_AUTHORITY_KEY, checkAuthorityUpdate(none, nullptr, 0, set1.data(), set1.size(), sig1, &rec, &set));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

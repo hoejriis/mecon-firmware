@@ -122,4 +122,32 @@ ProvErr checkProvision(const ProvisionPayload& p, const ProvisionContext& ctx, R
   return P_OK;
 }
 
+ProvErr checkAuthorityUpdate(const Loaded& current, const Rotation* rotations, uint8_t n_rotations,
+                             const char* set_text, size_t set_len, const uint8_t set_sig[SIG_LEN], Record* out,
+                             AuthoritySet* set) {
+  if (current.state != LS_OK) return P_UNTRUSTED_AUTHORITY_KEY;   // nothing pinned to verify against
+  const Record& cur = current.rec;
+  RootState root;
+  memcpy(root.dak, cur.dak, KEY_LEN);
+  root.authority_epoch = cur.authority_epoch;
+  if (n_rotations > MAX_ROTATIONS) return P_UNTRUSTED_AUTHORITY_KEY;
+  for (int i = 0; i < n_rotations; i++) {
+    Err e = applyRotation(rotations[i].text, rotations[i].len, rotations[i].sig, cur.deployment_id, &root);
+    if (e != OK) return e == WRONG_DEPLOYMENT ? P_WRONG_DEPLOYMENT : P_UNTRUSTED_AUTHORITY_KEY;
+  }
+  SetContext sc = { root.dak, cur.deployment_id, root.authority_epoch, true, cur.authority_revision };
+  Err se = acceptSet(set_text, set_len, set_sig, sc, set);
+  if (se == DUPLICATE) return P_DUPLICATE;
+  if (se != OK) return fromSetErr(se);
+  Record r = cur;
+  memcpy(r.dak, root.dak, KEY_LEN);
+  r.authority_epoch = root.authority_epoch;
+  r.authority_revision = set->authority_revision;
+  memcpy(r.set_sig, set_sig, SIG_LEN);
+  r.set_len = (uint16_t)set_len;
+  reconcileReplay(&r, *set);
+  *out = r;
+  return P_OK;
+}
+
 }  // namespace Dep
