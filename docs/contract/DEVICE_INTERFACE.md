@@ -31,7 +31,7 @@ UTF-8 JSON objects. Three shapes:
 {"v":1,"ev":"health","seq":42,"epoch":7,"ts":1792843200,"data":{ ... }}
 ```
 
-- `id`: chosen by the requester, 1 to 32 characters of `[0-9A-Za-z._:-]`. The device echoes it on the result and keeps the last 16 ids per transport, so a duplicate delivered again (a reconnect, a retried write) gets the stored result instead of a second execution.
+- `id`: chosen by the requester, 1 to 32 characters of `[0-9A-Za-z._:-]`. The device echoes it on the result. For operations that change state it keeps the last 16 ids with their results, in one cache shared by every transport, so a duplicate (a reconnect, a retried write, the same request over another transport) gets the stored result instead of a second execution. A read is not kept: running it again is harmless.
 - `status`: `ok`, `refused` (not authorized; nothing executed), `invalid` (malformed or bad arguments), `unknown-op`, `unsupported-version`, `busy` (a bound was reached; retry later), `failed` (executed and failed; `error` says why). `refused`, `invalid`, `unknown-op`, `unsupported-version` and `busy` guarantee that nothing ran.
 - `ts`: Unix seconds when the device clock is set, `null` when it is not. `epoch`: a boot counter kept in flash, so `(epoch, seq)` orders events across reboots and makes a gap visible.
 - Absent, `null` and `0` mean different things: absent = not supported by this build; `null` = supported but unknown now; `0` = measured zero.
@@ -69,8 +69,8 @@ Every operation and every key is checked by the CLI privilege engine (`src/helpe
 ```
 
 - `xid` numbers messages per direction; `count` is the number of frames in the message (1 to 25, so at most 4,096 bytes), `index` counts from 0.
-- One inbound message is reassembled at a time per transport. A frame for a new `xid` while one is incomplete discards the incomplete one; a message incomplete after 5 s is discarded. Either answers `invalid` when the `id` is known.
-- Outbound results and events are queued per transport in a bounded queue (8 messages). When it is full, an event is dropped and counted in its stream; a result is never dropped but the request that would produce it gets `busy` first. Frames of different messages are never interleaved.
+- One inbound message is reassembled at a time per transport, in a buffer allocated when it starts and freed when it is taken or dropped. A frame for a new `xid` while one is incomplete discards the incomplete one; a message incomplete after 5 s is discarded. Either answers `invalid` when the `id` is known. Every frame but the last carries exactly 168 bytes, so frames may arrive in any order; a repeated frame is ignored.
+- Outbound results and events are queued per transport in a bounded queue of 8 messages. Events may fill at most 7 of them and must leave 512 bytes free; past that an event is dropped and counted in its stream. A result that does not fit is replaced by a short `busy` result, which always fits in what events had to leave. Frames of different messages are never interleaved.
 - Interleaving with native pushes is normal: a client must skip native frames while it waits for its result, as it already must for native requests.
 
 **MQTT.** Under `mecon/<device_id>/`:
@@ -90,7 +90,7 @@ No fragmentation. The MQTT client buffer (512 bytes today) has to grow to carry 
 
 - Requests are parsed and answered in the main loop in bounded steps; no operation blocks on a network or BLE write. A paged result is produced page by page.
 - Each subscription has a bounded rate, a lifetime after which it ends unless renewed, and a drop counter reported in its events. A slow or vanished consumer costs dropped events, never loop time.
-- Memory: one reassembly buffer per transport while a message is in flight, the outbound queue, and the last-16 id cache. The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
+- Memory: the id cache, 2.6 KB for the device; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
 
 ### 9. Conformance
 
