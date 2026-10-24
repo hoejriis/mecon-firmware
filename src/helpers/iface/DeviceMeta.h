@@ -6,6 +6,7 @@
 #include <Mesh.h>
 #include <string.h>
 #include "helpers/AtomicFile.h"
+#include "DeviceId.h"
 
 namespace Iface {
 
@@ -36,6 +37,13 @@ bool bootDeviceMeta(FS_T* fs, mesh::RNG* rng, uint8_t device_id[16], uint32_t* e
   memcpy(rec + 16, &e, 4);
   memcpy(device_id, rec, 16);
   *epoch = e;
+  static const char H[] = "0123456789abcdef";
+  char* hex = deviceIdHexBuf();
+  for (int i = 0; i < 16; i++) {
+    hex[2 * i] = H[rec[i] >> 4];
+    hex[2 * i + 1] = H[rec[i] & 15];
+  }
+  hex[32] = 0;
   return AtomicFile::save(fs, PATH, [&rec](Stream& s) { return s.write(rec, sizeof(rec)) == sizeof(rec); }, !have);
 }
 

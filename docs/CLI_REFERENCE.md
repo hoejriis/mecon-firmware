@@ -170,6 +170,7 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | `get acl` | Print the ACL to the serial console. | stock | read | Console only; the output goes to the serial port, the reply is empty. |
 | `get public.key` | This node's public key (hex). | stock | read |  |
 | `get role` | The firmware role (repeater, room_server, sensor). | stock | read |  |
+| `get device.id` | The device interface's `device_id` (32 hex), the same value `hello` reports. | MECON | read | Every role, every CLI path, including MQTT `cli/req`. `Error: unsupported` on a build without the device interface. |
 | `get prv.key` | Print the private key (hex). | stock, behaviour changed | secret | Console only. Stock already restricted it to the console; now also refused for every caller in Hardened (`ERR: key export is refused in hardened posture`), the cable included. A remote admin: `ERR: not permitted`. |
 | `set prv.key <hex>` | Replace the node identity; reboot to apply. | stock, behaviour changed | secret | Local console, Normal posture only. Stock let a remote admin do this. Remote: `ERR: prv.key can only be set from the local console` (explained, not audited); Hardened: `ERR: key import is refused in hardened posture`. |
 | `get name` / `set name <name>` | Node name. | stock | read / write | `Error, bad chars` for names with characters the advert format does not allow. |
