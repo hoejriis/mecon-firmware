@@ -260,6 +260,68 @@
         "status": "invalid",
         "error": "bad-format:radio"
       }
+    },
+    {
+      "name": "subscribe to an unknown stream",
+      "request": {
+        "v": 1,
+        "id": "fx-sub-unknown",
+        "op": "sub.start",
+        "args": {
+          "stream": "weather"
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "unknown-stream"
+      }
+    },
+    {
+      "name": "subscribe faster than the floor",
+      "request": {
+        "v": 1,
+        "id": "fx-sub-fast",
+        "op": "sub.start",
+        "args": {
+          "stream": "health",
+          "period_s": 1
+        }
+      },
+      "expect": {
+        "status": "invalid"
+      }
+    },
+    {
+      "name": "subscribe",
+      "request": {
+        "v": 1,
+        "id": "fx-sub",
+        "op": "sub.start",
+        "args": {
+          "stream": "health",
+          "period_s": 60,
+          "lifetime_s": 10
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "sub.start.result.json"
+      }
+    },
+    {
+      "name": "unsubscribe",
+      "request": {
+        "v": 1,
+        "id": "fx-unsub",
+        "op": "sub.stop",
+        "args": {
+          "stream": "health"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "sub.stop.result.json"
+      }
     }
   ],
   "transport_cases": [

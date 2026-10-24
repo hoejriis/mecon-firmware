@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/sub.stop.result.json",
+  "title": "Result of sub.stop (v1.0)",
+  "type": "object",
+  "required": ["stream", "active"],
+  "properties": {"stream": {"type": "string", "enum": ["health"]}, "active": {"type": "boolean", "const": false}}
+}

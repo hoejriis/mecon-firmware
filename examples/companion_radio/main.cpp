@@ -284,6 +284,9 @@ void setup() {
       mqttController().setCliHandler(&mqttCliRun, &the_mesh);   // the command line over MQTT (docs/CLI.md)
 #ifdef ENABLE_MECON_IFACE
       mqttController().setIfaceHandler(&mqttIfaceRun, &the_mesh, the_mesh.iface().deviceIdHex());   // DEVICE_INTERFACE.md
+      the_mesh.iface().setMqttEvents(
+          [](const char* stream, const char* payload, size_t len) { return mqttController().publishIfaceEvent(stream, payload, len); },
+          []() { return mqttController().sessionUp(); });
 #endif
       mqttController().begin(&the_mesh.getNodePrefs()->mqtt_profiles, &mqttPlatformNet(),
                              &the_mesh.getNodePrefs()->posture, node_id);

@@ -47,6 +47,9 @@ public:
   // begin(): the device then publishes its status under mecon/<device_id>/ instead of mecon/<node id>/, and takes
   // requests on mecon/<device_id>/req, answering on .../resp.
   typedef size_t (*IfaceFn)(void* user, const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap);
+  // One interface event on mecon/<device_id>/ev/<stream>, QoS 0, never retained. False when no session is up.
+  bool publishIfaceEvent(const char* stream, const char* payload, size_t len);
+  bool sessionUp() const { return _started && _core.state() == MqttState::Connected; }
   void setIfaceHandler(IfaceFn fn, void* user, const char* device_id_hex) {
     _iface_fn = fn;
     _iface_user = user;

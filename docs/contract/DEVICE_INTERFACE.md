@@ -115,11 +115,13 @@ A third party should be able to implement a client from this page, the schemas a
 
 Published so far (v1.0 first cut):
 
-- [`schema/`](schema/): `request.json`, `result.json`, `event.json`, and the results of `hello` and `status.get`;
+- [`schema/`](schema/): `request.json`, `result.json`, `event.json`; the results of `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `sub.start` and `sub.stop`; and the data of the `health` event (`event.health.json`);
 - [`fixtures/requests.json`](fixtures/requests.json): requests with the status (and result schema) a v1.0 device must answer, plus a transport case; [`fixtures/framing.json`](fixtures/framing.json): one message and its exact `0x7F` frames;
 - [`tools/mecon_iface.py`](../../tools/mecon_iface.py): the reference client (framing, reassembly, envelope; transport-neutral), and [`tools/mecon_schema.py`](../../tools/mecon_schema.py), a dependency-free checker for the keywords these schemas use.
 
-The simulated-board suite (`sim/tests/test_device_interface.py`) runs every fixture against the firmware and checks each answer against the schemas. The schemas and fixtures for `config.*`, subscriptions and MQTT follow with those operations.
+- [`fixtures/config_schema.recorded.json`](fixtures/config_schema.recorded.json) and [`fixtures/config_radio.recorded.json`](fixtures/config_radio.recorded.json): the whole settings schema and real radio writes and reads, recorded from one build.
+
+The simulated-board suite (`sim/tests/test_device_interface.py`) runs every fixture against the firmware over USB, BLE and MQTT and checks each answer against the schemas; it fails if a recorded fixture drifts from the firmware.
 
 ## Left to the implementation
 

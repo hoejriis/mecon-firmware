@@ -234,6 +234,12 @@ class Broker:
         out, _ = sub.communicate(timeout=timeout + 5)
         return json.loads(out) if out.strip() else None
 
+    def next_message(self, topic, timeout=10, count=1):
+        """The next `count` payloads published on topic (parsed JSON), as a list; fewer when the time runs out."""
+        cmd = ["mosquitto_sub"] + self._client_args() + ["-t", topic, "-C", str(count), "-W", str(timeout)]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+        return [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
+
     def retained_on(self, topic, timeout=5):
         """The retained payload on one exact topic, or None."""
         cmd = ["mosquitto_sub"] + self._client_args() + ["-t", topic, "-C", "1", "-W", str(timeout)]

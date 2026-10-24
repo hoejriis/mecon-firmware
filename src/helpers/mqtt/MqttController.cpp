@@ -276,6 +276,13 @@ void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
   free(out);
 }
 
+bool MqttController::publishIfaceEvent(const char* stream, const char* payload, size_t len) {
+  if (!_iface_fn || !sessionUp()) return false;
+  char topic[64];
+  snprintf(topic, sizeof(topic), "mecon/%s/ev/%s", _device_id, stream);
+  return _psc.publish(topic, (const uint8_t*)payload, (unsigned)len, false);
+}
+
 void MqttController::onMessage(const char* topic, const uint8_t* payload, unsigned len) {
   if (_core.state() != MqttState::Connected || (int32_t)(millis() - _cli_open_at) < 0) return;
   if (_iface_fn && strcmp(topic, _iface_req) == 0) { onIfaceMessage(payload, len); return; }

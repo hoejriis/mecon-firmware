@@ -410,3 +410,77 @@ def test_an_unverified_broker_is_refused(nodes, tmp_path, broker):
     n, c, i, dev = mqtt_boot(nodes, tmp_path, "uv", b, anchor=False)   # TLS without an anchor: not verified
     r = b.iface_request(dev, {"v": 1, "id": "u1", "op": "hello"})
     assert r == {"v": 1, "id": "u1", "status": "refused"}, r
+
+
+# ------------------------------------------------------------------ subscriptions: the health stream
+
+def events(i, n, timeout=30.0):
+    """The next n events seen by client i (results are not expected meanwhile)."""
+    end = time.time() + timeout
+    while len(i.events) < n and time.time() < end:
+        m = i.read_message(timeout=1.0)
+        if m is not None and "ev" in m:
+            i.events.append(m)
+    got, i.events = i.events[:n], i.events[n:]
+    return got
+
+
+@pytest.mark.timescale(10)
+def test_health_events_follow_a_subscription_and_stop_with_it(nodes):
+    n, (c, i) = start(nodes, "he")
+    epoch = i.request("hello")["result"]["epoch"]
+    r = i.request("sub.start", {"stream": "health", "period_s": 5, "lifetime_s": 120})
+    assert r["status"] == "ok" and r["result"] == {"stream": "health", "period_s": 5, "lifetime_s": 120}, r
+    got = events(i, 3)
+    assert len(got) == 3, got
+    for e in got:
+        assert not mecon_schema.check(e, mecon_schema.load("event.json")), e
+        assert not mecon_schema.check(e["data"], mecon_schema.load("event.health.json")), e
+        assert e["ev"] == "health" and e["epoch"] == epoch
+    assert [e["seq"] for e in got] == list(range(got[0]["seq"], got[0]["seq"] + 3)), "one sequence, no gaps"
+    assert i.request("sub.stop", {"stream": "health"})["result"] == {"stream": "health", "active": False}
+    i.events.clear()
+    assert events(i, 1, timeout=12) == [], "no event after sub.stop"
+
+
+@pytest.mark.timescale(10)
+def test_a_subscription_lapses_at_its_lifetime(nodes):
+    n, (c, i) = start(nodes, "hl")
+    assert i.request("sub.start", {"stream": "health", "period_s": 5, "lifetime_s": 10})["status"] == "ok"
+    first = events(i, 2, timeout=20)
+    assert len(first) == 2
+    time.sleep(2.0)   # 20 s of node time: past the lifetime
+    i.events.clear()
+    assert events(i, 1, timeout=12) == [], "an unrenewed subscription lapses"
+
+
+@pytest.mark.timescale(10)
+def test_two_transports_get_the_same_event(nodes):
+    n = ble_boot(nodes, "h2", PIN)
+    b = n.connect_ble(PIN)
+    b.app_start()
+    u = CompanionClient(n)
+    u.app_start()
+    ib = mecon_iface.IfaceClient(b._send, b._read_frame, id_prefix="ble")
+    iu = mecon_iface.IfaceClient(u._send, u._read_frame, id_prefix="usb")
+    assert iu.request("sub.start", {"stream": "health", "period_s": 5, "lifetime_s": 120})["status"] == "ok"
+    assert ib.request("sub.start", {"stream": "health", "period_s": 5, "lifetime_s": 120})["status"] == "ok"
+    eu, eb = events(iu, 4), events(ib, 4)
+    common = {(e["epoch"], e["seq"]) for e in eu} & {(e["epoch"], e["seq"]) for e in eb}
+    assert len(common) >= 2, (eu, eb)
+    for key in common:
+        a = next(e for e in eu if (e["epoch"], e["seq"]) == key)
+        z = next(e for e in eb if (e["epoch"], e["seq"]) == key)
+        assert a == z, "one event, the same bytes on both transports, so a Backend can drop the second copy"
+
+
+@pytest.mark.timescale(10)
+def test_health_events_over_mqtt(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "hm", b)
+    r = b.iface_request(dev, {"v": 1, "id": "s1", "op": "sub.start", "args": {"stream": "health", "period_s": 5, "lifetime_s": 120}})
+    assert r["status"] == "ok", r
+    got = b.next_message("mecon/%s/ev/health" % dev, timeout=15, count=2)
+    assert len(got) == 2, got
+    assert got[1]["seq"] == got[0]["seq"] + 1
+    assert not mecon_schema.check(got[0]["data"], mecon_schema.load("event.health.json"))
