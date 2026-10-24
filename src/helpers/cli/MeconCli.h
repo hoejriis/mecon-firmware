@@ -106,7 +106,9 @@ inline void formatMem(const MemStats& m, const HeapFloor& floor, char* reply, si
     int n = snprintf(reply, max, "> heap free=%lu largest=%lu min_free=%lu heap_low=%d floor=%lu", (unsigned long)m.free,
                      (unsigned long)m.largest, (unsigned long)m.min_free, floor.low() ? 1 : 0,
                      (unsigned long)floor.floorBytes());
-    if (m.psram && n > 0 && (size_t)n < max) snprintf(reply + n, max - n, " psram_free=%lu", (unsigned long)m.psram);
+    if (m.psram && n > 0 && (size_t)n < max) n += snprintf(reply + n, max - n, " psram_free=%lu", (unsigned long)m.psram);
+    if (m.loop_stack_free && n > 0 && (size_t)n < max)
+      snprintf(reply + n, max - n, " loop_stack_free=%lu", (unsigned long)m.loop_stack_free);
   }
 }
 

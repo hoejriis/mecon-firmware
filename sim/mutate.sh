@@ -606,6 +606,7 @@ mutate blob_swap_not_recovered examples/companion_radio/DataStore.cpp '  AtomicF
 mutate blob_written_in_place examples/companion_radio/DataStore.cpp '  return AtomicFile::save(_fs, path, [src_buf, len](Stream& s) { return s.write(src_buf, len) == len; });' '  File f = openWrite(_fs, path); if (!f) return false; int n = f.write(src_buf, len); f.close(); return n == len;' sim/tests/test_atomic_blobs_acl.py::test_blob_cut_in_temp_file_keeps_previous_blob sim/tests/test_atomic_blobs_acl.py::test_blob_is_never_written_in_place
 
 mutate mem_unknown_printed_as_measured src/helpers/cli/MeconCli.h "if (!m.known) snprintf" "if (false) snprintf" unit:test_cli_engine
+mutate mem_loop_stack_not_reported src/helpers/cli/MeconCli.h "    if (m.loop_stack_free && n > 0 && (size_t)n < max)" "    if (false)" unit:test_heap_floor
 
 # firmware identity (version string)
 mutate ver_dev_suffix_dropped src/helpers/MeconVersion.h '"+%.*s.%.*s"' '"%.0s%.0s"' unit:test_mecon_version
