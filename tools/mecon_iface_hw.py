@@ -112,14 +112,18 @@ def check_health_stream(i):
 
 
 class MqttLink:
-    """Requests as whole messages on mecon/<id>/req; one mosquitto_sub collects .../resp and .../ev/health."""
+    """Requests as whole messages on mecon/<id>/req; one mosquitto_sub collects .../resp and .../ev/health.
+    MQTT_CLIENT_PREFIX runs the mosquitto clients through a prefix, for example "docker exec -i <broker container>"
+    on a host that has none of its own."""
 
     def __init__(self, dev, host, port, cafile, user, pwdfile):
+        import shlex
         import subprocess
+        self.prefix = shlex.split(os.environ.get("MQTT_CLIENT_PREFIX", ""))
         self.dev = dev
         pwd = open(pwdfile).read().strip()
         self.args = ["-h", host, "-p", str(port), "--cafile", cafile, "--insecure", "-u", user, "-P", pwd]
-        self.sub = subprocess.Popen(["mosquitto_sub"] + self.args + ["-t", "mecon/%s/resp" % dev, "-t",
+        self.sub = subprocess.Popen(self.prefix + ["mosquitto_sub"] + self.args + ["-t", "mecon/%s/resp" % dev, "-t",
                                     "mecon/%s/ev/health" % dev], stdout=subprocess.PIPE, text=True)
         self.lines = queue.Queue()
         threading.Thread(target=lambda: [self.lines.put(l) for l in self.sub.stdout], daemon=True).start()
@@ -128,7 +132,7 @@ class MqttLink:
 
     def send_raw(self, msg):
         import subprocess
-        subprocess.run(["mosquitto_pub"] + self.args + ["-t", "mecon/%s/req" % self.dev, "-m", msg.decode()],
+        subprocess.run(self.prefix + ["mosquitto_pub"] + self.args + ["-t", "mecon/%s/req" % self.dev, "-m", msg.decode()],
                        check=True, capture_output=True, timeout=15)
 
     def read_message(self, timeout=5.0):
