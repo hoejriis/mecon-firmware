@@ -14,6 +14,7 @@ An inventory of the target contract against the fork (77 device-visible items) f
 
 - `device_id`: 16 random bytes generated on first boot, stored in their own file, written as 32 lowercase hex digits. Distinct from the native node public key, which a key rotation changes, and from any Backend row. Whether a reset scope keeps or regenerates it is decided with enrollment ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)); until then the native factory reset and the rescue `erase` regenerate it.
 - Every `hello` and every status snapshot reports both `device_id` and `node_key` (the native public key, hex).
+- **How a Backend learns it before MQTT.** MQTT credentials reach a device only through an authenticated path (a direct USB or BLE session, or an already authorized one), and that path answers `hello` first, so the Backend knows `device_id` before the device ever publishes under `mecon/<device_id>/`. The device's MQTT username should be its `device_id`: one broker rule, `mecon/%u/#` (Mosquitto pattern substitution), then covers every device without a per-device topic list. The device publishes under its `device_id` whatever username it is given.
 
 ### 2. Versions
 
@@ -31,9 +32,13 @@ UTF-8 JSON objects. Three shapes:
 {"v":1,"ev":"health","seq":42,"epoch":7,"ts":1792843200,"data":{ ... }}
 ```
 
-- `id`: chosen by the requester, 1 to 32 characters of `[0-9A-Za-z._:-]`. The device echoes it on the result. For operations that change state it keeps the last 16 ids with their results, in one cache shared by every transport, so a duplicate (a reconnect, a retried write, the same request over another transport) gets the stored result instead of a second execution. A read is not kept: running it again is harmless.
+- `id`: chosen by the requester, 1 to 32 characters of `[0-9A-Za-z._:-]`, unique per request. The device echoes it on the result. For operations that change state the device keeps, in one cache shared by every transport:
+  - the last 16 ids with their results: a duplicate (a reconnect, a retried write, the same request over another transport) gets the stored result instead of a second execution;
+  - an 8-byte hash of each of the last 64 such ids: a duplicate whose result is no longer kept gets `failed` with `"error":"result-expired"`, never a second execution.
+  A duplicate is checked against the caller's authority as it is now (refused if that has been withdrawn) and nothing else: changes of roster or authority do not clear the cache. A reboot does; every result carries `epoch`, so a requester that sees `epoch` change must not retry a state-changing request blindly but read the state first. A read is not kept: running it again is harmless.
 - `status`: `ok`, `refused` (not authorized; nothing executed), `invalid` (malformed or bad arguments), `unknown-op`, `unsupported-version`, `busy` (a bound was reached; retry later), `failed` (executed and failed; `error` says why). `refused`, `invalid`, `unknown-op`, `unsupported-version` and `busy` guarantee that nothing ran.
-- `ts`: Unix seconds when the device clock is set, `null` when it is not. `epoch`: a boot counter kept in flash, so `(epoch, seq)` orders events across reboots and makes a gap visible.
+- `ts`: Unix seconds when the device clock is set, `null` when it is not. `epoch`: a counter kept in flash and incremented on every boot, carried on every result and event, so `(epoch, seq)` orders events across reboots even while `ts` is `null`.
+- `seq`: one sequence per stream per device, not per subscription. An event is produced once and the same `(epoch, seq)` goes to every transport subscribed to its stream, so a Backend receiving it over MQTT and over a Reader bridge can drop the second copy. An event dropped on one transport (its queue full) leaves a gap on that transport only.
 - Absent, `null` and `0` mean different things: absent = not supported by this build; `null` = supported but unknown now; `0` = measured zero.
 - Size bound: 4,096 bytes per message after reassembly. A result that would be larger is paged by the operation (`cursor` in, `next` out).
 - `auth`: reserved for signed authority ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)). A v1.0 device implements none, so a request that carries `auth` is `refused` rather than run as if it were unsigned.
@@ -56,11 +61,15 @@ Native operations stay native: messaging, contacts, channels, adverts, clock, re
 
 `config.get` and `config.apply` are built on the existing CLI settings, not beside them. Each schema key maps to the CLI `get`/`set` it stands for (`name` → `get name`/`set name`, `wifi.profile.1.ssid` → `set wifi.profile 1 ssid`), so there is one store, one validation and one audit trail. A key the CLI has no line for does not exist in the schema.
 
+Indexes in keys are **0-based**, as in the CLI: `wifi.profile.0.ssid` is the first profile, `wifi.profile.1.ssid` the second, `mqtt.profile.0.host` the first broker profile.
+
 ### 6. Authorization
 
 Every operation and every key is checked by the CLI privilege engine (`src/helpers/cli/`) with the caller's real context: transport, how it authenticated, and the posture. The same table decides for a CLI line and for an interface request, so a transport change never upgrades a permission and a bridge cannot add any. A request refused by the table never executes and is audited like a refused CLI line. #95 adds Deployment-signed authority as one more caller kind in that table.
 
 ### 7. Framing per transport
+
+**A Reader bridge** carries reassembled envelopes verbatim between the device and the Backend, tagged with the transport; it never builds or alters `id`, `op`, `args` or `auth`. A Backend may stamp its own receive time beside an event whose `ts` is `null`.
 
 **USB and BLE (Companion builds).** One Companion command code, `0x7F` (`CMD_MECON`), carries interface traffic in both directions; native codes are untouched and a stock app never sees `0x7F` unless it sends it. Each frame is:
 
@@ -82,6 +91,8 @@ Every operation and every key is checked by the CLI privilege engine (`src/helpe
 | `ev/<stream>` | from device | event envelopes, QoS 0, not retained |
 | `status` | from device | the status snapshot, retained, with a last will `{"online":false}` |
 
+One status topic: a build that speaks this interface publishes `mecon/<device_id>/status` (with its last will) and no longer publishes the earlier `mecon/<node id>/status`, so presence never comes from two last wills. Which topic a device uses follows from its build; `hello` reports the interface version.
+
 No fragmentation. The MQTT client buffer (512 bytes today) has to grow to carry a full message; its size is set on measured heap, since the Heltec V3 has the least headroom during a TLS session, and a result that would not fit is paged. The existing `mecon/<node id>/cli/req` and `cli/resp` topics stay for the CLI line until the interface covers what they are used for, then they are withdrawn.
 
 **Repeater and Room server.** They have no Companion framing. Over USB they take the same envelope as one line on the console, prefixed `mecon> ` (a line too long for the console is refused with `busy` and never truncated); over MQTT, where a build has it, as above. Over LoRa the remote-admin path keeps the CLI.
@@ -90,7 +101,7 @@ No fragmentation. The MQTT client buffer (512 bytes today) has to grow to carry 
 
 - Requests are parsed and answered in the main loop in bounded steps; no operation blocks on a network or BLE write. A paged result is produced page by page.
 - Each subscription has a bounded rate, a lifetime after which it ends unless renewed, and a drop counter reported in its events. A slow or vanished consumer costs dropped events, never loop time.
-- Memory: the id cache, 2.6 KB for the device; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
+- Memory: the id cache, 2.6 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
 
 ### 9. Conformance
 
