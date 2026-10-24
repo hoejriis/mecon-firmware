@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <helpers/iface/IfaceDispatch.h>
+#include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/IfaceFrames.h>
 
 class MyMesh;
@@ -21,6 +22,7 @@ public:
   void loop(uint32_t now);
 
   MyMesh* mesh() const { return _mesh; }
+  Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this}; }
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
 
@@ -38,6 +40,8 @@ private:
   // Every operation is decided by the CLI privilege table with the caller's real context (design section 6): an
   // interface request never gets more than the same caller's CLI line would.
   static bool authorize(void* mesh, const Iface::OpEntry& op, const Iface::Request& req);
+  static bool cliRun(void* self, const char* line, char* reply, size_t cap);
+  static bool cliAllow(void* self, const char* line);
   Link* linkFor(const BaseSerialInterface* src, bool create);
   bool queueResult(Link& l, const char* msg, size_t len);
 

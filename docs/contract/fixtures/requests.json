@@ -129,6 +129,120 @@
         "status": "ok",
         "schema": "status.get.result.json"
       }
+    },
+    {
+      "name": "config schema, first page",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-schema",
+        "op": "config.schema",
+        "args": {
+          "cursor": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "config.schema.result.json"
+      }
+    },
+    {
+      "name": "config get",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-get",
+        "op": "config.get",
+        "args": {
+          "keys": [
+            "name",
+            "tx",
+            "wifi.profile.0.pwd"
+          ]
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "config.get.result.json"
+      }
+    },
+    {
+      "name": "config get without keys",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-get-none",
+        "op": "config.get",
+        "args": {}
+      },
+      "expect": {
+        "status": "invalid"
+      }
+    },
+    {
+      "name": "config apply out of range",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-range",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "tx": 99
+          }
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "out-of-range:tx"
+      }
+    },
+    {
+      "name": "config apply unknown key",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-key",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "lat": 55.5
+          }
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "unknown-key:lat"
+      }
+    },
+    {
+      "name": "config apply, index past the last profile",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-idx",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "wifi.profile.10.ssid": "x"
+          }
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "unknown-key:wifi.profile.10.ssid"
+      }
+    },
+    {
+      "name": "config apply",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-apply",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "wifi.profile.3.priority": 42
+          }
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "config.apply.result.json"
+      }
     }
   ],
   "transport_cases": [
@@ -139,6 +253,23 @@
         "v": 1,
         "id": "fx-untrusted",
         "op": "hello"
+      },
+      "expect": {
+        "status": "refused"
+      }
+    },
+    {
+      "name": "default-PIN BLE cannot read settings",
+      "transport": "ble-default-pin",
+      "request": {
+        "v": 1,
+        "id": "fx-untrusted-cfg",
+        "op": "config.get",
+        "args": {
+          "keys": [
+            "name"
+          ]
+        }
       },
       "expect": {
         "status": "refused"

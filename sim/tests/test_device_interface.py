@@ -170,6 +170,8 @@ def assert_case(i, case, answer):
     assert not mecon_schema.check(answer, mecon_schema.load("result.json")), (case["name"], answer)
     if "id" in exp:
         assert answer["id"] == exp["id"], (case["name"], answer)
+    if "error" in exp:
+        assert answer.get("error") == exp["error"], (case["name"], answer)
     if "schema" in exp:
         problems = mecon_schema.check(answer["result"], mecon_schema.load(exp["schema"]))
         assert not problems, (case["name"], problems)
@@ -191,12 +193,12 @@ def test_every_request_fixture_against_the_device(nodes):
 
 @pytest.mark.timescale(10)
 def test_the_transport_fixtures(nodes):
+    n = ble_boot(nodes, "fxb", 123456)
+    b = n.connect_ble(123456)
+    b.app_start()
+    i = mecon_iface.IfaceClient(b._send, b._read_frame)
     for case in fixture("requests.json")["transport_cases"]:
         assert case["transport"] == "ble-default-pin"
-        n = ble_boot(nodes, "fxb", 123456)
-        b = n.connect_ble(123456)
-        b.app_start()
-        i = mecon_iface.IfaceClient(b._send, b._read_frame)
         i.send_raw(expand(case["request"]))
         assert_case(i, case, i.wait_result(case["request"]["id"]))
 
@@ -209,3 +211,89 @@ def test_the_framing_fixture(nodes):
     for f in reversed(frames):   # any order
         c._send(f)
     assert i.wait_result("fx-frames")["status"] == "ok"
+
+
+# ------------------------------------------------------------------ settings: config.schema / get / apply
+
+def ok_result(answer, schema):
+    assert answer["status"] == "ok", answer
+    problems = mecon_schema.check(answer["result"], mecon_schema.load(schema))
+    assert not problems, problems
+    return answer["result"]
+
+
+def test_the_schema_lists_every_key_over_its_pages(nodes):
+    n, (c, i) = start(nodes, "cs")
+    keys, cursor = [], 0
+    while cursor is not None:
+        page = ok_result(i.request("config.schema", {"cursor": cursor}), "config.schema.result.json")
+        keys += page["keys"]
+        cursor = page["next"]
+    names = [k["key"] for k in keys]
+    assert len(names) == len(set(names))
+    assert {"name", "tx", "wifi.profile.{n}.ssid", "wifi.profile.{n}.pwd", "mqtt.profile.{n}.host"} <= set(names)
+    pwd = next(k for k in keys if k["key"] == "wifi.profile.{n}.pwd")
+    assert pwd["write_only"] and pwd["index"] == [0, 9]
+    assert "lat" not in names, "a key exists only where the CLI has a line for it"
+
+
+def test_get_reads_the_same_values_as_the_cli(nodes):
+    n, (c, i) = start(nodes, "cg")
+    assert c.cli("set wifi.profile 2 ssid lab net").startswith(">")
+    assert c.cli("set wifi.profile 2 pwd TopSecret-fake").startswith(">")
+    v = ok_result(i.request("config.get", {"keys": ["name", "tx", "wifi.profile.2.ssid", "wifi.profile.2.pwd",
+                                                    "wifi.profile.4.priority"]}), "config.get.result.json")["values"]
+    assert v["name"] == c.cli("get name")[2:]
+    assert v["tx"] == int(c.cli("get tx")[2:])
+    assert v["wifi.profile.2.ssid"] == "lab net" and v["wifi.profile.2.pwd"] == "set"
+    assert v["wifi.profile.4.priority"] is None, "an unset profile has no priority"
+    assert "TopSecret" not in json.dumps(v)
+
+
+def test_apply_writes_through_the_cli_and_survives_a_reboot(nodes):
+    n, (c, i) = start(nodes, "ca")
+    r = ok_result(i.request("config.apply", {"set": {"name": "Lab node", "wifi.profile.1.ssid": "office",
+                                                     "wifi.profile.1.pwd": "pw-fake-1", "wifi.profile.1.priority": 60}}),
+                  "config.apply.result.json")
+    assert r["complete"] and set(r["applied"].values()) == {"ok"}
+    assert "pw-fake-1" not in json.dumps(r)
+    assert c.cli("get name") == "> Lab node"
+    assert c.cli("get wifi.profile 1") == "> 1: office prio=60 pwd=set last=none"
+    n.stop()
+    n.start()
+    c, i = client(n)
+    v = i.request("config.get", {"keys": ["name", "wifi.profile.1.ssid", "wifi.profile.1.pwd"]})["result"]["values"]
+    assert v == {"name": "Lab node", "wifi.profile.1.ssid": "office", "wifi.profile.1.pwd": "set"}
+
+
+def test_apply_writes_nothing_when_one_key_fails_its_check(nodes):
+    n, (c, i) = start(nodes, "cx")
+    before = c.cli("get name")
+    r = i.request("config.apply", {"set": {"name": "Changed", "tx": 99}})
+    assert r["status"] == "invalid" and r["error"] == "out-of-range:tx", r
+    assert c.cli("get name") == before
+
+
+def test_a_retried_apply_runs_once(nodes):
+    n, (c, i) = start(nodes, "cr")
+    first = i.request("config.apply", {"set": {"name": "First"}}, rid="apply-1")
+    assert c.cli("set name Meanwhile") == "OK"
+    again = i.request("config.apply", {"set": {"name": "First"}}, rid="apply-1")
+    assert again == first, "the stored result, not a second run"
+    assert c.cli("get name") == "> Meanwhile"
+
+
+@pytest.mark.timescale(10)
+def test_settings_over_ble_follow_the_cli_table(nodes):
+    n = ble_boot(nodes, "cb", PIN)
+    b = n.connect_ble(PIN)
+    b.app_start()
+    i = mecon_iface.IfaceClient(b._send, b._read_frame)
+    assert i.request("config.apply", {"set": {"name": "Blephone"}})["status"] == "ok", "a paired phone may configure"
+    b.close()
+    n2 = ble_boot(nodes, "cd", 123456)
+    d = n2.connect_ble(123456)
+    d.app_start()
+    j = mecon_iface.IfaceClient(d._send, d._read_frame)
+    assert j.request("config.get", {"keys": ["name"]})["status"] == "refused"
+    assert j.request("config.apply", {"set": {"name": "Nope"}})["status"] == "refused"

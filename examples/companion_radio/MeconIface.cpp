@@ -5,6 +5,8 @@
 #include <helpers/MemStats.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliPolicy.h>
+#include <helpers/cli/CliRegistry.h>
+#include <helpers/iface/IfaceConfig.h>
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,14 +24,21 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
   out[2 * n] = 0;
 }
 
-const char* const CAPABILITIES[] = {"hello", "status.get"};
+const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply"};
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
+Status opSchema(OpContext& c);
+Status opGet(OpContext& c);
+Status opApply(OpContext& c);
 
+// The operation's class is the least it needs; each config key is decided again by its own CLI line (IfaceConfig).
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
   {"status.get", opStatus, PRIV_READ, false},
+  {"config.schema", opSchema, PRIV_READ, false},
+  {"config.get", opGet, PRIV_READ, false},
+  {"config.apply", opApply, PRIV_WRITE, true},
 };
 
 }  // namespace
@@ -89,7 +98,41 @@ Status opStatus(OpContext& c) {
   return ST_OK;
 }
 
+// Settings run as the caller's own CLI lines (design section 5): one store, and the CLI engine authorizes and audits
+// each line exactly as it would a CMD_RUN_CLI_COMMAND frame from the same transport.
+Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
+  ConfigHost host = self(c)->configHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
+Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
+Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
+
 }  // namespace
+
+// ---- settings: the caller's CLI
+
+bool MeconIface::cliRun(void* user, const char* line, char* reply, size_t cap) {
+  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
+  const Cli::Context ctx = mesh->serialContext();
+  mesh->setCliCaller(ctx, ctx.transport == Cli::T_USB ? Posture::CALLER_CABLE : Posture::CALLER_BLE);
+  char buf[sizeof(mesh->reply_buf)];
+  buf[0] = 0;
+  const bool known = mesh->handleCommand(line, 0, buf);
+  snprintf(reply, cap, "%s", buf);
+  memset(buf, 0, sizeof(buf));
+  return known;
+}
+
+bool MeconIface::cliAllow(void* user, const char* line) {
+  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
+  const Cli::Resolved r = Cli::resolve(line, Cli::ROLE_COMPANION);
+  return Cli::decide(mesh->serialContext(), r.cls, r.flags).allow;
+}
 
 // ---- transport glue
 
