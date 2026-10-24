@@ -5,7 +5,7 @@
 |    Unread Msg: 0    |
 |                     |
 |  BLE (default PIN!) |
-|    < Connected >    |
+| P i n : 1 2 3 4 5 6 |
 |                     |
 |                     |
 +---------------------+
