@@ -814,6 +814,11 @@ mutate iface_reads_are_cached src/helpers/iface/IfaceDispatch.cpp '  if (n > 0 &
 mutate iface_dropped_message_keeps_its_buffer src/helpers/iface/IfaceFrames.h ' _mask = 0; _have_last = false; release(); }' ' _mask = 0; _have_last = false; }' unit:test_iface
 mutate iface_duplicate_skips_the_authority_check src/helpers/iface/IfaceDispatch.cpp '      if (dop && (!_auth || !_auth(_auth_user, *dop, req))) return' '      if (false) return' unit:test_iface
 mutate iface_expired_ids_forgotten src/helpers/iface/IfaceCache.h '      if (_h[i] == h) return EXPIRED;' '      if (false) return EXPIRED;' unit:test_iface
+mutate iface_auth_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(mesh->serialContext(), cls).allow;' '  return true;' sim/tests/test_device_interface.py::test_the_default_pin_is_refused_like_its_cli_line
+mutate iface_reply_not_bound_to_its_transport examples/companion_radio/MyMesh.h '    _serial->bindReply(src);
+    _serial->writeFrame(frame, len);' '    _serial->bindReply(nullptr);
+    _serial->writeFrame(frame, len);' sim/tests/test_device_interface.py::test_a_result_goes_only_to_the_transport_that_asked
+mutate iface_epoch_not_counted examples/companion_radio/DataStore.cpp '  e++;' '' sim/tests/test_device_interface.py::test_device_id_is_kept_and_epoch_counts_boots
 
 if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
   echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1

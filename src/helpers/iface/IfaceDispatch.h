@@ -40,6 +40,7 @@ public:
   int handle(const char* msg, size_t len, char* out, size_t cap, ResultCache* cache);
 
 private:
+  int handleWith(JsonDoc& doc, const char* msg, size_t len, char* out, size_t cap, ResultCache* cache);
   const OpEntry* find(const char* name) const;
   const OpEntry* _t; size_t _n; AuthFn _auth; void* _auth_user; void* _handler_user;
 };

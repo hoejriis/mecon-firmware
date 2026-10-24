@@ -73,6 +73,9 @@
 
 #include <helpers/BaseChatMesh.h>
 #include <helpers/TransportKeyStore.h>
+#ifdef ENABLE_MECON_IFACE
+  #include "MeconIface.h"
+#endif
 
 /* -------------------------------------------------------------------------------------- */
 
@@ -125,6 +128,18 @@ public:
   void setBLEPin(uint32_t active_pin);
 
   void loop();
+#ifdef ENABLE_MECON_IFACE
+  // For the device interface (MeconIface): read-only facts, and frame output to one transport of the multiplexed serial.
+  const char* hardwareName() const { return board.getManufacturerName(); }
+  uint16_t batteryMilliVolts() { return board.getBattMilliVolts(); }
+  uint8_t postureValue() const { return _prefs.posture; }
+  bool ifaceWritable(const BaseSerialInterface* src) const { return _serial && !_serial->isWriteBusy() && src; }
+  void ifaceWrite(const BaseSerialInterface* src, const uint8_t* frame, size_t len) {
+    _serial->bindReply(src);
+    _serial->writeFrame(frame, len);
+    _serial->bindReply(nullptr);
+  }
+#endif
 #ifdef ENABLE_CONNMODE
   // Connectivity mode (ConnMode.h): the mode the device booted into, and a switch asked for by the device button.
   // The switch saves the prefs and restarts shortly after, so the BLE and Wi-Fi stacks are never both up.
@@ -294,6 +309,10 @@ private:
   Cli::Context _cli_ctx;                       // the same caller as a context for the engine's gate; T_NONE until an adapter sets it
   bool _cli_refused = false;                   // the gate refused the last handleCommand()
   Cli::Context serialContext() const;
+#ifdef ENABLE_MECON_IFACE
+  friend class MeconIface;
+  MeconIface _iface;
+#endif
   void setCliCaller(const Cli::Context& ctx, uint8_t caller);
   void recordFactoryReset(uint8_t caller);
   char reply_buf[166];

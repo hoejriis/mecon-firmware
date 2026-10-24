@@ -34,7 +34,8 @@ enum Charset {
   CS_NAME   // [0-9A-Za-z._-]   operation names and keys
 };
 
-// About 1.6 KB: lives on the caller's stack for the duration of one request, never in a static.
+// About 1.6 KB, for the duration of one request. The dispatcher allocates it on the heap: on the device the loop
+// task's stack has about 5.4 KB free and a handler runs CLI code on top of it.
 struct JsonDoc {
   const char* s;
   size_t len;

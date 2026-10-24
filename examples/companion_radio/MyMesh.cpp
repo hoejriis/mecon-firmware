@@ -965,6 +965,14 @@ void MyMesh::begin() {
     }
     _store->saveMainIdentity(self_id);
   }
+#ifdef ENABLE_MECON_IFACE
+  {
+    uint8_t device_id[16];
+    uint32_t epoch = 0;
+    _store->bootDeviceMeta(getRNG(), device_id, &epoch);   // a failed save still leaves this boot's values
+    _iface.begin(this, device_id, epoch);
+  }
+#endif
 
 // if name is provided as a build flag, use that as default node name instead
 #ifdef ADVERT_NAME
@@ -1167,6 +1175,10 @@ void MyMesh::handleCmdFrame(size_t len) {
     memcpy(&out_frame[i], _prefs.node_name, tlen);
     i += tlen;
     _serial->writeFrame(out_frame, i);
+#ifdef ENABLE_MECON_IFACE
+  } else if (cmd_frame[0] == CMD_MECON) {   // the device interface (MeconIface.h); the reply is bound to its source
+    _iface.onFrame(_cmd_src, cmd_frame, len, millis());
+#endif
   } else if (cmd_frame[0] == CMD_RUN_CLI_COMMAND && len >= 3) { // V14+
     int i = 1;
     char *text = (char *)&cmd_frame[i];
@@ -2692,6 +2704,9 @@ void MyMesh::loop() {
     checkCLIRescueCmd();
   } else {
     checkSerialInterface();
+#ifdef ENABLE_MECON_IFACE
+    _iface.loop(millis());
+#endif
 #if defined(ENABLE_WIFI_INTERFACE) && defined(RP2040_PLATFORM) && !defined(ENABLE_USB_INTERFACE)
     // RP2040 WiFi builds are headless and have no way into the rescue CLI (that needs a
     // display + long-press), so serve config commands on the otherwise unused USB serial

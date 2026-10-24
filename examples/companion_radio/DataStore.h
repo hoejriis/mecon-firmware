@@ -34,6 +34,10 @@ public:
   FILESYSTEM* getSecondaryFS() const { return _fsExtra; }
   bool loadMainIdentity(mesh::LocalIdentity &identity);
   bool saveMainIdentity(const mesh::LocalIdentity &identity);
+  // The device interface's identity and boot counter (docs/contract/DEVICE_INTERFACE.md): device_id is created on the
+  // first boot and kept; epoch is incremented and saved on every call (once per boot). False when the file could
+  // not be written: the values are still usable for this boot.
+  bool bootDeviceMeta(mesh::RNG* rng, uint8_t device_id[16], uint32_t* epoch);
   void loadPrefs(NodePrefs& prefs);
   bool savePrefs(NodePrefs& prefs);
   // The stock whole-table file (/contacts3): read for the migration into the contact store, and kept as the
