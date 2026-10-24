@@ -106,6 +106,7 @@ Status opStatus(OpContext& c) {
   w.key("connectivity"); w.str(mesh->getConnectivityMode() == ConnMode::WIFI ? "wifi" : "ble");
 #endif
   w.key("posture"); w.str(Posture::isHardened(mesh->postureValue()) ? "hardened" : "normal");
+  Dep::depWriteStatus(w, mesh->deployment(), Posture::isHardened(mesh->postureValue()));
   return ST_OK;
 }
 
