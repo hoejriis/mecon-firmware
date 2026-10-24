@@ -59,7 +59,7 @@ This register lists **every change this repository makes to a file that exists u
 | `examples/companion_radio/ui-new/UITask.cpp` | With `ENABLE_CONNMODE`: the home status line is drawn as a warning while the heap is low (the text itself comes from `formatHome`) | The `LOW MEM` marker of the heap floor. |
 | `examples/companion_radio/NodePrefs.h` | With `ENABLE_MQTT`: the per-profile management flag is saved as `g<i>` in the `mqtt` section | A broker profile can be flagged for management ([Command-line engine](CLI.md)). |
 | `examples/companion_radio/main.cpp` | With `USE_NIMBLE` (ESP32): the NimBLE interface (`src/helpers/esp32/SerialNimBLEInterface.*`, new) is used under the name `SerialBLEInterface`; without it the Bluedroid header is included as before | A build option to compare NimBLE with Bluedroid ([NimBLE evaluation](NIMBLE_EVALUATION.md)). |
-| `platformio.ini`, `variants/heltec_v3/platformio.ini`, `variants/heltec_v4/platformio.ini`, `variants/lilygo_tlora_v2_1/platformio.ini` | New `[esp32_nimble]` section and four `_nimble` environments, each extending a Bluedroid BLE Companion environment | The same comparison; the Bluedroid environments are unchanged. |
+| `platformio.ini`, `variants/heltec_v3/platformio.ini`, `variants/heltec_v4/platformio.ini`, `variants/lilygo_tlora_v2_1/platformio.ini` | New `[esp32_nimble]` section; three `_nimble` environments on the Heltec V3 and V4, each extending a Bluedroid BLE Companion environment; the LilyGo T-LoRa BLE Companion builds with NimBLE instead of Bluedroid | The same comparison on the Heltecs, whose Bluedroid environments are unchanged. On the LilyGo, NimBLE fits the 4 MB board's app partition with every sensor driver, which Bluedroid did not. |
 
 Upstream's `stale-bot.yml` is kept unchanged; it only runs in the upstream repository.
 
@@ -128,7 +128,3 @@ Temporary space: a save needs room for one extra copy of the file being replaced
 | `MeshTracker_X1_kiss_modem` | `MicroNMEA.h` not found |
 | `ThinkNode_M5_companion_radio_serial` | `D6`/`D7` not declared |
 | `examples/companion_radio/MyMesh.h`, `examples/simple_repeater/MyMesh.h`, `examples/simple_room_server/MyMesh.h`, `examples/simple_sensor/SensorMesh.h`, `examples/companion_radio/MyMesh.cpp` (`ver`), `platformio.ini`, `build.sh` | `FIRMWARE_VERSION` defaults to `mecon::versionShort()` (`v1.18.0-mecon.<tag>`) instead of the literal `v1.18.0`; `getFirmwareVer()` and the Companion `ver` return the full form; the platform bases run `bin/mecon_version.py`; `build.sh` no longer sets `-DFIRMWARE_VERSION`. `FIRMWARE_VER_CODE` is unchanged | A build identifies itself as mecon-firmware while keeping the upstream base first. See VERSIONING_AND_RELEASES.md. |
-
-## Board exceptions
-
-- `LilyGo_TLora_V2_1_1_6_companion_radio_ble` is built without the VL53L0X distance-sensor driver (`-UENV_INCLUDE_VL53L0X`). With it, the image is 1,974,577 B, 8,497 B over the 1,966,080 B app partition of `min_spiffs.csv`. A larger partition would mean dropping OTA on a 4 MB board. Without the driver the image is 1,931,673 B (98.2 %). Every other sensor driver is kept. The repeater and room-server builds of the board are unchanged.

@@ -59,8 +59,3 @@ gives about 450 at the capacity rule, above stock's 350.
 - USB recovery through the Companion's rescue console (`rebuild`, `erase`): it is entered by a long press of the user
   button within 8 s of power-up, so it needs a person at the board. Covered by the simulated suite.
 - Any board not listed above.
-
-## Board exceptions
-
-- `LilyGo_TLora_V2_1_1_6_companion_radio_ble` is built without the VL53L0X distance-sensor driver, to fit its flash
-  (see [UPSTREAM_DELTA](UPSTREAM_DELTA.md#board-exceptions)).
