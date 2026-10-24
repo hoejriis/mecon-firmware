@@ -133,6 +133,7 @@ public:
   const char* hardwareName() const { return board.getManufacturerName(); }
   uint16_t batteryMilliVolts() { return board.getBattMilliVolts(); }
   uint8_t postureValue() const { return _prefs.posture; }
+  MeconIface& iface() { return _iface; }
   bool ifaceWritable(const BaseSerialInterface* src) const { return _serial && !_serial->isWriteBusy() && src; }
   void ifaceWrite(const BaseSerialInterface* src, const uint8_t* frame, size_t len) {
     _serial->bindReply(src);

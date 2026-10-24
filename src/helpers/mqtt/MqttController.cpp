@@ -14,7 +14,8 @@ const uint32_t STATUS_REPUBLISH_MS = 300000;   // the retained status is refresh
 const uint16_t KEEPALIVE_S = 20;
 const uint16_t SOCKET_TIMEOUT_S = 6;           // CONNACK wait
 const uint32_t CLI_SETTLE_MS = 1500;           // after subscribing, requests are ignored: see onMessage()
-const uint16_t PACKET_BUFFER = 512;            // one request or response (docs/CLI.md); PubSubClient's default is 256
+const uint16_t PACKET_BUFFER = 512;
+const uint16_t IFACE_PACKET_BUFFER = 1600;     // an interface result page (up to 1,536 bytes) and the topic            // one request or response (docs/CLI.md); PubSubClient's default is 256
 
 void strlcpy_(char* dst, const char* src, size_t cap) {
   size_t n = strlen(src);
@@ -50,14 +51,20 @@ void MqttController::begin(MqttProfiles* profiles, MqttNet* net, const uint8_t* 
   _net = net;
   _posture = posture;
   snprintf(_client_id, sizeof(_client_id), "mecon-%s", node_id);
-  snprintf(_topic, sizeof(_topic), "mecon/%s/status", node_id);
+  if (_iface_fn) {   // one status topic per build (DEVICE_INTERFACE.md section 7): the interface's, under device_id
+    snprintf(_topic, sizeof(_topic), "mecon/%s/status", _device_id);
+    snprintf(_iface_req, sizeof(_iface_req), "mecon/%s/req", _device_id);
+    snprintf(_iface_resp, sizeof(_iface_resp), "mecon/%s/resp", _device_id);
+  } else {
+    snprintf(_topic, sizeof(_topic), "mecon/%s/status", node_id);
+  }
   Cli::Mqtt::requestTopic(_req_topic, sizeof(_req_topic), node_id);
   Cli::Mqtt::responseTopic(_resp_topic, sizeof(_resp_topic), node_id);
   _net->init(node_id);
   _core.configure(profiles, timing);
   _psc.setKeepAlive(KEEPALIVE_S);
   _psc.setSocketTimeout(SOCKET_TIMEOUT_S);
-  _psc.setBufferSize(PACKET_BUFFER);
+  _psc.setBufferSize(_iface_fn ? IFACE_PACKET_BUFFER : PACKET_BUFFER);
   _psc.setCallback(&MqttController::trampoline);
   _started = true;
   _enabled = true;
@@ -234,10 +241,9 @@ void MqttController::takeResult() {
   _cur_addr = j.addr;
   _cur_port = j.port;
   _core.onConnected(now, j.tls && j.has_anchor);
-  if (_cli_fn) {
-    _psc.subscribe(_req_topic);   // before the status, so a client that sees the status can send at once
-    _cli_open_at = millis() + CLI_SETTLE_MS;
-  }
+  if (_cli_fn) _psc.subscribe(_req_topic);   // before the status, so a client that sees the status can send at once
+  if (_iface_fn) _psc.subscribe(_iface_req);
+  if (_cli_fn || _iface_fn) _cli_open_at = millis() + CLI_SETTLE_MS;
   publishStatus();
 }
 
@@ -254,9 +260,26 @@ void MqttController::trampoline(char* topic, uint8_t* payload, unsigned int len)
 // messages are retained. A retained request would then run again at every reconnect, a retained "reboot" at every
 // boot. So requests that arrive in the first moments after the subscription are dropped: that is where retained
 // messages arrive, and a client that sent a live request in that window simply gets no answer and sends it again.
+Cli::Context MqttController::sessionContext() const {
+  const uint8_t cur = _core.current();
+  const bool manages = cur != MqttCore::NONE && _profiles->p[cur].manage != 0;
+  return Cli::Mqtt::sessionContext(_core.verified(), *_posture, manages);
+}
+
+// One device-interface request (DEVICE_INTERFACE.md section 7). Same session context and the same retained-message
+// guard as the CLI topic; the result envelope goes to .../resp, never retained.
+void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
+  char* out = static_cast<char*>(malloc(IFACE_PACKET_BUFFER));
+  if (!out) return;
+  const size_t n = _iface_fn(_iface_user, sessionContext(), payload, len, out, IFACE_PACKET_BUFFER - 64);
+  if (n) _psc.publish(_iface_resp, (const uint8_t*)out, (unsigned)n, false);
+  free(out);
+}
+
 void MqttController::onMessage(const char* topic, const uint8_t* payload, unsigned len) {
-  if (!_cli_fn || strcmp(topic, _req_topic) != 0 || _core.state() != MqttState::Connected) return;
-  if ((int32_t)(millis() - _cli_open_at) < 0) return;
+  if (_core.state() != MqttState::Connected || (int32_t)(millis() - _cli_open_at) < 0) return;
+  if (_iface_fn && strcmp(topic, _iface_req) == 0) { onIfaceMessage(payload, len); return; }
+  if (!_cli_fn || strcmp(topic, _req_topic) != 0) return;
   char out[440];
   char reply[160];
   Cli::Mqtt::Request req;
@@ -264,9 +287,7 @@ void MqttController::onMessage(const char* topic, const uint8_t* payload, unsign
   if (!Cli::Mqtt::parseRequest(payload, len, req)) {
     n = Cli::Mqtt::formatResponse(out, sizeof(out), "", Cli::Mqtt::S_BAD_REQUEST, "ERR: bad request");
   } else {
-    const uint8_t cur = _core.current();
-    const bool manages = cur != MqttCore::NONE && _profiles->p[cur].manage != 0;
-    const Cli::Context ctx = Cli::Mqtt::sessionContext(_core.verified(), *_posture, manages);
+    const Cli::Context ctx = sessionContext();
     reply[0] = 0;
     const uint8_t status = _cli_fn(_cli_user, ctx, req.cmd, reply, sizeof(reply));
     n = Cli::Mqtt::formatResponse(out, sizeof(out), req.id, status, reply);

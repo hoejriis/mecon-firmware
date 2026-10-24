@@ -117,29 +117,44 @@ Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
 // ---- settings: the caller's CLI
 
 bool MeconIface::cliRun(void* user, const char* line, char* reply, size_t cap) {
-  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
-  const Cli::Context ctx = mesh->serialContext();
-  mesh->setCliCaller(ctx, ctx.transport == Cli::T_USB ? Posture::CALLER_CABLE : Posture::CALLER_BLE);
+  MeconIface* self = static_cast<MeconIface*>(user);
+  MyMesh* mesh = self->_mesh;
+  mesh->setCliCaller(self->_ctx, self->_caller);
   char buf[sizeof(mesh->reply_buf)];
   buf[0] = 0;
-  const bool known = mesh->handleCommand(line, 0, buf);
+  // The CLI gate takes "remote" from the timestamp (a remote caller always has a non-zero one), as runMqttCli does.
+  const bool known = mesh->handleCommand(line, self->_ctx.remote ? 1 : 0, buf);
+  mesh->setCliCaller(Cli::Context(), Posture::CALLER_NET);   // no context outlives the line
   snprintf(reply, cap, "%s", buf);
   memset(buf, 0, sizeof(buf));
   return known;
 }
 
 bool MeconIface::cliAllow(void* user, const char* line) {
-  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
   const Cli::Resolved r = Cli::resolve(line, Cli::ROLE_COMPANION);
-  return Cli::decide(mesh->serialContext(), r.cls, r.flags).allow;
+  return Cli::decide(static_cast<MeconIface*>(user)->_ctx, r.cls, r.flags).allow;
 }
 
 // ---- transport glue
 
 bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
-  MyMesh* mesh = static_cast<MyMesh*>(user);
+  MeconIface* self = static_cast<MeconIface*>(user);
   const uint8_t cls = op.priv == PRIV_READ ? Cli::C_READ : op.priv == PRIV_WRITE ? Cli::C_WRITE : Cli::C_POSTURE;
-  return Cli::decide(mesh->serialContext(), cls).allow;
+  return Cli::decide(self->_ctx, cls).allow;
+}
+
+int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, const char* msg, size_t len, char* out, size_t cap) {
+  _ctx = ctx;
+  _caller = caller;
+  if (!_cache) _cache = new (std::nothrow) ResultCache();   // 3.1 KB, only once the interface is used
+  if (!_cache) return writeResult(out, cap, "", ST_BUSY, nullptr, "no-memory");
+  Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
+  return d.handle(msg, len, out, cap, _cache);
+}
+
+size_t MeconIface::onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap) {
+  const int n = dispatch(ctx, Posture::CALLER_MQTT, reinterpret_cast<const char*>(msg), len, out, cap);
+  return n > 0 ? (size_t)n : 0;
 }
 
 void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch) {
@@ -185,11 +200,11 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
     return;
   }
   if (r != RX_COMPLETE) return;
-  if (!_cache) _cache = new (std::nothrow) ResultCache();   // 3.1 KB, only once the interface is used
   char* out = static_cast<char*>(malloc(RESULT_MAX + 1));
-  if (out && _cache) {
-    Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, _mesh, this);
-    int n = d.handle(reinterpret_cast<const char*>(l->rx.data()), l->rx.size(), out, RESULT_MAX + 1, _cache);
+  if (out) {
+    const Cli::Context ctx = _mesh->serialContext();
+    const uint8_t caller = ctx.transport == Cli::T_USB ? Posture::CALLER_CABLE : Posture::CALLER_BLE;
+    int n = dispatch(ctx, caller, reinterpret_cast<const char*>(l->rx.data()), l->rx.size(), out, RESULT_MAX + 1);
     if (n > 0) queueResult(*l, out, (size_t)n);
   } else {
     char msg[96];

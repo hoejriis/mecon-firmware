@@ -87,13 +87,13 @@ Every operation and every key is checked by the CLI privilege engine (`src/helpe
 | Topic | Direction | Content |
 |---|---|---|
 | `req` | to device | request envelopes |
-| `resp` | from device | result envelopes, QoS 1, not retained |
+| `resp` | from device | result envelopes, QoS 0, not retained |
 | `ev/<stream>` | from device | event envelopes, QoS 0, not retained |
 | `status` | from device | the status snapshot, retained, with a last will `{"online":false}` |
 
 One status topic: a build that speaks this interface publishes `mecon/<device_id>/status` (with its last will) and no longer publishes the earlier `mecon/<node id>/status`, so presence never comes from two last wills. Which topic a device uses follows from its build; `hello` reports the interface version.
 
-No fragmentation. The MQTT client buffer (512 bytes today) has to grow to carry a full message; its size is set on measured heap, since the Heltec V3 has the least headroom during a TLS session, and a result that would not fit is paged. The existing `mecon/<node id>/cli/req` and `cli/resp` topics stay for the CLI line until the interface covers what they are used for, then they are withdrawn.
+No fragmentation. On a build with the interface the MQTT client's buffer is 1,600 bytes (512 without it), which bounds a message over MQTT at about 1.5 KB rather than the 4,096 bytes of the frame transports: every v1.0 result fits (paged results are paged to fit), and a larger request is dropped by the client library. The client publishes at QoS 0 (PubSubClient has no QoS 1 publish), so a lost result is recovered by retrying the request with the same `id`, which returns the stored result for a state-changing operation. The CLI topic's guard applies here too: requests arriving in the first 1.5 s after the subscription, where a retained message lands, are dropped, so a retained request never runs again at a reconnect. The existing `mecon/<node id>/cli/req` and `cli/resp` topics stay for the CLI line until the interface covers what they are used for, then they are withdrawn.
 
 **Repeater and Room server.** They have no Companion framing. Over USB they take the same envelope as one line on the console, prefixed `mecon> ` (a line too long for the console is refused with `busy` and never truncated); over MQTT, where a build has it, as above. Over LoRa the remote-admin path keeps the CLI.
 

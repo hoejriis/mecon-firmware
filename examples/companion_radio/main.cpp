@@ -122,6 +122,11 @@ MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store);
 
 #ifdef ENABLE_MQTT
 // The MQTT controller hands each request from the broker here (docs/CLI.md).
+#ifdef ENABLE_MECON_IFACE
+static size_t mqttIfaceRun(void* user, const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap) {
+  return static_cast<MyMesh*>(user)->iface().onMqtt(ctx, msg, len, out, cap);
+}
+#endif
 static uint8_t mqttCliRun(void* user, const Cli::Context& ctx, const char* cmd, char* reply, size_t cap) {
   return static_cast<MyMesh*>(user)->runMqttCli(ctx, cmd, reply, cap);
 }
@@ -277,6 +282,9 @@ void setup() {
       for (int k = 0; k < 4; k++) sprintf(&node_id[k * 2], "%02x", the_mesh.self_id.pub_key[k]);
       mqttController().setAuditClock([]() -> uint32_t { return rtc_clock.getCurrentTime(); });
       mqttController().setCliHandler(&mqttCliRun, &the_mesh);   // the command line over MQTT (docs/CLI.md)
+#ifdef ENABLE_MECON_IFACE
+      mqttController().setIfaceHandler(&mqttIfaceRun, &the_mesh, the_mesh.iface().deviceIdHex());   // DEVICE_INTERFACE.md
+#endif
       mqttController().begin(&the_mesh.getNodePrefs()->mqtt_profiles, &mqttPlatformNet(),
                              &the_mesh.getNodePrefs()->posture, node_id);
     }

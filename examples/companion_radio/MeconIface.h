@@ -7,6 +7,7 @@
 #include <helpers/iface/IfaceDispatch.h>
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/IfaceFrames.h>
+#include <helpers/cli/CliPolicy.h>
 
 class MyMesh;
 class BaseSerialInterface;
@@ -20,6 +21,9 @@ public:
   void onFrame(const BaseSerialInterface* src, const uint8_t* frame, size_t len, uint32_t now);
   // Hands out pending frames, at most one per transport per call, and drops stale partial messages.
   void loop(uint32_t now);
+  // One request envelope from the MQTT session (its context built by the controller); writes the result envelope and
+  // returns its length.
+  size_t onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap);
 
   MyMesh* mesh() const { return _mesh; }
   Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this}; }
@@ -43,11 +47,14 @@ private:
   static bool cliRun(void* self, const char* line, char* reply, size_t cap);
   static bool cliAllow(void* self, const char* line);
   Link* linkFor(const BaseSerialInterface* src, bool create);
+  int dispatch(const Cli::Context& ctx, uint8_t caller, const char* msg, size_t len, char* out, size_t cap);
   bool queueResult(Link& l, const char* msg, size_t len);
 
   Link _links[LINKS];
   Iface::ResultCache* _cache = nullptr;     // one for the device (design section 3), allocated on the first request
   MyMesh* _mesh = nullptr;
+  Cli::Context _ctx;                        // the caller of the request being handled (a transport, or the broker)
+  uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
   char _id_hex[33] = {0};
   uint32_t _epoch = 0;
 };

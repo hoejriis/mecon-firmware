@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import time
 
 import pytest
 
@@ -315,3 +316,97 @@ def test_the_recorded_radio_steps_are_what_the_firmware_answers(nodes):
         g = i.request("config.get", {"keys": ["radio"]})
         a.pop("id"); g.pop("id")
         assert (a, g) == (step["answer"], step["then_get"]), step["apply"]
+
+
+# ------------------------------------------------------------------ over MQTT
+
+from sim import mqtt_broker  # noqa: E402
+from sim.harness import MqttEnv, WifiEnv  # noqa: E402
+
+TLS_PORT = 18883
+
+
+@pytest.fixture
+def broker(tmp_path):
+    mqtt_broker.require_tools()
+    made = []
+
+    def make(name="b", ip="127.0.0.2", tls=True):
+        cert, key, fp = mqtt_broker.make_cert(str(tmp_path), name, ip) if tls else (None, None, None)
+        b = mqtt_broker.Broker(tmp_path, name, ip, TLS_PORT if tls else 18830, cert, key, None).start()
+        b.fingerprint = fp
+        made.append(b)
+        return b
+    yield make
+    for b in made:
+        b.stop()
+
+
+def mqtt_boot(nodes, tmp_path, name, b, anchor=True):
+    """A standalone Companion in Wi-Fi mode with one static broker profile; returns (node, usb client, iface client,
+    device_id), once the session is up."""
+    wenv = WifiEnv(str(tmp_path / (name + ".wifi")))
+    wenv.set("sim")
+    menv = MqttEnv(str(tmp_path / (name + ".mqtt")))
+    n = nodes("companion_standalone", name, seed=17, rtc=RTC, wifi=wenv, mqtt=menv).start()
+    c, i = client(n)
+    device_id = i.request("hello")["result"]["device_id"]
+    for cmd in ["set wifi.profile 0 ssid sim", "set mqtt.profile 0 type static", "set mqtt.profile 0 host %s" % b.ip,
+                "set mqtt.profile 0 port %d" % b.port, "set mqtt.profile 0 tls on"] + \
+               (["set mqtt.profile 0 anchor %s" % b.fingerprint] if anchor else []):
+        assert c.cli(cmd).startswith(">"), cmd
+    assert c.cli("set connectivity.mode wifi").startswith("OK")
+    assert n.wait_exit(10) == 75
+    n.start()
+    c, i = client(n)
+    end = time.time() + 40
+    while time.time() < end and not c.cli("get mqtt.status").startswith("> connected"):
+        time.sleep(0.3)
+    assert c.cli("get mqtt.status").startswith("> connected"), c.cli("get mqtt.status")
+    time.sleep(2.0)   # past the settle time after the subscription
+    return n, c, i, device_id
+
+
+@pytest.mark.timescale(10)
+def test_hello_and_config_over_a_verified_broker(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "mq", b)
+    r = b.iface_request(dev, {"v": 1, "id": "m1", "op": "hello"})
+    assert r["status"] == "ok" and r["result"]["device_id"] == dev, r
+    assert not mecon_schema.check(r["result"], mecon_schema.load("hello.result.json"))
+    r = b.iface_request(dev, {"v": 1, "id": "m2", "op": "config.apply", "args": {"set": {"name": "ViaMqtt"}}})
+    assert r["status"] == "ok" and r["result"]["complete"], r
+    assert c.cli("get name") == "> ViaMqtt"
+    # a verified broker may write but not change the posture class: the line is refused before anything is written
+    r = b.iface_request(dev, {"v": 1, "id": "m3", "op": "config.apply",
+                              "args": {"set": {"name": "NotThis", "connectivity.mode": "ble"}}})
+    assert r == {"v": 1, "id": "m3", "status": "refused", "error": "refused:connectivity.mode"}, r
+    assert c.cli("get name") == "> ViaMqtt"
+
+
+@pytest.mark.timescale(10)
+def test_status_is_published_under_device_id_only(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "st", b)
+    assert b.retained_on("mecon/%s/status" % dev) is not None
+    node_id = c.pub_key[:4].hex()
+    assert b.retained_on("mecon/%s/status" % node_id, timeout=2) is None, "no second status topic, no second last will"
+
+
+@pytest.mark.timescale(10)
+def test_the_same_request_over_usb_and_mqtt_runs_once(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "dd", b)
+    first = i.request("config.apply", {"set": {"name": "Once"}}, rid="job-7")
+    assert c.cli("set name Meanwhile") == "OK"
+    again = b.iface_request(dev, {"v": 1, "id": "job-7", "op": "config.apply", "args": {"set": {"name": "Once"}}})
+    assert again == first, (first, again)
+    assert c.cli("get name") == "> Meanwhile"
+
+
+@pytest.mark.timescale(10)
+def test_an_unverified_broker_is_refused(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "uv", b, anchor=False)   # TLS without an anchor: not verified
+    r = b.iface_request(dev, {"v": 1, "id": "u1", "op": "hello"})
+    assert r == {"v": 1, "id": "u1", "status": "refused"}, r
