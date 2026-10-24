@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/status.get.result.json",
+  "title": "Result of status.get (v1.0, first cut: the telemetry catalogue extends it)",
+  "type": "object",
+  "required": ["device_id", "epoch", "uptime_s", "heap", "battery_mv", "contacts", "posture"],
+  "properties": {
+    "device_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "epoch": {"type": "integer", "minimum": 1},
+    "uptime_s": {"type": "integer", "minimum": 0},
+    "heap": {
+      "type": ["object", "null"],
+      "description": "Internal RAM; null on a platform with no heap API.",
+      "required": ["free", "largest", "min_free"],
+      "properties": {
+        "free": {"type": "integer", "minimum": 0},
+        "largest": {"type": "integer", "minimum": 0},
+        "min_free": {"type": ["integer", "null"], "description": "Lowest free since boot; null where not tracked."},
+        "loop_stack_free": {"type": ["integer", "null"]},
+        "psram_free": {"type": "integer", "minimum": 0, "description": "Absent on a board without PSRAM."}
+      }
+    },
+    "battery_mv": {"type": ["integer", "null"], "description": "null when the board cannot measure it."},
+    "contacts": {
+      "type": "object",
+      "required": ["count", "capacity"],
+      "properties": {"count": {"type": "integer", "minimum": 0}, "capacity": {"type": "integer", "minimum": 0}}
+    },
+    "connectivity": {"type": "string", "enum": ["ble", "wifi"], "description": "Absent on a build without connectivity modes."},
+    "posture": {"type": "string", "enum": ["normal", "hardened"]}
+  }
+}

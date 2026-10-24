@@ -113,6 +113,14 @@ Published with the implementation, in this repository:
 
 A third party should be able to implement a client from this page, the schemas and the fixtures alone.
 
+Published so far (v1.0 first cut):
+
+- [`schema/`](schema/): `request.json`, `result.json`, `event.json`, and the results of `hello` and `status.get`;
+- [`fixtures/requests.json`](fixtures/requests.json): requests with the status (and result schema) a v1.0 device must answer, plus a transport case; [`fixtures/framing.json`](fixtures/framing.json): one message and its exact `0x7F` frames;
+- [`tools/mecon_iface.py`](../../tools/mecon_iface.py): the reference client (framing, reassembly, envelope; transport-neutral), and [`tools/mecon_schema.py`](../../tools/mecon_schema.py), a dependency-free checker for the keywords these schemas use.
+
+The simulated-board suite (`sim/tests/test_device_interface.py`) runs every fixture against the firmware and checks each answer against the schemas. The schemas and fixtures for `config.*`, subscriptions and MQTT follow with those operations.
+
 ## Left to the implementation
 
 - The JSON parser (a bounded in-tree parser like the MQTT CLI's, or a library) is chosen on measured flash and heap.

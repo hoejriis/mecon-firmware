@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.json",
+  "title": "Device interface event (v1)",
+  "type": "object",
+  "required": ["v", "ev", "seq", "epoch", "ts", "data"],
+  "properties": {
+    "v": {"type": "integer", "const": 1},
+    "ev": {"type": "string", "pattern": "^[0-9A-Za-z._-]{1,32}$", "description": "The stream."},
+    "seq": {"type": "integer", "minimum": 0, "description": "Per stream per device: the same on every transport."},
+    "epoch": {"type": "integer", "minimum": 1, "description": "Boot counter, incremented on every boot."},
+    "ts": {"type": ["integer", "null"], "description": "Unix seconds, null while the device clock is not set."},
+    "data": {"type": "object"}
+  }
+}

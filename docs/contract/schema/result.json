@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/result.json",
+  "title": "Device interface result (v1)",
+  "type": "object",
+  "required": ["v", "id", "status"],
+  "properties": {
+    "v": {"type": "integer", "const": 1},
+    "id": {"type": "string", "pattern": "^[0-9A-Za-z._:-]{0,32}$", "description": "The request's id; empty when the device could not tie the result to one (an incomplete or unreadable message, a full queue)."},
+    "status": {"type": "string", "enum": ["ok", "refused", "invalid", "unknown-op", "unsupported-version", "busy", "failed"]},
+    "result": {"type": "object", "description": "Present with status ok: the operation's result, see <op>.result.json."},
+    "error": {"type": "string", "description": "A short reason, with failed or busy (for example result-expired, result-too-large, queue-full, no-memory)."}
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "description": "Device interface v1 request fixtures. Each case is one request (as JSON, or as raw text when the case is about malformed input) and what a v1.0 device must answer. A client may send them over any transport. 'schema' names the result schema an ok result must satisfy. The value PAD600 stands for a string of 600 'x' characters, to make the request span several frames. A request that is not valid JSON, or breaks the envelope's id rules, cannot be tied to its id: its invalid result carries \"id\":\"\".",
+  "cases": [
+    {
+      "name": "hello",
+      "request": {
+        "v": 1,
+        "id": "fx-hello",
+        "op": "hello"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "hello.result.json"
+      }
+    },
+    {
+      "name": "status",
+      "request": {
+        "v": 1,
+        "id": "fx-status",
+        "op": "status.get"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "status.get.result.json"
+      }
+    },
+    {
+      "name": "unknown fields are ignored",
+      "request": {
+        "v": 1,
+        "id": "fx-extra",
+        "op": "hello",
+        "future": {
+          "x": [
+            1,
+            2
+          ]
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "hello.result.json"
+      }
+    },
+    {
+      "name": "a long request (several frames)",
+      "request": {
+        "v": 1,
+        "id": "fx-long",
+        "op": "hello",
+        "args": {
+          "pad": "PAD600"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "hello.result.json"
+      }
+    },
+    {
+      "name": "unknown operation",
+      "request": {
+        "v": 1,
+        "id": "fx-unknown",
+        "op": "no.such.op"
+      },
+      "expect": {
+        "status": "unknown-op"
+      }
+    },
+    {
+      "name": "another major version",
+      "request": {
+        "v": 2,
+        "id": "fx-v2",
+        "op": "hello"
+      },
+      "expect": {
+        "status": "unsupported-version"
+      }
+    },
+    {
+      "name": "authority a v1.0 device cannot verify",
+      "request": {
+        "v": 1,
+        "id": "fx-auth",
+        "op": "hello",
+        "auth": {
+          "sig": "00"
+        }
+      },
+      "expect": {
+        "status": "refused"
+      }
+    },
+    {
+      "name": "trailing comma",
+      "raw": "{\"v\":1,\"id\":\"fx-comma\",\"op\":\"hello\",}",
+      "expect": {
+        "status": "invalid",
+        "id": ""
+      }
+    },
+    {
+      "name": "duplicate key",
+      "raw": "{\"v\":1,\"id\":\"fx-dup\",\"op\":\"hello\",\"op\":\"status.get\"}",
+      "expect": {
+        "status": "invalid",
+        "id": ""
+      }
+    },
+    {
+      "name": "id with a character outside the set",
+      "raw": "{\"v\":1,\"id\":\"fx dup\",\"op\":\"hello\"}",
+      "expect": {
+        "status": "invalid",
+        "id": ""
+      }
+    },
+    {
+      "name": "a read is answered again, not replayed",
+      "request": {
+        "v": 1,
+        "id": "fx-read-twice",
+        "op": "status.get"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "status.get.result.json"
+      }
+    }
+  ],
+  "transport_cases": [
+    {
+      "name": "default-PIN BLE is refused like its CLI line",
+      "transport": "ble-default-pin",
+      "request": {
+        "v": 1,
+        "id": "fx-untrusted",
+        "op": "hello"
+      },
+      "expect": {
+        "status": "refused"
+      }
+    }
+  ]
+}

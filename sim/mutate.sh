@@ -819,6 +819,7 @@ mutate iface_reply_not_bound_to_its_transport examples/companion_radio/MyMesh.h 
     _serial->writeFrame(frame, len);' '    _serial->bindReply(nullptr);
     _serial->writeFrame(frame, len);' sim/tests/test_device_interface.py::test_a_result_goes_only_to_the_transport_that_asked
 mutate iface_epoch_not_counted examples/companion_radio/DataStore.cpp '  e++;' '' sim/tests/test_device_interface.py::test_device_id_is_kept_and_epoch_counts_boots
+mutate iface_hello_without_node_key examples/companion_radio/MeconIface.cpp '  w.key("node_key"); w.str(key);' '' sim/tests/test_device_interface.py::test_every_request_fixture_against_the_device
 
 if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
   echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1

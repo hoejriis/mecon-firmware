@@ -145,3 +145,67 @@ def test_a_result_goes_only_to_the_transport_that_asked(nodes):
     assert iu.read_message(timeout=1.5) is None, "the USB client sees nothing of the BLE request"
     assert iu.request("status.get")["status"] == "ok"
     assert ib.read_message(timeout=1.5) is None, "and the BLE client nothing of the USB one"
+
+
+# ------------------------------------------------------------------ the published fixtures and schemas
+
+import mecon_schema  # noqa: E402
+
+FIXTURES = os.path.join(os.path.dirname(__file__), "..", "..", "docs", "contract", "fixtures")
+
+
+def fixture(name):
+    with open(os.path.join(FIXTURES, name)) as f:
+        return json.load(f)
+
+
+def expand(req):
+    s = json.dumps(req, separators=(",", ":")).replace("PAD600", "x" * 600)
+    return s.encode()
+
+
+def assert_case(i, case, answer):
+    exp = case["expect"]
+    assert answer["status"] == exp["status"], (case["name"], answer)
+    assert not mecon_schema.check(answer, mecon_schema.load("result.json")), (case["name"], answer)
+    if "id" in exp:
+        assert answer["id"] == exp["id"], (case["name"], answer)
+    if "schema" in exp:
+        problems = mecon_schema.check(answer["result"], mecon_schema.load(exp["schema"]))
+        assert not problems, (case["name"], problems)
+
+
+def test_every_request_fixture_against_the_device(nodes):
+    n, (c, i) = start(nodes, "fx")
+    for case in fixture("requests.json")["cases"]:
+        if "raw" in case:
+            i.send_raw(case["raw"].encode())
+            answer = i.wait_result(case["expect"].get("id", ""))
+        else:
+            assert not mecon_schema.check(case["request"], mecon_schema.load("request.json")) or case["request"]["v"] != 1 \
+                or "auth" in case["request"], case["name"]
+            i.send_raw(expand(case["request"]))
+            answer = i.wait_result(case["request"]["id"])
+        assert_case(i, case, answer)
+
+
+@pytest.mark.timescale(10)
+def test_the_transport_fixtures(nodes):
+    for case in fixture("requests.json")["transport_cases"]:
+        assert case["transport"] == "ble-default-pin"
+        n = ble_boot(nodes, "fxb", 123456)
+        b = n.connect_ble(123456)
+        b.app_start()
+        i = mecon_iface.IfaceClient(b._send, b._read_frame)
+        i.send_raw(expand(case["request"]))
+        assert_case(i, case, i.wait_result(case["request"]["id"]))
+
+
+def test_the_framing_fixture(nodes):
+    fx = fixture("framing.json")
+    frames = [bytes.fromhex(h) for h in fx["frames_hex"]]
+    assert mecon_iface.fragment(fx["message_utf8"].encode(), fx["xid"]) == frames, "the reference client frames it so"
+    n, (c, i) = start(nodes, "fxf")
+    for f in reversed(frames):   # any order
+        c._send(f)
+    assert i.wait_result("fx-frames")["status"] == "ok"
