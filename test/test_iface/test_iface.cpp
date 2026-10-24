@@ -338,8 +338,10 @@ static bool auth(void* u, const OpEntry& op, const Request&) {
   return P(u)->allow;
 }
 static const OpEntry TABLE[] = {
-  {"read.ok", hOk, PRIV_READ}, {"write.fail", hFail, PRIV_WRITE}, {"read.big", hBig, PRIV_READ}, {"read.args", hArgs, PRIV_READ},
+  {"read.ok", hOk, PRIV_READ, false}, {"write.fail", hFail, PRIV_WRITE, true}, {"read.big", hBig, PRIV_READ, false},
+  {"read.args", hArgs, PRIV_READ, false}, {"write.ok", hOk, PRIV_WRITE, true}, {"write.big", hBig, PRIV_WRITE, true},
 };
+static const size_t NT = sizeof(TABLE) / sizeof(TABLE[0]);
 static std::string run(Dispatcher& d, const std::string& m, ResultCache* c = nullptr, size_t cap = 600) {
   std::vector<char> out(cap);
   int n = d.handle(m.data(), m.size(), out.data(), cap, c);
@@ -351,7 +353,7 @@ static std::string req(const std::string& id, const std::string& op, const std::
 
 TEST(IfaceDispatch, OkAndHandlerSeesAuthorizationFirst) {
   Probe p;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   EXPECT_EQ(R"({"v":1,"id":"a","status":"ok","result":{"x":1}})", run(d, req("a", "read.ok")));
   EXPECT_EQ(1, p.ran);
   EXPECT_EQ(1, p.auth_calls);
@@ -362,7 +364,7 @@ TEST(IfaceDispatch, OkAndHandlerSeesAuthorizationFirst) {
 
 TEST(IfaceDispatch, RefusedMeansTheHandlerNeverRuns) {
   Probe p; p.allow = false;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   EXPECT_EQ(R"({"v":1,"id":"a","status":"refused"})", run(d, req("a", "write.fail")));
   EXPECT_EQ(0, p.ran);
   EXPECT_EQ(1, p.auth_calls);
@@ -380,7 +382,7 @@ TEST(IfaceDispatch, NoAuthCallbackRefusesEverything) {
 
 TEST(IfaceDispatch, UnknownOpIsNotAuthorizedOrRun) {
   Probe p;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   EXPECT_EQ(R"({"v":1,"id":"a","status":"unknown-op"})", run(d, req("a", "nope")));
   EXPECT_EQ(0, p.auth_calls);
   EXPECT_EQ(0, p.ran);
@@ -388,7 +390,7 @@ TEST(IfaceDispatch, UnknownOpIsNotAuthorizedOrRun) {
 
 TEST(IfaceDispatch, ParseFailuresRunNothing) {
   Probe p;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   EXPECT_EQ(R"({"v":1,"id":"a","status":"unsupported-version"})", run(d, R"({"v":2,"id":"a","op":"read.ok"})"));
   EXPECT_EQ(R"({"v":1,"id":"","status":"invalid"})", run(d, "garbage"));
   EXPECT_EQ(0, p.ran);
@@ -397,58 +399,80 @@ TEST(IfaceDispatch, ParseFailuresRunNothing) {
 
 TEST(IfaceDispatch, FailedCarriesTheHandlersError) {
   Probe p;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   EXPECT_EQ(R"({"v":1,"id":"a","status":"failed","error":"disk-full"})", run(d, req("a", "write.fail")));
   EXPECT_EQ(1, p.ran);
 }
 
 TEST(IfaceDispatch, ResultThatDoesNotFitIsFailedNotTruncated) {
   Probe p;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   EXPECT_EQ(R"({"v":1,"id":"a","status":"failed","error":"result-too-large"})", run(d, req("a", "read.big"), nullptr, 200));
   EXPECT_EQ("<overflow>", run(d, req("a", "read.big"), nullptr, 20));
 }
 
 TEST(IfaceDispatch, DuplicateIdReturnsTheStoredResultWithoutRunning) {
   Probe p;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   ResultCache c;
   std::string first = run(d, req("w1", "write.fail"), &c);
   EXPECT_EQ(1, p.ran);
   EXPECT_EQ(first, run(d, req("w1", "write.fail"), &c));
   EXPECT_EQ(1, p.ran);
   EXPECT_EQ(1, p.auth_calls);
-  run(d, req("w2", "read.ok"), &c);
+  run(d, req("w2", "write.ok"), &c);
   EXPECT_EQ(2, p.ran);
-  run(d, req("w2", "read.ok"), &c);
+  run(d, req("w2", "write.ok"), &c);
   EXPECT_EQ(2, p.ran);
+}
+
+// A read is not kept: running it again is harmless, and keeping it would spend the cache on results nobody needs.
+TEST(IfaceDispatch, ADuplicateReadRunsAgain) {
+  Probe p;
+  Dispatcher d(TABLE, NT, auth, &p, &p);
+  ResultCache c;
+  run(d, req("r1", "read.ok"), &c);
+  run(d, req("r1", "read.ok"), &c);
+  EXPECT_EQ(2, p.ran);
+  const char* data; size_t len;
+  EXPECT_EQ(ResultCache::MISS, c.find("r1", &data, &len));
+}
+
+// One cache for the device: the same write arriving over a second transport (a second dispatcher) is not run twice.
+TEST(IfaceDispatch, TheSameWriteOverAnotherTransportRunsOnce) {
+  Probe p;
+  Dispatcher usb(TABLE, NT, auth, &p, &p), mqtt(TABLE, NT, auth, &p, &p);
+  ResultCache shared;
+  std::string a = run(usb, req("job-9", "write.ok"), &shared);
+  EXPECT_EQ(a, run(mqtt, req("job-9", "write.ok"), &shared));
+  EXPECT_EQ(1, p.ran);
 }
 
 TEST(IfaceDispatch, EvictedIdRunsAgain) {
   Probe p;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   ResultCache c;
-  run(d, req("first", "read.ok"), &c);
-  for (int i = 0; i < 16; i++) run(d, req("id" + std::to_string(i), "read.ok"), &c);
+  run(d, req("first", "write.ok"), &c);
+  for (int i = 0; i < 16; i++) run(d, req("id" + std::to_string(i), "write.ok"), &c);
   EXPECT_EQ(17, p.ran);
-  run(d, req("first", "read.ok"), &c);
+  run(d, req("first", "write.ok"), &c);
   EXPECT_EQ(18, p.ran);
 }
 
 TEST(IfaceDispatch, OversizeResultIsNotCachedAndItsDuplicateIsBusy) {
   Probe p;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   ResultCache c;
-  std::string r = run(d, req("big", "read.big"), &c, 1000);
+  std::string r = run(d, req("big", "write.big"), &c, 1000);
   ASSERT_GT(r.size(), ResultCache::ENTRY_CAP);
   EXPECT_NE(std::string::npos, r.find("\"status\":\"ok\""));
-  EXPECT_EQ(R"({"v":1,"id":"big","status":"busy","error":"result-not-kept"})", run(d, req("big", "read.big"), &c, 1000));
+  EXPECT_EQ(R"({"v":1,"id":"big","status":"busy","error":"result-not-kept"})", run(d, req("big", "write.big"), &c, 1000));
   EXPECT_EQ(1, p.ran);
 }
 
 TEST(IfaceDispatch, OnlyExecutedOrAuthoritativeResultsAreRemembered) {
   Probe p;
-  Dispatcher d(TABLE, 4, auth, &p, &p);
+  Dispatcher d(TABLE, NT, auth, &p, &p);
   ResultCache c;
   const char* data; size_t len;
   run(d, req("u", "nope"), &c);
@@ -456,8 +480,11 @@ TEST(IfaceDispatch, OnlyExecutedOrAuthoritativeResultsAreRemembered) {
   run(d, R"({"v":2,"id":"v","op":"read.ok"})", &c);
   EXPECT_EQ(ResultCache::MISS, c.find("v", &data, &len));
   p.allow = false;
-  run(d, req("r", "read.ok"), &c);
-  EXPECT_EQ(ResultCache::HIT, c.find("r", &data, &len));
+  run(d, req("r", "write.ok"), &c);   // refused: nothing ran, so it is evaluated again next time
+  EXPECT_EQ(ResultCache::MISS, c.find("r", &data, &len));
+  p.allow = true;
+  run(d, req("f", "write.fail"), &c);
+  EXPECT_EQ(ResultCache::HIT, c.find("f", &data, &len));
 }
 
 // ---- framing
@@ -508,6 +535,23 @@ TEST(IfaceFrames, OversizeAndEmptyAreNotFragmented) {
   EXPECT_FALSE(f.begin(m.data(), 0, 0));
   EXPECT_EQ(25u, frameCount(4096));
   EXPECT_EQ(0u, frameCount(4097));
+}
+
+// An idle transport holds no reassembly buffer: it is allocated when a message starts and freed when taken.
+TEST(IfaceFrames, ReassemblyBufferExistsOnlyWhileAMessageIsInFlight) {
+  Reassembler r;
+  EXPECT_EQ(nullptr, r.data());
+  auto f = fragment(msgOf(400), 3);
+  ASSERT_EQ(RX_INCOMPLETE, feed(r, f[0]));
+  EXPECT_NE(nullptr, r.data());
+  ASSERT_EQ(RX_INCOMPLETE, feed(r, f[1]));
+  ASSERT_EQ(RX_COMPLETE, feed(r, f[2]));
+  EXPECT_EQ(400u, r.size());
+  r.release();
+  EXPECT_EQ(nullptr, r.data());
+  ASSERT_EQ(RX_INCOMPLETE, feed(r, f[0], 0));
+  EXPECT_TRUE(r.tick(REASSEMBLY_TIMEOUT_MS));   // dropped by the timeout: freed too
+  EXPECT_EQ(nullptr, r.data());
 }
 
 TEST(IfaceFrames, ReassemblerRejectsMalformedFrames) {
@@ -605,11 +649,13 @@ TEST(IfaceQueue, EventsDropAndResultsAreRefusedWhenFull) {
   uint8_t store[2048];
   OutQueue q(store, sizeof store);
   auto m = msgOf(10);
-  for (int i = 0; i < QUEUE_MESSAGES; i++) EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::EVENT, m.data(), m.size())) << i;
-  EXPECT_EQ(QUEUE_MESSAGES, q.count());
-  EXPECT_EQ(OutQueue::PUSH_DROPPED, q.push(OutQueue::EVENT, m.data(), m.size()));
+  for (int i = 0; i < QUEUE_MESSAGES - 1; i++) EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::EVENT, m.data(), m.size())) << i;
+  EXPECT_EQ(QUEUE_MESSAGES - 1, q.count());
+  EXPECT_EQ(OutQueue::PUSH_DROPPED, q.push(OutQueue::EVENT, m.data(), m.size()));   // the last slot is a result's
   EXPECT_EQ(OutQueue::PUSH_DROPPED, q.push(OutQueue::EVENT, m.data(), m.size()));
   EXPECT_EQ(2u, q.droppedEvents());
+  EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::RESULT, m.data(), m.size()));
+  EXPECT_EQ(QUEUE_MESSAGES, q.count());
   EXPECT_EQ(OutQueue::PUSH_BUSY, q.push(OutQueue::RESULT, m.data(), m.size()));
   EXPECT_EQ(1u, q.refusedResults());
   EXPECT_EQ(2u, q.droppedEvents());   // a refused result is not an event drop
@@ -617,6 +663,17 @@ TEST(IfaceQueue, EventsDropAndResultsAreRefusedWhenFull) {
   uint8_t f[FRAME_MAX];
   ASSERT_GT(q.nextFrame(f), 0u);       // draining one slot makes room again
   EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::RESULT, m.data(), m.size()));
+}
+
+// Events cannot take the bytes kept for results: with the queue full of events, a short result still fits.
+TEST(IfaceQueue, EventsLeaveRoomForAResult) {
+  uint8_t store[2048];
+  OutQueue q(store, sizeof store);
+  auto ev = msgOf(600), busy = msgOf(60);
+  EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::EVENT, ev.data(), ev.size()));
+  EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::EVENT, ev.data(), ev.size()));
+  EXPECT_EQ(OutQueue::PUSH_DROPPED, q.push(OutQueue::EVENT, ev.data(), ev.size()));   // would eat into the reserve
+  EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::RESULT, busy.data(), busy.size()));
 }
 
 TEST(IfaceQueue, ByteStorageCountsAsFull) {

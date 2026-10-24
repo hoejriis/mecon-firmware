@@ -28,8 +28,9 @@ int Dispatcher::handle(const char* msg, size_t len, char* out, size_t cap, Resul
     if (l == ResultCache::OVERSIZE) return writeResult(out, cap, id, ST_BUSY, nullptr, "result-not-kept");
   }
 
+  const OpEntry* op = nullptr;
   if (st == ST_OK) {
-    const OpEntry* op = find(req.op);
+    op = find(req.op);
     if (!op) st = ST_UNKNOWN_OP;
     else if (!_auth || !_auth(_auth_user, *op, req)) st = ST_REFUSED;
     else {
@@ -53,7 +54,7 @@ int Dispatcher::handle(const char* msg, size_t len, char* out, size_t cap, Resul
     }
   }
   if (n < 0) n = writeResult(out, cap, id, st, nullptr, err);
-  if (n > 0 && cache && req.has_id && (st == ST_OK || st == ST_FAILED || st == ST_REFUSED))
+  if (n > 0 && cache && op && op->mutating && (st == ST_OK || st == ST_FAILED))
     cache->store(req.id, out, (size_t)n);
   return n;
 }

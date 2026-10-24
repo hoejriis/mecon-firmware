@@ -2,6 +2,7 @@
 // USB/BLE framing (DEVICE_INTERFACE.md section 7): 0x7F | xid | index | count | up to 168 message bytes.
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include "IfaceJson.h"   // MAX_MSG
 
@@ -14,6 +15,7 @@ const size_t FRAME_MAX = FRAME_HDR + FRAME_PAYLOAD;
 const unsigned FRAME_MAX_COUNT = 25;      // 25 * 168 = 4200 >= MAX_MSG
 const uint32_t REASSEMBLY_TIMEOUT_MS = 5000;
 const int QUEUE_MESSAGES = 8;
+const size_t RESULT_RESERVE = 512;        // queue bytes events may not use, so a short result (busy) always fits
 
 // Frames needed for a message of len bytes; 0 when len is 0 or over MAX_MSG.
 inline unsigned frameCount(size_t len) {
@@ -46,16 +48,23 @@ private:
 
 enum RxResult {
   RX_INCOMPLETE,   // frame accepted (or a duplicate ignored); more needed
-  RX_COMPLETE,     // data()/size() hold the whole message until the next feed()
-  RX_MALFORMED     // frame rejected; reassembly state unchanged
+  RX_COMPLETE,     // data()/size() hold the whole message until the next feed() or release()
+  RX_MALFORMED,    // frame rejected; reassembly state unchanged
+  RX_NOMEM         // the buffer for a new message could not be allocated; the frame is dropped (answer busy)
 };
 
 // One inbound message at a time. Frames of the message may arrive in any order; every frame but the last
 // carries exactly FRAME_PAYLOAD bytes, which is what lets a frame be placed without waiting for its
-// neighbours. About 4.1 KB: allocate it per transport only when the transport is enabled.
+// neighbours. The buffer (count * FRAME_PAYLOAD bytes, at most about 4.1 KB) is allocated when a message starts
+// and freed when it has been taken or dropped, so an idle transport holds none.
 class Reassembler {
 public:
   Reassembler() { reset(); }
+  ~Reassembler() { release(); }
+  Reassembler(const Reassembler&) = delete;
+  Reassembler& operator=(const Reassembler&) = delete;
+  // Frees the buffer of a completed message once the caller is done with data().
+  void release() { free(_buf); _buf = nullptr; _total = 0; }
 
   RxResult feed(const uint8_t* f, size_t len, uint32_t now_ms);
   // Discards an incomplete message older than the timeout. True when it did (see takeDiscard).
@@ -68,8 +77,8 @@ public:
 
 private:
   void reset() { _active = false; _discarded = false; _mask = 0; _total = 0; _last_len = 0; _have_last = false; }
-  void drop() { _discarded = true; _discarded_xid = _xid; _active = false; _mask = 0; _have_last = false; }
-  uint8_t _buf[MAX_MSG];
+  void drop() { _discarded = true; _discarded_xid = _xid; _active = false; _mask = 0; _have_last = false; release(); }
+  uint8_t* _buf = nullptr;
   bool _active, _discarded, _have_last;
   uint8_t _xid, _count, _discarded_xid;
   uint32_t _mask, _start;
@@ -84,8 +93,9 @@ public:
   enum Push { PUSH_OK, PUSH_DROPPED, PUSH_BUSY, PUSH_BAD };
   OutQueue(uint8_t* store, size_t cap) : _s(store), _cap(cap) {}
 
-  // Full means 8 messages queued or no room for the bytes. A full queue drops an event (counted) and refuses a
-  // result with PUSH_BUSY: the request that would have produced it is answered busy instead.
+  // Events may fill at most QUEUE_MESSAGES - 1 slots and must leave RESULT_RESERVE bytes; past that an event is
+  // dropped and counted. A result that does not fit gets PUSH_BUSY: the request is answered busy instead, and that
+  // short answer always fits in what events had to leave.
   Push push(Kind k, const uint8_t* msg, size_t len);
   // Next frame of the message at the head (out needs FRAME_MAX bytes); 0 when empty.
   size_t nextFrame(uint8_t* out);

@@ -1,16 +1,17 @@
 #pragma once
-// The last 16 request ids of one transport with their stored result bytes, so a duplicate id (a reconnect, a
-// retried write) gets the stored result and the operation does not run twice. DEVICE_INTERFACE.md section 3.
+// The last 16 ids of operations that change state, with their stored result bytes, so a duplicate id (a reconnect,
+// a retried write, the same request arriving over another transport) gets the stored result and the operation does
+// not run twice. One cache for the device, shared by every transport. Reads are not kept: running one again is
+// harmless. DEVICE_INTERFACE.md section 3.
 //
-// Memory per transport: 16 * (IFACE_CACHE_ENTRY_CAP + 36) = 16 * 292 = 4,672 bytes with the default 256 byte
-// cap (id 33 + length 2 + flags 1, rounded). 256 holds an ok/failed result for a handful of keys; bigger results
-// are the paged operations' and are rarely a retried write. Override with -D IFACE_CACHE_ENTRY_CAP=n.
+// Memory: 16 * (IFACE_CACHE_ENTRY_CAP + 36) = 16 * 164 = 2,624 bytes with the default 128 byte cap (id 33 + length
+// 2 + flags 1, rounded). 128 holds the result of a write to a few keys. Override with -D IFACE_CACHE_ENTRY_CAP=n.
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
 #ifndef IFACE_CACHE_ENTRY_CAP
-#define IFACE_CACHE_ENTRY_CAP 256
+#define IFACE_CACHE_ENTRY_CAP 128
 #endif
 
 namespace Iface {

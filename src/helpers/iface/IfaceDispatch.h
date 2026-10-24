@@ -21,6 +21,7 @@ struct OpEntry {
   const char* name;
   OpHandler handler;
   Priv priv;
+  bool mutating;   // changes state: its ok or failed result is kept, so a retried request does not run it twice
 };
 
 // True to allow. A null callback refuses everything: an unwired dispatcher fails closed.
@@ -34,8 +35,8 @@ public:
   // Handles one complete request message and writes the response envelope into out. Returns its length, or -1
   // when even an error response does not fit out (the caller then answers busy through its own channel).
   // With a cache, a duplicate id returns the stored response without running the handler; a duplicate whose
-  // response was too big to keep gets busy. Only ok, failed and refused responses are remembered: for the
-  // others nothing ran, so repeating the request re-evaluates it harmlessly.
+  // response was too big to keep gets busy. Only the ok and failed responses of mutating operations are kept:
+  // a read, or a request that did not run, is simply evaluated again.
   int handle(const char* msg, size_t len, char* out, size_t cap, ResultCache* cache);
 
 private:

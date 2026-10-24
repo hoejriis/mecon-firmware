@@ -20,6 +20,9 @@ RxResult Reassembler::feed(const uint8_t* f, size_t len, uint32_t now_ms) {
   if (_active && xid == _xid && count != _count) return RX_MALFORMED;
   if (_active && xid != _xid) drop();   // one message at a time: the newer one wins
   if (!_active) {
+    release();                          // a completed message the caller did not release
+    _buf = (uint8_t*)malloc((size_t)count * FRAME_PAYLOAD);
+    if (!_buf) return RX_NOMEM;
     _active = true; _xid = xid; _count = count; _start = now_ms; _mask = 0; _have_last = false; _total = 0;
   }
   uint32_t bit = (uint32_t)1 << index;
@@ -37,8 +40,12 @@ RxResult Reassembler::feed(const uint8_t* f, size_t len, uint32_t now_ms) {
 
 OutQueue::Push OutQueue::push(Kind k, const uint8_t* msg, size_t len) {
   if (!msg || !frameCount(len)) return PUSH_BAD;
-  if (_count >= QUEUE_MESSAGES || len > _cap - _used) {
-    if (k == EVENT) { _dropped++; return PUSH_DROPPED; }
+  if (k == EVENT) {
+    if (_count >= QUEUE_MESSAGES - 1 || _cap < RESULT_RESERVE || _used > _cap - RESULT_RESERVE || len > _cap - RESULT_RESERVE - _used) {
+      _dropped++;
+      return PUSH_DROPPED;
+    }
+  } else if (_count >= QUEUE_MESSAGES || len > _cap - _used) {
     _refused++;
     return PUSH_BUSY;
   }

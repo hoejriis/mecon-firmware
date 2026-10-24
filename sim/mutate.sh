@@ -809,6 +809,9 @@ mutate iface_reassembly_timeout_ignored src/helpers/iface/IfaceFrames.cpp "if (_
 mutate iface_id_charset_unchecked src/helpers/iface/IfaceEnvelope.cpp "req.id, sizeof(req.id), CS_ID, 1)" "req.id, sizeof(req.id), CS_ANY, 1)" unit:test_iface
 mutate iface_duplicate_keys_accepted src/helpers/iface/IfaceJson.cpp "if (keyEq(d, keys[j], c)) return J_DUP_KEY;" "if (false) return J_DUP_KEY;" unit:test_iface
 mutate iface_new_xid_does_not_discard src/helpers/iface/IfaceFrames.cpp "if (_active && xid != _xid) drop();   // one message at a time: the newer one wins" "" unit:test_iface
+mutate iface_events_take_the_result_slot src/helpers/iface/IfaceFrames.cpp '    if (_count >= QUEUE_MESSAGES - 1 ||' '    if (_count >= QUEUE_MESSAGES ||' unit:test_iface
+mutate iface_reads_are_cached src/helpers/iface/IfaceDispatch.cpp '  if (n > 0 && cache && op && op->mutating && (st == ST_OK || st == ST_FAILED))' '  if (n > 0 && cache && op && (st == ST_OK || st == ST_FAILED))' unit:test_iface
+mutate iface_dropped_message_keeps_its_buffer src/helpers/iface/IfaceFrames.h ' _mask = 0; _have_last = false; release(); }' ' _mask = 0; _have_last = false; }' unit:test_iface
 
 if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
   echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1
