@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/config.schema.result.json",
+  "title": "Result of config.schema (v1.0): one page of the settings this build has",
+  "type": "object",
+  "required": ["profile", "keys", "next"],
+  "properties": {
+    "profile": {"type": "string", "pattern": "^config/1\\.[0-9]+$"},
+    "keys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "type", "writable", "write_only", "reboot", "restarts"],
+        "properties": {
+          "key": {"type": "string", "description": "A key, or a pattern with one 0-based index written {n}, for example wifi.profile.{n}.ssid."},
+          "type": {"type": "string", "enum": ["string", "integer", "boolean", "enum"]},
+          "min": {"type": "integer"}, "max": {"type": "integer"},
+          "min_len": {"type": "integer", "minimum": 0}, "max_len": {"type": "integer", "minimum": 0},
+          "format": {"type": "string", "description": "A string with a fixed shape. freq,bw,sf,cr: four plain decimals separated by commas, MHz 100-1000, kHz 7-500, spreading factor 5-12, coding rate 5-8; integral values may omit the decimal point. config.get returns what the CLI prints: the frequency at float32 precision (869.618 reads 869.6179809)."},
+          "choices": {"type": "array", "items": {"type": "string"}},
+          "index": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "[lowest, highest] value of {n}."},
+          "writable": {"type": "boolean"},
+          "write_only": {"type": "boolean", "description": "A secret: config.get reports \"set\" or \"unset\", never the value."},
+          "reboot": {"type": "boolean", "description": "Takes effect after a reboot."},
+          "restarts": {"type": "boolean", "description": "The device restarts itself shortly after the write."}
+        }
+      }
+    },
+    "next": {"type": ["integer", "null"], "description": "Pass as args.cursor for the next page; null on the last page."}
+  }
+}

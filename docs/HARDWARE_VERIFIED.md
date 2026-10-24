@@ -38,6 +38,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | ESP-IDF 5.3: LoRa DM with v4test | 9 of 9 direct messages delivered over three runs, ACK confirmed at the sender for 7 (the two misses in the first run after boot, as on 2.0.17) | 2026-10-24, bd138cf9 |
 | ESP-IDF 5.3: battery reading | 4,226 mV (4,244 mV on 2.0.17 the same hour) | 2026-10-24, 114feab6 |
 | ESP-IDF 5.3: loop task stack (standalone) | least free since boot (`loop_stack_free`): BLE idle 5,472 B, after a PIN pairing and CLI over BLE 5,424 B, Wi-Fi + TLS MQTT 5,496 B (2.0.17 with the same reporting: 5,492 / 5,476 / 5,540 B) | 2026-10-24, 8c192a4a |
+| Device interface (standalone) | every request fixture of `docs/contract/fixtures/requests.json` plus the health stream, through `tools/mecon_iface_hw.py`: 24 of 24 over USB, 24 of 24 over BLE in three runs with no reset between them (so the retried `config.apply` got its stored result) | 2026-10-24, 9f7b2bb7 |
 
 ## Heltec V4 (v4test)
 
@@ -59,6 +60,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | ESP-IDF 5.3: Wi-Fi + TLS MQTT (standalone) | joins in about 6 s from reset (2.0.17: about 7 to 9 s), skipping an absent higher-priority profile; MQTT `tls=verified` in about 9 s (2.0.17: 11 to 13 s); heap free 108,228 B, largest 42,996 B, low-water 101,380 B (2.0.17: 118,200 B / 102,388 B / 110,504 B) | 2026-10-24, bd138cf9 |
 | ESP-IDF 5.3: battery reading | 4,122 mV (4,139 mV on 2.0.17 the same hour) | 2026-10-24, bd138cf9 |
 | ESP-IDF 5.3: loop task stack (standalone) | least free since boot (`loop_stack_free`): BLE idle 5,516 B, after a PIN pairing and CLI over BLE 5,500 B, Wi-Fi + TLS MQTT 5,516 B (2.0.17: 5,520 / 5,488 B in BLE; its Wi-Fi reading was not captured) | 2026-10-24, 8c192a4a |
+| Device interface (standalone) | every request fixture plus the health stream, 24 of 24 over each transport: USB, BLE (two runs) and MQTT through a TLS broker with a CA anchor (`mecon/<device_id>/req`, `resp`, `ev/health`) | 2026-10-24, 6f82504c |
 
 ## Seeed Wio Tracker L1 (wiotest)
 

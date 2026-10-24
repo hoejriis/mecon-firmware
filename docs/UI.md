@@ -162,7 +162,7 @@ BLE mode, per-device PIN (*captured*): the pairing PIN shows until a phone conne
 |    Unread Msg: 0    |
 |                     |
 |         BLE         |
-| P i n : 2 0 5 1 9 8 |
+| P i n : 8 9 4 8 8 1 |
 |                     |
 |                     |
 +---------------------+
@@ -177,7 +177,7 @@ BLE mode while the largest free heap block is below the floor (*captured*, the s
 |    Unread Msg: 0    |
 |                     |
 |     BLE LOW MEM     |
-| P i n : 2 0 5 1 9 8 |
+| P i n : 8 9 4 8 8 1 |
 |                     |
 |                     |
 +---------------------+

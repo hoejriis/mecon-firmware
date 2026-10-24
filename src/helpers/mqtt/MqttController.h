@@ -42,6 +42,19 @@ public:
   // The command line over MQTT: `fn` runs a request for the role (it is given the context built from the session).
   // Without a handler nothing is subscribed.
   void setCliHandler(Cli::Mqtt::RunFn fn, void* user) { _cli_fn = fn; _cli_user = user; }
+  // The device interface over MQTT (docs/contract/DEVICE_INTERFACE.md): `fn` answers one request envelope with its
+  // result envelope, run with the session's context, and returns the result's length (0: nothing to send). Set before
+  // begin(): the device then publishes its status under mecon/<device_id>/ instead of mecon/<node id>/, and takes
+  // requests on mecon/<device_id>/req, answering on .../resp.
+  typedef size_t (*IfaceFn)(void* user, const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap);
+  // One interface event on mecon/<device_id>/ev/<stream>, QoS 0, never retained. False when no session is up.
+  bool publishIfaceEvent(const char* stream, const char* payload, size_t len);
+  bool sessionUp() const { return _started && _core.state() == MqttState::Connected; }
+  void setIfaceHandler(IfaceFn fn, void* user, const char* device_id_hex) {
+    _iface_fn = fn;
+    _iface_user = user;
+    snprintf(_device_id, sizeof(_device_id), "%s", device_id_hex);
+  }
   const MqttCore* core() const { return &_core; }
   // Seconds clock for the audit entry of a refused profile (a stored anchor that cannot be used); without one, 0.
   void setAuditClock(uint32_t (*now)()) { _audit_now = now; }
@@ -83,11 +96,16 @@ private:
   uint8_t _job_profile = 0;          // the profile the job connects, for the posture check
   std::atomic<bool> _job_cancel{false};   // set by the main loop, read by the job between its steps
   char _client_id[24] = {0};
-  char _topic[32] = {0};
+  char _topic[48] = {0};
   char _req_topic[40] = {0};
   char _resp_topic[40] = {0};
   Cli::Mqtt::RunFn _cli_fn = nullptr;
   void* _cli_user = nullptr;
+  IfaceFn _iface_fn = nullptr;
+  void* _iface_user = nullptr;
+  char _device_id[33] = {0};
+  char _iface_req[48] = {0};
+  char _iface_resp[48] = {0};
   uint32_t (*_audit_now)() = nullptr;
   uint32_t _cur_addr = 0;
   uint16_t _cur_port = 0;
@@ -102,6 +120,8 @@ private:
   void dropTransport();
   void publishStatus();
   void onMessage(const char* topic, const uint8_t* payload, unsigned len);
+  void onIfaceMessage(const uint8_t* payload, unsigned len);
+  Cli::Context sessionContext() const;
   static void trampoline(char* topic, uint8_t* payload, unsigned int len);
 };
 

@@ -565,10 +565,10 @@ mutate facade_connmode_remote_may_switch src/helpers/connmode/ConnMode.h "return
 # MQTT adapter
 mutate mqtt_cli_session_always_verified src/helpers/mqtt/MqttController.cpp "Cli::Mqtt::sessionContext(_core.verified(), *_posture, manages)" "Cli::Mqtt::sessionContext(true, *_posture, manages)" sim/tests/test_cli_unified.py::test_mqtt_is_refused_on_plain_and_on_unverified_tls_and_audited
 mutate mqtt_cli_profile_always_manages src/helpers/mqtt/MqttController.cpp "const bool manages = cur != MqttCore::NONE && _profiles->p[cur].manage != 0;" "const bool manages = true;" sim/tests/test_cli_unified.py::test_hardened_mqtt_is_read_only_unless_the_profile_is_flagged_for_management
-mutate mqtt_cli_retained_request_replayed src/helpers/mqtt/MqttController.cpp "if ((int32_t)(millis() - _cli_open_at) < 0) return;" "" sim/tests/test_cli_unified.py::test_a_retained_request_is_not_replayed_to_a_reconnecting_node
+mutate mqtt_cli_retained_request_replayed src/helpers/mqtt/MqttController.cpp " || (int32_t)(millis() - _cli_open_at) < 0) return;" ") return;" sim/tests/test_cli_unified.py::test_a_retained_request_is_not_replayed_to_a_reconnecting_node
 mutate mqtt_cli_correlation_id_not_echoed src/helpers/mqtt/MqttController.cpp "n = Cli::Mqtt::formatResponse(out, sizeof(out), req.id, status, reply);" "n = Cli::Mqtt::formatResponse(out, sizeof(out), \"\", status, reply);" sim/tests/test_cli_unified.py::test_malformed_requests_get_an_answer_and_run_nothing
 mutate mqtt_cli_bad_request_runs_something src/helpers/mqtt/MqttController.cpp "if (!Cli::Mqtt::parseRequest(payload, len, req)) {" "if (false) {" sim/tests/test_cli_unified.py::test_malformed_requests_get_an_answer_and_run_nothing
-mutate mqtt_cli_no_subscription src/helpers/mqtt/MqttController.cpp "    _psc.subscribe(_req_topic);   // before the status" "    // no subscription: before the status" sim/tests/test_cli_unified.py::test_reboot_over_mqtt_runs_in_normal_and_the_node_comes_back
+mutate mqtt_cli_no_subscription src/helpers/mqtt/MqttController.cpp "  if (_cli_fn) _psc.subscribe(_req_topic);   // before the status" "  // no subscription: before the status" sim/tests/test_cli_unified.py::test_reboot_over_mqtt_runs_in_normal_and_the_node_comes_back
 mutate mqtt_cli_refusal_reported_as_ok examples/companion_radio/MyMesh.cpp "if (_cli_refused) return Cli::Mqtt::S_REFUSED;" "" sim/tests/test_cli_unified.py::test_mqtt_cannot_do_what_only_a_local_caller_may
 mutate mqtt_cli_flag_not_persisted examples/companion_radio/NodePrefs.h "        key[0] = 'g'; def(key, q.manage);
 " "" sim/tests/test_cli_unified.py::test_the_management_flag_survives_a_reboot_and_is_off_by_default
@@ -800,11 +800,40 @@ mutate radio_never_reports_busy variants/sim/sim_radio.cpp 'bool SimRadio::isRec
 # nodes booted together do not share duty-window bin edges (#79)
 mutate duty_phase_always_zero src/Mesh.cpp '  return _rng->nextInt(0, DUTY_BIN_MS);' '  return 0;' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
 mutate duty_phase_not_applied src/Dispatcher.cpp '  duty.reset(_ms->getMillis() - (getDutyPhaseMs() % DUTY_BIN_MS));' '  duty.reset(_ms->getMillis());' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
+# --- device interface core (docs/contract/DEVICE_INTERFACE.md): undo each rule and test_iface must go red
+mutate iface_auth_refused_handler_still_runs src/helpers/iface/IfaceDispatch.cpp "else if (!_auth || !_auth(_auth_user, *op, req)) st = ST_REFUSED;" "else if (false) st = ST_REFUSED;" unit:test_iface
+mutate iface_dedupe_cache_returns_nothing src/helpers/iface/IfaceCache.h "if (!_e[i].used || strcmp(_e[i].id, id) != 0) continue;" "if (true) continue;" unit:test_iface
+mutate iface_reassembly_timeout_ignored src/helpers/iface/IfaceFrames.cpp "if (_active && (uint32_t)(now_ms - _start) >= REASSEMBLY_TIMEOUT_MS)" "if (false)" unit:test_iface
+mutate iface_id_charset_unchecked src/helpers/iface/IfaceEnvelope.cpp "req.id, sizeof(req.id), CS_ID, 1)" "req.id, sizeof(req.id), CS_ANY, 1)" unit:test_iface
+mutate iface_duplicate_keys_accepted src/helpers/iface/IfaceJson.cpp "if (keyEq(d, keys[j], c)) return J_DUP_KEY;" "if (false) return J_DUP_KEY;" unit:test_iface
+mutate iface_new_xid_does_not_discard src/helpers/iface/IfaceFrames.cpp "if (_active && xid != _xid) drop();   // one message at a time: the newer one wins" "" unit:test_iface
+mutate iface_events_take_the_result_slot src/helpers/iface/IfaceFrames.cpp '    if (_count >= QUEUE_MESSAGES - 1 ||' '    if (_count >= QUEUE_MESSAGES ||' unit:test_iface
+mutate iface_reads_are_cached src/helpers/iface/IfaceDispatch.cpp '  if (n > 0 && cache && op && op->mutating && (st == ST_OK || st == ST_FAILED))' '  if (n > 0 && cache && op && (st == ST_OK || st == ST_FAILED))' unit:test_iface
+mutate iface_dropped_message_keeps_its_buffer src/helpers/iface/IfaceFrames.h ' _mask = 0; _have_last = false; release(); }' ' _mask = 0; _have_last = false; }' unit:test_iface
+mutate iface_duplicate_skips_the_authority_check src/helpers/iface/IfaceDispatch.cpp '      if (dop && (!_auth || !_auth(_auth_user, *dop, req))) return' '      if (false) return' unit:test_iface
+mutate iface_expired_ids_forgotten src/helpers/iface/IfaceCache.h '      if (_h[i] == h) return EXPIRED;' '      if (false) return EXPIRED;' unit:test_iface
+mutate iface_auth_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(self->_ctx, cls).allow;' '  return true;' sim/tests/test_device_interface.py::test_the_default_pin_is_refused_like_its_cli_line
+mutate iface_reply_not_bound_to_its_transport examples/companion_radio/MyMesh.h '    _serial->bindReply(src);
+    _serial->writeFrame(frame, len);' '    _serial->bindReply(nullptr);
+    _serial->writeFrame(frame, len);' sim/tests/test_device_interface.py::test_a_result_goes_only_to_the_transport_that_asked
+mutate iface_epoch_not_counted examples/companion_radio/DataStore.cpp '  e++;' '' sim/tests/test_device_interface.py::test_device_id_is_kept_and_epoch_counts_boots
+mutate iface_hello_without_node_key examples/companion_radio/MeconIface.cpp '  w.key("node_key"); w.str(key);' '' sim/tests/test_device_interface.py::test_every_request_fixture_against_the_device
+mutate iface_config_line_check_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(static_cast<MeconIface*>(user)->_ctx, r.cls, r.flags).allow;' '  return true;' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
+mutate iface_cli_line_never_remote examples/companion_radio/MeconIface.cpp '  const bool known = mesh->handleCommand(line, self->_ctx.remote ? 1 : 0, buf);' '  const bool known = mesh->handleCommand(line, 0, buf);' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
+mutate iface_mqtt_request_topic_not_subscribed src/helpers/mqtt/MqttController.cpp '  if (_iface_fn) _psc.subscribe(_iface_req);' '' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
+mutate iface_subscription_never_lapses examples/companion_radio/MeconIface.cpp '    if (l.health.active && (int32_t)(now - l.health.until) >= 0) l.health.active = false;' '' sim/tests/test_device_interface.py::test_a_subscription_lapses_at_its_lifetime
+mutate iface_sub_stop_does_not_stop examples/companion_radio/MeconIface.cpp '  if (sub) sub->active = false;' '' sim/tests/test_device_interface.py::test_health_events_follow_a_subscription_and_stop_with_it
+mutate iface_mqtt_events_not_published examples/companion_radio/MeconIface.cpp '  if (_mqtt_health.active && _ev_publish) _ev_publish("health", ev, (size_t)n);' '' sim/tests/test_device_interface.py::test_health_events_over_mqtt
+mutate config_apply_skips_the_authority_check src/helpers/iface/IfaceConfig.cpp '    if (!allowed) { c.error = keyError("refused", key); return ST_REFUSED; }' '' unit:test_iface_config
+mutate config_index_unbounded src/helpers/iface/IfaceConfig.cpp 'if (matches(KEYS[i].key, key, len, index) && *index <= KEYS[i].idx_max) return &KEYS[i];' 'if (matches(KEYS[i].key, key, len, index)) return &KEYS[i];' unit:test_iface_config
+mutate config_leading_zero_accepted src/helpers/iface/IfaceConfig.cpp '  if (dn > 3 || (dn > 1 && d[0] == ' '  if (dn > 3 || (false && d[0] == ' unit:test_iface_config
+mutate config_empty_profile_not_null src/helpers/iface/IfaceConfig.cpp '    *is_null = !(field == F_WIFI_SSID' '    *is_null = false && !(field == F_WIFI_SSID' unit:test_iface_config
+mutate config_radio_format_unchecked src/helpers/iface/IfaceConfig.cpp '      if (k.format && !checkFormat(k.format, out)) {' '      if (false) {' unit:test_iface_config
+mutate iface_cache_entry_too_small_for_an_apply src/helpers/iface/IfaceCache.h '#define IFACE_CACHE_ENTRY_CAP 384' '#define IFACE_CACHE_ENTRY_CAP 128' unit:test_iface_config
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
-
 if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
   echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1
 fi

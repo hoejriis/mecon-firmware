@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/config.get.result.json",
+  "title": "Result of config.get (v1.0)",
+  "description": "Request args: {\"keys\": [1 to 16 concrete keys]}. A value is typed as its schema entry says; null where the device has no value (an unset profile's priority); a write-only key reads \"set\" or \"unset\".",
+  "type": "object",
+  "required": ["values"],
+  "properties": {
+    "values": {"type": "object"},
+    "errors": {"type": "object", "description": "Present when a key got no value: key -> unknown-key | refused | unreadable."}
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/request.json",
+  "title": "Device interface request (v1)",
+  "type": "object",
+  "required": ["v", "id", "op"],
+  "properties": {
+    "v": {"type": "integer", "const": 1},
+    "id": {"type": "string", "pattern": "^[0-9A-Za-z._:-]{1,32}$"},
+    "op": {"type": "string", "pattern": "^[0-9A-Za-z._-]{1,32}$"},
+    "args": {"type": "object"},
+    "auth": {"description": "Reserved for signed authority (Issue #95). A v1.0 device refuses any request that carries it."}
+  }
+}

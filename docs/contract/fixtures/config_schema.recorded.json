@@ -1,0 +1,250 @@
+{
+  "description": "Every config.schema page answered by one build, in order, as recorded from the simulated standalone Companion (the same key table as the Heltec V3 and V4 standalone builds). A Backend maps its own keys only to keys listed here. sim/tests/test_device_interface.py fails if the firmware's schema drifts from this recording.",
+  "build": {
+    "role": "companion",
+    "interface": "1.0",
+    "upstream": "v1.18.0"
+  },
+  "pages": [
+    {
+      "cursor": 0,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
+          {
+            "key": "name",
+            "type": "string",
+            "min_len": 1,
+            "max_len": 31,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "tx",
+            "type": "integer",
+            "min": -9,
+            "max": 30,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "radio",
+            "type": "string",
+            "min_len": 7,
+            "max_len": 40,
+            "format": "freq,bw,sf,cr",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "connectivity.mode",
+            "type": "enum",
+            "choices": [
+              "ble",
+              "wifi"
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": true
+          },
+          {
+            "key": "wifi.enabled",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": true,
+            "restarts": false
+          },
+          {
+            "key": "wifi.profile.{n}.ssid",
+            "type": "string",
+            "min_len": 0,
+            "max_len": 32,
+            "index": [
+              0,
+              9
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          }
+        ],
+        "next": 6
+      }
+    },
+    {
+      "cursor": 6,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
+          {
+            "key": "wifi.profile.{n}.pwd",
+            "type": "string",
+            "min_len": 0,
+            "max_len": 63,
+            "index": [
+              0,
+              9
+            ],
+            "writable": true,
+            "write_only": true,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "wifi.profile.{n}.priority",
+            "type": "integer",
+            "min": 0,
+            "max": 255,
+            "index": [
+              0,
+              9
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "mqtt.enabled",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "mqtt.profile.{n}.type",
+            "type": "enum",
+            "choices": [
+              "static",
+              "discovery"
+            ],
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "mqtt.profile.{n}.host",
+            "type": "string",
+            "min_len": 1,
+            "max_len": 63,
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "mqtt.profile.{n}.port",
+            "type": "integer",
+            "min": 0,
+            "max": 65535,
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          }
+        ],
+        "next": 12
+      }
+    },
+    {
+      "cursor": 12,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
+          {
+            "key": "mqtt.profile.{n}.tls",
+            "type": "boolean",
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "mqtt.profile.{n}.site",
+            "type": "string",
+            "min_len": 1,
+            "max_len": 23,
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "mqtt.profile.{n}.user",
+            "type": "string",
+            "min_len": 0,
+            "max_len": 63,
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": true,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "mqtt.profile.{n}.pwd",
+            "type": "string",
+            "min_len": 0,
+            "max_len": 63,
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": true,
+            "reboot": false,
+            "restarts": false
+          },
+          {
+            "key": "mqtt.profile.{n}.priority",
+            "type": "integer",
+            "min": 0,
+            "max": 255,
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false
+          }
+        ],
+        "next": null
+      }
+    }
+  ]
+}

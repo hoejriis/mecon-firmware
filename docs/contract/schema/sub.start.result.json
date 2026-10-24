@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/sub.start.result.json",
+  "title": "Result of sub.start (v1.0)",
+  "description": "Request args: {\"stream\": \"health\", \"period_s\": 5..3600 (default 60), \"lifetime_s\": 10..600 (default 300)}. The subscription belongs to the transport the request came on (an MQTT one lapses with the session); sending sub.start again renews it. The stream runs at the shortest period any subscriber asked for, and the first event follows at once. An unknown stream is invalid with error unknown-stream.",
+  "type": "object",
+  "required": ["stream", "period_s", "lifetime_s"],
+  "properties": {
+    "stream": {"type": "string", "enum": ["health"]},
+    "period_s": {"type": "integer", "minimum": 5, "maximum": 3600},
+    "lifetime_s": {"type": "integer", "minimum": 10, "maximum": 600}
+  }
+}

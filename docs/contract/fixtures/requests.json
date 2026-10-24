@@ -1,0 +1,358 @@
+{
+  "description": "Device interface v1 request fixtures. Each case is one request (as JSON, or as raw text when the case is about malformed input) and what a v1.0 device must answer. A client may send them over any transport. 'schema' names the result schema an ok result must satisfy. The value PAD600 stands for a string of 600 'x' characters, to make the request span several frames. A request that is not valid JSON, or breaks the envelope's id rules, cannot be tied to its id: its invalid result carries \"id\":\"\".",
+  "cases": [
+    {
+      "name": "hello",
+      "request": {
+        "v": 1,
+        "id": "fx-hello",
+        "op": "hello"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "hello.result.json"
+      }
+    },
+    {
+      "name": "status",
+      "request": {
+        "v": 1,
+        "id": "fx-status",
+        "op": "status.get"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "status.get.result.json"
+      }
+    },
+    {
+      "name": "unknown fields are ignored",
+      "request": {
+        "v": 1,
+        "id": "fx-extra",
+        "op": "hello",
+        "future": {
+          "x": [
+            1,
+            2
+          ]
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "hello.result.json"
+      }
+    },
+    {
+      "name": "a long request (several frames)",
+      "request": {
+        "v": 1,
+        "id": "fx-long",
+        "op": "hello",
+        "args": {
+          "pad": "PAD600"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "hello.result.json"
+      }
+    },
+    {
+      "name": "unknown operation",
+      "request": {
+        "v": 1,
+        "id": "fx-unknown",
+        "op": "no.such.op"
+      },
+      "expect": {
+        "status": "unknown-op"
+      }
+    },
+    {
+      "name": "another major version",
+      "request": {
+        "v": 2,
+        "id": "fx-v2",
+        "op": "hello"
+      },
+      "expect": {
+        "status": "unsupported-version"
+      }
+    },
+    {
+      "name": "authority a v1.0 device cannot verify",
+      "request": {
+        "v": 1,
+        "id": "fx-auth",
+        "op": "hello",
+        "auth": {
+          "sig": "00"
+        }
+      },
+      "expect": {
+        "status": "refused"
+      }
+    },
+    {
+      "name": "trailing comma",
+      "raw": "{\"v\":1,\"id\":\"fx-comma\",\"op\":\"hello\",}",
+      "expect": {
+        "status": "invalid",
+        "id": ""
+      }
+    },
+    {
+      "name": "duplicate key",
+      "raw": "{\"v\":1,\"id\":\"fx-dup\",\"op\":\"hello\",\"op\":\"status.get\"}",
+      "expect": {
+        "status": "invalid",
+        "id": ""
+      }
+    },
+    {
+      "name": "id with a character outside the set",
+      "raw": "{\"v\":1,\"id\":\"fx dup\",\"op\":\"hello\"}",
+      "expect": {
+        "status": "invalid",
+        "id": ""
+      }
+    },
+    {
+      "name": "a read is answered again, not replayed",
+      "request": {
+        "v": 1,
+        "id": "fx-read-twice",
+        "op": "status.get"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "status.get.result.json"
+      }
+    },
+    {
+      "name": "config schema, first page",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-schema",
+        "op": "config.schema",
+        "args": {
+          "cursor": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "config.schema.result.json"
+      }
+    },
+    {
+      "name": "config get",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-get",
+        "op": "config.get",
+        "args": {
+          "keys": [
+            "name",
+            "tx",
+            "wifi.profile.0.pwd"
+          ]
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "config.get.result.json"
+      }
+    },
+    {
+      "name": "config get without keys",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-get-none",
+        "op": "config.get",
+        "args": {}
+      },
+      "expect": {
+        "status": "invalid"
+      }
+    },
+    {
+      "name": "config apply out of range",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-range",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "tx": 99
+          }
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "out-of-range:tx"
+      }
+    },
+    {
+      "name": "config apply unknown key",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-key",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "lat": 55.5
+          }
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "unknown-key:lat"
+      }
+    },
+    {
+      "name": "config apply, index past the last profile",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-idx",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "wifi.profile.10.ssid": "x"
+          }
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "unknown-key:wifi.profile.10.ssid"
+      }
+    },
+    {
+      "name": "config apply",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-apply",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "wifi.profile.3.priority": 42
+          }
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "config.apply.result.json"
+      }
+    },
+    {
+      "name": "config apply, radio without its four fields",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-radio",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "radio": "869.618,125,8"
+          }
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "bad-format:radio"
+      }
+    },
+    {
+      "name": "subscribe to an unknown stream",
+      "request": {
+        "v": 1,
+        "id": "fx-sub-unknown",
+        "op": "sub.start",
+        "args": {
+          "stream": "weather"
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "unknown-stream"
+      }
+    },
+    {
+      "name": "subscribe faster than the floor",
+      "request": {
+        "v": 1,
+        "id": "fx-sub-fast",
+        "op": "sub.start",
+        "args": {
+          "stream": "health",
+          "period_s": 1
+        }
+      },
+      "expect": {
+        "status": "invalid"
+      }
+    },
+    {
+      "name": "subscribe",
+      "request": {
+        "v": 1,
+        "id": "fx-sub",
+        "op": "sub.start",
+        "args": {
+          "stream": "health",
+          "period_s": 60,
+          "lifetime_s": 10
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "sub.start.result.json"
+      }
+    },
+    {
+      "name": "unsubscribe",
+      "request": {
+        "v": 1,
+        "id": "fx-unsub",
+        "op": "sub.stop",
+        "args": {
+          "stream": "health"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "sub.stop.result.json"
+      }
+    }
+  ],
+  "transport_cases": [
+    {
+      "name": "default-PIN BLE is refused like its CLI line",
+      "transport": "ble-default-pin",
+      "request": {
+        "v": 1,
+        "id": "fx-untrusted",
+        "op": "hello"
+      },
+      "expect": {
+        "status": "refused"
+      }
+    },
+    {
+      "name": "default-PIN BLE cannot read settings",
+      "transport": "ble-default-pin",
+      "request": {
+        "v": 1,
+        "id": "fx-untrusted-cfg",
+        "op": "config.get",
+        "args": {
+          "keys": [
+            "name"
+          ]
+        }
+      },
+      "expect": {
+        "status": "refused"
+      }
+    }
+  ]
+}

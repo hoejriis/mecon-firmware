@@ -2,7 +2,7 @@
 
 One logical device model reached over MQTT, USB and BLE. A Backend talks to the device directly over MQTT, or through a Reader that bridges USB or BLE; the device answers the same requests with the same results either way. Native MeshCore 1.18 Companion frames and the Repeater console stay exactly as they are beside it.
 
-> **Status: design, recorded before implementation.** This page holds the decisions the implementation follows; each section names what is decided and what is left to the implementation. Nothing here is built yet. The broader target contract is in the [contract set](README.md); where it and this page differ on wire details, this page is the newer decision and the contract set will be aligned to it as the implementation lands.
+> **Status: v1.0 implemented for the Companion.** The design was recorded here before the code, and the code follows it. Built: every operation of section 4 on the Companion, over USB and BLE (`0x7F` frames) and MQTT, on the Heltec V3 and V4 standalone builds (`ENABLE_MECON_IFACE`) and the simulated standalone Companion. Not built yet: the Repeater and Room server adapter of section 7. Verified on the simulated board and on real Heltec V3 and V4 boards over all three transports ([HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md)). The broader target contract is in the [contract set](README.md); where it and this page differ on wire details, this page is the newer decision and the contract set will be aligned to it as the implementation lands.
 
 ## Starting point
 
@@ -33,7 +33,7 @@ UTF-8 JSON objects. Three shapes:
 ```
 
 - `id`: chosen by the requester, 1 to 32 characters of `[0-9A-Za-z._:-]`, unique per request. The device echoes it on the result. For operations that change state the device keeps, in one cache shared by every transport:
-  - the last 16 ids with their results: a duplicate (a reconnect, a retried write, the same request over another transport) gets the stored result instead of a second execution;
+  - the last 8 ids with their results (each up to 384 bytes, enough for an apply of about eight keys): a duplicate (a reconnect, a retried write, the same request over another transport) gets the stored result instead of a second execution;
   - an 8-byte hash of each of the last 64 such ids: a duplicate whose result is no longer kept gets `failed` with `"error":"result-expired"`, never a second execution.
   A duplicate is checked against the caller's authority as it is now (refused if that has been withdrawn) and nothing else: changes of roster or authority do not clear the cache. A reboot does; every result carries `epoch`, so a requester that sees `epoch` change must not retry a state-changing request blindly but read the state first. A read is not kept: running it again is harmless.
 - `status`: `ok`, `refused` (not authorized; nothing executed), `invalid` (malformed or bad arguments), `unknown-op`, `unsupported-version`, `busy` (a bound was reached; retry later), `failed` (executed and failed; `error` says why). `refused`, `invalid`, `unknown-op`, `unsupported-version` and `busy` guarantee that nothing ran.
@@ -87,13 +87,13 @@ Every operation and every key is checked by the CLI privilege engine (`src/helpe
 | Topic | Direction | Content |
 |---|---|---|
 | `req` | to device | request envelopes |
-| `resp` | from device | result envelopes, QoS 1, not retained |
+| `resp` | from device | result envelopes, QoS 0, not retained |
 | `ev/<stream>` | from device | event envelopes, QoS 0, not retained |
 | `status` | from device | the status snapshot, retained, with a last will `{"online":false}` |
 
 One status topic: a build that speaks this interface publishes `mecon/<device_id>/status` (with its last will) and no longer publishes the earlier `mecon/<node id>/status`, so presence never comes from two last wills. Which topic a device uses follows from its build; `hello` reports the interface version.
 
-No fragmentation. The MQTT client buffer (512 bytes today) has to grow to carry a full message; its size is set on measured heap, since the Heltec V3 has the least headroom during a TLS session, and a result that would not fit is paged. The existing `mecon/<node id>/cli/req` and `cli/resp` topics stay for the CLI line until the interface covers what they are used for, then they are withdrawn.
+No fragmentation. On a build with the interface the MQTT client's buffer is 1,600 bytes (512 without it), which bounds a message over MQTT at about 1.5 KB rather than the 4,096 bytes of the frame transports: every v1.0 result fits (paged results are paged to fit), and a larger request is dropped by the client library. The client publishes at QoS 0 (PubSubClient has no QoS 1 publish), so a lost result is recovered by retrying the request with the same `id`, which returns the stored result for a state-changing operation. The CLI topic's guard applies here too: requests arriving in the first 1.5 s after the subscription, where a retained message lands, are dropped, so a retained request never runs again at a reconnect. The existing `mecon/<node id>/cli/req` and `cli/resp` topics stay for the CLI line until the interface covers what they are used for, then they are withdrawn.
 
 **Repeater and Room server.** They have no Companion framing. Over USB they take the same envelope as one line on the console, prefixed `mecon> ` (a line too long for the console is refused with `busy` and never truncated); over MQTT, where a build has it, as above. Over LoRa the remote-admin path keeps the CLI.
 
@@ -101,7 +101,7 @@ No fragmentation. The MQTT client buffer (512 bytes today) has to grow to carry 
 
 - Requests are parsed and answered in the main loop in bounded steps; no operation blocks on a network or BLE write. A paged result is produced page by page.
 - Each subscription has a bounded rate, a lifetime after which it ends unless renewed, and a drop counter reported in its events. A slow or vanished consumer costs dropped events, never loop time.
-- Memory: the id cache, 2.6 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
+- Memory: the id cache, 3.4 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
 
 ### 9. Conformance
 
@@ -112,6 +112,16 @@ Published with the implementation, in this repository:
 - a reference client (Python, `tools/`) that speaks USB, BLE and MQTT and runs the conformance suite against a simulated board and a real one.
 
 A third party should be able to implement a client from this page, the schemas and the fixtures alone.
+
+Published so far (v1.0 first cut):
+
+- [`schema/`](schema/): `request.json`, `result.json`, `event.json`; the results of `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `sub.start` and `sub.stop`; and the data of the `health` event (`event.health.json`);
+- [`fixtures/requests.json`](fixtures/requests.json): requests with the status (and result schema) a v1.0 device must answer, plus a transport case; [`fixtures/framing.json`](fixtures/framing.json): one message and its exact `0x7F` frames;
+- [`tools/mecon_iface.py`](../../tools/mecon_iface.py): the reference client (framing, reassembly, envelope; transport-neutral), and [`tools/mecon_schema.py`](../../tools/mecon_schema.py), a dependency-free checker for the keywords these schemas use.
+
+- [`fixtures/config_schema.recorded.json`](fixtures/config_schema.recorded.json) and [`fixtures/config_radio.recorded.json`](fixtures/config_radio.recorded.json): the whole settings schema and real radio writes and reads, recorded from one build.
+
+The simulated-board suite (`sim/tests/test_device_interface.py`) runs every fixture against the firmware over USB, BLE and MQTT and checks each answer against the schemas; it fails if a recorded fixture drifts from the firmware.
 
 ## Left to the implementation
 

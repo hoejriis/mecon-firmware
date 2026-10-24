@@ -223,6 +223,30 @@ class Broker:
         return json.loads(out) if out.strip() else None
 
 
+    def iface_request(self, device_id, envelope, timeout=8, raw=None):
+        """The device interface over MQTT (docs/contract/DEVICE_INTERFACE.md): publish one request envelope (a dict, or
+        `raw` text) to mecon/<device_id>/req and return the parsed envelope from mecon/<device_id>/resp, or None."""
+        resp = "mecon/%s/resp" % device_id
+        sub = subprocess.Popen(["mosquitto_sub"] + self._client_args() + ["-t", resp, "-C", "1", "-W", str(timeout)],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        time.sleep(0.6)   # the subscription must be in place before the node answers
+        self.publish("mecon/%s/req" % device_id, raw if raw is not None else json.dumps(envelope))
+        out, _ = sub.communicate(timeout=timeout + 5)
+        return json.loads(out) if out.strip() else None
+
+    def next_message(self, topic, timeout=10, count=1):
+        """The next `count` payloads published on topic (parsed JSON), as a list; fewer when the time runs out."""
+        cmd = ["mosquitto_sub"] + self._client_args() + ["-t", topic, "-C", str(count), "-W", str(timeout)]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+        return [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
+
+    def retained_on(self, topic, timeout=5):
+        """The retained payload on one exact topic, or None."""
+        cmd = ["mosquitto_sub"] + self._client_args() + ["-t", topic, "-C", "1", "-W", str(timeout)]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+        return r.stdout.strip() or None
+
+
 class BlackHole:
     """A broker that accepts the TCP connection and then says nothing: no TLS ServerHello, no CONNACK, ever. A client
     that connects to it waits for its own timeout, which is exactly what stalled a blocking MQTT connect."""

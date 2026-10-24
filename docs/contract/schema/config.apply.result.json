@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/config.apply.result.json",
+  "title": "Result of config.apply (v1.0)",
+  "description": "Request args: {\"set\": {key: value, ...}} with 1 to 16 keys. Every key, value and authorization is checked before any is written; a failed check answers invalid or refused with error \"<reason>:<key>\" and nothing is written. Writes are then made in order; a write that still fails is reported here and the others stand.",
+  "type": "object",
+  "required": ["applied", "complete", "reboot_needed", "restarting"],
+  "properties": {
+    "applied": {"type": "object", "description": "key -> ok | failed. Never the value."},
+    "complete": {"type": "boolean"},
+    "reboot_needed": {"type": "boolean"},
+    "restarting": {"type": "boolean", "description": "A write (connectivity.mode) makes the device restart shortly after this result."}
+  }
+}
