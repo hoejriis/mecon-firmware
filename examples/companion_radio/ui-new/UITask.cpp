@@ -3,6 +3,7 @@
 #include "../MyMesh.h"
 #include "target.h"
 #include <time.h>
+#include <helpers/connmode/ConnStatus.h>   // ConnMode::homeLink
 #ifdef ENABLE_WIFI_INTERFACE
   #include <WiFi.h>
 #endif
@@ -334,19 +335,15 @@ public:
         display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, 32, tmp);
       #endif
-      if (_task->hasConnection()) {
-        display.setColor(UIColor::warning_txt);
-        display.setTextSize(1);
-        #ifdef UI_SHOW_CLOCK
-        display.drawTextCentered(display.width() / 2, 110, "< Connected >");
-        #else
-        display.drawTextCentered(display.width() / 2, 43, "< Connected >");
-        #endif
-      } else if (the_mesh.getBLEPin() != 0
+      const bool ble_mode =
       #ifdef ENABLE_CONNMODE
-                 && the_mesh.getConnectivityMode() == ConnMode::BLE   // no BLE, no pairing PIN to show
+        the_mesh.getConnectivityMode() == ConnMode::BLE;   // no BLE, no pairing PIN to show
+      #else
+        true;
       #endif
-                ) { // BT pin
+      const ConnMode::HomeLink link =
+        ConnMode::homeLink(the_mesh.getBLEPin(), ble_mode, _task->isBleConnected(), _task->hasConnection());
+      if (link == ConnMode::LINK_PIN) { // BT pin
         display.setColor(UIColor::warning_txt);
         sprintf(tmp, "Pin:%d", the_mesh.getBLEPin());
         #ifdef UI_SHOW_CLOCK
@@ -355,6 +352,14 @@ public:
         #else
         display.setTextSize(2);
         display.drawTextCentered(display.width() / 2, 43, tmp);
+        #endif
+      } else if (link == ConnMode::LINK_CONNECTED) {
+        display.setColor(UIColor::warning_txt);
+        display.setTextSize(1);
+        #ifdef UI_SHOW_CLOCK
+        display.drawTextCentered(display.width() / 2, 110, "< Connected >");
+        #else
+        display.drawTextCentered(display.width() / 2, 43, "< Connected >");
         #endif
       }
     } else if (_page == HomePage::RECENT) {

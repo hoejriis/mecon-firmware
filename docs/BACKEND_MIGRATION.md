@@ -1,5 +1,15 @@
 # MeshContinuum backend migration to MECON 1.0
 
+## Next P3 integration boundary — agreed 24 October 2026
+
+The [approved firmware programme](CLEAN_REFOUNDING_1_18.md#approved-next-p3-programme--24-october-2026) progresses platform consolidation, one common device interface, enrollment/trust and full telemetry before release timing is decided. A standalone public release is not a dependency.
+
+The Reader currently **depends on a Backend** and bridges USB/BLE devices to it. Backend ingestion must normalize MQTT and bridged USB/BLE into the same capability/versioned device and telemetry model, preserving device provenance, authorization, event identity and correlation across path changes. Offline Reader design is outside this scope.
+
+Telemetry includes raw observations, runtime/resources, radio/connectivity, inventories, battery/power, environment/location, logs/events and screen/framebuffer data. Screen write-back is device → Backend diagnostic/logging telemetry, not remote display control. Apply access rules to sensitive screen content and bounded collection/retention to all streams. Firmware is specified and conformance-tested first; legacy adapters belong at the Backend boundary.
+
+Later references in this target document to direct operation without infrastructure describe native/device capabilities or future designs, not an implemented offline Reader.
+
 This document is the **single place for backend-side changes required because the public MECON 1.0 firmware differs from the deployed/private MVP**. The firmware and public contract documents describe the desired end state; they must not be polluted with legacy behaviour merely to make migration easier.
 
 "Legacy" in this document means the wire the private 0.9x reference firmware speaks today (its shipped behaviour is summarised in [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). The public 0.8.x line and that private line are separate lines: version numbers do not order across them.

@@ -23,6 +23,9 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Duty-cycle floor (Repeater) | `get dutycycle` reports the band's floor; boot seed holds the full hour | 2026-10-17, 4fbc85b8 |
 | BLE: NimBLE build (then the opt-in `_nimble` build, ESP-IDF 4.4) | GATT service, PIN and default-PIN pairing, re-pairing after a forgotten bond, CLI over BLE, refusals audited as `ble`; +28 KB internal heap against Bluedroid | 2026-10-22, 09c044f2 (GATT fix included) |
 | Hardened posture (default PIN) | persists across a reboot; key export over USB refused and audited (`refused cable key-export`); lowering without `confirm` refused, with `confirm` it lowers; BLE never starts with the default PIN (no advertisement, audited `refused ble ble-start`) | 2026-10-23, ed890932 |
+| Device screen and button (standalone build) | the home screen reads `BLE`; on the connectivity page a long press asks `Switch to Wi-Fi?` and a second long press restarts into Wi-Fi mode, the home screen then reading `Wi-Fi: no profile`; the mode persists across a reset and the switch is audited as `mode button wifi` | 2026-10-24, 69755258 |
+| Phone pairing with the MeshCore app (standalone build) | the home screen shows the per-session PIN with USB attached; a phone pairs with it over Bluetooth, and the app's info page shows a version starting `v1.18.0-mecon` | 2026-10-24, a0f67328 |
+| Rescue console (standalone build) | entered by a long press once the logo screen shows (the banner prints about 9 s after reset); `rebuild` answers `rebuilt 2 contacts, 0 damaged` after about 88 s; `erase` formats the store (new identity, default name, audit entry `reset cable`) | 2026-10-24, 69755258 |
 | Companion-to-Companion messaging over LoRa (with v4test) | direct messages both ways, each delivered with the ACK confirmed at the sender: 4 of 5 over two runs, the miss being the first transmission after the first boot (the firmware does not resend; the app does) | 2026-10-23, ed890932 |
 
 ## Heltec V4 (v4test)
@@ -52,10 +55,5 @@ gives about 450 at the capacity rule, above stock's 350.
 
 ## Not yet verified on hardware
 
-- The device screen and the button gesture for switching connectivity mode (the rendering is covered by the
-  simulator's UI captures).
-- A phone pairing with the MeshCore app, and the app reading the `v1.18.0-mecon` version string.
 - Wi-Fi failover when the access point itself goes off the air (the verified run breaks the joined profile instead).
-- USB recovery through the Companion's rescue console (`rebuild`, `erase`): it is entered by a long press of the user
-  button within 8 s of power-up, so it needs a person at the board. Covered by the simulated suite.
 - Any board not listed above.

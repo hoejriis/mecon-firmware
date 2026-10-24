@@ -48,7 +48,7 @@ home -> recent -> radio -> connectivity -> advert -> discovery -> hibernate -> (
 
 | # | Page | Stock `ui-new` | This firmware |
 |---|---|---|---|
-| 1 | **Home** | node name, battery, unread message count (large `MSG: n` on builds without Wi-Fi, small `Unread Msg: n` on Wi-Fi builds), on Wi-Fi builds the line `IP: a.b.c.d`; `< Connected >` while a phone, USB host or TCP client is attached, otherwise the BLE pairing `Pin:nnnnnn` | on standalone builds the IP line becomes the **status line** (mode, Wi-Fi address or PIN class); the pairing PIN is not drawn in Wi-Fi mode |
+| 1 | **Home** | node name, battery, unread message count (large `MSG: n` on builds without Wi-Fi, small `Unread Msg: n` on Wi-Fi builds), on Wi-Fi builds the line `IP: a.b.c.d`; `< Connected >` while a phone, USB host or TCP client is attached, otherwise the BLE pairing `Pin:nnnnnn` | the pairing PIN shows until a phone connects over BLE; a USB host or TCP client no longer hides it (stock hid it for good on builds with USB and BLE, since the USB interface always reports itself connected). On standalone builds the IP line becomes the **status line** (mode, Wi-Fi address or PIN class); the pairing PIN is not drawn in Wi-Fi mode |
 | 2 | **Recent adverts** ("Recent adverts" alert on entry) | up to 4 recently heard nodes, with the age of each (`12s`, `4m`, `2h`) | unchanged |
 | 3 | **Radio** | frequency, spreading factor, bandwidth, coding rate, TX power, noise floor | unchanged |
 | 4 | **Bluetooth** | on/off icon; long press toggles BLE | unchanged in BLE mode; **skipped entirely in Wi-Fi mode** (there is no BLE stack to toggle) |
@@ -153,7 +153,7 @@ On a standalone build the home page shows one line at y=32 that says how the pho
 | Wi-Fi mode, no profile | `Wi-Fi: no profile` | normal |
 | heap low ([Heap floor](CONNECTIVITY_MODE.md#heap-floor)) | the line above, then ` LOW MEM` when both fit the 21 columns (`BLE LOW MEM`), else `LOW MEM` alone | warning |
 
-BLE mode, per-device PIN (*captured*; the simulated USB port always counts as a connected host, which is why `< Connected >` shows):
+BLE mode, per-device PIN (*captured*): the pairing PIN shows until a phone connects over BLE, also while USB is attached:
 
 ```text
 +---------------------+
@@ -162,7 +162,7 @@ BLE mode, per-device PIN (*captured*; the simulated USB port always counts as a 
 |    Unread Msg: 0    |
 |                     |
 |         BLE         |
-|    < Connected >    |
+| P i n : 2 0 5 1 9 8 |
 |                     |
 |                     |
 +---------------------+
@@ -177,7 +177,7 @@ BLE mode while the largest free heap block is below the floor (*captured*, the s
 |    Unread Msg: 0    |
 |                     |
 |     BLE LOW MEM     |
-|    < Connected >    |
+| P i n : 2 0 5 1 9 8 |
 |                     |
 |                     |
 +---------------------+
@@ -192,7 +192,7 @@ BLE mode, default PIN, the warning case:
 |    Unread Msg: 0    |
 |                     |
 |  BLE (default PIN!) |
-|    < Connected >    |
+| P i n : 1 2 3 4 5 6 |
 |                     |
 |                     |
 +---------------------+
@@ -225,7 +225,7 @@ Wi-Fi mode, connected (*captured*), and with no profile:
 +---------------------+
 ```
 
-**BLE pairing PIN on the home page (stock, kept).** With no host attached, in BLE mode the stock firmware draws `Pin:nnnnnn` in the warning colour (size 2, or size 1 on builds with a clock) where `< Connected >` would be. That is how a user pairs a phone, so it is kept. It is **not drawn in Wi-Fi mode** (**changed**: the stock condition gained "and the mode is BLE"). This state is **not captured**: the simulator cannot present a disconnected host, so the layout is described from the code only. Per-device PINs are random numbers shown only here; the connectivity page below never shows digits.
+**BLE pairing PIN on the home page.** In BLE mode the firmware draws `Pin:nnnnnn` in the warning colour (size 2, or size 1 on builds with a clock) until a phone connects over BLE, then `< Connected >`. That is how a user pairs a phone. Two conditions differ from stock: only the BLE link decides (**changed**: stock showed `< Connected >` whenever any interface was connected, and the USB interface always reports itself connected, so a build with USB and BLE never showed its PIN), and it is **not drawn in Wi-Fi mode** (**changed**: the stock condition gained "and the mode is BLE"). Captured above. Per-device PINs are random numbers shown only here; the connectivity page below never shows digits.
 
 ### Connectivity page
 
@@ -544,7 +544,6 @@ These screens were not run in the simulator; they are described from the code.
 ## What was not reachable in the simulator
 
 - **BLE.** The simulator has no BLE radio or stack. A simulated transport stands in for it (a PIN pairing, then the app's frames over a loopback socket; see [Simulated-board test harness](SIMULATION.md)) and a file can also tell the screen a phone is connected, so the *screens*, the *mode logic* and the transport-trust rules are exercised, but the PIN prompt a phone shows and the radio link itself are not. **The `Phone: connected` capture shows the screen reacting to a file, not a real connection.**
-- **The home-page pairing PIN** (`Pin:nnnnnn`, `< Connected >` absent). The simulated USB port always reports a host, so this state cannot be drawn there. Described from code only.
 - **Graphics**: battery icon, page dots, the Bluetooth, advert and power icons, the splash logo, and the popup frame (drawn here by the renderer). Not recorded by the simulator.
 - **Real OLED rendering and timing**: the real font metrics, contrast, the 15 s auto-off, the real click timing. Not run on hardware.
 - **Boards other than the simulated one**: joystick, rotary, TFT and e-paper variants. Not run.
