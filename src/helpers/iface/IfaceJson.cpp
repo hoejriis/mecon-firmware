@@ -138,6 +138,8 @@ JsonErr jsonParse(JsonDoc& d, const char* s, size_t len) {
   return J_OK;
 }
 
+int jsonSkip(const JsonDoc& d, int t) { return skipTok(d, t); }
+
 int jsonFind(const JsonDoc& d, int obj, const char* key) {
   if (!isObject(d, obj)) return -1;
   size_t kl = strlen(key);

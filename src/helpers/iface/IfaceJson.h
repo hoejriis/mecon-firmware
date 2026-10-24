@@ -55,6 +55,8 @@ inline bool isArray(const JsonDoc& d, int t) { return t >= 0 && d.tok[t].type ==
 int jsonFind(const JsonDoc& d, int obj, const char* key);
 // Token index of the element n of array token arr, or -1.
 int jsonElem(const JsonDoc& d, int arr, int n);
+// Token index just past token t and everything inside it: the next member key or element after a value.
+int jsonSkip(const JsonDoc& d, int t);
 
 // Decodes a string token into out (NUL terminated). False when it is not a string, does not fit cap with
 // its terminator, is shorter than minLen, has a byte outside cs, or uses \u (not supported on purpose).
