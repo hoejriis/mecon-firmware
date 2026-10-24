@@ -116,6 +116,7 @@ public:
 class SimSerial : public Stream {
 public:
   void begin(unsigned long) {}
+  size_t setRxBufferSize(size_t n) { return n; }   // the socket has no receive queue to size
   size_t write(uint8_t b) override;
   size_t write(const uint8_t* buf, size_t n) override;
   using Print::write;

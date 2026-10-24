@@ -144,6 +144,14 @@ void halt() {
 #endif
 
 void setup() {
+#if defined(ENABLE_MECON_IFACE) && defined(ESP32)
+  // A multi-frame interface request arrives as one burst; a native USB port (TinyUSB CDC) delivers it at full speed
+  // and drops what its receive queue cannot hold (seen on v4test). Sized per board: MECON_IFACE_SERIAL_RX.
+  #ifndef MECON_IFACE_SERIAL_RX
+    #define MECON_IFACE_SERIAL_RX 1024
+  #endif
+  Serial.setRxBufferSize(MECON_IFACE_SERIAL_RX);
+#endif
   Serial.begin(115200);
   board.begin();
 

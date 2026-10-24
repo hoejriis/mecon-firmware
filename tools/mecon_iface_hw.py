@@ -3,6 +3,8 @@
 
     mecon_iface_hw.py serial /dev/ttyUSB0          the Companion's USB frames ('<' len16 out, '>' len16 in)
     mecon_iface_hw.py ble AA:BB:CC:DD:EE:FF         the Nordic UART service over an existing bond (needs bleak)
+    mecon_iface_hw.py mqtt <device_id> <host> <port> <cafile> <user> <pwdfile>
+                                                    the broker topics, through mosquitto_pub / mosquitto_sub
 
 Prints one line per case (PASS/FAIL with the answer) and exits non-zero on any failure. Opening the serial port
 resets an ESP32 board; the script waits for it to boot.
@@ -70,7 +72,8 @@ def ble_transport(mac):
                     return
                 await c.write_gatt_char(RX, p, response=True)
 
-    threading.Thread(target=lambda: asyncio.run(run()), daemon=True).start()
+    worker = threading.Thread(target=lambda: asyncio.run(run()), daemon=True)
+    worker.start()
     time.sleep(4)
 
     def read(timeout):
@@ -78,7 +81,10 @@ def ble_transport(mac):
             return inbox.get(timeout=timeout)
         except queue.Empty:
             return None
-    return outbox.put, read, lambda: outbox.put(None)   # ends the writer, so the process can exit
+    def close():   # end the writer and let bleak disconnect: a link left up stops the board advertising
+        outbox.put(None)
+        worker.join(10)
+    return outbox.put, read, close
 
 
 def check_health_stream(i):
@@ -105,12 +111,65 @@ def check_health_stream(i):
     return problems
 
 
+class MqttLink:
+    """Requests as whole messages on mecon/<id>/req; one mosquitto_sub collects .../resp and .../ev/health."""
+
+    def __init__(self, dev, host, port, cafile, user, pwdfile):
+        import subprocess
+        self.dev = dev
+        pwd = open(pwdfile).read().strip()
+        self.args = ["-h", host, "-p", str(port), "--cafile", cafile, "--insecure", "-u", user, "-P", pwd]
+        self.sub = subprocess.Popen(["mosquitto_sub"] + self.args + ["-t", "mecon/%s/resp" % dev, "-t",
+                                    "mecon/%s/ev/health" % dev], stdout=subprocess.PIPE, text=True)
+        self.lines = queue.Queue()
+        threading.Thread(target=lambda: [self.lines.put(l) for l in self.sub.stdout], daemon=True).start()
+        self.events = []
+        time.sleep(1.0)
+
+    def send_raw(self, msg):
+        import subprocess
+        subprocess.run(["mosquitto_pub"] + self.args + ["-t", "mecon/%s/req" % self.dev, "-m", msg.decode()],
+                       check=True, capture_output=True, timeout=15)
+
+    def read_message(self, timeout=5.0):
+        try:
+            return json.loads(self.lines.get(timeout=timeout))
+        except queue.Empty:
+            return None
+
+    def wait_result(self, rid, timeout=10.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            m = self.read_message(max(0.05, end - time.time()))
+            if m is None:
+                continue
+            if "ev" in m:
+                self.events.append(m)
+            elif m.get("id") in (rid, ""):
+                return m
+        raise TimeoutError("no result for %s" % rid)
+
+    def request(self, op, args=None, timeout=10.0):
+        rid = "hw-%d" % int(time.time() * 1000)
+        env = {"v": 1, "id": rid, "op": op}
+        if args is not None:
+            env["args"] = args
+        self.send_raw(json.dumps(env).encode())
+        return self.wait_result(rid, timeout)
+
+    def close(self):
+        self.sub.terminate()
+
+
 def expand(req):
     return json.dumps(req, separators=(",", ":")).replace("PAD600", "x" * 600).encode()
 
 
 def main():
     kind, where = sys.argv[1], sys.argv[2]
+    if kind == "mqtt":
+        link = MqttLink(*sys.argv[2:8])
+        return run_cases(link, link.close)
     send, read, close = serial_transport(where) if kind == "serial" else ble_transport(where)
     # Wait until the board answers CMD_APP_START (as a client does): opening the serial port resets an ESP32, and the
     # first boot after an erase formats the file system, so a fixed delay is not enough.
@@ -124,7 +183,10 @@ def main():
             break
     else:
         sys.exit("the board never answered CMD_APP_START")
-    i = mecon_iface.IfaceClient(send, read)
+    return run_cases(mecon_iface.IfaceClient(send, read), close)
+
+
+def run_cases(i, close):
     cases = json.load(open(os.path.join(FIXTURES, "requests.json")))["cases"]
     fails = 0
     for case in cases:
