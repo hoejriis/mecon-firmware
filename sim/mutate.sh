@@ -800,10 +800,6 @@ mutate radio_never_reports_busy variants/sim/sim_radio.cpp 'bool SimRadio::isRec
 # nodes booted together do not share duty-window bin edges (#79)
 mutate duty_phase_always_zero src/Mesh.cpp '  return _rng->nextInt(0, DUTY_BIN_MS);' '  return 0;' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
 mutate duty_phase_not_applied src/Dispatcher.cpp '  duty.reset(_ms->getMillis() - (getDutyPhaseMs() % DUTY_BIN_MS));' '  duty.reset(_ms->getMillis());' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
-# --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
-if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
-echo "RESTORED; final clean run:"
-if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 # --- device interface core (docs/contract/DEVICE_INTERFACE.md): undo each rule and test_iface must go red
 mutate iface_auth_refused_handler_still_runs src/helpers/iface/IfaceDispatch.cpp "else if (!_auth || !_auth(_auth_user, *op, req)) st = ST_REFUSED;" "else if (false) st = ST_REFUSED;" unit:test_iface
 mutate iface_dedupe_cache_returns_nothing src/helpers/iface/IfaceCache.h "if (!_e[i].used || strcmp(_e[i].id, id) != 0) continue;" "if (true) continue;" unit:test_iface
@@ -816,7 +812,7 @@ mutate iface_reads_are_cached src/helpers/iface/IfaceDispatch.cpp '  if (n > 0 &
 mutate iface_dropped_message_keeps_its_buffer src/helpers/iface/IfaceFrames.h ' _mask = 0; _have_last = false; release(); }' ' _mask = 0; _have_last = false; }' unit:test_iface
 mutate iface_duplicate_skips_the_authority_check src/helpers/iface/IfaceDispatch.cpp '      if (dop && (!_auth || !_auth(_auth_user, *dop, req))) return' '      if (false) return' unit:test_iface
 mutate iface_expired_ids_forgotten src/helpers/iface/IfaceCache.h '      if (_h[i] == h) return EXPIRED;' '      if (false) return EXPIRED;' unit:test_iface
-mutate iface_auth_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(mesh->serialContext(), cls).allow;' '  return true;' sim/tests/test_device_interface.py::test_the_default_pin_is_refused_like_its_cli_line
+mutate iface_auth_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(self->_ctx, cls).allow;' '  return true;' sim/tests/test_device_interface.py::test_the_default_pin_is_refused_like_its_cli_line
 mutate iface_reply_not_bound_to_its_transport examples/companion_radio/MyMesh.h '    _serial->bindReply(src);
     _serial->writeFrame(frame, len);' '    _serial->bindReply(nullptr);
     _serial->writeFrame(frame, len);' sim/tests/test_device_interface.py::test_a_result_goes_only_to_the_transport_that_asked
@@ -834,7 +830,10 @@ mutate config_leading_zero_accepted src/helpers/iface/IfaceConfig.cpp '  if (dn 
 mutate config_empty_profile_not_null src/helpers/iface/IfaceConfig.cpp '    *is_null = !(field == F_WIFI_SSID' '    *is_null = false && !(field == F_WIFI_SSID' unit:test_iface_config
 mutate config_radio_format_unchecked src/helpers/iface/IfaceConfig.cpp '      if (k.format && !checkFormat(k.format, out)) {' '      if (false) {' unit:test_iface_config
 mutate iface_cache_entry_too_small_for_an_apply src/helpers/iface/IfaceCache.h '#define IFACE_CACHE_ENTRY_CAP 384' '#define IFACE_CACHE_ENTRY_CAP 128' unit:test_iface_config
-
+# --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
+if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
+echo "RESTORED; final clean run:"
+if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
   echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1
 fi
