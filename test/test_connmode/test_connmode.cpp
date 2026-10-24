@@ -311,6 +311,24 @@ TEST_F(ConnModeTest, TheConfirmationNamesTheModeThatWouldBeEntered) {
   EXPECT_STREQ(switchTargetLabel(WIFI), "BLE");
 }
 
+// The home page shows the pairing PIN until a central connects over BLE. A USB interface always reports itself
+// connected, so on a USB + BLE build (the standalone Companion) "anything connected" must not hide the PIN.
+TEST_F(ConnModeTest, HomeShowsThePinWhileOnlyUsbIsConnected) {
+  EXPECT_EQ(homeLink(271828, true, false, true), LINK_PIN);
+  EXPECT_EQ(homeLink(271828, true, false, false), LINK_PIN);
+}
+
+TEST_F(ConnModeTest, HomeShowsConnectedOnceBleIsLinked) {
+  EXPECT_EQ(homeLink(271828, true, true, true), LINK_CONNECTED);
+}
+
+TEST_F(ConnModeTest, HomeShowsNoPinWithoutBleOrWithoutAPin) {
+  EXPECT_EQ(homeLink(271828, false, false, true), LINK_CONNECTED);   // Wi-Fi mode, USB attached
+  EXPECT_EQ(homeLink(271828, false, false, false), LINK_NONE);
+  EXPECT_EQ(homeLink(0, true, false, true), LINK_CONNECTED);         // a USB-only build has no PIN
+  EXPECT_EQ(homeLink(0, true, false, false), LINK_NONE);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

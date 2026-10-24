@@ -97,6 +97,15 @@ inline void formatHome(const ConnStatus& s, char* out, size_t cap) {
   else snprintf(out, cap, "%s", MARK);
 }
 
+// What the home page draws under the status line: the BLE pairing PIN until a central has connected over BLE, then
+// "< Connected >". Only the BLE link decides whether the PIN shows: a USB serial interface reports itself connected
+// whenever it exists, so asking whether anything is connected hid the PIN for good on a build with USB and BLE.
+enum HomeLink : uint8_t { LINK_NONE = 0, LINK_PIN = 1, LINK_CONNECTED = 2 };
+inline HomeLink homeLink(uint32_t pin, bool ble_mode, bool ble_connected, bool any_connected) {
+  if (pin != 0 && ble_mode && !ble_connected) return LINK_PIN;
+  return any_connected ? LINK_CONNECTED : LINK_NONE;
+}
+
 inline void formatHomeStatus(const ConnStatus& s, char* out, size_t cap) {
   if (sanitize(s.mode) == BLE) {
     snprintf(out, cap, "%s", s.ble_pin_default ? "BLE (default PIN!)" : "BLE");

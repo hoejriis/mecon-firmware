@@ -19,7 +19,7 @@ A remote caller (a contact flagged for remote CLI, a TCP client) is refused with
 
 ## The button
 
-On the connectivity status screen (home screen page after Bluetooth; reached with single clicks) a **long press** arms the switch and shows `Switch to <mode>?`. A second **long press** within 10 s confirms and restarts. A click, a double click or the timeout cancels and changes nothing. The gesture adds no new button handling: it uses the page-action key (`KEY_ENTER`, a long press on one-button boards) exactly as the Advert and Hibernate pages do, so click, double click and triple click keep their stock meaning. The stock rule that a long press in the first 8 s after start-up opens the rescue console still applies. It works in Hardened: it needs physical possession. In Wi-Fi mode the Bluetooth page is skipped.
+On the connectivity status screen (home screen page after Bluetooth; reached with single clicks) a **long press** arms the switch and shows `Switch to <mode>?`. A second **long press** within 10 s confirms and restarts. A click, a double click or the timeout cancels and changes nothing. The gesture adds no new button handling: it uses the page-action key (`KEY_ENTER`, a long press on one-button boards) exactly as the Advert and Hibernate pages do, so click, double click and triple click keep their stock meaning. The stock rule that a long press in the first 8 s after the UI starts (when the logo screen replaces "Loading...") opens the rescue console still applies. It works in Hardened: it needs physical possession. In Wi-Fi mode the Bluetooth page is skipped.
 
 ## The screens
 
