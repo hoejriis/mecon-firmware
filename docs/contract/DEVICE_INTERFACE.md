@@ -14,7 +14,7 @@ An inventory of the target contract against the fork (77 device-visible items) f
 
 - `device_id`: 16 random bytes generated on first boot, stored in their own file, written as 32 lowercase hex digits. Distinct from the native node public key, which a key rotation changes, and from any Backend row. Whether a reset scope keeps or regenerates it is decided with enrollment ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)); until then the native factory reset and the rescue `erase` regenerate it.
 - Every `hello` and every status snapshot reports both `device_id` and `node_key` (the native public key, hex).
-- **How a Backend learns it before MQTT.** MQTT credentials reach a device only through an authenticated path (a direct USB or BLE session, or an already authorized one), and that path answers `hello` first, so the Backend knows `device_id` before the device ever publishes under `mecon/<device_id>/`. The device's MQTT username should be its `device_id`: one broker rule, `mecon/%u/#` (Mosquitto pattern substitution), then covers every device without a per-device topic list. The device publishes under its `device_id` whatever username it is given.
+- **How a Backend learns it before MQTT.** The first `hello` travels over a direct path at enrolment: USB, or BLE through a Reader bridge. MQTT credentials reach a device only after that, so the Backend knows `device_id`, and can add `mecon/<device_id>/#` to the device's broker ACL, before the device ever publishes there. The broker username is the Backend's choice (it may rotate logins by generation): the device accepts any username and publishes under its `device_id` whatever it is.
 
 ### 2. Versions
 
