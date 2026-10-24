@@ -223,6 +223,7 @@ TEST(WifiProfileCli, ListingShowsTheLastFailurePerProfile) {
   core.scanDone(500);
   core.poll(500);                  // Connect home
   core.onDisconnected(900, WifiDrop::AuthFailed);
+  core.poll(900 + WifiTiming().join_drop_settle_ms);   // a drop while joining counts once no link has followed
   std::string l = cmd(p, "get wifi.profiles", &core);
   EXPECT_NE(std::string::npos, l.find("0: home prio=50 pwd=unset last=auth"));
   EXPECT_NE(std::string::npos, l.find("1: phone prio=50 pwd=unset last=none"));
