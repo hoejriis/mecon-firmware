@@ -824,6 +824,7 @@ mutate config_apply_skips_the_authority_check src/helpers/iface/IfaceConfig.cpp 
 mutate config_index_unbounded src/helpers/iface/IfaceConfig.cpp 'if (matches(KEYS[i].key, key, len, index) && *index <= KEYS[i].idx_max) return &KEYS[i];' 'if (matches(KEYS[i].key, key, len, index)) return &KEYS[i];' unit:test_iface_config
 mutate config_leading_zero_accepted src/helpers/iface/IfaceConfig.cpp '  if (dn > 3 || (dn > 1 && d[0] == ' '  if (dn > 3 || (false && d[0] == ' unit:test_iface_config
 mutate config_empty_profile_not_null src/helpers/iface/IfaceConfig.cpp '    *is_null = !(field == F_WIFI_SSID' '    *is_null = false && !(field == F_WIFI_SSID' unit:test_iface_config
+mutate config_radio_format_unchecked src/helpers/iface/IfaceConfig.cpp '      if (k.format && !checkFormat(k.format, out)) {' '      if (false) {' unit:test_iface_config
 
 if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
   echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1

@@ -9,7 +9,7 @@ namespace Iface {
 const KeyDef KEYS[] = {
   {"name", K_STRING, 1, 31, nullptr, KF_WRITABLE, 0, "get name", F_WHOLE, "set name %s"},
   {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE, 0, "get tx", F_WHOLE, "set tx %s"},
-  {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE, 0, "get radio", F_WHOLE, "set radio %s"},
+  {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
   {"connectivity.mode", K_ENUM, 0, 0, "ble|wifi", KF_WRITABLE | KF_RESTARTS, 0, "get connectivity.mode", F_WHOLE,
    "set connectivity.mode %s"},
   {"wifi.enabled", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_REBOOT, 0, "get wifi.enabled", F_WHOLE, "set wifi.enabled %s"},
@@ -38,6 +38,35 @@ const KeyDef KEYS[] = {
    "set mqtt.profile %u priority %s"},
 };
 const size_t NKEYS = sizeof(KEYS) / sizeof(KEYS[0]);
+
+namespace {
+// A plain decimal ("869.618", "125", "250.0") within [lo, hi]; *end gets the first character after it.
+bool decimal(const char* s, const char** end, double lo, double hi) {
+  const char* p = s;
+  double v = 0, scale = 0;
+  if (*p < '0' || *p > '9') return false;
+  while (*p >= '0' && *p <= '9') v = v * 10 + (*p++ - '0');
+  if (*p == '.') {
+    p++;
+    if (*p < '0' || *p > '9') return false;
+    scale = 1;
+    while (*p >= '0' && *p <= '9') { scale /= 10; v += (*p++ - '0') * scale; }
+  }
+  *end = p;
+  return v >= lo && v <= hi;
+}
+}  // namespace
+
+bool checkFormat(const char* format, const char* value) {
+  if (strcmp(format, "freq,bw,sf,cr") != 0) return false;
+  const char* p = value;
+  const double lo[] = {100, 7, 5, 5}, hi[] = {1000, 500, 12, 8};
+  for (int i = 0; i < 4; i++) {
+    if (!decimal(p, &p, lo[i], hi[i])) return false;
+    if (i < 3) { if (*p != ',') return false; p++; }
+  }
+  return *p == 0;
+}
 
 namespace {
 
@@ -112,6 +141,7 @@ void writeDef(JsonWriter& w, const KeyDef& k) {
   w.key("type"); w.str(TYPES[k.type]);
   if (k.type == K_INT) { w.key("min"); w.num(k.min); w.key("max"); w.num(k.max); }
   if (k.type == K_STRING) { w.key("min_len"); w.num(k.min); w.key("max_len"); w.num(k.max); }
+  if (k.format) { w.key("format"); w.str(k.format); }
   if (k.type == K_ENUM) {
     w.key("choices"); w.beginArray();
     const char* s = k.choices;
@@ -165,6 +195,7 @@ bool cliValue(const JsonDoc& d, int t, const KeyDef& k, char* out, size_t cap, c
         return false;
       }
       if (strchr(out, '\n') || strchr(out, '\r')) { *why = "bad-length"; return false; }
+      if (k.format && !checkFormat(k.format, out)) { *why = "bad-format"; return false; }
       return true;
   }
 }

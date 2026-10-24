@@ -1,0 +1,110 @@
+{
+  "description": "radio, written and read back on one simulated standalone Companion, in order. config.apply takes the four fields as plain decimals; an integral value may omit the decimal point (125) or carry it (250.0). config.get returns what the CLI prints: bandwidth without a trailing .0, the frequency at float32 precision (869.618 reads 869.6179809), so compare frequencies with a tolerance. A value without its four fields is invalid and nothing is written.",
+  "steps": [
+    {
+      "apply": {
+        "set": {
+          "radio": "869.618,62.5,8,8"
+        }
+      },
+      "answer": {
+        "v": 1,
+        "status": "ok",
+        "result": {
+          "applied": {
+            "radio": "ok"
+          },
+          "complete": true,
+          "reboot_needed": false,
+          "restarting": false
+        }
+      },
+      "then_get": {
+        "v": 1,
+        "status": "ok",
+        "result": {
+          "values": {
+            "radio": "869.6179809,62.5,8,8"
+          }
+        }
+      }
+    },
+    {
+      "apply": {
+        "set": {
+          "radio": "869.618,125,8,8"
+        }
+      },
+      "answer": {
+        "v": 1,
+        "status": "ok",
+        "result": {
+          "applied": {
+            "radio": "ok"
+          },
+          "complete": true,
+          "reboot_needed": false,
+          "restarting": false
+        }
+      },
+      "then_get": {
+        "v": 1,
+        "status": "ok",
+        "result": {
+          "values": {
+            "radio": "869.6179809,125,8,8"
+          }
+        }
+      }
+    },
+    {
+      "apply": {
+        "set": {
+          "radio": "869.525,250.0,11,5"
+        }
+      },
+      "answer": {
+        "v": 1,
+        "status": "ok",
+        "result": {
+          "applied": {
+            "radio": "ok"
+          },
+          "complete": true,
+          "reboot_needed": false,
+          "restarting": false
+        }
+      },
+      "then_get": {
+        "v": 1,
+        "status": "ok",
+        "result": {
+          "values": {
+            "radio": "869.5250244,250,11,5"
+          }
+        }
+      }
+    },
+    {
+      "apply": {
+        "set": {
+          "radio": "869.618,125,8"
+        }
+      },
+      "answer": {
+        "v": 1,
+        "status": "invalid",
+        "error": "bad-format:radio"
+      },
+      "then_get": {
+        "v": 1,
+        "status": "ok",
+        "result": {
+          "values": {
+            "radio": "869.5250244,250,11,5"
+          }
+        }
+      }
+    }
+  ]
+}

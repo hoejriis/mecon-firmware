@@ -305,3 +305,13 @@ def test_the_recorded_schema_is_what_the_firmware_answers(nodes):
     for page in rec["pages"]:
         assert i.request("config.schema", {"cursor": page["cursor"]})["result"] == page["result"], (
             "config.schema drifted from docs/contract/fixtures/config_schema.recorded.json; re-record it with the change")
+
+
+def test_the_recorded_radio_steps_are_what_the_firmware_answers(nodes):
+    rec = fixture("config_radio.recorded.json")
+    n, (c, i) = start(nodes, "rr")
+    for step in rec["steps"]:
+        a = i.request("config.apply", step["apply"])
+        g = i.request("config.get", {"keys": ["radio"]})
+        a.pop("id"); g.pop("id")
+        assert (a, g) == (step["answer"], step["then_get"]), step["apply"]

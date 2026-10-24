@@ -36,6 +36,7 @@
             "type": "string",
             "min_len": 7,
             "max_len": 40,
+            "format": "freq,bw,sf,cr",
             "writable": true,
             "write_only": false,
             "reboot": false,

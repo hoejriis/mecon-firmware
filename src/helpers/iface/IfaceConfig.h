@@ -44,7 +44,11 @@ struct KeyDef {
   const char* get_line;   // printf format, %u = the index
   uint8_t field;
   const char* set_line;   // printf format, %u = the index, %s = the value as the CLI takes it
+  const char* format;     // K_STRING with a fixed shape: its name in the schema, checked by checkFormat(); else nullptr
 };
+
+// A string value with a fixed shape: "freq,bw,sf,cr" for radio (MHz, kHz, spreading factor 5-12, coding rate 5-8).
+bool checkFormat(const char* format, const char* value);
 
 extern const KeyDef KEYS[];
 extern const size_t NKEYS;

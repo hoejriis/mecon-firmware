@@ -96,6 +96,19 @@ TEST(IfaceConfig, KeysWithAnIndexAreZeroBasedAndBounded) {
   EXPECT_EQ(nullptr, findKey("lat", 3, &i));                      // the Companion CLI has no line for it
 }
 
+TEST(IfaceConfig, RadioMustHaveItsFourFields) {
+  EXPECT_TRUE(checkFormat("freq,bw,sf,cr", "869.618,62.5,8,8"));
+  EXPECT_TRUE(checkFormat("freq,bw,sf,cr", "869.618,125,8,8"));     // an integral value without a decimal point
+  EXPECT_TRUE(checkFormat("freq,bw,sf,cr", "869.525,250.0,11,5"));
+  EXPECT_FALSE(checkFormat("freq,bw,sf,cr", "869.618,125,8"));      // three fields
+  EXPECT_FALSE(checkFormat("freq,bw,sf,cr", "869.618,125,8,8,1"));
+  EXPECT_FALSE(checkFormat("freq,bw,sf,cr", "869.618,125,13,8"));   // SF past 12
+  EXPECT_FALSE(checkFormat("freq,bw,sf,cr", "869.618,125,8,9"));    // CR past 8
+  EXPECT_FALSE(checkFormat("freq,bw,sf,cr", "-869,125,8,8"));
+  EXPECT_FALSE(checkFormat("freq,bw,sf,cr", "869.,125,8,8"));
+  EXPECT_FALSE(checkFormat("freq,bw,sf,cr", "869.618, 125,8,8"));
+}
+
 TEST(IfaceConfig, ParsesTheProfileLines) {
   char v[64]; bool null;
   ASSERT_TRUE(parseField(F_WIFI_SSID, "> 2: lab net prio=70 pwd=set last=none", v, sizeof v, &null));
@@ -169,6 +182,7 @@ TEST(IfaceConfig, ApplyWritesNothingUnlessEveryKeyPassesItsChecks) {
     {R"({"set":{"name":""}})", "invalid", "bad-length:name"},
     {R"({"set":{"name":"New","connectivity.mode":"lora"}})", "invalid", "not-a-choice:connectivity.mode"},
     {R"({"set":{"name":"New","wifi.profile.12.ssid":"x"}})", "invalid", "unknown-key:wifi.profile.12.ssid"},
+    {R"({"set":{"name":"New","radio":"869.618,125,8"}})", "invalid", "bad-format:radio"},
   };
   for (auto& c : cases) {
     Rig r;

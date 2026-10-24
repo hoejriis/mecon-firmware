@@ -16,6 +16,7 @@
           "type": {"type": "string", "enum": ["string", "integer", "boolean", "enum"]},
           "min": {"type": "integer"}, "max": {"type": "integer"},
           "min_len": {"type": "integer", "minimum": 0}, "max_len": {"type": "integer", "minimum": 0},
+          "format": {"type": "string", "description": "A string with a fixed shape. freq,bw,sf,cr: four plain decimals separated by commas, MHz 100-1000, kHz 7-500, spreading factor 5-12, coding rate 5-8; integral values may omit the decimal point. config.get returns what the CLI prints: the frequency at float32 precision (869.618 reads 869.6179809)."},
           "choices": {"type": "array", "items": {"type": "string"}},
           "index": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "[lowest, highest] value of {n}."},
           "writable": {"type": "boolean"},

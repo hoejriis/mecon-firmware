@@ -243,6 +243,23 @@
         "status": "ok",
         "schema": "config.apply.result.json"
       }
+    },
+    {
+      "name": "config apply, radio without its four fields",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-radio",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "radio": "869.618,125,8"
+          }
+        }
+      },
+      "expect": {
+        "status": "invalid",
+        "error": "bad-format:radio"
+      }
     }
   ],
   "transport_cases": [
