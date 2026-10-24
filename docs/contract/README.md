@@ -9,6 +9,7 @@ The current consolidated architecture freeze candidate is **[Target Firmware Con
 The contract set is intended to be **implementation-complete**: a firmware developer should not need the private MVP source to discover required device-visible behaviour, and a backend implementer should not need private MeshContinuum knowledge to integrate. If a required payload, operation, lifecycle, error, setting or capability is missing here, that is a documentation defect.
 
 - [Target Firmware Contract v0.9](TARGET_FIRMWARE_CONTRACT_0.9.md)
+- [Device interface v1 (design)](DEVICE_INTERFACE.md): the one versioned interface across MQTT, USB and BLE; decisions recorded before implementation
 - [Core device contract](CORE_DEVICE_CONTRACT.md)
 - [MQTT protocol](MQTT_PROTOCOL.md)
 - [Direct USB/BLE protocol](DIRECT_READER_PROTOCOL.md)
