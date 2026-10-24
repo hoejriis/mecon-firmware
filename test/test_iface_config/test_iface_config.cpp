@@ -302,6 +302,9 @@ TEST(IfaceConfig, ServerSchemaListsTheServerTable) {
   EXPECT_NE(std::string::npos, all.find("\"key\":\"loop.detect\""));
   EXPECT_NE(std::string::npos, all.find("\"format\":\"latitude\""));
   EXPECT_EQ(std::string::npos, all.find("wifi.profile"));
+  size_t listed = 0;
+  for (size_t at = all.find("\"key\":"); at != std::string::npos; at = all.find("\"key\":", at + 1)) listed++;
+  EXPECT_EQ(N_SERVER_KEYS, listed);   // exactly the server table: no key past its end
 }
 
 TEST(IfaceConfig, OnOffKeysReachTheCliAsOnOff) {

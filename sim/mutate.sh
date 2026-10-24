@@ -830,6 +830,15 @@ mutate config_leading_zero_accepted src/helpers/iface/IfaceConfig.cpp '  if (dn 
 mutate config_empty_profile_not_null src/helpers/iface/IfaceConfig.cpp '    *is_null = !(field == F_WIFI_SSID' '    *is_null = false && !(field == F_WIFI_SSID' unit:test_iface_config
 mutate config_radio_format_unchecked src/helpers/iface/IfaceConfig.cpp '      if (k.format && !checkFormat(k.format, out)) {' '      if (false) {' unit:test_iface_config
 mutate iface_cache_entry_too_small_for_an_apply src/helpers/iface/IfaceCache.h '#define IFACE_CACHE_ENTRY_CAP 384' '#define IFACE_CACHE_ENTRY_CAP 128' unit:test_iface_config
+# the Repeater and Room server console interface, and the per-role key table
+mutate config_onoff_word_dropped src/helpers/iface/IfaceConfig.cpp '      const bool onoff = (k.flags & KF_ONOFF) != 0;' '      const bool onoff = false;' unit:test_iface_config
+mutate config_server_table_ignored src/helpers/iface/IfaceConfig.cpp '  *n = h->keys ? h->nkeys : NKEYS;' '  *n = NKEYS; (void)h;' unit:test_iface_config
+mutate config_latitude_unbounded src/helpers/iface/IfaceConfig.cpp '    const double lim = lat ? 90 : 180;' '    const double lim = 180;' unit:test_iface_config
+mutate console_prefix_not_handed_over examples/simple_repeater/main.cpp '      the_iface.startLine();' '      (void)0;' sim/tests/test_device_interface_server.py::test_hello_names_the_role
+mutate console_line_unbounded src/helpers/iface/ConsoleIface.cpp '  if (_len >= MAX_LINE) { _overflow = true; return; }' '  if (_len >= MAX_LINE + 4000) { _overflow = true; return; }' sim/tests/test_device_interface_server.py::test_a_line_too_long_is_refused_not_truncated
+mutate console_echo_line_not_ended src/helpers/iface/ConsoleIface.cpp '  out.print("\r\n");   // ends the console' '  // ends the console' sim/tests/test_device_interface_server.py::test_status_has_no_contact_list
+mutate console_sub_stop_ignored src/helpers/iface/ConsoleIface.cpp '  self(c)->health().active = false;' '  (void)0;' sim/tests/test_device_interface_server.py::test_health_events_come_back_as_console_lines
+mutate console_room_reports_repeater examples/simple_room_server/main.cpp 'ifaceBattery, "room",' 'ifaceBattery, "repeater",' sim/tests/test_device_interface_server.py::test_hello_names_the_role
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
