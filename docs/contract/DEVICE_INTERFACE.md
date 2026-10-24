@@ -2,7 +2,7 @@
 
 One logical device model reached over MQTT, USB and BLE. A Backend talks to the device directly over MQTT, or through a Reader that bridges USB or BLE; the device answers the same requests with the same results either way. Native MeshCore 1.18 Companion frames and the Repeater console stay exactly as they are beside it.
 
-> **Status: design, recorded before implementation.** This page holds the decisions the implementation follows; each section names what is decided and what is left to the implementation. Nothing here is built yet. The broader target contract is in the [contract set](README.md); where it and this page differ on wire details, this page is the newer decision and the contract set will be aligned to it as the implementation lands.
+> **Status: v1.0 implemented for the Companion.** The design was recorded here before the code, and the code follows it. Built: every operation of section 4 on the Companion, over USB and BLE (`0x7F` frames) and MQTT, on the Heltec V3 and V4 standalone builds (`ENABLE_MECON_IFACE`) and the simulated standalone Companion. Not built yet: the Repeater and Room server adapter of section 7. Verified on the simulated board; real-board verification is recorded in [HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md) when it is done. The broader target contract is in the [contract set](README.md); where it and this page differ on wire details, this page is the newer decision and the contract set will be aligned to it as the implementation lands.
 
 ## Starting point
 
