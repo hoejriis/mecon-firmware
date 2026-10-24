@@ -53,7 +53,7 @@ struct R {
 size_t encodeRecord(const Record& rec, const char* set_text, uint32_t generation, uint8_t* out, size_t cap) {
   size_t name_len = strnlen(rec.deployment_name, MAX_NAME + 1);
   if (name_len < 1 || name_len > MAX_NAME || rec.set_len == 0 || rec.set_len > MAX_SET_TEXT || !set_text ||
-      rec.n_replay > MAX_MEMBERS)
+      rec.n_replay > MAX_MEMBERS || rec.n_roles > MAX_ROLES)
     return 0;
   W w = { out, cap, 0, false };
   w.bytes("MDR1", 4);
@@ -67,6 +67,7 @@ size_t encodeRecord(const Record& rec, const char* set_text, uint32_t generation
   w.bytes(rec.deployment_name, name_len);
   w.bytes(rec.dak, KEY_LEN);
   w.u32(rec.authority_epoch);
+  w.u32(rec.authority_revision);
   w.u32(rec.provision_revision);
   w.u32(rec.sync_key_generation);
   w.u8(rec.has_usb_auth ? 1 : 0);
@@ -74,6 +75,12 @@ size_t encodeRecord(const Record& rec, const char* set_text, uint32_t generation
   w.bytes(rec.set_sig, SIG_LEN);
   w.u16(rec.set_len);
   w.bytes(set_text, rec.set_len);
+  w.u8(rec.n_roles);
+  for (int i = 0; i < rec.n_roles; i++) {
+    if (rec.roles[i].role > ROLE_LOCAL) return 0;
+    w.u8(rec.roles[i].profile);
+    w.u8(rec.roles[i].role);
+  }
   w.u8(rec.n_replay);
   for (int i = 0; i < rec.n_replay; i++) {
     w.bytes(rec.replay[i].instance_id, ID_LEN);
@@ -111,6 +118,7 @@ bool decodeRecord(const uint8_t* buf, size_t len, Record* rec, const char** set_
   x.deployment_name[nl] = 0;
   p.bytes(x.dak, KEY_LEN);
   x.authority_epoch = p.u32();
+  x.authority_revision = p.u32();
   x.provision_revision = p.u32();
   x.sync_key_generation = p.u32();
   uint8_t ua = p.u8();
@@ -121,6 +129,13 @@ bool decodeRecord(const uint8_t* buf, size_t len, Record* rec, const char** set_
   x.set_len = p.u16();
   if (x.set_len == 0 || x.set_len > MAX_SET_TEXT) return false;
   const uint8_t* st = p.take(x.set_len);
+  x.n_roles = p.u8();
+  if (x.n_roles > MAX_ROLES) return false;
+  for (int i = 0; i < x.n_roles; i++) {
+    x.roles[i].profile = p.u8();
+    x.roles[i].role = p.u8();
+    if (x.roles[i].role > ROLE_LOCAL) return false;
+  }
   x.n_replay = p.u8();
   if (x.n_replay > MAX_MEMBERS) return false;
   for (int i = 0; i < x.n_replay; i++) {

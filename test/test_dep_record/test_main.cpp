@@ -18,12 +18,16 @@ static Record sample(uint32_t prov = 1) {
   strcpy(r.deployment_name, "Example mesh");
   for (int i = 0; i < KEY_LEN; i++) r.dak[i] = (uint8_t)i;
   r.authority_epoch = 2;
+  r.authority_revision = 3;
   r.provision_revision = prov;
   r.sync_key_generation = 4;
   r.has_usb_auth = true;
   memset(r.usb_auth_hash, 0x5A, 32);
   memset(r.set_sig, 0x33, SIG_LEN);
   r.set_len = (uint16_t)strlen(SET_TEXT);
+  r.n_roles = 2;
+  r.roles[0] = { 0, ROLE_PRIMARY };
+  r.roles[1] = { 3, ROLE_LOCAL };
   r.n_replay = 2;
   for (int m = 0; m < 2; m++) {
     memset(r.replay[m].instance_id, 0x10 + m, ID_LEN);
@@ -61,6 +65,9 @@ TEST(DepRecord, RoundTrip) {
   EXPECT_TRUE(d.has_usb_auth);
   EXPECT_EQ(0, memcmp(r.usb_auth_hash, d.usb_auth_hash, 32));
   EXPECT_EQ(0, memcmp(r.set_sig, d.set_sig, SIG_LEN));
+  ASSERT_EQ(2, d.n_roles);
+  EXPECT_EQ(3, d.roles[1].profile);
+  EXPECT_EQ(ROLE_LOCAL, d.roles[1].role);
   ASSERT_EQ(2, d.n_replay);
   EXPECT_EQ(101u, d.replay[1].wm[JC_CMD].mark);
   EXPECT_EQ(0x00F0F0u, d.replay[1].wm[JC_CMD].mask);

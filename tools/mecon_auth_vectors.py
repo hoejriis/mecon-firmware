@@ -148,6 +148,8 @@ def header(v):
         if "wire" in o:
             lines.append("static const char* %s_WIRE = %s;" % (name, c_str(o["wire"])))
     lines.append("static const char* DEPLOYMENT_ID = %s;" % c_str(v["deployment_id"]))
+    for k, iid in v["instance_ids"].items():
+        lines.append("static const char* INSTANCE_IDS_%s = %s;" % (k.upper(), c_str(iid)))
     return "\n".join(lines) + "\n"
 
 

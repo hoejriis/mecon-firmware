@@ -23,3 +23,5 @@ static const char* IFACE_REQUEST_WIRE = "{\"mecon_auth\":1,\"issuer\":\"d3dea8f6
 static const char* UPLINK_HEALTH_SIGNED_HEX = "4d45434f4e2d55504c494e4b2d7631006865616c7468007b2276223a312c226576223a226865616c7468222c2265706f6368223a372c22736571223a332c227473223a6e756c6c2c2264617461223a7b22757074696d655f73223a36307d2c22757369675f626f6f74223a372c22757369675f736571223a31327d";
 static const char* UPLINK_HEALTH_WIRE = "{\"v\":1,\"ev\":\"health\",\"epoch\":7,\"seq\":3,\"ts\":null,\"data\":{\"uptime_s\":60},\"usig_boot\":7,\"usig_seq\":12,\"usig\":\"rvUU052Hin6a26/Vl5DfcFZtWtm8WUb7roXMARthUUuFrlYWbneC+azA7rDC3LeEX8zQEIcNJzyjWlKlkWqzCw==\"}";
 static const char* DEPLOYMENT_ID = "20516e87dd57526592786b6d1b31a3f9";
+static const char* INSTANCE_IDS_A = "beb99f3951a648330a8b278e6a506107";
+static const char* INSTANCE_IDS_B = "d3dea8f61f7b91a1b777addfdc554726";
