@@ -70,6 +70,9 @@ Measured on v3test and v4test on 2026-10-24, each board first on main (2.0.17) a
 | BLE idle: free / largest block | 105,056 / 94,196 B | 107,116 / 45,044 B | 145,876 / 131,060 B | 152,208 / 90,100 B |
 | Wi-Fi + TLS MQTT: free / largest / low-water | 61,956 / 49,140 / 51,664 B | 45,092 / 31,732 / 32,588 B | 118,200 / 102,388 / 110,504 B | 108,228 / 42,996 / 101,380 B |
 | Wi-Fi joined after reset | not timed | about 9 s | about 7–9 s | about 6 s |
+| Loop task stack free: BLE idle / after BLE pairing + CLI / Wi-Fi + TLS MQTT | 5,492 / 5,476 / 5,540 B | 5,472 / 5,424 / 5,496 B | 5,520 / 5,488 / not captured | 5,516 / 5,500 / 5,516 B |
+
+The stack figures are the least free stack of the Arduino loop task (8 KB, where every CLI command and the radio and app paths run) since boot, from `get mecon.mem` (`loop_stack_free`); both runtimes leave about 5.4 KB of it unused in every state measured. On 2.0.17 the BLE pairing step's CLI over BLE was not answered, so that baseline reading covers pairing and USB CLI only; the V4's 2.0.17 Wi-Fi reading was lost to an MQTT reconnect on that build and is not captured.
 
 What carried over unchanged: identity, name, PIN, contacts (50 of 50) and settings through the upgrade; PIN and default-PIN BLE pairing, re-pairing after a forgotten bond, CLI over BLE and its refusals; Wi-Fi profile priority; MQTT with a CA anchor (`tls=verified`); LoRa direct messages between the two boards; the battery reading (within 20 mV).
 
