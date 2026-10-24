@@ -15,7 +15,8 @@ enum KeyFlags : uint8_t {
   KF_WRITABLE = 1,
   KF_WRITE_ONLY = 2,   // a secret: get reports "set" or "unset", never the value
   KF_REBOOT = 4,       // takes effect after a reboot
-  KF_RESTARTS = 8      // the device restarts itself shortly after the write (connectivity.mode)
+  KF_RESTARTS = 8,     // the device restarts itself shortly after the write (connectivity.mode)
+  KF_ONOFF = 16        // K_BOOL: the CLI takes "on"/"off" for this key (others take "1"/"0")
 };
 
 // How a value is read from the CLI's reply to get_line.
@@ -47,11 +48,16 @@ struct KeyDef {
   const char* format;     // K_STRING with a fixed shape: its name in the schema, checked by checkFormat(); else nullptr
 };
 
-// A string value with a fixed shape: "freq,bw,sf,cr" for radio (MHz, kHz, spreading factor 5-12, coding rate 5-8).
+// A string value with a fixed shape: "freq,bw,sf,cr" for radio (MHz, kHz, spreading factor 5-12, coding rate 5-8);
+// "latitude" and "longitude": a signed decimal within +-90 and +-180.
 bool checkFormat(const char* format, const char* value);
 
+// The Companion's keys, the default when a host names no table.
 extern const KeyDef KEYS[];
 extern const size_t NKEYS;
+// The Repeater's and Room server's keys: their shared CLI (CommonCLI, CommonRadioPrefs).
+extern const KeyDef SERVER_KEYS[];
+extern const size_t N_SERVER_KEYS;
 
 // Runs one CLI line as the current caller and writes its reply; false when the line is unknown.
 typedef bool (*CliRunFn)(void* user, const char* line, char* reply, size_t cap);
@@ -62,9 +68,13 @@ struct ConfigHost {
   CliRunFn run;
   CliAllowFn allow;
   void* user;
+  const KeyDef* keys;   // this role's table; nullptr means the Companion's (KEYS)
+  size_t nkeys;
 };
 
-// The key definition for a concrete key ("wifi.profile.3.ssid"), with its index; nullptr when there is none.
+// The key definition for a concrete key ("wifi.profile.3.ssid") in a table, with its index; nullptr when there is
+// none. The two-argument form looks in the Companion's table.
+const KeyDef* findKey(const KeyDef* table, size_t n, const char* key, size_t len, unsigned* index);
 const KeyDef* findKey(const char* key, size_t len, unsigned* index);
 
 // Extracts one field from a CLI get reply into out, as text ("" for a field of a profile that is not set). False

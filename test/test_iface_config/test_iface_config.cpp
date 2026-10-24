@@ -238,3 +238,109 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+// ------------------------------------------------------------ the Repeater / Room server table
+
+namespace {
+// A fake of the server CLI's on/off and coordinate lines (CommonCLI).
+struct ServerCli {
+  std::string repeat = "on", lat = "0.0", loop = "minimal";
+  std::vector<std::string> ran;
+  bool run(const std::string& l, std::string& r) {
+    ran.push_back(l);
+    if (l == "get repeat") { r = "> " + repeat; return true; }
+    if (l == "get lat") { r = "> " + lat; return true; }
+    if (l == "get loop.detect") { r = "> " + loop; return true; }
+    if (l.rfind("set repeat ", 0) == 0) { repeat = l.substr(11) == "off" ? "off" : "on"; r = "OK"; return true; }
+    if (l.rfind("set lat ", 0) == 0) { lat = l.substr(8); r = "OK"; return true; }
+    if (l.rfind("set loop.detect ", 0) == 0) { loop = l.substr(16); r = "OK"; return true; }
+    return false;
+  }
+};
+bool serverRun(void* u, const char* line, char* reply, size_t cap) {
+  std::string r;
+  if (!static_cast<ServerCli*>(u)->run(line, r)) return false;
+  snprintf(reply, cap, "%s", r.c_str());
+  return true;
+}
+bool serverAllow(void*, const char*) { return true; }
+
+struct ServerRig {
+  ServerCli cli;
+  ConfigHost host{serverRun, serverAllow, &cli, SERVER_KEYS, N_SERVER_KEYS};
+  Dispatcher d{OPS, 3, authAll, nullptr, &host};
+  ResultCache cache;
+  int n = 0;
+  std::string call(const std::string& op, const std::string& args) {
+    std::string m = "{\"v\":1,\"id\":\"s" + std::to_string(++n) + "\",\"op\":\"" + op + "\",\"args\":" + args + "}";
+    std::vector<char> out(2048);
+    int len = d.handle(m.data(), m.size(), out.data(), out.size(), &cache);
+    return len < 0 ? "<overflow>" : std::string(out.data(), len);
+  }
+};
+}  // namespace
+
+TEST(IfaceConfig, ServerTableHasItsOwnKeys) {
+  unsigned i;
+  EXPECT_NE(nullptr, findKey(SERVER_KEYS, N_SERVER_KEYS, "lat", 3, &i));
+  EXPECT_NE(nullptr, findKey(SERVER_KEYS, N_SERVER_KEYS, "advert.interval", 15, &i));
+  EXPECT_EQ(nullptr, findKey(SERVER_KEYS, N_SERVER_KEYS, "wifi.enabled", 12, &i));   // no Wi-Fi CLI on a server
+  EXPECT_EQ(nullptr, findKey("lat", 3, &i));                                            // and the Companion's has no lat
+}
+
+TEST(IfaceConfig, ServerSchemaListsTheServerTable) {
+  ServerRig r;
+  std::string all;
+  std::string next = "0";
+  for (int page = 0; page < 10 && next != "null"; page++) {
+    std::string res = r.call("config.schema", "{\"cursor\":" + next + "}");
+    all += res;
+    size_t at = res.find("\"next\":");
+    ASSERT_NE(std::string::npos, at) << res;
+    next = res.substr(at + 7, res.find_first_of(",}", at + 7) - at - 7);
+  }
+  EXPECT_NE(std::string::npos, all.find("\"key\":\"loop.detect\""));
+  EXPECT_NE(std::string::npos, all.find("\"format\":\"latitude\""));
+  EXPECT_EQ(std::string::npos, all.find("wifi.profile"));
+}
+
+TEST(IfaceConfig, OnOffKeysReachTheCliAsOnOff) {
+  ServerRig r;
+  std::string res = r.call("config.apply", "{\"set\":{\"repeat\":false}}");
+  EXPECT_NE(std::string::npos, res.find("\"status\":\"ok\"")) << res;
+  EXPECT_EQ("off", r.cli.repeat);   // "set repeat 0" would have left it on
+  bool sent = false;
+  for (auto& l : r.cli.ran) sent = sent || l == "set repeat off";
+  EXPECT_TRUE(sent);
+  res = r.call("config.get", "{\"keys\":[\"repeat\",\"loop.detect\"]}");
+  EXPECT_NE(std::string::npos, res.find("\"repeat\":false")) << res;
+  EXPECT_NE(std::string::npos, res.find("\"loop.detect\":\"minimal\"")) << res;
+}
+
+TEST(IfaceConfig, CoordinatesAreChecked) {
+  EXPECT_TRUE(checkFormat("latitude", "56.1572"));
+  EXPECT_TRUE(checkFormat("latitude", "-33.9"));
+  EXPECT_TRUE(checkFormat("longitude", "-179.5"));
+  EXPECT_FALSE(checkFormat("latitude", "91"));
+  EXPECT_FALSE(checkFormat("longitude", "180.5"));
+  EXPECT_FALSE(checkFormat("latitude", "56,15"));
+  EXPECT_FALSE(checkFormat("latitude", "--1"));
+  EXPECT_FALSE(checkFormat("latitude", ""));
+  ServerRig r;
+  std::string res = r.call("config.apply", "{\"set\":{\"lat\":\"abc\"}}");
+  EXPECT_NE(std::string::npos, res.find("bad-format:lat")) << res;
+  EXPECT_EQ("0.0", r.cli.lat);
+}
+
+// The Companion's one on/off key keeps its word: a broker profile's tls goes to the CLI as "on", never "1".
+TEST(IfaceConfig, CompanionTlsStaysOnOff) {
+  Rig r;
+  r.call("config.apply", "{\"set\":{\"mqtt.profile.0.tls\":true}}");
+  bool on = false, one = false;
+  for (auto& l : r.cli.ran) {
+    on = on || l == "set mqtt.profile 0 tls on";
+    one = one || l == "set mqtt.profile 0 tls 1";
+  }
+  EXPECT_TRUE(on);
+  EXPECT_FALSE(one);
+}
