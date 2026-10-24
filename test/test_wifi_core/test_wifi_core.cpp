@@ -28,6 +28,7 @@ struct Rig {
   uint32_t scans = 0;
   bool scan_fails = false;    // a scan ends with the platform's "failed" instead of a result
   bool scan_silent = false;   // a scan never reports at all
+  bool stale_drop = false;    // each join is preceded by a drop event from an attempt the driver started itself (IDF 5)
 
   explicit Rig(uint32_t start = 1000) : core(&prof, WifiTiming()), now(start) {}
 
@@ -50,6 +51,7 @@ struct Rig {
         linked = false;   // joining drops the old link; the fake radio stays quiet about an intentional leave
         joining = true; join_end = now + 400; join_ssid = prof.ssid(a.profile);
         join_pwd = prof.pwd(a.profile);
+        if (stale_drop) core.onDisconnected(now, WifiDrop::Other);   // reason 203, in the same instant as the join
         break;
       case WifiAction::Disconnect: joining = false; linked = false; break;
       default: break;
@@ -164,6 +166,37 @@ TEST(WifiCore, NotFoundAtJoinMovesOn) {
   r.run(4000);
   EXPECT_STREQ("here", r.current());
   EXPECT_EQ(WifiFail::NotFound, r.core.lastFail(0));
+}
+
+// ESP-IDF 5: a join is preceded by a drop event from an attempt it supersedes, and the link comes up right after. The
+// drop must not count: counting it cooled the profile down and delayed the first link by ~17 s on v4test.
+TEST(WifiCore, ADropReportedAsTheJoinStartsDoesNotCountWhenTheLinkFollows) {
+  Rig r;
+  r.stale_drop = true;
+  r.profile(0, "home", 50);
+  r.ap("home");
+  r.start(); r.run(3000);
+  EXPECT_EQ(WifiState::Connected, r.state());
+  EXPECT_STREQ("home", r.current());
+  EXPECT_EQ(1u, r.joins.size()) << "linked on the first join";
+  EXPECT_EQ(WifiFail::None, r.core.lastFail(0));
+}
+
+// A drop with no link after it is still a failure, counted once the settle time has passed.
+TEST(WifiCore, ADropWhileJoiningCountsWhenNoLinkFollows) {
+  Rig r;
+  r.profile(0, "gone", 90); r.profile(1, "here", 50);
+  r.ap("gone"); r.ap("here");
+  r.start();
+  r.run(600);                                  // "gone" chosen, the join under way
+  r.joining = false;                           // the radio reports a drop and nothing else
+  r.core.onDisconnected(r.now, WifiDrop::Other);
+  r.run(500);
+  EXPECT_EQ(WifiState::Connecting, r.state()) << "not counted inside the settle time";
+  EXPECT_EQ(WifiFail::None, r.core.lastFail(0));
+  r.run(4000);
+  EXPECT_EQ(WifiFail::Other, r.core.lastFail(0));
+  EXPECT_STREQ("here", r.current());
 }
 
 TEST(WifiCore, JoinTimeoutMovesOnAndCoolsTheProfileDown) {

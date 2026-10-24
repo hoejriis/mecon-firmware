@@ -655,6 +655,7 @@ mutate wifi_failed_upgrade_scan_guesses $WIFI_CORE "  if (_scan_upgrade) {
   }
   if (_state != WifiState::Scanning) return;" "  _scan_upgrade = false;" unit:test_wifi_core
 mutate wifi_silent_scan_taken_for_empty $WIFI_CORE "        scanFailed(now);   // a scan that never answers: nothing is known, so try the best profile directly" "        scanDone(now);" unit:test_wifi_core
+mutate wifi_join_drop_counted_at_once $WIFI_CORE '    if (!_drop_pending) _drop_at = now;' '    if (!_drop_pending) _drop_at = now - _t.join_drop_settle_ms;' unit:test_wifi_core
 mutate wifi_scan_not_stopped_in_the_driver $WIFI_CTL "  _scanning = false;
   esp_wifi_scan_stop();
 }" "  _scanning = false;
