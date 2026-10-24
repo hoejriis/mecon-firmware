@@ -27,6 +27,7 @@ enum class WifiDrop : uint8_t { NotFound, AuthFailed, Other };
 struct WifiTiming {
   uint32_t scan_timeout_ms = 20000;       // a scan that never reports back counts as one that found nothing
   uint32_t connect_timeout_ms = 20000;    // join + DHCP
+  uint32_t join_drop_settle_ms = 1000;    // a drop reported while joining counts only if no link follows within this
   uint32_t rescan_ms = 60000;             // between upgrade scans while on a lower-priority profile
   uint32_t hold_down_ms = 120000;         // a better profile must be seen this long before switching up
   uint32_t backoff_min_ms = 5000;         // nothing reachable: wait this long, doubling ...
@@ -109,6 +110,9 @@ private:
   uint32_t _last_upgrade_scan = 0;
   bool _upgrade_scan_due_now = false;
   bool _blind = false;              // the join in progress was chosen without a scan result
+  bool _drop_pending = false;       // a drop reported while joining, not yet counted (join_drop_settle_ms)
+  WifiDrop _drop_reason = WifiDrop::Other;
+  uint32_t _drop_at = 0;
   WifiAction _pending;
   uint32_t _backoff_ms = 0;
   uint32_t _backoff_until = 0;

@@ -14,7 +14,8 @@
 
 namespace {
 const unsigned long SCAN_MS = 300;      // virtual ms a scan takes
-const unsigned long CONNECT_MS = 400;   // virtual ms from begin() to the outcome
+const unsigned long CONNECT_MS = 1500;  // virtual ms from begin() to the outcome: a real join and DHCP took 1.5 to 3 s
+                                        // on v4test, longer than the core's join_drop_settle_ms
 
 struct Ap { std::string ssid, pwd; int rssi; bool up; };
 std::vector<Ap> g_aps;
