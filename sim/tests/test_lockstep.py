@@ -120,7 +120,9 @@ def test_a_lock_step_node_cannot_join_a_real_time_ether(tmp_path):
 
 ADVERT_DELAY_US = 1500e3      # CommonCLI: `advert.zerohop` queues the advert 1500 ms ahead
 OFFSET_US = 200e3             # db's advert is due this long after da's has started: inside da's airtime
-CAD_RETRY_US = 200e3          # Dispatcher::getCADFailRetryDelay()
+# Mesh::getCADFailRetryDelay() overrides the Dispatcher's fixed 200 ms with a random 120, 240 or 360 ms
+# (_rng->nextInt(1, 4) * 120), so a deferred packet may start up to 360 ms after the channel clears.
+CAD_RETRY_US = 360e3
 
 
 @pytest.mark.lockstep()
@@ -158,9 +160,9 @@ def test_a_node_defers_its_transmission_while_a_neighbour_transmits(ether, nodes
                                    b.start_us / 1e6, (b.start_us - b_due) / 1e3))
     # the scenario has power: db's packet fell due while da's was on the air (it would have overlapped)
     assert a.start_us < b_due < a_end - 50e3, (a.start_us, b_due, a_end)
-    # and db waited: its packet starts after da's ends, within one 200 ms CAD retry period of it (plus a 100 ms margin:
-    # the restart was measured 45 ms after da's end at a 400 ms offset and 207 ms after it at this one), and both are
-    # heard
+    # and db waited: its packet starts after da's ends, within the longest CAD retry delay of it (plus a 100 ms margin;
+    # the restart was measured 45 ms and 207 ms after da's end on one RNG sequence, and 327 ms after it once the boot
+    # drew a device_id from the same generator), and both are heard
     assert a_end <= b.start_us <= a_end + CAD_RETRY_US + 100e3, (a_end, b.start_us)
     assert a.delivered_to == ["db"] and b.delivered_to == ["da"], (a.lost, b.lost)
 

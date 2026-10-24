@@ -2,7 +2,7 @@
 
 One logical device model reached over MQTT, USB and BLE. A Backend talks to the device directly over MQTT, or through a Reader that bridges USB or BLE; the device answers the same requests with the same results either way. Native MeshCore 1.18 Companion frames and the Repeater console stay exactly as they are beside it.
 
-> **Status: v1.0 implemented for the Companion.** The design was recorded here before the code, and the code follows it. Built: every operation of section 4 on the Companion, over USB and BLE (`0x7F` frames) and MQTT, on the Heltec V3 and V4 standalone builds (`ENABLE_MECON_IFACE`) and the simulated standalone Companion. Not built yet: the Repeater and Room server adapter of section 7. Verified on the simulated board and on real Heltec V3 and V4 boards over all three transports ([HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md)). The broader target contract is in the [contract set](README.md); where it and this page differ on wire details, this page is the newer decision and the contract set will be aligned to it as the implementation lands.
+> **Status: v1.0 implemented for the Companion, the Repeater and the Room server.** The design was recorded here before the code, and the code follows it. Built: every operation of section 4 on the Companion, over USB and BLE (`0x7F` frames) and MQTT, on the Heltec V3 and V4 standalone builds (`ENABLE_MECON_IFACE`) and the simulated standalone Companion; and on the Repeater and Room server over the USB console (section 7), on the Heltec V3 Repeater and Room server builds and the simulated ones. Verified on the simulated boards, and on real Heltec V3 and V4 Companions over all three transports ([HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md)). The broader target contract is in the [contract set](README.md); where it and this page differ on wire details, this page is the newer decision and the contract set will be aligned to it as the implementation lands.
 
 ## Starting point
 
@@ -95,7 +95,13 @@ One status topic: a build that speaks this interface publishes `mecon/<device_id
 
 No fragmentation. On a build with the interface the MQTT client's buffer is 1,600 bytes (512 without it), which bounds a message over MQTT at about 1.5 KB rather than the 4,096 bytes of the frame transports: every v1.0 result fits (paged results are paged to fit), and a larger request is dropped by the client library. The client publishes at QoS 0 (PubSubClient has no QoS 1 publish), so a lost result is recovered by retrying the request with the same `id`, which returns the stored result for a state-changing operation. The CLI topic's guard applies here too: requests arriving in the first 1.5 s after the subscription, where a retained message lands, are dropped, so a retained request never runs again at a reconnect. The existing `mecon/<node id>/cli/req` and `cli/resp` topics stay for the CLI line until the interface covers what they are used for, then they are withdrawn.
 
-**Repeater and Room server.** They have no Companion framing. Over USB they take the same envelope as one line on the console, prefixed `mecon> ` (a line too long for the console is refused with `busy` and never truncated); over MQTT, where a build has it, as above. Over LoRa the remote-admin path keeps the CLI.
+**Repeater and Room server.** They have no Companion framing. Over USB they take the same envelope as one line on the console, prefixed `mecon> `; over MQTT, where a build has it, as above. Over LoRa the remote-admin path keeps the CLI.
+
+- A request is one line, `mecon> <envelope>`, ended by CR or LF. The console echoes the seven characters of the prefix as it echoes any typed text; from there on the line is the interface's and is not echoed, so the console's 160-character limit does not apply. An interface line may be up to 1,600 bytes (the bound MQTT already sets). A longer line is refused with `busy`, error `line-too-long`, and the id `""` (it is never read), and nothing of it runs.
+- The result comes back as one line `mecon> <envelope>`, after the CR LF that ends the echoed prefix. Events of a subscription (`stream.health`) come back the same way, between requests. A client reads lines, takes those that start with `mecon> {`, and skips everything else: the echo, logs and stock CLI replies.
+- The caller is the console, that is the cable: every operation and key is decided by the CLI privilege table exactly as the same console line would be.
+- `hello` reports `role` `repeater` or `room`. `status.get` and the health stream carry no `contacts`, which these roles do not have.
+- Settings use the role's own CLI. The Repeater and Room server share one settings CLI, and so one key table: `name`, `tx`, `radio`, `lat` and `lon` (signed decimals within 90 and 180), `repeat`, `advert.interval` (minutes, kept in 2-minute steps, so an odd value reads back one lower), `flood.advert.interval` (hours), `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`. `guest.password` is not offered: its CLI line reads it back in clear, so it cannot be write-only here.
 
 ### 8. Resource bounds and the radio loop
 
@@ -116,7 +122,7 @@ A third party should be able to implement a client from this page, the schemas a
 Published so far (v1.0 first cut):
 
 - [`schema/`](schema/): `request.json`, `result.json`, `event.json`; the results of `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `sub.start` and `sub.stop`; and the data of the `health` event (`event.health.json`);
-- [`fixtures/requests.json`](fixtures/requests.json): requests with the status (and result schema) a v1.0 device must answer, plus a transport case; [`fixtures/framing.json`](fixtures/framing.json): one message and its exact `0x7F` frames;
+- [`fixtures/requests.json`](fixtures/requests.json): requests with the status (and result schema) a v1.0 device must answer, plus a transport case. A case that only applies to some roles lists them in `roles`; [`fixtures/framing.json`](fixtures/framing.json): one message and its exact `0x7F` frames;
 - [`tools/mecon_iface.py`](../../tools/mecon_iface.py): the reference client (framing, reassembly, envelope; transport-neutral), and [`tools/mecon_schema.py`](../../tools/mecon_schema.py), a dependency-free checker for the keywords these schemas use.
 
 - [`fixtures/config_schema.recorded.json`](fixtures/config_schema.recorded.json) and [`fixtures/config_radio.recorded.json`](fixtures/config_radio.recorded.json): the whole settings schema and real radio writes and reads, recorded from one build.

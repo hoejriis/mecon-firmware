@@ -181,6 +181,8 @@ def assert_case(i, case, answer):
 def test_every_request_fixture_against_the_device(nodes):
     n, (c, i) = start(nodes, "fx")
     for case in fixture("requests.json")["cases"]:
+        if "companion" not in case.get("roles", ["companion"]):
+            continue
         if "raw" in case:
             i.send_raw(case["raw"].encode())
             answer = i.wait_result(case["expect"].get("id", ""))
