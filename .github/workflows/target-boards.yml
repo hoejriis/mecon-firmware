@@ -45,8 +45,7 @@ jobs:
           - WioTrackerL1_companion_radio_usb
           - WioTrackerL1_companion_radio_ble
           - WioTrackerL1_repeater
-          - LilyGo_TLora_V2_1_1_6_companion_radio_ble          # Bluedroid twin of the _nimble build below
-          - LilyGo_TLora_V2_1_1_6_companion_radio_ble_nimble
+          - LilyGo_TLora_V2_1_1_6_companion_radio_ble          # NimBLE, this board's default stack
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
