@@ -21,7 +21,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | MQTT CLI | `get` answered, `poweroff` refused over MQTT | 2026-10-17, 4fbc85b8 |
 | CLI over LoRa (Repeater build) | remote-admin login; `ver`, `get name`, `get mecon.mem`, `get dutycycle` answer; `get mecon.cli.who` → `transport=lora … principal=remote-admin`; `erase` refused; `get prv.key` refused and audited | 2026-10-22, adf36c80 |
 | Duty-cycle floor (Repeater) | `get dutycycle` reports the band's floor; boot seed holds the full hour | 2026-10-17, 4fbc85b8 |
-| BLE: NimBLE build (`_nimble`) | GATT service, PIN and default-PIN pairing, re-pairing after a forgotten bond, CLI over BLE, refusals audited as `ble`; +28 KB internal heap against Bluedroid | 2026-10-22, 09c044f2 (GATT fix included) |
+| BLE: NimBLE build (then the opt-in `_nimble` build, ESP-IDF 4.4) | GATT service, PIN and default-PIN pairing, re-pairing after a forgotten bond, CLI over BLE, refusals audited as `ble`; +28 KB internal heap against Bluedroid | 2026-10-22, 09c044f2 (GATT fix included) |
 | Hardened posture (default PIN) | persists across a reboot; key export over USB refused and audited (`refused cable key-export`); lowering without `confirm` refused, with `confirm` it lowers; BLE never starts with the default PIN (no advertisement, audited `refused ble ble-start`) | 2026-10-23, ed890932 |
 | Companion-to-Companion messaging over LoRa (with v4test) | direct messages both ways, each delivered with the ACK confirmed at the sender: 4 of 5 over two runs, the miss being the first transmission after the first boot (the firmware does not resend; the app does) | 2026-10-23, ed890932 |
 

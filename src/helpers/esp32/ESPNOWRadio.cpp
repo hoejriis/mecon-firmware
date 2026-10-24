@@ -2,6 +2,10 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include <esp_idf_version.h>
+#if ESP_IDF_VERSION_MAJOR >= 5
+  #include <esp_mac.h>   // esp_efuse_mac_get_default moved here in ESP-IDF 5
+#endif
 
 static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static esp_now_peer_info_t peerInfo;
@@ -16,7 +20,11 @@ static void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   ESPNOW_DEBUG_PRINTLN("Send Status: %d", (int)status);
 }
 
+#if ESP_IDF_VERSION_MAJOR >= 5   // ESP-IDF 5 passes the sender in an esp_now_recv_info_t
+static void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+#else
 static void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
+#endif
   ESPNOW_DEBUG_PRINTLN("Recv: len = %d", len);
   memcpy(rx_buf, data, len);
   last_rx_len = len;
