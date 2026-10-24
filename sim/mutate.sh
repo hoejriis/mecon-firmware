@@ -439,6 +439,7 @@ mutate contacts_message_received_not_noted src/helpers/BaseChatMesh.cpp '      n
 mutate contacts_message_time_not_kept $CS '  _idx[rec].last_msg = now;' '' unit:test_contact_store
 mutate contacts_secrets_not_invalidated $CS '  for (int i = 0; i < _nslots; i++) if (_slots && _slots[i].rec >= 0) _slots[i].ci.shared_secret_valid = false;' '' unit:test_contact_store
 mutate contacts_bulk_import_writes_each_record src/helpers/ContactStore.cpp '  if (b != _import_bucket) {' '  if (true) {' unit:test_contact_store
+mutate contacts_rebuild_probes_each_bucket src/helpers/ContactStore.cpp '  const bool have_list = listed && _be->listBuckets((uint16_t)_nbuckets, listed);' '  const bool have_list = false;' unit:test_contact_store
 # rescue "rebuild" works from the store (docs/CONTACTS.md)
 CT_KEEP=$CT_SIM::test_rebuild_keeps_every_stored_contact_beyond_the_cache
 CT_ISO=$CT_SIM::test_rebuild_isolates_a_damaged_record_and_keeps_all_the_others
