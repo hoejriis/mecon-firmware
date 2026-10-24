@@ -1,11 +1,12 @@
 #pragma once
-// The last 16 ids of operations that change state, with their stored result bytes, so a duplicate id (a reconnect,
+// The last 8 ids of operations that change state, with their stored result bytes, so a duplicate id (a reconnect,
 // a retried write, the same request arriving over another transport) gets the stored result and the operation does
 // not run twice. One cache for the device, shared by every transport. Reads are not kept: running one again is
 // harmless. DEVICE_INTERFACE.md section 3.
 //
-// Memory: 16 * (IFACE_CACHE_ENTRY_CAP + 36) = 16 * 164 = 2,624 bytes with the default 128 byte cap (id 33 + length
-// 2 + flags 1, rounded). 128 holds the result of a write to a few keys. Override with -D IFACE_CACHE_ENTRY_CAP=n.
+// Memory: 8 * (IFACE_CACHE_ENTRY_CAP + 36) = 8 * 420 = 3,360 bytes with the default 384 byte cap (id 33 + length 2 +
+// flags 1, rounded). 384 holds the result of a config.apply of about eight keys with a 32-character id; 128 did not
+// hold even a one-key apply (found on v3test), so its retry got result-expired. Override with -D IFACE_CACHE_ENTRY_CAP=n.
 // Beside them, an 8-byte hash of each of the last 64 ids stored (512 bytes): a duplicate whose result is gone is
 // recognised (EXPIRED) and must not run again. A hash collision can only make a fresh request look expired, never
 // run a request twice.
@@ -14,14 +15,14 @@
 #include <string.h>
 
 #ifndef IFACE_CACHE_ENTRY_CAP
-#define IFACE_CACHE_ENTRY_CAP 128
+#define IFACE_CACHE_ENTRY_CAP 384
 #endif
 
 namespace Iface {
 
 class ResultCache {
 public:
-  static constexpr int SLOTS = 16;
+  static constexpr int SLOTS = 8;
   static constexpr size_t ENTRY_CAP = IFACE_CACHE_ENTRY_CAP;
   static constexpr int HASHES = 64;
   enum Lookup { MISS, HIT, EXPIRED };

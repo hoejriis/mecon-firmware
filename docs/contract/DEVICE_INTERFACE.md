@@ -33,7 +33,7 @@ UTF-8 JSON objects. Three shapes:
 ```
 
 - `id`: chosen by the requester, 1 to 32 characters of `[0-9A-Za-z._:-]`, unique per request. The device echoes it on the result. For operations that change state the device keeps, in one cache shared by every transport:
-  - the last 16 ids with their results: a duplicate (a reconnect, a retried write, the same request over another transport) gets the stored result instead of a second execution;
+  - the last 8 ids with their results (each up to 384 bytes, enough for an apply of about eight keys): a duplicate (a reconnect, a retried write, the same request over another transport) gets the stored result instead of a second execution;
   - an 8-byte hash of each of the last 64 such ids: a duplicate whose result is no longer kept gets `failed` with `"error":"result-expired"`, never a second execution.
   A duplicate is checked against the caller's authority as it is now (refused if that has been withdrawn) and nothing else: changes of roster or authority do not clear the cache. A reboot does; every result carries `epoch`, so a requester that sees `epoch` change must not retry a state-changing request blindly but read the state first. A read is not kept: running it again is harmless.
 - `status`: `ok`, `refused` (not authorized; nothing executed), `invalid` (malformed or bad arguments), `unknown-op`, `unsupported-version`, `busy` (a bound was reached; retry later), `failed` (executed and failed; `error` says why). `refused`, `invalid`, `unknown-op`, `unsupported-version` and `busy` guarantee that nothing ran.
@@ -101,7 +101,7 @@ No fragmentation. On a build with the interface the MQTT client's buffer is 1,60
 
 - Requests are parsed and answered in the main loop in bounded steps; no operation blocks on a network or BLE write. A paged result is produced page by page.
 - Each subscription has a bounded rate, a lifetime after which it ends unless renewed, and a drop counter reported in its events. A slow or vanished consumer costs dropped events, never loop time.
-- Memory: the id cache, 2.6 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
+- Memory: the id cache, 3.4 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
 
 ### 9. Conformance
 

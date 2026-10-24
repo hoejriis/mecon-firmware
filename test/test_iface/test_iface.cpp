@@ -298,12 +298,13 @@ TEST(IfaceCache, HitEvictionAndOversize) {
   ASSERT_EQ(ResultCache::HIT, c.find("a", &d, &l));
   EXPECT_EQ(std::string("RESULT-A"), std::string(d, l));
 
-  for (int i = 0; i < 15; i++) c.store(("k" + std::to_string(i)).c_str(), "x", 1);   // 16 held, "a" is the oldest
+  const int S = ResultCache::SLOTS;
+  for (int i = 0; i < S - 1; i++) c.store(("k" + std::to_string(i)).c_str(), "x", 1);   // all held, "a" is the oldest
   EXPECT_EQ(ResultCache::HIT, c.find("a", &d, &l));
-  c.store("k15", "x", 1);                                                              // 17th evicts it
-  EXPECT_EQ(ResultCache::EXPIRED, c.find("a", &d, &l));                                // gone, but remembered
+  c.store("klast", "x", 1);                                                              // one more evicts it
+  EXPECT_EQ(ResultCache::EXPIRED, c.find("a", &d, &l));                                  // gone, but remembered
   EXPECT_EQ(ResultCache::HIT, c.find("k0", &d, &l));
-  EXPECT_EQ(ResultCache::HIT, c.find("k15", &d, &l));
+  EXPECT_EQ(ResultCache::HIT, c.find("klast", &d, &l));
 
   c.store("k0", "NEW", 3);   // same id overwrites in place and does not evict anybody
   ASSERT_EQ(ResultCache::HIT, c.find("k0", &d, &l));
@@ -455,14 +456,15 @@ TEST(IfaceDispatch, AnEvictedIdIsExpiredNotRunAgain) {
   Dispatcher d(TABLE, NT, auth, &p, &p);
   ResultCache c;
   run(d, req("first", "write.ok"), &c);
-  for (int i = 0; i < 16; i++) run(d, req("id" + std::to_string(i), "write.ok"), &c);
-  EXPECT_EQ(17, p.ran);
+  const int S = ResultCache::SLOTS;
+  for (int i = 0; i < S; i++) run(d, req("id" + std::to_string(i), "write.ok"), &c);
+  EXPECT_EQ(S + 1, p.ran);
   EXPECT_EQ(R"({"v":1,"id":"first","status":"failed","error":"result-expired"})", run(d, req("first", "write.ok"), &c));
-  EXPECT_EQ(17, p.ran);
-  for (int i = 16; i < 64; i++) run(d, req("id" + std::to_string(i), "write.ok"), &c);
-  EXPECT_EQ(65, p.ran);
+  EXPECT_EQ(S + 1, p.ran);
+  for (int i = S; i < ResultCache::HASHES; i++) run(d, req("id" + std::to_string(i), "write.ok"), &c);
+  EXPECT_EQ(ResultCache::HASHES + 1, p.ran);
   run(d, req("first", "write.ok"), &c);   // 64 newer ids later: forgotten, so it is a new request
-  EXPECT_EQ(66, p.ran);
+  EXPECT_EQ(ResultCache::HASHES + 2, p.ran);
 }
 
 // A duplicate is checked against the caller's authority now: authority withdrawn since the first run is not

@@ -208,6 +208,21 @@ TEST(IfaceConfig, AWriteThatFailsAfterTheChecksIsReportedAndTheOthersStand) {
   EXPECT_EQ("New", r.cli.name);
 }
 
+// The retry protection must cover an ordinary apply: a few keys and a 32-character id. With a 128-byte cache entry a
+// one-key apply's result was too big to keep, and its retry got result-expired instead of the result (v3test).
+TEST(IfaceConfig, ARetryOfAnOrdinaryApplyGetsItsResultBack) {
+  Rig r;
+  const std::string id(32, 'j');
+  std::string m = "{\"v\":1,\"id\":\"" + id + R"(","op":"config.apply","args":{"set":{"name":"Lab","tx":12,"wifi.profile.3.priority":42}}})";
+  std::vector<char> out(2048);
+  int n1 = r.d.handle(m.data(), m.size(), out.data(), out.size(), &r.cache);
+  std::string first(out.data(), n1);
+  int n2 = r.d.handle(m.data(), m.size(), out.data(), out.size(), &r.cache);
+  EXPECT_EQ(first, std::string(out.data(), n2));
+  EXPECT_NE(std::string::npos, first.find("\"complete\":true")) << first;
+  EXPECT_EQ(3u, r.cli.ran.size()) << "three writes, once";
+}
+
 TEST(IfaceConfig, ARetriedApplyIsNotWrittenTwice) {
   Rig r;
   std::string m = R"({"v":1,"id":"same","op":"config.apply","args":{"set":{"name":"Once"}}})";

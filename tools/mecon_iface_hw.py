@@ -51,9 +51,7 @@ def serial_transport(port):
                 return f
         return None
 
-    time.sleep(9)   # the open reset the board
-    s.read(65536)
-    return send, read
+    return send, read, s.close
 
 
 def ble_transport(mac):
@@ -80,7 +78,31 @@ def ble_transport(mac):
             return inbox.get(timeout=timeout)
         except queue.Empty:
             return None
-    return outbox.put, read
+    return outbox.put, read, lambda: outbox.put(None)   # ends the writer, so the process can exit
+
+
+def check_health_stream(i):
+    """Subscribe to health, take two events, check them, stop. Returns a list of problems."""
+    problems = []
+    r = i.request("sub.start", {"stream": "health", "period_s": 5, "lifetime_s": 60}, timeout=10)
+    if r.get("status") != "ok":
+        return ["sub.start %r" % r]
+    got, end = [], time.time() + 20
+    while len(got) < 2 and time.time() < end:
+        m = i.events.pop(0) if i.events else i.read_message(timeout=1.0)
+        if m is not None and m.get("ev") == "health":
+            got.append(m)
+    if len(got) < 2:
+        problems.append("%d health events in 20 s" % len(got))
+    else:
+        for e in got:
+            problems += mecon_schema.check(e, mecon_schema.load("event.json"))
+            problems += mecon_schema.check(e["data"], mecon_schema.load("event.health.json"))
+        if got[1]["seq"] != got[0]["seq"] + 1:
+            problems.append("seq %d then %d" % (got[0]["seq"], got[1]["seq"]))
+    if i.request("sub.stop", {"stream": "health"}, timeout=10).get("status") != "ok":
+        problems.append("sub.stop")
+    return problems
 
 
 def expand(req):
@@ -89,8 +111,19 @@ def expand(req):
 
 def main():
     kind, where = sys.argv[1], sys.argv[2]
-    send, read = serial_transport(where) if kind == "serial" else ble_transport(where)
-    send(bytes([1, 3]) + bytes(6) + b"hwtest")   # CMD_APP_START, as a client does
+    send, read, close = serial_transport(where) if kind == "serial" else ble_transport(where)
+    # Wait until the board answers CMD_APP_START (as a client does): opening the serial port resets an ESP32, and the
+    # first boot after an erase formats the file system, so a fixed delay is not enough.
+    end = time.time() + 90
+    while time.time() < end:
+        send(bytes([1, 3]) + bytes(6) + b"hwtest")
+        f = read(2.0)
+        while f is not None and f[:1] != b"\x05":
+            f = read(0.5)
+        if f is not None:
+            break
+    else:
+        sys.exit("the board never answered CMD_APP_START")
     i = mecon_iface.IfaceClient(send, read)
     cases = json.load(open(os.path.join(FIXTURES, "requests.json")))["cases"]
     fails = 0
@@ -114,7 +147,11 @@ def main():
             problems += mecon_schema.check(ans["result"], mecon_schema.load(exp["schema"]))
         fails += bool(problems)
         print("%s %s %s" % ("FAIL" if problems else "PASS", case["name"], problems or ""), flush=True)
-    print("%d of %d passed" % (len(cases) - fails, len(cases)))
+    problems = check_health_stream(i)
+    fails += bool(problems)
+    print("%s health stream %s" % ("FAIL" if problems else "PASS", problems or ""), flush=True)
+    print("%d of %d passed" % (len(cases) + 1 - fails, len(cases) + 1))
+    close()
     sys.exit(1 if fails else 0)
 
 
