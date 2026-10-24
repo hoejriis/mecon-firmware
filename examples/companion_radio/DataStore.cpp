@@ -275,6 +275,33 @@ bool DataStore::bootDeviceMeta(mesh::RNG* rng, uint8_t device_id[16], uint32_t* 
   return AtomicFile::save(_fs, PATH, [&rec](Stream& s) { return s.write(rec, sizeof(rec)) == sizeof(rec); }, !have);
 }
 
+static const char* depPath(int slot) { return slot == 0 ? "/mecon_dep_a" : "/mecon_dep_b"; }
+
+bool DataStore::readDeploymentCopy(int slot, uint8_t* buf, size_t cap, size_t* len, bool* exists) {
+  const char* path = depPath(slot);
+  *len = 0;
+  AtomicFile::recover(_fs, path);
+  *exists = AtomicFile::exists(_fs, path);
+  if (!*exists) return false;
+  File file = openRead(_fs, path);
+  if (!file) return false;
+  size_t size = file.size();
+  bool ok = size <= cap && file.read(buf, size) == (int)size;
+  file.close();
+  if (ok) *len = size;
+  return ok;
+}
+
+bool DataStore::writeDeploymentCopy(int slot, const uint8_t* frame, size_t len) {
+  return AtomicFile::save(_fs, depPath(slot), [frame, len](Stream& s) { return s.write(frame, len) == len; });
+}
+
+bool DataStore::removeDeploymentCopies() {
+  bool a = !AtomicFile::exists(_fs, depPath(0)) || removeFile(_fs, depPath(0));
+  bool b = !AtomicFile::exists(_fs, depPath(1)) || removeFile(_fs, depPath(1));
+  return a && b;
+}
+
 bool DataStore::savePrefs(NodePrefs& _prefs) {
   // temp file + verify + swap: a power cut keeps the previous complete prefs
   return AtomicFile::save(_fs, "/prefs.json", [&_prefs](Stream& s) { return _prefs.saveSerial(s); });
