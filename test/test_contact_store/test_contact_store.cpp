@@ -894,6 +894,47 @@ TEST(ContactStore, RecOfPtrNamesTheRecordOfAResidentContactOnly) {
   EXPECT_EQ(-1, s.recOfPtr(&copy));
 }
 
+// "rebuild" lists the file system once instead of probing each bucket: on SPIFFS every lookup of a missing file scans
+// the whole file table, and a small store has a missing file for nearly every bucket (~88 s on a Heltec V3).
+TEST(ContactStore, RebuildOfABackendThatListsItsFilesProbesNoBucket) {
+  for (int listing = 0; listing < 2; listing++) {
+    MemBackend be;
+    be.can_list = listing == 1;
+    ContactStore s;
+    ASSERT_TRUE(s.begin(&be, nullptr, cfg()));
+    for (int i = 0; i < 2; i++) ASSERT_GE(add(s, mk(i)), 0);
+    ASSERT_TRUE(s.flush());
+    be.exists_calls = 0;
+    int d = -1, iso = -1;
+    EXPECT_EQ(2, s.rebuild(&d, &iso)) << "same contacts either way";
+    EXPECT_EQ(0, d);
+    if (listing) EXPECT_EQ(0, be.exists_calls) << "the listing replaces every per-bucket lookup";
+    else EXPECT_GT(be.exists_calls, 0) << "a backend that cannot list keeps the per-bucket probe";
+  }
+}
+
+// The listing is taken when rebuild runs, not reused from boot: rebuild is for a file system that is not trusted, and
+// a bucket the boot listing did not see must still be found.
+TEST(ContactStore, RebuildFindsABucketThatAppearedAfterBoot) {
+  MemBackend src;
+  {
+    ContactStore w;
+    ASSERT_TRUE(w.begin(&src, nullptr, cfg()));
+    for (int i = 0; i < 10; i++) ASSERT_GE(add(w, mk(i)), 0);
+    ASSERT_TRUE(w.flush());
+  }
+  MemBackend be;
+  be.can_list = true;
+  ContactStore s;
+  ASSERT_TRUE(s.begin(&be, nullptr, cfg()));
+  ASSERT_EQ(0, s.count());
+  be.files = src.files;                       // the buckets appear after the boot listing
+  int d = -1, iso = -1;
+  EXPECT_EQ(10, s.rebuild(&d, &iso));
+  EXPECT_EQ(0, d);
+  EXPECT_NE(nullptr, s.find(mk(7).id.pub_key, 32));
+}
+
 // "rebuild" works from the persistent store: more stored contacts than cache slots, all of them survive.
 TEST(ContactStore, RebuildKeepsEveryStoredContactNotOnlyTheCachedOnes) {
   MemBackend be;
