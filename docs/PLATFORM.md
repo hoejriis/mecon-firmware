@@ -12,7 +12,7 @@ Which framework, ESP-IDF and BLE stack each supported target builds on, and what
 | Seeed Wio Tracker L1, SenseCAP T1000-E (nRF52840) | `nordicnrf52` with the pinned Adafruit core | Adafruit nRF52 Arduino | none | Bluefruit (SoftDevice) | `nrf52_base` |
 | Every other ESP32 board in the tree | `platformio/espressif32@6.11.0` | Arduino-ESP32 2.0.17 | 4.4 | Bluedroid | `esp32_base` |
 
-The nRF52 targets keep their native runtime: nothing in `esp32_idf5_base` or `[esp32_nimble]` reaches them.
+The nRF52 targets keep their native runtime: nothing in `esp32_idf5_base` or `[esp32_nimble]` reaches them. Their Companion and Repeater images (Wio Tracker L1, T1000-E) come out at the same flash and static RAM, to the byte, as before this change.
 
 Other ESP32 boards stay on the upstream runtime. Each has its own pin map, board library and sometimes partition, and none has been built, measured or run here on ESP-IDF 5. They are unknown on ESP-IDF 5, not unsupported. Moving one is a matter of pointing its base section at `esp32_idf5_base`, then building and measuring it.
 
@@ -27,7 +27,8 @@ The baseline is main at 69755258: every ESP32 target on Arduino-ESP32 2.0.17 / E
   - `MqttNetEsp32.cpp`: `mdns_query_async_get_results()` also reports the number of results.
   - `ESP32Board.h`: `adcAttachPin()` is gone; `analogRead()` attaches the pin itself.
 - **NimBLE is the BLE stack of every Heltec V3 and V4 Companion build** (`_ble` and `_standalone`). The opt-in `_nimble` environments are gone, as they are now the same builds. The NimBLE class and its behaviour are described in [NIMBLE_EVALUATION](NIMBLE_EVALUATION.md).
-- **Bonds do not carry over.** Bluedroid and NimBLE keep their bond records apart, so a phone paired with a Bluedroid build pairs again after the upgrade (forget the device on the phone first).
+- **Bonds and the BLE address do not carry over.** Bluedroid and NimBLE keep their bond records apart, and Arduino-ESP32 3.x derives the Bluetooth address as base MAC + 1 instead of + 2 on the ESP32-S3. A phone paired with an earlier build sees a new device after the upgrade: forget the old one and pair again.
+- **Wi-Fi: a drop reported as a join starts is held for 1 s.** On ESP-IDF 5.3 the first join after boot is preceded by a disconnect event (reason 203) from an attempt the driver started itself, and the link comes up about 100 ms later. Counting that drop sent the profile into its cooldown and delayed the first link to about 25 s; the Wi-Fi state machine now counts a drop while joining only if no link follows within `join_drop_settle_ms` (1 s).
 
 ## Size
 
@@ -59,7 +60,23 @@ On ESP-IDF 5.3, Bluedroid against NimBLE for the same build (before the switch):
 
 The size budgets in `ci/size-budget.txt` are seeded from the "after" column (use + 4 KB).
 
-The heap at run time, boot time, stack headroom and behaviour on the new platform are measured on v3test and v4test and recorded in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) with the build they were taken on; rows there taken on the earlier platform say so by their build.
+## On hardware
+
+Measured on v3test and v4test on 2026-10-24, each board first on main (2.0.17) and then with the ESP-IDF 5.3 app written over it without an erase, same store and configuration. Every row, with its build, is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md).
+
+| | Heltec V3, 2.0.17 | Heltec V3, ESP-IDF 5.3 | Heltec V4, 2.0.17 | Heltec V4, ESP-IDF 5.3 |
+|---|---|---|---|---|
+| Setup done after reset (`setup_ms`, 50 contacts) | 7,191 ms | 6,256 ms | 4,832 ms | 2,914 ms |
+| BLE idle: free / largest block | 105,056 / 94,196 B | 107,116 / 45,044 B | 145,876 / 131,060 B | 152,208 / 90,100 B |
+| Wi-Fi + TLS MQTT: free / largest / low-water | 61,956 / 49,140 / 51,664 B | 45,092 / 31,732 / 32,588 B | 118,200 / 102,388 / 110,504 B | 108,228 / 42,996 / 101,380 B |
+| Wi-Fi joined after reset | not timed | about 9 s | about 7–9 s | about 6 s |
+
+What carried over unchanged: identity, name, PIN, contacts (50 of 50) and settings through the upgrade; PIN and default-PIN BLE pairing, re-pairing after a forgotten bond, CLI over BLE and its refusals; Wi-Fi profile priority; MQTT with a CA anchor (`tls=verified`); LoRa direct messages between the two boards; the battery reading (within 20 mV).
+
+What is worse, and stays recorded until it is won back:
+
+- **Largest free block.** On ESP-IDF 5.3 the largest allocatable block of internal RAM is about 43–45 KB on both boards whatever the free total, where 2.0.17 had 90–130 KB. Every allocation the firmware makes today fits.
+- **Wi-Fi + TLS heap on the Heltec V3.** About 17 KB less free and 19 KB less low-water than 2.0.17, which leaves about 12 KB above the 20,480 B heap floor during a TLS session. The V4 is far from its floor.
 
 ## Board exceptions
 
