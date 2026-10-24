@@ -802,6 +802,13 @@ mutate duty_phase_not_applied src/Dispatcher.cpp '  duty.reset(_ms->getMillis() 
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
+# --- device interface core (docs/contract/DEVICE_INTERFACE.md): undo each rule and test_iface must go red
+mutate iface_auth_refused_handler_still_runs src/helpers/iface/IfaceDispatch.cpp "else if (!_auth || !_auth(_auth_user, *op, req)) st = ST_REFUSED;" "else if (false) st = ST_REFUSED;" unit:test_iface
+mutate iface_dedupe_cache_returns_nothing src/helpers/iface/IfaceCache.h "if (!_e[i].used || strcmp(_e[i].id, id) != 0) continue;" "if (true) continue;" unit:test_iface
+mutate iface_reassembly_timeout_ignored src/helpers/iface/IfaceFrames.cpp "if (_active && (uint32_t)(now_ms - _start) >= REASSEMBLY_TIMEOUT_MS)" "if (false)" unit:test_iface
+mutate iface_id_charset_unchecked src/helpers/iface/IfaceEnvelope.cpp "req.id, sizeof(req.id), CS_ID, 1)" "req.id, sizeof(req.id), CS_ANY, 1)" unit:test_iface
+mutate iface_duplicate_keys_accepted src/helpers/iface/IfaceJson.cpp "if (keyEq(d, keys[j], c)) return J_DUP_KEY;" "if (false) return J_DUP_KEY;" unit:test_iface
+mutate iface_new_xid_does_not_discard src/helpers/iface/IfaceFrames.cpp "if (_active && xid != _xid) drop();   // one message at a time: the newer one wins" "" unit:test_iface
 
 if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
   echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1
