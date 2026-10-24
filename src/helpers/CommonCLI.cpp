@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
+#include "helpers/iface/DeviceId.h"
 #include "AtomicFile.h"
 #include "AuditStore.h"
 #include "cli/CliEngine.h"
@@ -761,6 +762,9 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (memcmp(config, "public.key", 10) == 0) {
     strcpy(reply, "> ");
     mesh::Utils::toHex(&reply[2], _callbacks->getSelfId().pub_key, PUB_KEY_SIZE);
+  } else if (memcmp(config, "device.id", 9) == 0) {   // the device interface's device_id (DEVICE_INTERFACE.md section 1)
+    if (*Iface::deviceIdHex()) sprintf(reply, "> %s", Iface::deviceIdHex());
+    else strcpy(reply, "Error: unsupported");
   } else if (memcmp(config, "role", 4) == 0) {
     sprintf(reply, "> %s", _callbacks->getRole());
   } else if (memcmp(config, "bridge.type", 11) == 0) {

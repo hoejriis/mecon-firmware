@@ -486,3 +486,21 @@ def test_health_events_over_mqtt(nodes, tmp_path, broker):
     assert len(got) == 2, got
     assert got[1]["seq"] == got[0]["seq"] + 1
     assert not mecon_schema.check(got[0]["data"], mecon_schema.load("event.health.json"))
+
+
+# ------------------------------------------------------------------ get device.id: how a Backend learns device_id
+# for a device upgraded in place, over the CLI paths it already has
+
+
+def test_get_device_id_on_the_cli_matches_hello(nodes):
+    n, (c, i) = start(nodes, "did")
+    h = i.request("hello")["result"]
+    assert c.cli("get device.id") == "> " + h["device_id"]
+
+
+@pytest.mark.timescale(10)
+def test_get_device_id_over_the_legacy_cli_topic(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "didm", b)
+    r = b.cli_request(c.pub_key[:4].hex(), "get device.id")
+    assert r is not None and r["status"] == "ok" and r["reply"] == "> " + dev, r
