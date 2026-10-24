@@ -4,7 +4,7 @@
   "title": "Data of a health event (stream health, v1.0)",
   "description": "The same fields as in status.get, from the same code. One event is built per period and the same bytes, with the same (epoch, seq), go to every transport subscribed; a gap in seq on one transport is an event dropped there.",
   "type": "object",
-  "required": ["uptime_s", "heap", "battery_mv", "contacts"],
+  "required": ["uptime_s", "heap", "battery_mv"],
   "properties": {
     "uptime_s": {"type": "integer", "minimum": 0},
     "heap": {"type": ["object", "null"], "required": ["free", "largest", "min_free"],
@@ -12,7 +12,7 @@
                             "min_free": {"type": ["integer", "null"]}, "loop_stack_free": {"type": ["integer", "null"]},
                             "psram_free": {"type": "integer", "minimum": 0}}},
     "battery_mv": {"type": ["integer", "null"]},
-    "contacts": {"type": "object", "required": ["count", "capacity"],
+    "contacts": {"type": "object", "description": "Absent on a role with no contact list.", "required": ["count", "capacity"],
                  "properties": {"count": {"type": "integer", "minimum": 0}, "capacity": {"type": "integer", "minimum": 0}}}
   }
 }

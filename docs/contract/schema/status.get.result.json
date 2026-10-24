@@ -3,7 +3,7 @@
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/status.get.result.json",
   "title": "Result of status.get (v1.0, first cut: the telemetry catalogue extends it)",
   "type": "object",
-  "required": ["device_id", "epoch", "uptime_s", "heap", "battery_mv", "contacts", "posture"],
+  "required": ["device_id", "epoch", "uptime_s", "heap", "battery_mv", "posture"],
   "properties": {
     "device_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
     "epoch": {"type": "integer", "minimum": 1},
@@ -22,6 +22,7 @@
     },
     "battery_mv": {"type": ["integer", "null"], "description": "null when the board cannot measure it."},
     "contacts": {
+      "description": "The contact list; absent on a role that has none (the Repeater and Room server).",
       "type": "object",
       "required": ["count", "capacity"],
       "properties": {"count": {"type": "integer", "minimum": 0}, "capacity": {"type": "integer", "minimum": 0}}

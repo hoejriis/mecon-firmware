@@ -105,3 +105,87 @@ class IfaceClient:
             if m.get("id") in (rid, ""):   # "" = a result the device could not tie to an id (busy, incomplete)
                 return m
         raise TimeoutError("no result for %s" % rid)
+
+
+CONSOLE_PREFIX = "mecon> "
+
+
+class ConsoleClient:
+    """The Repeater and Room server console transport (DEVICE_INTERFACE.md section 7): one request per line
+    "mecon> <envelope>", results and events back as lines "mecon> <envelope>". Every other console line (the echo of a
+    typed prefix, logs, stock CLI replies) is skipped.
+
+    write(bytes) sends to the console; read_line(timeout) returns the next line without its line ending, or None."""
+
+    def __init__(self, write, read_line, id_prefix="c"):
+        self.write = write
+        self.read_line = read_line
+        self.ids = itertools.count(1)
+        self.id_prefix = id_prefix
+        self.events = []
+
+    def send_raw(self, text):
+        if isinstance(text, bytes):
+            text = text.decode("utf-8")
+        self.write((CONSOLE_PREFIX + text + "\r").encode("utf-8"))
+
+    def read_message(self, timeout=5.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            line = self.read_line(max(0.05, end - time.time()))
+            if line is None:
+                continue
+            line = line.lstrip("\r")
+            if not line.startswith(CONSOLE_PREFIX + "{"):
+                continue
+            try:
+                return json.loads(line[len(CONSOLE_PREFIX):])
+            except ValueError:
+                continue
+        return None
+
+    def request(self, op, args=None, rid=None, timeout=5.0, **extra):
+        env = {"v": 1, "id": rid or "%s-%d" % (self.id_prefix, next(self.ids)), "op": op}
+        if args is not None:
+            env["args"] = args
+        env.update(extra)
+        self.send_raw(json.dumps(env, separators=(",", ":")))
+        return self.wait_result(env["id"], timeout)
+
+    def wait_result(self, rid, timeout=5.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            m = self.read_message(max(0.05, end - time.time()))
+            if m is None:
+                continue
+            if "ev" in m:
+                self.events.append(m)
+                continue
+            if m.get("id") in (rid, ""):
+                return m
+        raise TimeoutError("no result for %s" % rid)
+
+
+def socket_lines(sock):
+    """read_line for ConsoleClient over a socket (the simulated console, or a TCP serial bridge)."""
+    buf = bytearray()
+
+    def read_line(timeout):
+        end = time.time() + timeout
+        while True:
+            nl = buf.find(b"\n")
+            if nl >= 0:
+                line = bytes(buf[:nl]).rstrip(b"\r")
+                del buf[:nl + 1]
+                return line.decode("utf-8", errors="replace")
+            left = end - time.time()
+            if left <= 0:
+                return None
+            sock.settimeout(min(left, 0.2))
+            try:
+                chunk = sock.recv(4096)
+            except OSError:
+                chunk = b""
+            if chunk:
+                buf.extend(chunk)
+    return read_line
