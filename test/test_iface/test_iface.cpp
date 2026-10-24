@@ -8,7 +8,7 @@
 using namespace Iface;
 
 static Status parse(const std::string& s, Request& r) {
-  static JsonDoc doc;
+  static RequestDoc doc;
   return parseRequest(doc, s.data(), s.size(), r);
 }
 static Status parse(const std::string& s) { Request r; return parse(s, r); }
@@ -97,7 +97,7 @@ TEST(IfaceJson, TrailingDataIsRejected) {
 }
 
 TEST(IfaceJson, DepthLimit) {
-  JsonDoc d;
+  RequestDoc d;
   std::string ok4 = R"({"a":{"b":{"c":{}}}})";           // 4 containers
   std::string bad5 = R"({"a":{"b":{"c":{"d":{}}}}})";    // 5
   EXPECT_EQ(J_OK, jsonParse(d, ok4.data(), ok4.size()));
@@ -118,7 +118,7 @@ static std::string arrayOf(int n) {   // root + key + array + n numbers = 3 + n 
 }
 
 TEST(IfaceJson, TokenLimit) {
-  JsonDoc d;
+  RequestDoc d;
   std::string at = arrayOf(MAX_TOKENS - 3), over = arrayOf(MAX_TOKENS - 2);
   EXPECT_EQ(J_OK, jsonParse(d, at.data(), at.size()));
   EXPECT_EQ(MAX_TOKENS, d.ntok);
@@ -126,7 +126,7 @@ TEST(IfaceJson, TokenLimit) {
 }
 
 TEST(IfaceJson, SizeLimit) {
-  JsonDoc d;
+  RequestDoc d;
   std::string pad = R"({"a":")" + std::string(MAX_MSG - 8, 'x') + R"("})";   // exactly 4096
   ASSERT_EQ(MAX_MSG, pad.size());
   EXPECT_EQ(J_OK, jsonParse(d, pad.data(), pad.size()));
@@ -136,7 +136,7 @@ TEST(IfaceJson, SizeLimit) {
 }
 
 TEST(IfaceJson, DuplicateKeys) {
-  JsonDoc d;
+  RequestDoc d;
   for (const char* m : {R"({"id":"a","id":"b"})", R"({"v":1,"v":1})", R"({"a":{"k":1,"k":2}})", R"({"x":1,"y":2,"x":3})"})
     EXPECT_EQ(J_DUP_KEY, jsonParse(d, m, strlen(m))) << m;
   EXPECT_EQ(ST_INVALID, parse(R"({"v":1,"id":"a","id":"b","op":"hello"})"));
@@ -146,7 +146,7 @@ TEST(IfaceJson, DuplicateKeys) {
 }
 
 TEST(IfaceJson, ControlCharactersInStrings) {
-  JsonDoc d;
+  RequestDoc d;
   std::string m = "{\"a\":\"x\ty\"}";
   EXPECT_EQ(J_CTRL, jsonParse(d, m.data(), m.size()));
   m = "{\"a\":\"x\ny\"}";
@@ -162,7 +162,7 @@ TEST(IfaceJson, ControlCharactersInStrings) {
 
 TEST(IfaceJson, SyntaxAndRootErrors) {
   for (const char* m : {"{", "{\"a\":}", "{\"a\":1,}", "[1]", "\"x\"", "12", "{'a':1}", "{\"a\":1", "nul", "{\"a\":tru}", "{\"a\":1 \"b\":2}", "{\"a\" 1}", "{,\"a\":1}", "{\"a\":[,1]}", "{\"a\":[1,]}", "{\"a\":01}", "{\"a\":-}", "{\"a\":1.}", "{\"a\":.5}", "{\"a\":\"\\q\"}", "{\"a\":\"\\u12\"}", "{1:2}", "{\"a\":+1}"}) {
-    JsonDoc d;
+    RequestDoc d;
     EXPECT_NE(J_OK, jsonParse(d, m, strlen(m))) << m;
   }
 }
@@ -170,7 +170,7 @@ TEST(IfaceJson, SyntaxAndRootErrors) {
 // ---- typed readers
 
 TEST(IfaceJson, Readers) {
-  JsonDoc d;
+  RequestDoc d;
   const char* m = R"({"s":"a\"b","i":-12,"b":true,"n":null,"o":{"k":1},"l":[5,"x"],"big":1e3,"neg0":-0})";
   ASSERT_EQ(J_OK, jsonParse(d, m, strlen(m)));
   char out[8];
@@ -208,7 +208,7 @@ TEST(IfaceJson, Readers) {
 }
 
 TEST(IfaceJson, UnicodeEscapesAreNotAccepted) {
-  JsonDoc d;
+  RequestDoc d;
   const char* m = R"({"a":"\u0041"})";
   ASSERT_EQ(J_OK, jsonParse(d, m, strlen(m)));
   char out[8];

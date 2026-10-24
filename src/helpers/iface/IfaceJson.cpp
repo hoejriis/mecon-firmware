@@ -102,7 +102,7 @@ JsonErr jsonParse(JsonDoc& d, const char* s, size_t len) {
   if (g.i != len) return J_TRAILING;    // a second value, or a NUL, after the root
   jsmn_parser p;
   jsmn_init(&p);
-  int n = jsmn_parse(&p, s, len, d.tok, MAX_TOKENS);
+  int n = jsmn_parse(&p, s, len, d.tok, d.cap);
   if (n == JSMN_ERROR_NOMEM) return J_TOO_MANY_TOKENS;
   if (n < 1) return J_SYNTAX;
   d.ntok = n;
@@ -126,7 +126,7 @@ JsonErr jsonParse(JsonDoc& d, const char* s, size_t len) {
   }
   for (int i = 0; i < n; i++) {
     if (d.tok[i].type != JSMN_OBJECT) continue;
-    int keys[MAX_TOKENS / 2];
+    int keys[MAX_TOKENS_LARGE / 2];
     int nk = 0, c = i + 1;
     for (int k = 0; k < d.tok[i].size; k++) {
       for (int j = 0; j < nk; j++)

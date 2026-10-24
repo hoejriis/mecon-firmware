@@ -34,16 +34,33 @@ enum Charset {
   CS_NAME   // [0-9A-Za-z._-]   operation names and keys
 };
 
-// About 1.6 KB, for the duration of one request. The dispatcher allocates it on the heap: on the device the loop
-// task's stack has about 5.4 KB free and a handler runs CLI code on top of it.
+// A parsed document: a view of the input and of a caller-owned token buffer (JsonBuf below). The buffer size is a
+// type parameter so a request keeps its fixed 96 tokens while a larger signed object (an authority set) can be
+// parsed with its own, transient buffer.
 struct JsonDoc {
   const char* s;
   size_t len;
-  jsmntok_t tok[MAX_TOKENS];
+  jsmntok_t* tok;
+  int cap;
   int ntok;
   const char* str(int t) const { return s + tok[t].start; }
   int tlen(int t) const { return tok[t].end - tok[t].start; }
 };
+
+const int MAX_TOKENS_LARGE = 160;   // the most tokens any JsonBuf may hold
+
+template <int N>
+struct JsonBuf : JsonDoc {
+  static_assert(N > 0 && N <= MAX_TOKENS_LARGE, "token buffer size");
+  jsmntok_t store[N];
+  JsonBuf() { s = nullptr; len = 0; tok = store; cap = N; ntok = 0; }
+  JsonBuf(const JsonBuf&) = delete;
+  JsonBuf& operator=(const JsonBuf&) = delete;
+};
+
+// About 1.6 KB, for the duration of one request. The dispatcher allocates it on the heap: on the device the loop
+// task's stack has about 5.4 KB free and a handler runs CLI code on top of it.
+typedef JsonBuf<MAX_TOKENS> RequestDoc;
 
 // Parses one JSON object (the only root the interface accepts). The input is not copied and must outlive doc.
 JsonErr jsonParse(JsonDoc& doc, const char* s, size_t len);

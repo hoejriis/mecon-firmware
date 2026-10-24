@@ -1,4 +1,5 @@
 #include "IfaceDispatch.h"
+#include <new>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,10 +12,10 @@ const OpEntry* Dispatcher::find(const char* name) const {
 }
 
 int Dispatcher::handle(const char* msg, size_t len, char* out, size_t cap, ResultCache* cache) {
-  JsonDoc* pdoc = static_cast<JsonDoc*>(malloc(sizeof(JsonDoc)));   // off the stack (see JsonDoc)
+  RequestDoc* pdoc = new (std::nothrow) RequestDoc();   // off the stack (see RequestDoc)
   if (!pdoc) return writeResult(out, cap, "", ST_BUSY, nullptr, "no-memory");
   int n = handleWith(*pdoc, msg, len, out, cap, cache);
-  free(pdoc);
+  delete pdoc;
   return n;
 }
 
