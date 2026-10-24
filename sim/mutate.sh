@@ -816,7 +816,7 @@ mutate iface_auth_ignores_the_caller examples/companion_radio/MeconIface.cpp '  
 mutate iface_reply_not_bound_to_its_transport examples/companion_radio/MyMesh.h '    _serial->bindReply(src);
     _serial->writeFrame(frame, len);' '    _serial->bindReply(nullptr);
     _serial->writeFrame(frame, len);' sim/tests/test_device_interface.py::test_a_result_goes_only_to_the_transport_that_asked
-mutate iface_epoch_not_counted examples/companion_radio/DataStore.cpp '  e++;' '' sim/tests/test_device_interface.py::test_device_id_is_kept_and_epoch_counts_boots
+mutate iface_epoch_not_counted src/helpers/iface/DeviceMeta.h '  e++;' '' sim/tests/test_device_interface.py::test_device_id_is_kept_and_epoch_counts_boots
 mutate iface_hello_without_node_key examples/companion_radio/MeconIface.cpp '  w.key("node_key"); w.str(key);' '' sim/tests/test_device_interface.py::test_every_request_fixture_against_the_device
 mutate iface_config_line_check_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(static_cast<MeconIface*>(user)->_ctx, r.cls, r.flags).allow;' '  return true;' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
 mutate iface_cli_line_never_remote examples/companion_radio/MeconIface.cpp '  const bool known = mesh->handleCommand(line, self->_ctx.remote ? 1 : 0, buf);' '  const bool known = mesh->handleCommand(line, 0, buf);' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
@@ -825,7 +825,7 @@ mutate iface_subscription_never_lapses examples/companion_radio/MeconIface.cpp '
 mutate iface_sub_stop_does_not_stop examples/companion_radio/MeconIface.cpp '  if (sub) sub->active = false;' '' sim/tests/test_device_interface.py::test_health_events_follow_a_subscription_and_stop_with_it
 mutate iface_mqtt_events_not_published examples/companion_radio/MeconIface.cpp '  if (_mqtt_health.active && _ev_publish) _ev_publish("health", ev, (size_t)n);' '' sim/tests/test_device_interface.py::test_health_events_over_mqtt
 mutate config_apply_skips_the_authority_check src/helpers/iface/IfaceConfig.cpp '    if (!allowed) { c.error = keyError("refused", key); return ST_REFUSED; }' '' unit:test_iface_config
-mutate config_index_unbounded src/helpers/iface/IfaceConfig.cpp 'if (matches(KEYS[i].key, key, len, index) && *index <= KEYS[i].idx_max) return &KEYS[i];' 'if (matches(KEYS[i].key, key, len, index)) return &KEYS[i];' unit:test_iface_config
+mutate config_index_unbounded src/helpers/iface/IfaceConfig.cpp 'if (matches(table[i].key, key, len, index) && *index <= table[i].idx_max) return &table[i];' 'if (matches(table[i].key, key, len, index)) return &table[i];' unit:test_iface_config
 mutate config_leading_zero_accepted src/helpers/iface/IfaceConfig.cpp '  if (dn > 3 || (dn > 1 && d[0] == ' '  if (dn > 3 || (false && d[0] == ' unit:test_iface_config
 mutate config_empty_profile_not_null src/helpers/iface/IfaceConfig.cpp '    *is_null = !(field == F_WIFI_SSID' '    *is_null = false && !(field == F_WIFI_SSID' unit:test_iface_config
 mutate config_radio_format_unchecked src/helpers/iface/IfaceConfig.cpp '      if (k.format && !checkFormat(k.format, out)) {' '      if (false) {' unit:test_iface_config
