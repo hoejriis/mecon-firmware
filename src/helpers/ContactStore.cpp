@@ -639,8 +639,20 @@ int ContactStore::rebuild(int* damaged_out, int* isolated_out) {
   }
   syncAll();                                            // changes made through pointers are in the image below
   const int K = CONTACT_RECORD_BUCKET;
+  // One fresh listing of the file system, as at boot: probing each bucket costs a lookup apiece, and a flat SPIFFS
+  // scans its whole file table for each missing one (~88 s on a Heltec V3 holding 2 contacts). listBuckets() also
+  // completes or drops an interrupted swap, as bucketExists() does. Fresh rather than the boot listing, because
+  // rebuild is for a file system that is not trusted; the presence bits writeB()/removeB() keep are reset from it.
+  uint8_t* listed = (uint8_t*)calloc((_nbuckets + 7) / 8 + 1, 1);
+  const bool have_list = listed && _be->listBuckets((uint16_t)_nbuckets, listed);
+  if (have_list && _bpresent) {
+    for (int b = 0; b < _nbuckets && b < _bpresent_bits; b++) {
+      if (listed[b >> 3] & (1u << (b & 7))) _bpresent[b >> 3] |= (uint8_t)(1u << (b & 7));
+      else _bpresent[b >> 3] &= (uint8_t)~(1u << (b & 7));
+    }
+  }
   for (int b = 0; b < _nbuckets; b++) {
-    bool have = _be->bucketExists((uint16_t)b);
+    bool have = have_list ? (listed[b >> 3] & (1u << (b & 7))) != 0 : _be->bucketExists((uint16_t)b);
     bool readable = have && _be->readBucket((uint16_t)b, _scratch, BUCKET_BYTES);
     _scratch_bucket = -1;
     if (!readable) memset(_scratch, 0, BUCKET_BYTES);
@@ -718,6 +730,7 @@ int ContactStore::rebuild(int* damaged_out, int* isolated_out) {
     }
     if (_bdirty) _bdirty[b >> 3] &= (uint8_t)~(1u << (b & 7));
   }
+  free(listed);
   _first_free = 0;
   while (_first_free < _cap && (_idx[_first_free].flags & F_USED)) _first_free++;
   if (damaged_out) *damaged_out = damaged;

@@ -613,6 +613,25 @@ def _count_after_restart(node):
     return count, got, c
 
 
+def test_rebuild_looks_up_no_bucket_that_is_not_there(nodes, tmp_path):
+    # Measured on v3test: rebuild with 2 contacts took ~88 s. It asked for every possible bucket file, and on SPIFFS a
+    # lookup that finds nothing scans the whole file table (~0.9 s each). It now lists the file system once, as boot
+    # does; the only missing names it may still look up are those of the one bucket it rewrites (the swap's checks).
+    calls = str(tmp_path / "rebuild.calls")
+    node = _standalone(nodes, extra=["--fs-calls", calls], name="rbl").start()
+    _fill_and_reboot(node, 2)
+    node.stop()
+    node.start()
+    before = len(node_log(node).splitlines())
+    out = _rescue(node)
+    assert "rebuilt 2 contacts, 0 damaged" in out, out
+    missing = [l for l in node_log(node).splitlines()[before:] if l.startswith("SIMFS missing") and "/ct" in l]
+    print("REBUILD_MISSING", missing)
+    assert len(missing) <= 3, "rebuild looked up missing bucket files: %r" % missing
+    count, _, _ = _count_after_restart(node)
+    assert count == 2
+
+
 def test_rebuild_keeps_every_stored_contact_beyond_the_cache(nodes):
     node = _standalone(nodes).start()
     _fill_and_reboot(node, 120)
