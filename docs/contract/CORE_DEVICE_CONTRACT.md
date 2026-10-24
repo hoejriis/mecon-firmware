@@ -1,5 +1,13 @@
 # Core device and health contract
 
+## Next-stage telemetry scope — agreed 24 October 2026
+
+The [P3 full-telemetry issue (#96)](https://github.com/hoejriis/mecon-firmware/issues/96) expands this target into one capability-dependent catalogue covering observations, runtime/resources, radio/connectivity, inventories, battery/power, environmental sensors/location, logs/events and screen/framebuffer data. Missing hardware capabilities are omitted explicitly; unknown, zero, stale and failed readings remain distinguishable.
+
+Screen write-back is **device-to-Backend diagnostic/logging telemetry**: snapshots or a bounded stream with capture time, format/geometry, freshness and display state as applicable. It is not remote writing onto the display. Sensitive screen/log content follows explicit subscriber authorization/redaction.
+
+The same logical catalogue is available over MQTT and over USB/BLE through a **Backend-dependent Reader bridge**. Transport adapters may impose different supported sizes/rates, not different meanings. Sequence/epoch/provenance, subscriptions, bounded buffering, drop/gap reporting and non-blocking RF behavior are part of the contract work in [#94](https://github.com/hoejriis/mecon-firmware/issues/94). This section defines the next implementation scope; it does not claim the full catalogue is already implemented.
+
 > **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../../README.md) and the [documentation index](../README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 ## Identity

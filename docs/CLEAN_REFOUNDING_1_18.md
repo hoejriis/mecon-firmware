@@ -1,5 +1,22 @@
 # Clean refounding on MeshCore 1.18
 
+## Approved next P3 programme — 24 October 2026
+
+Progress further before the first supported release. There is **no standalone-release prerequisite** for the next stages; release timing is a separate decision.
+
+1. [Platform consolidation (#93)](https://github.com/hoejriis/mecon-firmware/issues/93): applicable IDF5/pioarduino/NimBLE work, with measured native-behavior and resource regressions.
+2. [Common device interface (#94)](https://github.com/hoejriis/mecon-firmware/issues/94): shared capabilities, schemas, operations/results and telemetry semantics over MQTT, USB and BLE.
+3. [Enrollment and trust (#95)](https://github.com/hoejriis/mecon-firmware/issues/95): device/Deployment identity, authorization, signatures, replay protection, key custody and recovery.
+4. [Full telemetry (#96)](https://github.com/hoejriis/mecon-firmware/issues/96): observations, health/runtime, radio/connectivity, inventories, battery/power, environment/location, logs/events and screen/framebuffer data.
+
+[Programme index (#12)](https://github.com/hoejriis/mecon-firmware/issues/12) tracks the sequence. Technical design is part of each stage.
+
+**Reader boundary:** the Reader requires a reachable Backend. When connected to a device over USB or BLE, it acts as a bridge between that device and the Backend. MQTT and bridged USB/BLE carry the same logical interface and full applicable telemetry, with explicit hardware, authorization, bandwidth and resource limits. Offline Reader behavior is not designed or included here. Native MeshCore clients and physical device recovery remain separate capabilities.
+
+**Screen write-back:** device → Backend diagnostic/logging telemetry, alongside events, battery and environmental readings. This means captured screen/framebuffer data, not commands to draw content onto the display. Collection is bounded, capability-dependent and subject to privacy/access rules.
+
+The older Stage A/B descriptions below remain architectural context. Their ordering must not be read as requiring a standalone release before these P3 stages, and their snapshot status text is not current acceptance evidence.
+
 ## Why MECON firmware exists
 
 Stock MeshCore provides independent LoRa messaging and device roles. MECON firmware starts by improving the **standalone device**—performance, security, connectivity, usability, and administration—without requiring a MECON account, Backend, Deployment, or cloud service. Later stages add interoperable MECON management and connected services.

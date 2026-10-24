@@ -1,5 +1,15 @@
 # Direct USB/BLE Reader protocol
 
+## Current programme boundary — agreed 24 October 2026
+
+The Reader **requires a reachable Backend**. Its USB/BLE connection is a bridge between the device and that Backend. It forwards capability negotiation, authorized operations/results and the full applicable telemetry set using the same logical model as MQTT. It is not an offline authority; disconnected Reader operation, offline history and later synchronization are not designed in this programme.
+
+Full telemetry includes observations, runtime/health, radio/connectivity, inventories, battery/power, environmental/location readings, diagnostic logs/events and screen/framebuffer data. Screen write-back is **device → Backend** telemetry in the diagnostic/logging family, not a remote display-write feature. See [common interface #94](https://github.com/hoejriis/mecon-firmware/issues/94), [trust #95](https://github.com/hoejriis/mecon-firmware/issues/95) and [telemetry #96](https://github.com/hoejriis/mecon-firmware/issues/96).
+
+The Backend's authority and device provenance survive the bridge. Subscriptions, fragmentation, bounded queues, backpressure, cancellation and reconnect behavior must protect RF servicing and make gaps visible. Backend/bridge loss must not imply an autonomous Reader mode.
+
+Native MeshCore app/CLI use and physical USB recovery described below remain independent of this Reader dependency. References to device access without a Backend do not imply that the MECON Reader itself works offline.
+
 > **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../../README.md) and the [documentation index](../README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 ## Goal
