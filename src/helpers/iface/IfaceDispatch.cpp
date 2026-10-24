@@ -20,12 +20,16 @@ int Dispatcher::handle(const char* msg, size_t len, char* out, size_t cap, Resul
   if (st == ST_OK && cache) {
     const char* data; size_t dl;
     ResultCache::Lookup l = cache->find(req.id, &data, &dl);
-    if (l == ResultCache::HIT) {
+    if (l != ResultCache::MISS) {
+      // A duplicate runs nothing; it is checked against the caller's authority as it is now, so withdrawn
+      // authority is not bypassed by replaying an id. Roster or authority changes do not clear the cache.
+      const OpEntry* dop = find(req.op);
+      if (dop && (!_auth || !_auth(_auth_user, *dop, req))) return writeResult(out, cap, id, ST_REFUSED, nullptr, nullptr);
+      if (l == ResultCache::EXPIRED) return writeResult(out, cap, id, ST_FAILED, nullptr, "result-expired");
       if (dl >= cap) return -1;
       memcpy(out, data, dl); out[dl] = 0;
       return (int)dl;
     }
-    if (l == ResultCache::OVERSIZE) return writeResult(out, cap, id, ST_BUSY, nullptr, "result-not-kept");
   }
 
   const OpEntry* op = nullptr;

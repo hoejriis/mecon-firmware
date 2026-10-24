@@ -301,7 +301,7 @@ TEST(IfaceCache, HitEvictionAndOversize) {
   for (int i = 0; i < 15; i++) c.store(("k" + std::to_string(i)).c_str(), "x", 1);   // 16 held, "a" is the oldest
   EXPECT_EQ(ResultCache::HIT, c.find("a", &d, &l));
   c.store("k15", "x", 1);                                                              // 17th evicts it
-  EXPECT_EQ(ResultCache::MISS, c.find("a", &d, &l));
+  EXPECT_EQ(ResultCache::EXPIRED, c.find("a", &d, &l));                                // gone, but remembered
   EXPECT_EQ(ResultCache::HIT, c.find("k0", &d, &l));
   EXPECT_EQ(ResultCache::HIT, c.find("k15", &d, &l));
 
@@ -315,7 +315,7 @@ TEST(IfaceCache, HitEvictionAndOversize) {
   c.store("over", over.data(), over.size());
   ASSERT_EQ(ResultCache::HIT, c.find("exact", &d, &l));
   EXPECT_EQ(exact.size(), l);
-  EXPECT_EQ(ResultCache::OVERSIZE, c.find("over", &d, &l));
+  EXPECT_EQ(ResultCache::EXPIRED, c.find("over", &d, &l));
 }
 
 // ---- dispatcher
@@ -419,7 +419,7 @@ TEST(IfaceDispatch, DuplicateIdReturnsTheStoredResultWithoutRunning) {
   EXPECT_EQ(1, p.ran);
   EXPECT_EQ(first, run(d, req("w1", "write.fail"), &c));
   EXPECT_EQ(1, p.ran);
-  EXPECT_EQ(1, p.auth_calls);
+  EXPECT_EQ(2, p.auth_calls);   // the duplicate is authorized again, then answered from the cache
   run(d, req("w2", "write.ok"), &c);
   EXPECT_EQ(2, p.ran);
   run(d, req("w2", "write.ok"), &c);
@@ -448,25 +448,45 @@ TEST(IfaceDispatch, TheSameWriteOverAnotherTransportRunsOnce) {
   EXPECT_EQ(1, p.ran);
 }
 
-TEST(IfaceDispatch, EvictedIdRunsAgain) {
+// An id whose result was evicted is still remembered (its hash): the duplicate is failed / result-expired, and the
+// operation does not run a second time. Only after 64 newer state-changing ids is it forgotten.
+TEST(IfaceDispatch, AnEvictedIdIsExpiredNotRunAgain) {
   Probe p;
   Dispatcher d(TABLE, NT, auth, &p, &p);
   ResultCache c;
   run(d, req("first", "write.ok"), &c);
   for (int i = 0; i < 16; i++) run(d, req("id" + std::to_string(i), "write.ok"), &c);
   EXPECT_EQ(17, p.ran);
-  run(d, req("first", "write.ok"), &c);
-  EXPECT_EQ(18, p.ran);
+  EXPECT_EQ(R"({"v":1,"id":"first","status":"failed","error":"result-expired"})", run(d, req("first", "write.ok"), &c));
+  EXPECT_EQ(17, p.ran);
+  for (int i = 16; i < 64; i++) run(d, req("id" + std::to_string(i), "write.ok"), &c);
+  EXPECT_EQ(65, p.ran);
+  run(d, req("first", "write.ok"), &c);   // 64 newer ids later: forgotten, so it is a new request
+  EXPECT_EQ(66, p.ran);
 }
 
-TEST(IfaceDispatch, OversizeResultIsNotCachedAndItsDuplicateIsBusy) {
+// A duplicate is checked against the caller's authority now: authority withdrawn since the first run is not
+// bypassed by replaying the id, and a refused duplicate does not consume the stored result.
+TEST(IfaceDispatch, ADuplicateRechecksTheCallersAuthority) {
+  Probe p;
+  Dispatcher d(TABLE, NT, auth, &p, &p);
+  ResultCache c;
+  std::string first = run(d, req("w", "write.ok"), &c);
+  p.allow = false;
+  EXPECT_EQ(R"({"v":1,"id":"w","status":"refused"})", run(d, req("w", "write.ok"), &c));
+  p.allow = true;
+  EXPECT_EQ(first, run(d, req("w", "write.ok"), &c));
+  EXPECT_EQ(1, p.ran);
+}
+
+TEST(IfaceDispatch, OversizeResultIsNotCachedAndItsDuplicateIsExpired) {
   Probe p;
   Dispatcher d(TABLE, NT, auth, &p, &p);
   ResultCache c;
   std::string r = run(d, req("big", "write.big"), &c, 1000);
   ASSERT_GT(r.size(), ResultCache::ENTRY_CAP);
   EXPECT_NE(std::string::npos, r.find("\"status\":\"ok\""));
-  EXPECT_EQ(R"({"v":1,"id":"big","status":"busy","error":"result-not-kept"})", run(d, req("big", "write.big"), &c, 1000));
+  EXPECT_EQ(R"({"v":1,"id":"big","status":"failed","error":"result-expired"})", run(d, req("big", "write.big"), &c, 1000));
   EXPECT_EQ(1, p.ran);
 }
 

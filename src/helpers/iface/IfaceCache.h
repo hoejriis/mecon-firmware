@@ -6,6 +6,9 @@
 //
 // Memory: 16 * (IFACE_CACHE_ENTRY_CAP + 36) = 16 * 164 = 2,624 bytes with the default 128 byte cap (id 33 + length
 // 2 + flags 1, rounded). 128 holds the result of a write to a few keys. Override with -D IFACE_CACHE_ENTRY_CAP=n.
+// Beside them, an 8-byte hash of each of the last 64 ids stored (512 bytes): a duplicate whose result is gone is
+// recognised (EXPIRED) and must not run again. A hash collision can only make a fresh request look expired, never
+// run a request twice.
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -20,19 +23,23 @@ class ResultCache {
 public:
   static constexpr int SLOTS = 16;
   static constexpr size_t ENTRY_CAP = IFACE_CACHE_ENTRY_CAP;
-  enum Lookup { MISS, HIT, OVERSIZE };
+  static constexpr int HASHES = 64;
+  enum Lookup { MISS, HIT, EXPIRED };
 
-  ResultCache() : _next(0) { memset(_e, 0, sizeof(_e)); }
+  ResultCache() { clear(); }
 
-  // HIT: *data / *len point at the stored result. OVERSIZE: the id ran but its result was too big to keep,
-  // so it must not run again and the caller answers busy.
+  // HIT: *data / *len point at the stored result. EXPIRED: the id ran but its result is no longer kept (evicted, or
+  // too big to keep), so it must not run again.
   Lookup find(const char* id, const char** data, size_t* len) const {
     for (int i = 0; i < SLOTS; i++) {
       if (!_e[i].used || strcmp(_e[i].id, id) != 0) continue;
-      if (_e[i].oversize) return OVERSIZE;
+      if (_e[i].oversize) return EXPIRED;
       *data = _e[i].data; *len = _e[i].len;
       return HIT;
     }
+    const uint64_t h = hash(id);
+    for (int i = 0; i < _nh; i++)
+      if (_h[i] == h) return EXPIRED;
     return MISS;
   }
 
@@ -42,7 +49,10 @@ public:
     int slot = -1;
     for (int i = 0; i < SLOTS && slot < 0; i++)
       if (_e[i].used && strcmp(_e[i].id, id) == 0) slot = i;
-    if (slot < 0) { slot = _next; _next = (_next + 1) % SLOTS; }
+    if (slot < 0) {
+      slot = _next; _next = (_next + 1) % SLOTS;
+      _h[_hnext] = hash(id); _hnext = (_hnext + 1) % HASHES; if (_nh < HASHES) _nh++;
+    }
     Entry& e = _e[slot];
     e.used = true;
     strcpy(e.id, id);
@@ -51,7 +61,7 @@ public:
     if (!e.oversize) memcpy(e.data, data, len);
   }
 
-  void clear() { memset(_e, 0, sizeof(_e)); _next = 0; }
+  void clear() { memset(_e, 0, sizeof(_e)); memset(_h, 0, sizeof(_h)); _next = 0; _hnext = 0; _nh = 0; }
 
 private:
   struct Entry {
@@ -60,8 +70,15 @@ private:
     uint16_t len;
     char data[IFACE_CACHE_ENTRY_CAP];
   };
+  static uint64_t hash(const char* s) {   // FNV-1a
+    uint64_t h = 1469598103934665603ULL;
+    while (*s) { h ^= (uint8_t)*s++; h *= 1099511628211ULL; }
+    return h;
+  }
   Entry _e[SLOTS];
   int _next;
+  uint64_t _h[HASHES];
+  int _hnext, _nh;
 };
 
 }  // namespace Iface

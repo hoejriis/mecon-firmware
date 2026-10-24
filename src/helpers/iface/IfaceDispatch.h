@@ -34,8 +34,8 @@ public:
 
   // Handles one complete request message and writes the response envelope into out. Returns its length, or -1
   // when even an error response does not fit out (the caller then answers busy through its own channel).
-  // With a cache, a duplicate id returns the stored response without running the handler; a duplicate whose
-  // response was too big to keep gets busy. Only the ok and failed responses of mutating operations are kept:
+  // With a cache, a duplicate id returns the stored response without running the handler, after rechecking the
+  // caller's current authority; a duplicate whose response is no longer kept gets failed / result-expired. Only the ok and failed responses of mutating operations are kept:
   // a read, or a request that did not run, is simply evaluated again.
   int handle(const char* msg, size_t len, char* out, size_t cap, ResultCache* cache);
 

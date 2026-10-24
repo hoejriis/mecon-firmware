@@ -812,6 +812,8 @@ mutate iface_new_xid_does_not_discard src/helpers/iface/IfaceFrames.cpp "if (_ac
 mutate iface_events_take_the_result_slot src/helpers/iface/IfaceFrames.cpp '    if (_count >= QUEUE_MESSAGES - 1 ||' '    if (_count >= QUEUE_MESSAGES ||' unit:test_iface
 mutate iface_reads_are_cached src/helpers/iface/IfaceDispatch.cpp '  if (n > 0 && cache && op && op->mutating && (st == ST_OK || st == ST_FAILED))' '  if (n > 0 && cache && op && (st == ST_OK || st == ST_FAILED))' unit:test_iface
 mutate iface_dropped_message_keeps_its_buffer src/helpers/iface/IfaceFrames.h ' _mask = 0; _have_last = false; release(); }' ' _mask = 0; _have_last = false; }' unit:test_iface
+mutate iface_duplicate_skips_the_authority_check src/helpers/iface/IfaceDispatch.cpp '      if (dop && (!_auth || !_auth(_auth_user, *dop, req))) return' '      if (false) return' unit:test_iface
+mutate iface_expired_ids_forgotten src/helpers/iface/IfaceCache.h '      if (_h[i] == h) return EXPIRED;' '      if (false) return EXPIRED;' unit:test_iface
 
 if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
   echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1
