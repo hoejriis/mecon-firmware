@@ -3,18 +3,18 @@
 # needs it, and say why in the commit message. Seeded 2026-10-21 from main (dd5c9c44): use + 4 KB, rounded up
 # to a whole KB.
 # environment                             flash        ram
-Heltec_v3_companion_radio_ble           1704960     135168
-Heltec_v3_companion_radio_standalone    1902592     141312
-Heltec_v3_companion_radio_usb            685056      43008
-Heltec_v3_companion_radio_wifi          1314816     118784
-Heltec_v3_repeater                      1195008      67584
-Heltec_v3_room_server                   1189888      71680
-heltec_v4_companion_radio_ble           1703936     135168
-heltec_v4_companion_radio_standalone    1900544     141312
-heltec_v4_companion_radio_usb            683008      43008
-heltec_v4_companion_radio_wifi          1312768     118784
-heltec_v4_repeater                      1192960      67584
-heltec_v4_room_server                   1187840      71680
+Heltec_v3_companion_radio_ble           1512448     123904
+Heltec_v3_companion_radio_standalone    1674240     130048
+Heltec_v3_companion_radio_usb            746496      43008
+Heltec_v3_companion_radio_wifi          1479680     118784
+Heltec_v3_repeater                      1395712      67584
+Heltec_v3_room_server                   1390592      71680
+heltec_v4_companion_radio_ble           1499136     123904
+heltec_v4_companion_radio_standalone    1660928     130048
+heltec_v4_companion_radio_usb            732160      43008
+heltec_v4_companion_radio_wifi          1466368     118784
+heltec_v4_repeater                      1382400      67584
+heltec_v4_room_server                   1377280      71680
 t1000e_companion_radio_ble               352256      84992
 t1000e_companion_radio_usb               346112      80896
 t1000e_repeater                          318464      37888
@@ -22,7 +22,4 @@ WioTrackerL1_companion_radio_ble         448512      88064
 WioTrackerL1_companion_radio_usb         440320      83968
 WioTrackerL1_repeater                    401408      40960
 # NimBLE twins (Issue #68, docs/NIMBLE_EVALUATION.md) and the LilyGo T-LoRa Bluedroid build they are compared with.
-Heltec_v3_companion_radio_ble_nimble                1294336     123904
-Heltec_v3_companion_radio_standalone_nimble         1470464     130048
-heltec_v4_companion_radio_standalone_nimble         1468416     130048
 LilyGo_TLora_V2_1_1_6_companion_radio_ble           1497088      82944

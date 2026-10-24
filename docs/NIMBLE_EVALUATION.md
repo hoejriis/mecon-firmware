@@ -1,8 +1,8 @@
 # NimBLE evaluation (ESP32 Companion)
 
-The ESP32 BLE Companion builds use the Bluedroid stack through `src/helpers/esp32/SerialBLEInterface`. A second implementation, `src/helpers/esp32/SerialNimBLEInterface`, does the same job on NimBLE-Arduino 2.3.9. It is selected at build time with `-D USE_NIMBLE`; without that flag its source compiles to nothing.
+Upstream's ESP32 BLE Companion builds use the Bluedroid stack through `src/helpers/esp32/SerialBLEInterface`. A second implementation, `src/helpers/esp32/SerialNimBLEInterface`, does the same job on NimBLE-Arduino 2.3.9. It is selected at build time with `-D USE_NIMBLE`; without that flag its source compiles to nothing.
 
-**Where it is used.** NimBLE is the BLE stack of the LilyGo T-LoRa V2.1-1.6 BLE Companion (`LilyGo_TLora_V2_1_1_6_companion_radio_ble`), the board closest to its flash limit. The Heltec V3 and V4 stay on Bluedroid, with opt-in `_nimble` builds.
+**Where it is used.** NimBLE is the BLE stack of every BLE Companion of the supported ESP32 boards: the Heltec V3 and V4 (`_ble` and `_standalone`, on ESP-IDF 5.3) and the LilyGo T-LoRa V2.1-1.6 (on ESP-IDF 4.4). Per-target runtime and the size comparison on ESP-IDF 5.3 are in [PLATFORM](PLATFORM.md). The rest of this page is the evaluation that led there; its size figures are from ESP-IDF 4.4.
 
 This page records the build-level comparison and the behaviour mapping. **Correction, 2026-10-24:** this page first said nothing here was verified on hardware. The NimBLE build has since been checked on v3test (GATT service, PIN and default-PIN pairing, re-pairing after a forgotten bond, CLI over BLE, refusals audited as `ble`, +28 KB internal heap against Bluedroid); see [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). Pairing from a phone app is still to check, and no LilyGo has been tested.
 
@@ -15,14 +15,7 @@ Each NimBLE build adds the `[esp32_nimble]` section of `platformio.ini` to a BLE
 - `CONFIG_BT_NIMBLE_MAX_BONDS=15`, the same bond limit as Bluedroid in arduino-esp32 2.0.17;
 - the Bluedroid source (`SerialBLEInterface.cpp`) and the Bluedroid Arduino library (`ESP32 BLE Arduino`) kept out of the build.
 
-| Bluedroid build | NimBLE twin |
-|---|---|
-| `Heltec_v3_companion_radio_ble` | `Heltec_v3_companion_radio_ble_nimble` |
-| `Heltec_v3_companion_radio_standalone` | `Heltec_v3_companion_radio_standalone_nimble` |
-| `heltec_v4_companion_radio_standalone` | `heltec_v4_companion_radio_standalone_nimble` |
-| none (NimBLE is the default) | `LilyGo_TLora_V2_1_1_6_companion_radio_ble` |
-
-All seven are built by the target-boards workflow, which reports flash and static RAM per build and checks them against `ci/size-budget.txt`.
+During the evaluation each Heltec BLE Companion had an opt-in NimBLE twin (`Heltec_v3_companion_radio_ble_nimble`, `Heltec_v3_companion_radio_standalone_nimble`, `heltec_v4_companion_radio_standalone_nimble`). Those twins are gone: the regular environments now are the NimBLE builds. The target-boards workflow reports flash and static RAM per build and checks them against `ci/size-budget.txt`.
 
 ## Size
 
@@ -71,13 +64,12 @@ The public interface is the same, so `examples/companion_radio/main.cpp` uses ei
 ## Risks
 
 - The mapping above is read from the two libraries' sources; on hardware it is checked on v3test only, with the Pi as central. No phone app and no LilyGo board has run it.
-- A second BLE implementation is a second thing to keep in step: any change to the Bluedroid class (pacing, queues, posture hooks) has to be made in both while both exist.
+- The Bluedroid class stays in the tree for upstream's other ESP32 boards. A change to the shared behaviour (pacing, queues, posture hooks) has to be made in both while both exist.
 - NimBLE-Arduino 2.x on arduino-esp32 2.0.17 is supported by the library; this project's run time on it is the v3test checks.
 
 ## Recommendation per board
 
 - **LilyGo T-LoRa V2.1-1.6 (4 MB flash, `min_spiffs` partition).** Adopted: NimBLE is this board's BLE stack. The Bluedroid build filled 98.5 % of its partition and had to leave the VL53L0X driver out; the NimBLE build fits with every sensor driver at 75.9 %. Not yet run on a LilyGo.
-- **Heltec V3 (8 MB flash, 3.3 MB app partition).** No flash pressure (50.9 % with Bluedroid), and the measured headroom on this board does not call for a change. Stay on Bluedroid unless the boot-heap measurement shows a gain that matters for the standalone build (BLE and Wi-Fi with TLS share internal RAM; see [Heap floor](CONNECTIVITY_MODE.md#heap-floor)).
-- **Heltec V4 (16 MB flash, 2 MB PSRAM).** No flash pressure (28.6 %). Stay on Bluedroid, with the same heap condition as the V3.
+- **Heltec V3 and V4.** Adopted with the move to ESP-IDF 5.3: there NimBLE takes about 440 KB of flash and 13.5 KB of static RAM off the BLE Companion against Bluedroid, and the class was already checked on v3test. These recommendations first said to stay on Bluedroid while the boards had no flash pressure; the platform move changed the balance ([PLATFORM](PLATFORM.md)).
 
 The decision per board is made after the hardware checks: boot heap on v3test, PIN pairing from the Pi as central and from a phone app, a default-PIN refusal still audited as `ble`, and the forgotten-bond case above.

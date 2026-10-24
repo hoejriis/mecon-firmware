@@ -27,7 +27,8 @@ Upstream MeshCore's own protocol and CLI documents ([companion protocol](compani
 - [Upstream delta register](UPSTREAM_DELTA.md): every change to a file that exists upstream
 - [Versioning and releases](VERSIONING_AND_RELEASES.md): the version string a build reports, release gates
 - [Upstream and porting](UPSTREAM_AND_PORTING.md)
-- [NimBLE evaluation](NIMBLE_EVALUATION.md): a NimBLE build option for the ESP32 BLE Companion, its size beside Bluedroid, and what is not yet verified on hardware
+- [Runtime platform](PLATFORM.md): framework, ESP-IDF and BLE stack per target, sizes against the earlier baseline, board exceptions
+- [NimBLE evaluation](NIMBLE_EVALUATION.md): how the ESP32 BLE Companion maps onto NimBLE, and the evaluation behind adopting it
 - [Clean refounding on MeshCore 1.18](CLEAN_REFOUNDING_1_18.md): the staged plan. Stage A (standalone) is what the sections above document; Stage B (MECON) is later
 
 ## MECON integration (target; none of it is implemented here)

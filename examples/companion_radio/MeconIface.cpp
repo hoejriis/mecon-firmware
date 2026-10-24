@@ -82,6 +82,7 @@ Status opStatus(OpContext& c) {
     w.key("free"); w.unum(ms.free);
     w.key("largest"); w.unum(ms.largest);
     w.key("min_free"); if (ms.min_free) w.unum(ms.min_free); else w.null();
+    w.key("loop_stack_free"); if (ms.loop_stack_free) w.unum(ms.loop_stack_free); else w.null();
     if (ms.psram) { w.key("psram_free"); w.unum(ms.psram); }
     w.endObject();
   }

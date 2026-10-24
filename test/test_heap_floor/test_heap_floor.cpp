@@ -166,6 +166,21 @@ TEST(HeapFloorReply, PsramIsReportedApartAndDoesNotMaskLowInternalRam) {
   EXPECT_STREQ(r, "> heap free=40000 largest=100 min_free=0 heap_low=1 floor=20480 psram_free=2031604");
 }
 
+// Where the platform tracks it (ESP32), the least free stack of the loop task since it started is reported last; a
+// platform that does not track it (0) leaves the field out rather than reporting a zero.
+TEST(HeapFloorReply, TheLoopStackHeadroomIsReportedWhereItIsTracked) {
+  char r[200];
+  HeapFloor h;
+  h.begin(FLOOR, HYST, PERIOD);
+  MemStats m = mem(107116, 45044);
+  m.loop_stack_free = 5120;
+  Cli::formatMem(m, h, r, sizeof(r));
+  EXPECT_STREQ(r, "> heap free=107116 largest=45044 min_free=0 heap_low=0 floor=20480 loop_stack_free=5120");
+  m.psram = 2052588;
+  Cli::formatMem(m, h, r, sizeof(r));
+  EXPECT_STREQ(r, "> heap free=107116 largest=45044 min_free=0 heap_low=0 floor=20480 psram_free=2052588 loop_stack_free=5120");
+}
+
 TEST(HeapFloorScreen, TheHomeLineCarriesLowMemWhenItFitsAndAloneWhenItDoesNot) {
   ConnMode::ConnStatus s;
   char out[64];

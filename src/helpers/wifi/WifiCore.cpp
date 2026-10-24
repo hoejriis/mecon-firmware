@@ -126,6 +126,7 @@ bool WifiCore::betterExists(uint32_t now) {
 void WifiCore::connectTo(uint32_t now, uint8_t i) {
   _cur = i;
   _blind = false;
+  _drop_pending = false;
   _state = WifiState::Connecting;
   _state_since = now;
   _pending.kind = WifiAction::Connect;
@@ -200,6 +201,13 @@ WifiAction WifiCore::poll(uint32_t now) {
       if (reached(now, _backoff_until)) beginScan(now);
       break;
     case WifiState::Connecting:
+      if (_drop_pending && (uint32_t)(now - _drop_at) >= _t.join_drop_settle_ms) {   // no link followed: a real failure
+        _drop_pending = false;
+        failProfile(now, _cur, _drop_reason == WifiDrop::AuthFailed ? WifiFail::AuthFailed
+                               : _drop_reason == WifiDrop::NotFound ? WifiFail::NotFound : WifiFail::Other);
+        chooseOrBackoff(now);
+        return poll(now);
+      }
       if ((uint32_t)(now - _state_since) >= _t.connect_timeout_ms) {
         failProfile(now, _cur, WifiFail::Timeout);
         a.kind = WifiAction::Disconnect;
@@ -283,6 +291,7 @@ void WifiCore::scanFailed(uint32_t now) {
 
 void WifiCore::onConnected(uint32_t now) {
   if (_state != WifiState::Connecting) return;
+  _drop_pending = false;   // a drop reported just before belonged to an attempt this link superseded
   _state = WifiState::Connected;
   _state_since = _connected_at = now;
   _last_upgrade_scan = now;
@@ -295,9 +304,12 @@ void WifiCore::onConnected(uint32_t now) {
 
 void WifiCore::onDisconnected(uint32_t now, WifiDrop reason) {
   if (_state == WifiState::Connecting) {
-    failProfile(now, _cur, reason == WifiDrop::AuthFailed ? WifiFail::AuthFailed
-                           : reason == WifiDrop::NotFound ? WifiFail::NotFound : WifiFail::Other);
-    chooseOrBackoff(now);
+    // Counted by poll() once join_drop_settle_ms has passed with no link. On ESP-IDF 5 a join can be preceded by a
+    // drop event from an attempt the driver started itself (reason 203, ASSOC_FAIL) while the link comes up 100 ms
+    // later; counting it at once cost the profile a cooldown and the first link ~17 s (measured on v4test).
+    if (!_drop_pending) _drop_at = now;
+    _drop_pending = true;
+    _drop_reason = reason;
   } else if (_state == WifiState::Connected) {
     uint8_t was = _cur;
     bool quick = (uint32_t)(now - _connected_at) < _t.stable_ms;

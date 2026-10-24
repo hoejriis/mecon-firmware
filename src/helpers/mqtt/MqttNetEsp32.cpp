@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ESPmDNS.h>
+#include <esp_idf_version.h>
 #include <stdio.h>
 #include <string.h>
 #include <atomic>
@@ -151,7 +152,12 @@ public:
   int browsePoll(MqttResponder* out, int max) override {
     if (!_q) return 0;   // could not start: a browse that found nothing
     mdns_result_t* r = nullptr;
+#if ESP_IDF_VERSION_MAJOR >= 5   // ESP-IDF 5 also reports the number of results
+    uint8_t nres = 0;
+    if (!mdns_query_async_get_results(_q, 0, &r, &nres)) return -1;   // still running
+#else
     if (!mdns_query_async_get_results(_q, 0, &r)) return -1;   // still running
+#endif
     for (mdns_result_t* it = r; it && _n < 8; it = it->next) {
       uint32_t addr = 0;
       for (mdns_ip_addr_t* a = it->addr; a; a = a->next) {
