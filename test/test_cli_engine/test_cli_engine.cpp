@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include "helpers/Posture.h"
+#include "helpers/cli/CliCaller.h"
 #include "helpers/cli/CliEngine.h"
 #include "helpers/cli/NetConsole.h"
 #include "helpers/connmode/ConnMode.h"
@@ -674,6 +675,59 @@ TEST(Enrolled, MeconCanReportsTheVerdict) {
   EXPECT_STREQ(r, "> class=write enrolled-unsigned");
   handleMecon("get mecon.cli.check get name", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, r, sizeof(r));
   EXPECT_STREQ(r, "> class=read allowed");
+}
+
+// ---- the servers' caller state (cli/CliCaller.h): enrolled, and a verified signed console line
+
+struct ServerCallerReset {
+  ServerCallerReset() { serverCaller() = ServerCaller(); }
+  ~ServerCallerReset() { serverCaller() = ServerCaller(); }
+};
+
+TEST(ServerCaller, StandaloneChangesNothing) {
+  ServerCallerReset r;
+  Context c = withServerCaller(Context(T_USB, A_CABLE, 0));
+  EXPECT_FALSE(c.enrolled);
+  EXPECT_EQ(c.auth, A_CABLE);
+  EXPECT_TRUE(decide(c, C_WRITE).allow);
+}
+
+TEST(ServerCaller, EnrolledRefusesUnsignedWritesOnEveryServerTransportButTheCableKeepsErase) {
+  ServerCallerReset r;
+  serverCaller().enrolled = true;
+  const Context cable = withServerCaller(Context(T_USB, A_CABLE, 0));
+  const Context lora = withServerCaller(Context(T_LORA, A_ADMIN, 0));
+  const Context eth = withServerCaller(Context(T_NETCON, A_NETCON_ADMIN, 0));
+  EXPECT_FALSE(decide(cable, C_WRITE).allow);
+  EXPECT_FALSE(decide(lora, C_WRITE).allow);
+  EXPECT_FALSE(decide(eth, C_WRITE).allow);
+  EXPECT_TRUE(decide(lora, C_READ).allow) << "LoRa remote admin keeps reads";
+  EXPECT_FALSE(decide(lora, C_REBOOT).allow) << "and nothing else";
+  EXPECT_TRUE(decide(cable, C_DESTRUCTIVE).allow) << "the cable keeps erase";
+  EXPECT_FALSE(decide(eth, C_DESTRUCTIVE).allow);
+}
+
+TEST(ServerCaller, OnlyAVerifiedLineOnTheCableBecomesTheSignedPrincipal) {
+  ServerCallerReset r;
+  serverCaller().enrolled = true;
+  EXPECT_EQ(withServerCaller(Context(T_USB, A_CABLE, 0)).auth, A_CABLE);
+  serverCaller().signed_line = true;
+  const Context s = withServerCaller(Context(T_USB, A_CABLE, 0));
+  EXPECT_EQ(s.auth, A_SIGNED);
+  EXPECT_TRUE(decide(s, C_WRITE).allow) << "a signed write runs on an enrolled device";
+  EXPECT_FALSE(decide(s, C_DESTRUCTIVE).allow) << "no erase, whatever the signature";
+  EXPECT_EQ(withServerCaller(Context(T_LORA, A_ADMIN, 0)).auth, A_ADMIN) << "a remote caller is never promoted";
+  EXPECT_EQ(withServerCaller(Context(T_NETCON, A_NETCON_ADMIN, 0)).auth, A_NETCON_ADMIN);
+}
+
+TEST(ServerCaller, FormattedCallsTheRegisteredHookOnce) {
+  ServerCallerReset r;
+  static int calls;
+  calls = 0;
+  serverFormatted();   // no hook: nothing happens
+  serverCaller().on_format = [](void*) { calls++; };
+  serverFormatted();
+  EXPECT_EQ(calls, 1);
 }
 
 int main(int argc, char** argv) {

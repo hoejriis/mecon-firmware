@@ -909,37 +909,37 @@ mutate env_offered_without_sensors src/helpers/iface/ConsoleIface.h '  uint32_t 
 mutate env_not_checked_before_first_answer src/helpers/iface/ConsoleIface.cpp '  if (!_env_checked) refreshEnvironment(millis());' '' sim/tests/test_telemetry_streams.py::test_environment_carries_the_attached_sensors
 mutate inv_empty_neighbour_slots_counted examples/simple_repeater/MyMesh.h '    for (int i = 0; i < MAX_NEIGHBOURS; i++) if (neighbours[i].heard_timestamp) n++;' '    for (int i = 0; i < MAX_NEIGHBOURS; i++) n++;' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
 mutate inv_contacts_swapped examples/companion_radio/MeconIface.cpp '      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());' '      writeCount(w, "contacts", _mesh->getContactCapacity(), _mesh->getNumContacts());' sim/tests/test_telemetry_streams.py::test_inventory_counts_on_the_companion
-mutate inv_repeater_callback_missing examples/simple_repeater/main.cpp 'ifaceRadioCounts, &sensors, ifaceInventory };' 'ifaceRadioCounts, &sensors, nullptr };' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
+mutate inv_repeater_callback_missing examples/simple_repeater/main.cpp 'ifaceRadioCounts, &sensors, ifaceInventory,' 'ifaceRadioCounts, &sensors, nullptr,' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
 # --- the Deployment authority layer (docs/contract/AUTHORITY.md): undo each rule and its tests must go red
 DA=sim/tests/test_deployment_authority.py
-mutate deploy_mark_not_persisted_before_run examples/companion_radio/MeconDeploy.cpp '    Dep::markAccepted(&wm, v.job_id);
+mutate deploy_mark_not_persisted_before_run src/helpers/iface/DeployAuth.cpp '    Dep::markAccepted(&wm, v.job_id);
     if (!persistMarks()) {' '    Dep::markAccepted(&wm, v.job_id);
     if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
-mutate deploy_failed_mark_write_still_runs examples/companion_radio/MeconDeploy.cpp '    if (!persistMarks()) {
+mutate deploy_failed_mark_write_still_runs src/helpers/iface/DeployAuth.cpp '    if (!persistMarks()) {
       wm.mark = old;' '    if (false) {
       wm.mark = old;' $DA::test_a_mark_that_cannot_be_written_runs_nothing_and_is_not_consumed
 mutate deploy_channel_nonce_not_compared src/helpers/deployment/DepWrapper.cpp 'strcmp(nonce, link_nonce) != 0)' 'false)' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
-mutate deploy_channel_nonce_reusable examples/companion_radio/MeconDeploy.cpp '  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonceOf(link));   // used once' '' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
-mutate deploy_mqtt_provisions_unsigned examples/companion_radio/MeconDeploy.cpp '  if (!has && !m->_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after
-mutate deploy_duplicate_runs_again examples/companion_radio/MeconDeploy.cpp '    if (rv == Dep::RV_DUPLICATE) {' '    if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
-mutate deploy_replay_runs examples/companion_radio/MeconDeploy.cpp '    if (rv == Dep::RV_TOO_OLD) {' '    if (false) {' $DA::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
-mutate deploy_unsigned_write_after_enrolment examples/companion_radio/MeconIface.cpp '  if (self->_dep_ls != Dep::LS_ABSENT && !self->_signed && op.priv != PRIV_READ &&' '  if (false && !self->_signed && op.priv != PRIV_READ &&' $DA::test_unsigned_writes_are_refused_once_enrolled_but_reads_work
+mutate deploy_channel_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);   // used once' '' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
+mutate deploy_mqtt_provisions_unsigned src/helpers/iface/DeployAuth.cpp '  if (!has && !_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after
+mutate deploy_duplicate_runs_again src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_DUPLICATE) {' '    if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
+mutate deploy_replay_runs src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_TOO_OLD) {' '    if (false) {' $DA::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
+mutate deploy_unsigned_write_after_enrolment src/helpers/iface/DeployAuth.cpp '  if (_dep_ls != Dep::LS_ABSENT && !_signed && op.priv != PRIV_READ &&' '  if (false && !_signed && op.priv != PRIV_READ &&' $DA::test_unsigned_writes_are_refused_once_enrolled_but_reads_work
 mutate deploy_signed_principal_may_erase src/helpers/cli/CliPolicy.h '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW),' '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           ALLOW,           ALLOW),' unit:test_cli_engine
 mutate deploy_signed_context_follows_the_signature_not_the_transport src/helpers/cli/CliPolicy.h '  if (c.remote != wire_remote) return P_UNTRUSTED;   // a local-looking remote caller, or the reverse: fail closed' '' unit:test_cli_engine
 # --- the second slice (AUTHORITY.md sections 4, 9, 11): the provisioned marker, deployment.reset, the recovery paths
-mutate deploy_marker_ignored_at_load examples/companion_radio/MeconDeploy.cpp '    // No copy of the record, but the provisioned marker says there was one: corrupt, never absent (section 4).
+mutate deploy_marker_ignored_at_load src/helpers/iface/DeployAuth.cpp '    // No copy of the record, but the provisioned marker says there was one: corrupt, never absent (section 4).
     _dep_ls = Dep::withMarker(Dep::LS_ABSENT, Dep::markerRead());' '    _dep_ls = Dep::LS_ABSENT;' $DA::test_the_provisioned_marker_makes_lost_files_corrupt_not_absent
-mutate deploy_marker_not_written_at_first_provisioning examples/companion_radio/MeconDeploy.cpp '    if (!has && !Dep::markerSet()) { c.error = "storage"; st = ST_BUSY; goto done; }' '' $DA::test_the_provisioned_marker_makes_lost_files_corrupt_not_absent
-mutate deploy_unsupported_marker_still_provisions examples/companion_radio/MeconDeploy.cpp '  if (!has && Dep::markerRead() == Dep::MK_UNSUPPORTED) { c.error = "unsupported"; return ST_REFUSED; }' '' $DA::test_a_platform_with_no_marker_store_never_provisions_unsigned
-mutate deploy_reset_unsigned_on_a_healthy_record examples/companion_radio/MeconDeploy.cpp '    if (!m->_signed) { if (m->_dep) m->_dep->auth_rejections++; c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_an_unsigned_reset_of_a_healthy_record_is_refused_even_over_the_cable
-mutate deploy_reset_over_a_broker examples/companion_radio/MeconDeploy.cpp '    if (!usb) { m->_dep->auth_rejections++; c.error = "usb_only"; return ST_REFUSED; }' '' $DA::test_reset_and_unsigned_cli_writes_are_refused_over_mqtt
-mutate deploy_reset_leaves_the_marker examples/companion_radio/MeconDeploy.cpp 'st->removeDeploymentCopies(marks_slot, DataStore::DEP_MARKS) && Dep::markerClear();' 'st->removeDeploymentCopies(marks_slot, DataStore::DEP_MARKS);' $DA::test_a_signed_reset_over_usb_unenrols_and_keeps_the_rest
-mutate deploy_reset_in_hardened examples/companion_radio/MeconDeploy.cpp '  if (Posture::isHardened(cx.posture)) {
-    if (m->_dep) m->_dep->auth_rejections++;
+mutate deploy_marker_not_written_at_first_provisioning src/helpers/iface/DeployAuth.cpp '    if (!has && !Dep::markerSet()) { c.error = "storage"; st = ST_BUSY; goto done; }' '' $DA::test_the_provisioned_marker_makes_lost_files_corrupt_not_absent
+mutate deploy_unsupported_marker_still_provisions src/helpers/iface/DeployAuth.cpp '  if (!has && Dep::markerRead() == Dep::MK_UNSUPPORTED) { c.error = "unsupported"; return ST_REFUSED; }' '' $DA::test_a_platform_with_no_marker_store_never_provisions_unsigned
+mutate deploy_reset_unsigned_on_a_healthy_record src/helpers/iface/DeployAuth.cpp '    if (!_signed) { if (_dep) _dep->auth_rejections++; c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_an_unsigned_reset_of_a_healthy_record_is_refused_even_over_the_cable
+mutate deploy_reset_over_a_broker src/helpers/iface/DeployAuth.cpp '    if (!usb) { _dep->auth_rejections++; c.error = "usb_only"; return ST_REFUSED; }' '' $DA::test_reset_and_unsigned_cli_writes_are_refused_over_mqtt
+mutate deploy_reset_leaves_the_marker src/helpers/iface/DeployAuth.cpp 'st->removeBoth(marks_slot, Dep::SF_MARKS) && Dep::markerClear();' 'st->removeBoth(marks_slot, Dep::SF_MARKS);' $DA::test_a_signed_reset_over_usb_unenrols_and_keeps_the_rest
+mutate deploy_reset_in_hardened src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture)) {
+    if (_dep) _dep->auth_rejections++;
     c.error = corrupt' '  if (false) {
-    if (m->_dep) m->_dep->auth_rejections++;
+    if (_dep) _dep->auth_rejections++;
     c.error = corrupt' $DA::test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_waits_for_local_unlock
-mutate deploy_factory_reset_keeps_the_marker examples/companion_radio/MeconDeploy.cpp '  Dep::markerClear();   // the format does not touch it; only a reset and the factory reset do' '' $DA::test_a_factory_reset_over_the_cable_clears_the_marker_and_the_record
+mutate deploy_factory_reset_keeps_the_marker src/helpers/iface/DeployAuth.cpp '  Dep::markerClear();   // the format does not touch it; only a reset and the factory reset do' '' $DA::test_a_factory_reset_over_the_cable_clears_the_marker_and_the_record
 mutate deploy_ble_factory_reset_when_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '' $DA::test_a_ble_factory_reset_is_refused_once_enrolled_and_audited
 mutate deploy_rebuild_without_reading_the_record examples/companion_radio/MyMesh.cpp '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
       if (!snap) {' '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
@@ -950,6 +950,27 @@ mutate deploy_enrolled_rule_takes_the_cables_destructive_class src/helpers/cli/C
 mutate deploy_marker_alone_reads_as_absent src/helpers/deployment/DepMarker.h 'return (ls == LS_ABSENT && m == MK_PRESENT) ? LS_CORRUPT : ls;' 'return ls;' unit:test_dep_state
 mutate deploy_remote_reboot_unsigned_when_enrolled src/helpers/cli/CliPolicy.h ' && !(cls == C_REBOOT && !c.remote) &&' ' && !(cls == C_REBOOT) &&' unit:test_cli_engine
 mutate deploy_frames_not_told_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '    (void)0;' sim/tests/test_deployment_authority.py::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
+
+# ---- the authority layer on the Repeater and Room server console
+DS=sim/tests/test_deployment_authority_server.py
+mutate server_enrolled_flag_not_published src/helpers/iface/DeployAuth.cpp '  Cli::serverCaller().enrolled = _dep_ls != Dep::LS_ABSENT;' '  Cli::serverCaller().enrolled = false;' $DS::test_unsigned_writes_are_refused_once_enrolled_over_the_console
+mutate server_contexts_ignore_the_enrolled_flag src/helpers/cli/CliCaller.h '  c.enrolled = s.enrolled;' '  c.enrolled = false;' unit:test_cli_engine
+mutate server_ethernet_console_not_told_enrolled src/helpers/cli/NetConsole.h '  const Context ctx = withServerCaller(Context(T_NETCON, nc.authed ? A_NETCON_ADMIN : A_NONE, posture));' '  const Context ctx(T_NETCON, nc.authed ? A_NETCON_ADMIN : A_NONE, posture);' $DS::test_unsigned_writes_are_refused_over_the_ethernet_console_once_enrolled
+mutate server_remote_admin_not_told_enrolled src/helpers/cli/CliCaller.h '  c.enrolled = s.enrolled;' '  c.enrolled = s.enrolled && !c.remote;' $DS::test_lora_remote_admin_keeps_reads_only_once_enrolled
+mutate server_signed_line_not_the_signed_principal src/helpers/iface/DeployAuth.cpp '  if (_env.publish_caller) Cli::serverCaller().signed_line = true;' '' $DS::test_a_signed_config_apply_runs_once_and_its_duplicate_and_replay_run_nothing
+mutate server_signed_promotion_for_any_caller src/helpers/cli/CliCaller.h '  if (s.signed_line && !c.remote && c.transport == T_USB && c.auth == A_CABLE) c.auth = A_SIGNED;' '  if (s.signed_line) c.auth = A_SIGNED;' unit:test_cli_engine
+mutate server_console_ignores_signed_wrappers src/helpers/iface/ConsoleIface.cpp '        if (DeployAuth::isWrapper(_line, _len))' '        if (false)' $DS::test_a_signed_config_apply_runs_once_and_its_duplicate_and_replay_run_nothing
+mutate server_console_unsigned_write_allowed_once_enrolled src/helpers/iface/ConsoleIface.cpp '    case DeployAuth::PRE_DENY: return false;' '    case DeployAuth::PRE_DENY: return true;' $DS::test_unsigned_writes_are_refused_once_enrolled_over_the_console
+mutate server_console_has_no_deployment_reset src/helpers/iface/ConsoleIface.cpp '  {"deployment.reset", opDeployReset, PRIV_WRITE, true},' '  {"deployment.resetx", opDeployReset, PRIV_WRITE, true},' $DS::test_a_signed_reset_over_the_console_unenrols_and_keeps_the_rest
+mutate server_hello_hides_the_channel_nonce src/helpers/iface/ConsoleIface.cpp '  if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }' '' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_status_omits_the_deployment src/helpers/iface/ConsoleIface.cpp '  m->auth().writeStatus(w, hardened);' '' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_console_issues_no_nonce src/helpers/iface/ConsoleIface.cpp '        if (!_nonce[0]) DeployAuth::issueNonce(_nonce);   // issued when the link'"'"'s first request arrives' '' $DS::test_a_sensitive_operation_needs_the_consoles_nonce_once
+mutate server_console_is_not_the_cable src/helpers/iface/ConsoleIface.cpp '        const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));' '        const Cli::Context cable(Cli::T_TCP, Cli::A_NONE, _host.posture(_host.user));' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_repeater_erase_keeps_the_marker examples/simple_repeater/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
+mutate server_room_erase_keeps_the_marker examples/simple_room_server/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
+mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store };' '                                       nullptr };' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_format_hook_not_registered src/helpers/iface/DeployAuth.cpp '    Cli::serverCaller().on_format_user = this;' '    Cli::serverCaller().on_format_user = nullptr;' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
