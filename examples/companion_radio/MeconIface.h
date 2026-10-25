@@ -9,6 +9,8 @@
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
+#include <helpers/deployment/DepState.h>
+#include <helpers/deployment/DepWrapper.h>
 
 class MyMesh;
 class BaseSerialInterface;
@@ -55,6 +57,18 @@ public:
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
 
+  // ---- the Deployment authority layer (docs/contract/AUTHORITY.md; MeconDeploy.cpp)
+  // Loads the record and its sequence marks from storage; called once from begin(). No record leaves a standalone device
+  // with no DepState at all.
+  void deployLoad();
+  // The channel nonce hello reports on the current link: empty when the device holds no Deployment record.
+  const char* helloNonce();
+  // status.deployment: nothing for a device with no record.
+  void writeDeploymentStatus(Iface::JsonWriter& w, bool hardened);
+  static Iface::Status opDeployGet(Iface::OpContext& c);
+  static Iface::Status opDeployProvision(Iface::OpContext& c);
+  static Iface::Status opDeployUpdate(Iface::OpContext& c);
+
   static const size_t QUEUE_BYTES = 2048;   // per transport, allocated on its first message
   static const size_t RESULT_MAX = 1536;    // largest result an operation writes in one piece (pages above that)
 
@@ -64,6 +78,7 @@ private:
     Iface::Reassembler rx;
     Iface::OutQueue* q = nullptr;
     Iface::SubSet subs;
+    char nonce[33] = {0};                   // the channel nonce issued for this link (AUTHORITY.md section 7.1)
   };
   static const int LINKS = 4;               // USB, BLE, TCP and one spare
 
@@ -74,6 +89,19 @@ private:
   static bool cliAllow(void* self, const char* line);
   Link* linkFor(const BaseSerialInterface* src, bool create);
   int dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
+  int runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap,
+                  Iface::ResultCache* cache);
+  int dispatchSigned(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
+                     size_t cap);
+  static bool isWrapper(const char* msg, size_t len);
+  static const char* denyReason(void* self);
+  char* nonceOf(Link* link) { return link ? link->nonce : _mqtt_nonce; }
+  void issueNonce(char slot[33]);
+  bool persistMarks();
+  struct DepWork;
+  bool readCurrent(DepWork* w);
+  bool commit(DepWork* w);
+  bool saveMarksFor(const Dep::AuthoritySet& set);
   bool queueResult(Link& l, const char* msg, size_t len);
   bool ensureQueue(Link& l);
 
@@ -99,6 +127,13 @@ private:
   uint32_t _env_at = 0;
   bool writeStream(int stream, Iface::JsonWriter& w);
   uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
+  Dep::DepState* _dep = nullptr;            // the loaded record; null with no record (a standalone device) or a corrupt one
+  Dep::LoadState _dep_ls = Dep::LS_ABSENT;  // LS_ABSENT: no Deployment; LS_CORRUPT: something exists, nothing usable
+  bool _signed = false;                     // the request being dispatched passed AUTHORITY.md section 7
+  const char* _deny = nullptr;              // why authorize() refused, when it has a contract code for it
+  char _mqtt_nonce[33] = {0};               // the MQTT session is one link
+  uint32_t _last_update_ms = 0;             // rate limit of deployment.authority_update (flash wear)
+  bool _have_update = false;
   char _id_hex[33] = {0};
   uint32_t _epoch = 0;
 };

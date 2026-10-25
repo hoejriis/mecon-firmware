@@ -6,6 +6,8 @@
 #include <helpers/Posture.h>
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/cli/CliRegistry.h>
+#include <helpers/BaseSerialInterface.h>
+#include <helpers/CryptoRNG.h>
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/iface/Observe.h>
@@ -27,7 +29,8 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 }
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop"};
+                                    "sub.start", "sub.stop", "deployment.get", "deployment.provision",
+                                    "deployment.authority_update"};
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -46,6 +49,9 @@ const OpEntry OPS[] = {
   {"config.apply", opApply, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
+  {"deployment.get", MeconIface::opDeployGet, PRIV_READ, false},
+  {"deployment.provision", MeconIface::opDeployProvision, PRIV_WRITE, true},
+  {"deployment.authority_update", MeconIface::opDeployUpdate, PRIV_WRITE, true},
 };
 
 }  // namespace
@@ -68,6 +74,9 @@ Status opHello(OpContext& c) {
   w.key("firmware"); w.str(mecon::versionFull());
   w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
   w.key("epoch"); w.unum(m->epoch());
+  // The channel nonce of the link this reply goes to, only once a Deployment record exists (AUTHORITY.md section 7.1).
+  const char* nonce = m->helloNonce();
+  if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
   w.key("capabilities"); w.beginArray();
   for (const char* cap : CAPABILITIES) w.str(cap);
   writeStreamCapabilities(w, m->streamsProduced());
@@ -109,6 +118,7 @@ Status opStatus(OpContext& c) {
   w.key("connectivity"); w.str(mesh->getConnectivityMode() == ConnMode::WIFI ? "wifi" : "ble");
 #endif
   w.key("posture"); w.str(Posture::isHardened(mesh->postureValue()) ? "hardened" : "normal");
+  m->writeDeploymentStatus(w, Posture::isHardened(mesh->postureValue()));
   return ST_OK;
 }
 
@@ -166,8 +176,32 @@ bool MeconIface::cliAllow(void* user, const char* line) {
 
 bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   MeconIface* self = static_cast<MeconIface*>(user);
+  self->_deny = nullptr;
+  // Open to any caller that can reach the interface: the read of the stored set (it reveals nothing secret), and the
+  // DAK-signed authority update (it carries its own proof; AUTHORITY.md sections 6.2 and 6.3).
+  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;
+  // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
+  // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
+  if (self->_dep_ls != Dep::LS_ABSENT && !self->_signed && op.priv != PRIV_READ &&
+      strcmp(op.name, "deployment.provision") != 0) {
+    self->_deny = self->_dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";
+    if (self->_dep) self->_dep->auth_rejections++;
+    return false;
+  }
   const uint8_t cls = op.priv == PRIV_READ ? Cli::C_READ : op.priv == PRIV_WRITE ? Cli::C_WRITE : Cli::C_POSTURE;
   return Cli::decide(self->_ctx, cls).allow;
+}
+
+const char* MeconIface::denyReason(void* user) { return static_cast<MeconIface*>(user)->_deny; }
+
+int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
+                            size_t cap, ResultCache* cache) {
+  _ctx = ctx;
+  _caller = caller;
+  _cur_link = link;
+  Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
+  d.setDenyReason(denyReason);
+  return d.handle(msg, len, out, cap, cache);
 }
 
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
@@ -178,8 +212,11 @@ int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, co
   if (!_env_checked) refreshEnvironment(millis());
   if (!_cache) _cache = new (std::nothrow) ResultCache();   // 3.1 KB, only once the interface is used
   if (!_cache) return writeResult(out, cap, "", ST_BUSY, nullptr, "no-memory");
-  Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
-  return d.handle(msg, len, out, cap, _cache);
+  char* nonce = nonceOf(link);
+  if (!nonce[0]) issueNonce(nonce);   // issued when the link's first request arrives
+  if (isWrapper(msg, len)) return dispatchSigned(ctx, caller, link, msg, len, out, cap);
+  _signed = false;
+  return runDispatch(ctx, caller, link, msg, len, out, cap, _cache);
 }
 
 size_t MeconIface::onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap) {
@@ -191,6 +228,7 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _mesh = mesh;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
+  deployLoad();
   observeSink().fn = onObserve;
   observeSink().user = this;
 }
@@ -330,7 +368,10 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
 // Lapses expired subscriptions, then builds each stream that is due once and sends the same bytes to every transport
 // subscribed. A full queue drops the event on that transport only; the receiver sees the gap in seq.
 void MeconIface::streamTick(uint32_t now) {
-  if (!_ev_up || !_ev_up()) _mqtt_subs.clear();   // a subscription made over MQTT lapses with the session
+  if (!_ev_up || !_ev_up()) {
+    _mqtt_subs.clear();   // a subscription made over MQTT lapses with the session
+    _mqtt_nonce[0] = 0;   // and so does the session's channel nonce
+  }
   refreshEnvironment(now);
   if (_conn_sig) {   // a link changed state: the connectivity stream sends an event now
     const uint32_t sig = _conn_sig();
@@ -367,6 +408,7 @@ void MeconIface::loop(uint32_t now) {
   streamTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
+    if (l.nonce[0] && !l.src->isConnected()) l.nonce[0] = 0;   // the link dropped: its nonce goes with it
     if (l.rx.tick(now)) {
       uint8_t xid;
       l.rx.takeDiscard(&xid);
