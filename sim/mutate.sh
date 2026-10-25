@@ -811,7 +811,7 @@ mutate radio_never_reports_busy variants/sim/sim_radio.cpp 'bool SimRadio::isRec
 mutate duty_phase_always_zero src/Mesh.cpp '  return _rng->nextInt(0, DUTY_BIN_MS);' '  return 0;' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
 mutate duty_phase_not_applied src/Dispatcher.cpp '  duty.reset(_ms->getMillis() - (getDutyPhaseMs() % DUTY_BIN_MS));' '  duty.reset(_ms->getMillis());' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
 # --- device interface core (docs/contract/DEVICE_INTERFACE.md): undo each rule and test_iface must go red
-mutate iface_auth_refused_handler_still_runs src/helpers/iface/IfaceDispatch.cpp "else if (!_auth || !_auth(_auth_user, *op, req)) st = ST_REFUSED;" "else if (false) st = ST_REFUSED;" unit:test_iface
+mutate iface_auth_refused_handler_still_runs src/helpers/iface/IfaceDispatch.cpp "else if (!_auth || !_auth(_auth_user, *op, req)) {" "else if (false) {" unit:test_iface
 mutate iface_dedupe_cache_returns_nothing src/helpers/iface/IfaceCache.h "if (!_e[i].used || strcmp(_e[i].id, id) != 0) continue;" "if (true) continue;" unit:test_iface
 mutate iface_reassembly_timeout_ignored src/helpers/iface/IfaceFrames.cpp "if (_active && (uint32_t)(now_ms - _start) >= REASSEMBLY_TIMEOUT_MS)" "if (false)" unit:test_iface
 mutate iface_id_charset_unchecked src/helpers/iface/IfaceEnvelope.cpp "req.id, sizeof(req.id), CS_ID, 1)" "req.id, sizeof(req.id), CS_ANY, 1)" unit:test_iface
@@ -820,7 +820,7 @@ mutate iface_new_xid_does_not_discard src/helpers/iface/IfaceFrames.cpp "if (_ac
 mutate iface_events_take_the_result_slot src/helpers/iface/IfaceFrames.cpp '    if (_count >= QUEUE_MESSAGES - 1 ||' '    if (_count >= QUEUE_MESSAGES ||' unit:test_iface
 mutate iface_reads_are_cached src/helpers/iface/IfaceDispatch.cpp '  if (n > 0 && cache && op && op->mutating && (st == ST_OK || st == ST_FAILED))' '  if (n > 0 && cache && op && (st == ST_OK || st == ST_FAILED))' unit:test_iface
 mutate iface_dropped_message_keeps_its_buffer src/helpers/iface/IfaceFrames.h ' _mask = 0; _have_last = false; release(); }' ' _mask = 0; _have_last = false; }' unit:test_iface
-mutate iface_duplicate_skips_the_authority_check src/helpers/iface/IfaceDispatch.cpp '      if (dop && (!_auth || !_auth(_auth_user, *dop, req))) return' '      if (false) return' unit:test_iface
+mutate iface_duplicate_skips_the_authority_check src/helpers/iface/IfaceDispatch.cpp '      if (dop && (!_auth || !_auth(_auth_user, *dop, req)))' '      if (false)' unit:test_iface
 mutate iface_expired_ids_forgotten src/helpers/iface/IfaceCache.h '      if (_h[i] == h) return EXPIRED;' '      if (false) return EXPIRED;' unit:test_iface
 mutate iface_auth_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(self->_ctx, cls).allow;' '  return true;' sim/tests/test_device_interface.py::test_the_default_pin_is_refused_like_its_cli_line
 mutate iface_reply_not_bound_to_its_transport examples/companion_radio/MyMesh.h '    _serial->bindReply(src);
@@ -910,6 +910,22 @@ mutate env_not_checked_before_first_answer src/helpers/iface/ConsoleIface.cpp ' 
 mutate inv_empty_neighbour_slots_counted examples/simple_repeater/MyMesh.h '    for (int i = 0; i < MAX_NEIGHBOURS; i++) if (neighbours[i].heard_timestamp) n++;' '    for (int i = 0; i < MAX_NEIGHBOURS; i++) n++;' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
 mutate inv_contacts_swapped examples/companion_radio/MeconIface.cpp '      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());' '      writeCount(w, "contacts", _mesh->getContactCapacity(), _mesh->getNumContacts());' sim/tests/test_telemetry_streams.py::test_inventory_counts_on_the_companion
 mutate inv_repeater_callback_missing examples/simple_repeater/main.cpp 'ifaceRadioCounts, &sensors, ifaceInventory };' 'ifaceRadioCounts, &sensors, nullptr };' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
+# --- the Deployment authority layer (docs/contract/AUTHORITY.md): undo each rule and its tests must go red
+DA=sim/tests/test_deployment_authority.py
+mutate deploy_mark_not_persisted_before_run examples/companion_radio/MeconDeploy.cpp '    Dep::markAccepted(&wm, v.job_id);
+    if (!persistMarks()) {' '    Dep::markAccepted(&wm, v.job_id);
+    if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
+mutate deploy_failed_mark_write_still_runs examples/companion_radio/MeconDeploy.cpp '    if (!persistMarks()) {
+      wm.mark = old;' '    if (false) {
+      wm.mark = old;' $DA::test_a_mark_that_cannot_be_written_runs_nothing_and_is_not_consumed
+mutate deploy_channel_nonce_not_compared src/helpers/deployment/DepWrapper.cpp 'strcmp(nonce, link_nonce) != 0)' 'false)' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
+mutate deploy_channel_nonce_reusable examples/companion_radio/MeconDeploy.cpp '  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonceOf(link));   // used once' '' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
+mutate deploy_mqtt_provisions_unsigned examples/companion_radio/MeconDeploy.cpp '  if (!has && !m->_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after
+mutate deploy_duplicate_runs_again examples/companion_radio/MeconDeploy.cpp '    if (rv == Dep::RV_DUPLICATE) {' '    if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
+mutate deploy_replay_runs examples/companion_radio/MeconDeploy.cpp '    if (rv == Dep::RV_TOO_OLD) {' '    if (false) {' $DA::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
+mutate deploy_unsigned_write_after_enrolment examples/companion_radio/MeconIface.cpp '  if (self->_dep_ls != Dep::LS_ABSENT && !self->_signed && op.priv != PRIV_READ &&' '  if (false && !self->_signed && op.priv != PRIV_READ &&' $DA::test_unsigned_writes_are_refused_once_enrolled_but_reads_work
+mutate deploy_signed_principal_may_erase src/helpers/cli/CliPolicy.h '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW),' '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           ALLOW,           ALLOW),' unit:test_cli_engine
+mutate deploy_signed_context_follows_the_signature_not_the_transport src/helpers/cli/CliPolicy.h '  if (c.remote != wire_remote) return P_UNTRUSTED;   // a local-looking remote caller, or the reverse: fail closed' '' unit:test_cli_engine
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
