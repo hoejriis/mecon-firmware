@@ -1,5 +1,13 @@
 # Hardware-verified matrix (standalone 0.1.x line)
 
+## Verification policy — owner decision, 25 October 2026
+
+Only four test boards are available: **Heltec V3, Heltec V4, Seeed Wio Tracker L1 and SenseCAP T1000-E**. Public firmware must be hardware-verified on these boards for their applicable roles, transports and advertised capabilities. Availability does not mean a check has passed; the evidence matrix records actual board, role, commit, test and result. T1000-E remains compile-only until #1 supplies hardware evidence.
+
+All other repository board environments receive **software verification only**: compilation, size checks where configured, and applicable unit/simulation/conformance tests. Publish the checks actually run and their results, including exclusions and known upstream failures. A build pass proves compilation, not runtime behaviour; a shared-stack test on another board is not hardware evidence for this board. No additional board purchase or unavailable-board UAT is required to close software-only work.
+
+Public documentation must distinguish **hardware verified**, **software verified (with checks specified)**, **failed**, and **not verified**, at board/role/feature level. Never silently promote a board or all its features from partial evidence. The four-board hardware gate applies to applicable capabilities as they are implemented, not unsupported features. This policy supersedes older requests to wait for hardware on other boards. Release timing remains separate.
+
 What has been checked on real boards, on which board and build, and what is only compiled. A row says *verified* only
 for a check made on hardware with the stated build; everything else is *compiled* (CI builds it) or *simulated* (the
 simulated-board suite covers it). Compiling is not support. The intended product targets are in
