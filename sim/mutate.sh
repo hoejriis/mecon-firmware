@@ -934,11 +934,7 @@ mutate deploy_unsupported_marker_still_provisions src/helpers/iface/DeployAuth.c
 mutate deploy_reset_unsigned_on_a_healthy_record src/helpers/iface/DeployAuth.cpp '    if (!_signed) { if (_dep) _dep->auth_rejections++; c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_an_unsigned_reset_of_a_healthy_record_is_refused_even_over_the_cable
 mutate deploy_reset_over_a_broker src/helpers/iface/DeployAuth.cpp '    if (!usb) { _dep->auth_rejections++; c.error = "usb_only"; return ST_REFUSED; }' '' $DA::test_reset_and_unsigned_cli_writes_are_refused_over_mqtt
 mutate deploy_reset_leaves_the_marker src/helpers/iface/DeployAuth.cpp 'st->removeBoth(marks_slot, Dep::SF_MARKS) && Dep::markerClear();' 'st->removeBoth(marks_slot, Dep::SF_MARKS);' $DA::test_a_signed_reset_over_usb_unenrols_and_keeps_the_rest
-mutate deploy_reset_in_hardened src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture)) {
-    if (_dep) _dep->auth_rejections++;
-    c.error = corrupt' '  if (false) {
-    if (_dep) _dep->auth_rejections++;
-    c.error = corrupt' $DA::test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_waits_for_local_unlock
+mutate deploy_reset_in_hardened src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture) && !(corrupt && Cli::unlockManagement(cx))) {' '  if (false) {' $DA::test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_needs_the_local_unlock
 mutate deploy_factory_reset_keeps_the_marker src/helpers/iface/DeployAuth.cpp '  Dep::markerClear();   // the format does not touch it; only a reset and the factory reset do' '' $DA::test_a_factory_reset_over_the_cable_clears_the_marker_and_the_record
 mutate deploy_ble_factory_reset_when_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '' $DA::test_a_ble_factory_reset_is_refused_once_enrolled_and_audited
 mutate deploy_rebuild_without_reading_the_record examples/companion_radio/MyMesh.cpp '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
@@ -946,7 +942,7 @@ mutate deploy_rebuild_without_reading_the_record examples/companion_radio/MyMesh
       if (false) {' $DA::test_a_rescue_rebuild_that_cannot_read_the_record_refuses_and_changes_nothing
 mutate deploy_cli_gate_not_told_the_device_is_enrolled examples/companion_radio/MyMesh.cpp '    ctx.enrolled = _iface.enrolled();   // the one place that gates a command line: every adapter and the rescue console' '    ctx.enrolled = false;' $DA::test_an_unsigned_cli_write_over_the_usb_frame_is_refused_once_enrolled_but_a_read_works
 mutate deploy_enrolled_rule_dropped_from_the_table src/helpers/cli/CliPolicy.h '  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&' '  if (false && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&' unit:test_cli_engine
-mutate deploy_enrolled_rule_takes_the_cables_destructive_class src/helpers/cli/CliPolicy.h '      !(p == P_CABLE && cls == C_DESTRUCTIVE))' '      false)' unit:test_cli_engine
+mutate deploy_enrolled_rule_takes_the_cables_destructive_class src/helpers/cli/CliPolicy.h '      !(p == P_CABLE && cls == C_DESTRUCTIVE) && !unlock_posture)' '      false)' unit:test_cli_engine
 mutate deploy_marker_alone_reads_as_absent src/helpers/deployment/DepMarker.h 'return (ls == LS_ABSENT && m == MK_PRESENT) ? LS_CORRUPT : ls;' 'return ls;' unit:test_dep_state
 mutate deploy_remote_reboot_unsigned_when_enrolled src/helpers/cli/CliPolicy.h ' && !(cls == C_REBOOT && !c.remote) &&' ' && !(cls == C_REBOOT) &&' unit:test_cli_engine
 mutate deploy_frames_not_told_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '    (void)0;' sim/tests/test_deployment_authority.py::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
@@ -967,8 +963,38 @@ mutate server_console_issues_no_nonce src/helpers/iface/ConsoleIface.cpp '      
 mutate server_console_is_not_the_cable src/helpers/iface/ConsoleIface.cpp '        const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));' '        const Cli::Context cable(Cli::T_TCP, Cli::A_NONE, _host.posture(_host.user));' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_repeater_erase_keeps_the_marker examples/simple_repeater/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
 mutate server_room_erase_keeps_the_marker examples/simple_room_server/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
-mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store };' '                                       nullptr };' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock };' '                                       nullptr, ifaceClock };' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_format_hook_not_registered src/helpers/iface/DeployAuth.cpp '    Cli::serverCaller().on_format_user = this;' '    Cli::serverCaller().on_format_user = nullptr;' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
+
+# Local unlock (AUTHORITY.md sections 9 and 10): the handshake on the cable, what it opens, and the secret's confinement
+mutate unlock_wrong_response_accepted src/helpers/iface/DeployAuth.cpp '  if (parsed && fresh && match) {' '  if (parsed && fresh) {' $DA::test_a_challenge_answers_one_attempt_only
+mutate unlock_wrong_response_accepted_server src/helpers/iface/DeployAuth.cpp '  if (parsed && fresh && match) {' '  if (parsed && fresh) {' $DS::test_in_hardened_the_console_unlock_resets_a_corrupt_record_and_opens_nothing_else
+mutate unlock_lockout_dropped src/helpers/iface/DeployAuth.cpp '  if (++_fails >= MAX_FAILURES) { _locked = true; _locked_ms = millis(); }' '  ++_fails;' $DA::test_a_wrong_answer_is_refused_and_counted_and_the_sixth_attempt_meets_the_lockout
+mutate unlock_challenge_reusable src/helpers/iface/DeployAuth.cpp '  memset(l.challenge, 0, sizeof(l.challenge)); l.have_challenge = false;' '' $DA::test_a_challenge_answers_one_attempt_only
+mutate unlock_allowed_over_mqtt src/helpers/iface/DeployAuth.cpp '  if (!cable) return "usb_only";' '  if (false) return "usb_only";' $DA::test_the_handshake_is_refused_over_mqtt_and_to_a_signed_request
+mutate unlock_allowed_to_a_signed_request src/helpers/iface/DeployAuth.cpp '  const bool cable = !_signed && _link &&' '  const bool cable = _link &&' $DA::test_the_handshake_is_refused_over_mqtt_and_to_a_signed_request
+mutate unlock_hardened_reset_without_unlock src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture) && !(corrupt && Cli::unlockManagement(cx))) {' '  if (Posture::isHardened(cx.posture) && !corrupt) {' $DA::test_in_hardened_the_unlock_opens_reads_and_the_reset_of_a_corrupt_record_and_nothing_else
+mutate unlock_hardened_reset_of_a_healthy_record_by_unlock src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture) && !(corrupt && Cli::unlockManagement(cx))) {' '  if (Posture::isHardened(cx.posture) && !Cli::unlockManagement(cx)) {' $DA::test_in_hardened_the_unlock_opens_reads_and_the_reset_of_a_corrupt_record_and_nothing_else
+mutate unlock_secret_leaked_in_deployment_get src/helpers/iface/DeployAuth.cpp '  w.key("fallback"); w.boolean(s.other_damaged);' '  { char sx[2 * Dep::UNLOCK_LEN + 1]; hexTo(sx, rec.unlock_secret, Dep::UNLOCK_LEN); w.key("unlock"); w.str(sx); }
+  w.key("fallback"); w.boolean(s.other_damaged);' $DA::test_the_secret_appears_in_no_reply_status_log_or_file_as_text
+mutate unlock_set_without_a_signature src/helpers/iface/DeployAuth.cpp '  if (!_signed) {
+    if (_dep) _dep->auth_rejections++;
+    c.error = _dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";' '  if (false) {
+    if (_dep) _dep->auth_rejections++;
+    c.error = _dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";' $DA::test_the_secret_comes_with_the_provisioning_and_without_one_there_is_nothing_to_unlock
+mutate unlock_survives_a_new_secret src/helpers/iface/DeployAuth.cpp '  if (!l || !l->unlocked || _dep_ls == Dep::LS_ABSENT || l->unlocked_epoch != _secret_epoch) return false;' '  if (!l || !l->unlocked || _dep_ls == Dep::LS_ABSENT) return false;' $DA::test_a_signed_set_unlock_replaces_the_secret_and_ends_every_older_unlock
+mutate unlock_never_lapses src/helpers/iface/DeployAuth.cpp '  return (uint32_t)(millis() - l->unlocked_ms) < UNLOCK_MS;' '  return true;' $DA::test_an_unlock_lapses_after_ten_minutes
+mutate unlock_challenge_never_expires src/helpers/iface/DeployAuth.cpp '                     (uint32_t)(millis() - l.challenge_ms) < CHALLENGE_MS;' '                     true;' $DA::test_an_expired_challenge_is_refused
+mutate unlock_survives_a_new_session examples/companion_radio/MeconDeploy.cpp '  if (l) l->unlock.clear();' '' $DA::test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_opens_only_the_posture
+mutate unlock_cli_flag_not_stamped examples/companion_radio/MyMesh.cpp '      ctx.unlocked = ctx.transport == Cli::T_USB && ctx.auth == Cli::A_CABLE && _iface.unlockedFor(_cmd_src);   // section 10' '      (void)0;' $DA::test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_opens_only_the_posture
+mutate unlock_server_cli_flag_not_published src/helpers/iface/ConsoleIface.cpp '    Cli::serverCaller().unlocked = consoleUnlocked;   // the console lines of the stock CLI see the unlock too' '' $DS::test_the_console_unlock_opens_the_posture_in_normal_and_nothing_else
+mutate unlock_policy_opens_hardened_posture src/helpers/cli/CliPolicy.h '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0;' '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE;' unit:test_cli_engine
+mutate unlock_policy_opens_writes src/helpers/cli/CliPolicy.h '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0;' '  const bool unlock_posture = unlockManagement(c) && c.posture == 0;' unit:test_cli_engine
+mutate unlock_policy_honoured_for_any_principal src/helpers/cli/CliPolicy.h 'inline bool unlockManagement(const Context& c) { return c.unlocked && principalOf(c) == P_CABLE; }' 'inline bool unlockManagement(const Context& c) { return c.unlocked; }' unit:test_cli_engine
+mutate unlock_hmac_ignores_the_message src/helpers/deployment/DepHmac.cpp '  update(&c, msg, msg_len);' '' unit:test_dep_hmac
+mutate unlock_compare_checks_one_byte src/helpers/deployment/DepHmac.cpp '  for (size_t i = 0; i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' '  for (size_t i = 0; i < 1 && i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' unit:test_dep_hmac
+mutate unlock_set_unlock_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0)' ')' unit:test_dep_wrapper
+mutate unlock_salvage_trusts_a_bad_frame src/helpers/deployment/DepState.cpp '      if (!c[i]->data || !decodeRecord(c[i]->data, c[i]->len, &tmp->rec, &text, &gen) || !tmp->rec.has_unlock) continue;' '      if (!c[i]->data || !tmp->rec.has_unlock) continue;' unit:test_dep_state
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
