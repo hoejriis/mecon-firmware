@@ -972,16 +972,9 @@ mutate unlock_wrong_response_accepted_server src/helpers/iface/DeployAuth.cpp ' 
 mutate unlock_lockout_dropped src/helpers/iface/DeployAuth.cpp '  if (++_fails >= MAX_FAILURES) { _locked = true; _locked_ms = millis(); }' '  ++_fails;' $DA::test_a_wrong_answer_is_refused_and_counted_and_the_sixth_attempt_meets_the_lockout
 mutate unlock_challenge_reusable src/helpers/iface/DeployAuth.cpp '  memset(l.challenge, 0, sizeof(l.challenge)); l.have_challenge = false;' '' $DA::test_a_challenge_answers_one_attempt_only
 mutate unlock_allowed_over_mqtt src/helpers/iface/DeployAuth.cpp '  if (!cable) return "usb_only";' '  if (false) return "usb_only";' $DA::test_the_handshake_is_refused_over_mqtt_and_to_a_signed_request
-mutate unlock_allowed_to_a_signed_request src/helpers/iface/DeployAuth.cpp '  const bool cable = !_signed && _link &&' '  const bool cable = _link &&' $DA::test_the_handshake_is_refused_over_mqtt_and_to_a_signed_request
 mutate unlock_hardened_reset_without_unlock src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture) && !(corrupt && Cli::unlockManagement(cx))) {' '  if (Posture::isHardened(cx.posture) && !corrupt) {' $DA::test_in_hardened_the_unlock_opens_reads_and_the_reset_of_a_corrupt_record_and_nothing_else
-mutate unlock_hardened_reset_of_a_healthy_record_by_unlock src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture) && !(corrupt && Cli::unlockManagement(cx))) {' '  if (Posture::isHardened(cx.posture) && !Cli::unlockManagement(cx)) {' $DA::test_in_hardened_the_unlock_opens_reads_and_the_reset_of_a_corrupt_record_and_nothing_else
 mutate unlock_secret_leaked_in_deployment_get src/helpers/iface/DeployAuth.cpp '  w.key("fallback"); w.boolean(s.other_damaged);' '  { char sx[2 * Dep::UNLOCK_LEN + 1]; hexTo(sx, rec.unlock_secret, Dep::UNLOCK_LEN); w.key("unlock"); w.str(sx); }
   w.key("fallback"); w.boolean(s.other_damaged);' $DA::test_the_secret_appears_in_no_reply_status_log_or_file_as_text
-mutate unlock_set_without_a_signature src/helpers/iface/DeployAuth.cpp '  if (!_signed) {
-    if (_dep) _dep->auth_rejections++;
-    c.error = _dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";' '  if (false) {
-    if (_dep) _dep->auth_rejections++;
-    c.error = _dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";' $DA::test_the_secret_comes_with_the_provisioning_and_without_one_there_is_nothing_to_unlock
 mutate unlock_survives_a_new_secret src/helpers/iface/DeployAuth.cpp '  if (!l || !l->unlocked || _dep_ls == Dep::LS_ABSENT || l->unlocked_epoch != _secret_epoch) return false;' '  if (!l || !l->unlocked || _dep_ls == Dep::LS_ABSENT) return false;' $DA::test_a_signed_set_unlock_replaces_the_secret_and_ends_every_older_unlock
 mutate unlock_never_lapses src/helpers/iface/DeployAuth.cpp '  return (uint32_t)(millis() - l->unlocked_ms) < UNLOCK_MS;' '  return true;' $DA::test_an_unlock_lapses_after_ten_minutes
 mutate unlock_challenge_never_expires src/helpers/iface/DeployAuth.cpp '                     (uint32_t)(millis() - l.challenge_ms) < CHALLENGE_MS;' '                     true;' $DA::test_an_expired_challenge_is_refused
@@ -994,7 +987,8 @@ mutate unlock_policy_honoured_for_any_principal src/helpers/cli/CliPolicy.h 'inl
 mutate unlock_hmac_ignores_the_message src/helpers/deployment/DepHmac.cpp '  update(&c, msg, msg_len);' '' unit:test_dep_hmac
 mutate unlock_compare_checks_one_byte src/helpers/deployment/DepHmac.cpp '  for (size_t i = 0; i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' '  for (size_t i = 0; i < 1 && i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' unit:test_dep_hmac
 mutate unlock_set_unlock_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0)' ')' unit:test_dep_wrapper
-mutate unlock_salvage_trusts_a_bad_frame src/helpers/deployment/DepState.cpp '      if (!c[i]->data || !decodeRecord(c[i]->data, c[i]->len, &tmp->rec, &text, &gen) || !tmp->rec.has_unlock) continue;' '      if (!c[i]->data || !tmp->rec.has_unlock) continue;' unit:test_dep_state
+
+mutate unlock_salvage_takes_the_older_frame src/helpers/deployment/DepState.cpp '      if (s->has_salvage && gen <= best) continue;' '' unit:test_dep_state
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi

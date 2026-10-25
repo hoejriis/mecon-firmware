@@ -164,7 +164,7 @@ TEST_F(Fx, ACorruptRecordKeepsTheUnlockSecretOfItsNewestIntactFrameOnly) {
   memset(newer.unlock_secret, 0x22, UNLOCK_LEN);
   older.set_sig[3] ^= 1;
   newer.set_sig[3] ^= 1;
-  auto a = frame(older, 1), b = frame(newer, 2);
+  auto a = frame(newer, 2), b = frame(older, 1);   // the newer one in the first slot: order is not generation
   DepState* s = nullptr;
   depLoad(of(a), of(b), &s);
   ASSERT_NE(nullptr, s);
@@ -172,7 +172,8 @@ TEST_F(Fx, ACorruptRecordKeepsTheUnlockSecretOfItsNewestIntactFrameOnly) {
   ASSERT_TRUE(s->has_salvage);
   for (int i = 0; i < UNLOCK_LEN; i++) ASSERT_EQ(0x22, s->salvage[i]) << i;
   depFree(s);
-  std::vector<uint8_t> junk(a.begin(), a.end());
+  auto older_frame = frame(older, 1);
+  std::vector<uint8_t> junk(older_frame.begin(), older_frame.end());
   junk[20] ^= 0xff;   // fails its CRC: nothing in it is trusted
   depLoad(of(junk), Copy{ nullptr, 0 }, &s);
   ASSERT_EQ(LS_CORRUPT, s->state);
