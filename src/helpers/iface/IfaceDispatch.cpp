@@ -33,7 +33,8 @@ int Dispatcher::handleWith(JsonDoc& doc, const char* msg, size_t len, char* out,
       // A duplicate runs nothing; it is checked against the caller's authority as it is now, so withdrawn
       // authority is not bypassed by replaying an id. Roster or authority changes do not clear the cache.
       const OpEntry* dop = find(req.op);
-      if (dop && (!_auth || !_auth(_auth_user, *dop, req))) return writeResult(out, cap, id, ST_REFUSED, nullptr, nullptr);
+      if (dop && (!_auth || !_auth(_auth_user, *dop, req)))
+        return writeResult(out, cap, id, ST_REFUSED, nullptr, _deny ? _deny(_auth_user) : nullptr);
       if (l == ResultCache::EXPIRED) return writeResult(out, cap, id, ST_FAILED, nullptr, "result-expired");
       if (dl >= cap) return -1;
       memcpy(out, data, dl); out[dl] = 0;
@@ -45,7 +46,10 @@ int Dispatcher::handleWith(JsonDoc& doc, const char* msg, size_t len, char* out,
   if (st == ST_OK) {
     op = find(req.op);
     if (!op) st = ST_UNKNOWN_OP;
-    else if (!_auth || !_auth(_auth_user, *op, req)) st = ST_REFUSED;
+    else if (!_auth || !_auth(_auth_user, *op, req)) {
+      st = ST_REFUSED;
+      err = _deny ? _deny(_auth_user) : nullptr;
+    }
     else {
       JsonWriter w(out, cap);
       OpContext ctx = { &req, &doc, &w, nullptr, _handler_user };

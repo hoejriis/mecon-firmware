@@ -374,6 +374,23 @@ TEST(IfaceDispatch, RefusedMeansTheHandlerNeverRuns) {
   EXPECT_EQ(0, p.ran);
 }
 
+static const char* denyWhy(void*) { return "unauthenticated"; }
+
+TEST(IfaceDispatch, ARefusalCarriesTheDenyReasonWhenOneIsSet) {
+  Probe p; p.allow = false;
+  Dispatcher d(TABLE, NT, auth, &p, &p);
+  d.setDenyReason(denyWhy);
+  EXPECT_EQ(R"({"v":1,"id":"a","status":"refused","error":"unauthenticated"})", run(d, req("a", "write.ok")));
+  EXPECT_EQ(0, p.ran);
+  // a duplicate id that is no longer authorized says the same, and still runs nothing
+  ResultCache cache;
+  p.allow = true;
+  EXPECT_EQ(R"({"v":1,"id":"k","status":"ok","result":{"x":1}})", run(d, req("k", "write.ok"), &cache));
+  p.allow = false;
+  EXPECT_EQ(R"({"v":1,"id":"k","status":"refused","error":"unauthenticated"})", run(d, req("k", "write.ok"), &cache));
+  EXPECT_EQ(1, p.ran);
+}
+
 TEST(IfaceDispatch, NoAuthCallbackRefusesEverything) {
   Probe p;
   Dispatcher d(TABLE, 4, nullptr, nullptr, &p);
