@@ -138,6 +138,7 @@ def test_with_the_default_pin_management_is_refused_and_messaging_works(ether, n
     a = boot(nodes, "d1", DEFAULT, seed=11, ether_path=ether.path)
     ub = nodes("companion", "d2", seed=22, rtc=RTC, ether_path=ether.path).start()
     b = usb(ub)
+    assert usb(a).set_channel(1, "simchan", SECRET)[0] == 0     # management: over the cable, not the default-PIN link
     ba = a.connect_ble(DEFAULT)                                  # the default PIN pairs (the app can connect) ...
     ba.device_query()
     ba.app_start()
@@ -156,8 +157,8 @@ def test_with_the_default_pin_management_is_refused_and_messaging_works(ether, n
     ether.set_link("d1", "d2")
     assert ba.add_contact(b.pub_key, "bob")[0] == 0
     assert b.add_contact(ba.pub_key, "alice")[0] == 0
-    for c in (ba, b):
-        assert c.set_channel(1, "simchan", SECRET)[0] == 0
+    assert b.set_channel(1, "simchan", SECRET)[0] == 0
+    assert refused(ba.set_channel(2, "other", SECRET))
     assert ba.send_direct(b.pub_key, "hello over ble", RTC + 10)[0] == harness.RESP_SENT
     assert ba.send_channel(1, "chan from ble", RTC + 11)[0] == harness.RESP_OK
     got = b.sync_messages(timeout=60, want=2)

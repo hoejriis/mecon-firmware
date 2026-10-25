@@ -310,6 +310,8 @@ private:
   Cli::Context _cli_ctx;                       // the same caller as a context for the engine's gate; T_NONE until an adapter sets it
   bool _cli_refused = false;                   // the gate refused the last handleCommand()
   Cli::Context serialContext() const;
+  uint8_t frameGate(size_t len);
+  bool serialTrusted() const;
 #ifdef ENABLE_MECON_IFACE
   friend class MeconIface;
   MeconIface _iface;
