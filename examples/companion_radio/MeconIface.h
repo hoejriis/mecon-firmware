@@ -33,7 +33,8 @@ public:
 
   // Subscriptions (Streams.h, TELEMETRY.md): one set per transport, and one for the MQTT session.
   static const uint32_t STREAMS_PRODUCED = (1u << Iface::SID_HEALTH) | (1u << Iface::SID_RADIO) |
-                                           (1u << Iface::SID_POWER) | (1u << Iface::SID_RUNTIME);
+                                           (1u << Iface::SID_POWER) | (1u << Iface::SID_RUNTIME) |
+                                           (1u << Iface::SID_OBSERVATIONS);
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   void scheduleStream(int stream, uint32_t now) { _clock.scheduleNow(stream, now); }
 
@@ -74,6 +75,8 @@ private:
   SessionUpFn _ev_up = nullptr;
   Iface::StreamClock _clock;                // per stream per device: seq (design section 3) and pacing
   void streamTick(uint32_t now);
+  static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
+  Iface::ObsLimiter _obs;
   bool writeStream(int stream, Iface::JsonWriter& w);
   uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
   char _id_hex[33] = {0};

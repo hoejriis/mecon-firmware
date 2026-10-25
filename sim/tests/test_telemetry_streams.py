@@ -15,6 +15,7 @@ import mecon_schema  # noqa: E402
 
 RTC = 1792800000
 STREAMS = ["health", "radio", "power", "runtime"]
+EVENT_STREAMS = ["observations"]
 
 
 def companion(nodes, name):
@@ -59,7 +60,7 @@ def check(e, stream):
 def test_hello_lists_every_stream(nodes, make):
     n, c, i = make(nodes, "caps")
     caps = i.request("hello")["result"]["capabilities"]
-    for s in STREAMS:
+    for s in STREAMS + EVENT_STREAMS:
         assert "stream." + s in caps, caps
 
 
@@ -121,3 +122,46 @@ def test_a_new_subscription_after_a_stop_gets_an_event_at_once(nodes):
     check(first_event(i, "power"), "power")          # period 3600 s: the next one is an hour away
     assert i.request("sub.stop", {"stream": "power"})["status"] == "ok"
     check(first_event(i, "power", timeout=10), "power")
+
+
+def wait_event(i, stream, timeout):
+    end = time.time() + timeout
+    while time.time() < end:
+        m = i.read_message(1.0)
+        if m and m.get("ev") == stream:
+            return m
+    return None
+
+
+@pytest.mark.parametrize("kind", ["companion_standalone", "repeater"])
+def test_observations_carry_each_received_packet_as_heard(ether, nodes, kind):
+    """A Repeater's advert, heard by the subscribed node: the event carries exactly the bytes the channel carried."""
+    ether.set_link("obsrx", "obstx")
+    rx = nodes(kind, "obsrx", ether_path=ether.path, rtc=RTC).start()
+    tx = nodes("repeater", "obstx", ether_path=ether.path, seed=5, rtc=RTC).start()
+    assert ether.wait_tx("obstx", timeout=120), "no boot advert from the sender"   # a Companion sends none
+    assert ether.wait_quiet(3.0, timeout=120)
+    if kind == "repeater":
+        cli = CliClient(rx)
+        i = mecon_iface.ConsoleClient(cli.sock.sendall, mecon_iface.socket_lines(cli.sock))
+    else:
+        c = CompanionClient(rx)
+        c.app_start()
+        i = mecon_iface.IfaceClient(c._send, c._read_frame)
+    r = i.request("sub.start", {"stream": "observations", "lifetime_s": 120})
+    assert r["status"] == "ok" and r["result"]["period_s"] is None, r
+    sent = len(ether.tx_of("obstx"))
+    CliClient(tx).command("advert.zerohop")
+    e = wait_event(i, "observations", 60)
+    assert e is not None, "no observation"
+    d = check(e, "observations")
+    heard = [t for t in ether.tx_of("obstx")[sent:]]
+    assert heard, "the advert never went on the air"
+    assert d["raw"] in [t.data.hex() for t in heard], (d["raw"][:40], [t.data.hex()[:40] for t in heard])
+    assert d["len"] == len(bytes.fromhex(d["raw"])) and d["dropped"] == 0, d
+
+
+def test_an_event_stream_takes_no_period(nodes):
+    n, c, i = companion(nodes, "noper")
+    r = i.request("sub.start", {"stream": "observations", "period_s": 5})
+    assert r["status"] == "invalid" and r["error"] == "no-period", r

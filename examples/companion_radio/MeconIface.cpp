@@ -8,6 +8,7 @@
 #include <helpers/cli/CliRegistry.h>
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/Streams.h>
+#include <helpers/iface/Observe.h>
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -189,6 +190,32 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _mesh = mesh;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
+  observeSink().fn = onObserve;
+  observeSink().user = this;
+}
+
+// One received packet: an observations event to every transport subscribed, within the stream's rate.
+void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  bool any = m->_mqtt_subs.s[SID_OBSERVATIONS].active;
+  for (Link& l : m->_links) any = any || l.subs.s[SID_OBSERVATIONS].active;
+  if (!any) return;
+  const uint32_t now = millis();
+  if (!m->_obs.take(now)) return;
+  char* ev = static_cast<char*>(malloc(RESULT_MAX));
+  if (!ev) { m->_obs.dropped++; return; }
+  const uint32_t ts = m->_mesh->getRTCClock()->getCurrentTime();
+  const int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts >= 1704067200, ts, snr, rssi, raw, len,
+                                 m->_obs.dropped);
+  if (n > 0) {
+    m->_obs.dropped = 0;
+    for (Link& l : m->_links) {
+      if (!l.subs.s[SID_OBSERVATIONS].active || !m->ensureQueue(l)) continue;
+      l.q->push(OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
+    }
+    if (m->_mqtt_subs.s[SID_OBSERVATIONS].active && m->_ev_publish) m->_ev_publish("observations", ev, (size_t)n);
+  }
+  free(ev);
 }
 
 MeconIface::Link* MeconIface::linkFor(const BaseSerialInterface* src, bool create) {

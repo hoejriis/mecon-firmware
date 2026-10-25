@@ -38,7 +38,7 @@ public:
     void (*radio_counts)(void* user, RadioCounts* out);
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
-                                           (1u << SID_RUNTIME);
+                                           (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS);
 
   void begin(const Host& host, const uint8_t device_id[16], uint32_t epoch);
 
@@ -76,6 +76,9 @@ private:
   SubSet _subs;
   StreamClock _clock;
   bool writeStream(int stream, JsonWriter& w);
+  static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
+  ObsLimiter _obs;
+  Print* _out = nullptr;   // the console, for events raised outside loop()
 };
 
 }  // namespace Iface

@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/sub.start.result.json",
   "title": "Result of sub.start (v1.0)",
-  "description": "Request args: {\"stream\": \"health\", \"period_s\": 5..3600 (default 60), \"lifetime_s\": 10..600 (default 300)}. The subscription belongs to the transport the request came on (an MQTT one lapses with the session); sending sub.start again renews it. The stream runs at the shortest period any subscriber asked for, and the first event follows at once. An unknown stream is invalid with error unknown-stream.",
+  "description": "Request args: {\"stream\", \"period_s\" within the stream's bounds (TELEMETRY.md section 2), \"lifetime_s\": 10..600 (default 300)}. The subscription belongs to the transport the request came on (an MQTT one lapses with the session); sending sub.start again renews it. A periodic stream runs at the shortest period any subscriber asked for, and the first event follows at once. An event stream (observations) has no period: period_s is refused with no-period and reported as null. An unknown stream is invalid with error unknown-stream.",
   "type": "object",
   "required": ["stream", "period_s", "lifetime_s"],
   "properties": {
-    "stream": {"type": "string", "enum": ["health", "radio", "power", "runtime"]},
-    "period_s": {"type": "integer", "minimum": 5, "maximum": 3600},
+    "stream": {"type": "string", "enum": ["health", "radio", "power", "runtime", "observations"]},
+    "period_s": {"type": ["integer", "null"], "minimum": 5, "maximum": 3600},
     "lifetime_s": {"type": "integer", "minimum": 10, "maximum": 600}
   }
 }

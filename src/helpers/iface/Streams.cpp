@@ -1,6 +1,7 @@
 #include "Streams.h"
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <Dispatcher.h>
 #include <MeshCore.h>
@@ -14,6 +15,7 @@ const StreamDef STREAMS[STREAM_COUNT] = {
   {"radio", 5, 3600, 60},
   {"power", 30, 3600, 300},
   {"runtime", 60, 3600, 300},
+  {"observations", 0, 0, 0},
 };
 
 int streamIndex(const char* name, size_t len) {
@@ -41,17 +43,18 @@ Status subStart(OpContext& c, SubSet* set, uint32_t supported, uint32_t now, int
   const StreamDef& def = STREAMS[s];
   int64_t period = def.default_s, life = LIFE_DEFAULT_S;
   const int pt = jsonFind(*c.doc, c.req->args, "period_s"), lt = jsonFind(*c.doc, c.req->args, "lifetime_s");
+  if (pt >= 0 && def.events()) { c.error = "no-period"; return ST_INVALID; }   // an event stream has no period
   if (pt >= 0 && !jsonGetInt(*c.doc, pt, def.min_s, def.max_s, &period)) return ST_INVALID;
   if (lt >= 0 && !jsonGetInt(*c.doc, lt, LIFE_MIN_S, LIFE_MAX_S, &life)) return ST_INVALID;
   if (!set) { c.error = "no-transport"; return ST_FAILED; }
   Sub& sub = set->s[s];
-  if (!sub.active) *started = s;   // a new subscriber gets the current state at once
+  if (!sub.active && !def.events()) *started = s;   // a new subscriber gets the current state at once
   sub.active = true;
   sub.period_ms = (uint32_t)period * 1000;
   sub.until = now + (uint32_t)life * 1000;
   JsonWriter& w = *c.out;
   w.key("stream"); w.str(def.name);
-  w.key("period_s"); w.num(period);
+  w.key("period_s"); if (def.events()) w.null(); else w.num(period);
   w.key("lifetime_s"); w.num(life);
   return ST_OK;
 }
@@ -80,6 +83,36 @@ uint32_t StreamClock::due(SubSet* const* sets, int nsets, uint32_t now) {
     mask |= 1u << s;
   }
   return mask;
+}
+
+bool ObsLimiter::take(uint32_t now) {
+  const uint32_t refill = (now - last_ms) * OBS_RATE / 1000;
+  if (refill) {
+    tokens = tokens + refill > OBS_RATE ? OBS_RATE : tokens + refill;
+    last_ms = now;
+  }
+  if (!tokens) { dropped++; return false; }
+  tokens--;
+  return true;
+}
+
+int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts, float snr,
+                     float rssi, const uint8_t* raw, int len, uint32_t dropped) {
+  if (len < 0 || len > 255) return -1;
+  // Built on the heap: this runs in the radio's receive path, where the loop task's stack is short.
+  const size_t data_cap = 2 * 255 + 128;
+  char* data = static_cast<char*>(malloc(data_cap));
+  if (!data) return -1;
+  static const char H[] = "0123456789abcdef";
+  int n = snprintf(data, data_cap, "{\"raw\":\"");
+  for (int i = 0; i < len; i++) { data[n++] = H[raw[i] >> 4]; data[n++] = H[raw[i] & 15]; }
+  n += snprintf(data + n, data_cap - n, "\",\"len\":%d,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}", len, (int)rssi,
+                (double)snr, (unsigned long)dropped);
+  int out = -1;
+  if (n > 0 && (size_t)n < data_cap)
+    out = writeEvent(ev, cap, STREAMS[SID_OBSERVATIONS].name, ++clock.seq[SID_OBSERVATIONS], epoch, ts_known, ts, data);
+  free(data);
+  return out;
 }
 
 void writeStreamCapabilities(JsonWriter& w, uint32_t supported) {

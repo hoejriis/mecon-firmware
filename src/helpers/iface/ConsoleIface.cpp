@@ -8,6 +8,7 @@
 #include "helpers/Posture.h"
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/cli/CliRegistry.h"
+#include "Observe.h"
 
 namespace Iface {
 
@@ -118,6 +119,26 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _host = host;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
+  observeSink().fn = onObserve;
+  observeSink().user = this;
+}
+
+// One received packet, as a console line, within the stream's rate. Not while a request is being typed: a line never
+// lands inside another, so that packet counts as dropped.
+void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (!s->_subs.s[SID_OBSERVATIONS].active || !s->_out) return;
+  if (s->_collecting) { s->_obs.dropped++; return; }
+  if (!s->_obs.take(millis())) return;
+  static const size_t CAP = 1024;
+  char* ev = static_cast<char*>(malloc(CAP));
+  if (!ev) { s->_obs.dropped++; return; }
+  const int n = writeObservation(ev, CAP, s->_clock, s->_epoch, false, 0, snr, rssi, raw, len, s->_obs.dropped);
+  if (n > 0) {
+    s->_obs.dropped = 0;
+    s->printLine(*s->_out, ev, (size_t)n);
+  }
+  free(ev);
 }
 
 ConfigHost ConsoleIface::configHost() { return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS}; }
@@ -216,6 +237,7 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
 }
 
 void ConsoleIface::loop(uint32_t now, Print& out) {
+  _out = &out;
   if (_collecting) return;   // an event never lands in the middle of a request being typed
   SubSet* sets[1] = { &_subs };
   const uint32_t due = _clock.due(sets, 1, now);

@@ -11,11 +11,12 @@ namespace mesh { class Dispatcher; class Radio; class MainBoard; }
 
 namespace Iface {
 
-enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, STREAM_COUNT };
+enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, STREAM_COUNT };
 
 struct StreamDef {
   const char* name;
-  uint16_t min_s, max_s, default_s;   // period bounds and default, seconds
+  uint16_t min_s, max_s, default_s;   // period bounds and default, seconds; all 0 for an event stream (no period)
+  bool events() const { return default_s == 0; }
 };
 extern const StreamDef STREAMS[STREAM_COUNT];
 int streamIndex(const char* name, size_t len);   // -1 when there is no such stream
@@ -47,6 +48,19 @@ struct StreamClock {
   uint32_t due(SubSet* const* sets, int nsets, uint32_t now);
   void scheduleNow(int stream, uint32_t now) { if (stream >= 0) next[stream] = now; }
 };
+
+// The observations stream: at most OBS_RATE events a second (a burst of OBS_RATE), then dropped and counted; the
+// next event that goes out says how many were dropped before it.
+const uint32_t OBS_RATE = 10;
+struct ObsLimiter {
+  uint32_t tokens = OBS_RATE;
+  uint32_t last_ms = 0;
+  uint32_t dropped = 0;
+  bool take(uint32_t now);
+};
+// Writes one observations event envelope (seq advanced in clock) into ev; its length, or -1 when it does not fit.
+int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts, float snr,
+                     float rssi, const uint8_t* raw, int len, uint32_t dropped);
 
 // The capability names of the streams in supported ("stream.health", ...), for hello.
 void writeStreamCapabilities(JsonWriter& w, uint32_t supported);
