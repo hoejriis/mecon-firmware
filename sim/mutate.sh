@@ -832,7 +832,9 @@ mutate config_radio_format_unchecked src/helpers/iface/IfaceConfig.cpp '      if
 mutate iface_cache_entry_too_small_for_an_apply src/helpers/iface/IfaceCache.h '#define IFACE_CACHE_ENTRY_CAP 384' '#define IFACE_CACHE_ENTRY_CAP 128' unit:test_iface_config
 # the Repeater and Room server console interface, and the per-role key table
 mutate config_onoff_word_dropped src/helpers/iface/IfaceConfig.cpp '      const bool onoff = (k.flags & KF_ONOFF) != 0;' '      const bool onoff = false;' unit:test_iface_config
-mutate config_server_table_ignored src/helpers/iface/IfaceConfig.cpp '  *n = h->keys ? h->nkeys : NKEYS;' '  *n = NKEYS; (void)h;' unit:test_iface_config
+mutate config_server_table_ignored src/helpers/iface/IfaceConfig.cpp '  *n = h->keys ? h->nkeys : NKEYS;
+  return h->keys ? h->keys : KEYS;' '  *n = NKEYS; (void)h;
+  return KEYS;' unit:test_iface_config
 mutate config_latitude_unbounded src/helpers/iface/IfaceConfig.cpp '    const double lim = lat ? 90 : 180;' '    const double lim = 180;' unit:test_iface_config
 mutate console_prefix_not_handed_over examples/simple_repeater/main.cpp '      the_iface.startLine();' '      (void)0;' sim/tests/test_device_interface_server.py::test_hello_names_the_role
 mutate console_line_unbounded src/helpers/iface/ConsoleIface.cpp '  if (_len >= MAX_LINE) { _overflow = true; return; }' '  if (_len >= MAX_LINE + 4000) { _overflow = true; return; }' sim/tests/test_device_interface_server.py::test_a_line_too_long_is_refused_not_truncated
