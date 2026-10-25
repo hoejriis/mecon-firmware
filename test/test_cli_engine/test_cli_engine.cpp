@@ -587,6 +587,95 @@ TEST(MeconCli, CheckIsADryRunOfTheTable) {
   EXPECT_FALSE(handleMecon("get mecon.cli", Context(T_USB, A_CABLE, 0), ROLE_COMPANION, r, sizeof(r)));
 }
 
+// ---- once the device holds a Deployment record (AUTHORITY.md section 9): Context.enrolled
+
+static Context enrolledCtx(uint8_t t, uint8_t a, uint8_t posture, bool mgmt = false) {
+  Context c(t, a, posture, mgmt);
+  c.enrolled = true;
+  return c;
+}
+
+TEST(Enrolled, AnUnsignedCallerKeepsReadsAndRebootAndLosesEveryOtherClass) {
+  struct Caller { Context plain; const char* name; };
+  const Caller callers[] = {
+    {Context(T_USB, A_CABLE, 0), "cable"},
+    {Context(T_BLE, A_PAIRED_PIN, 0), "paired BLE"},
+    {Context(T_LORA, A_ADMIN, 0), "remote admin"},
+    {Context(T_LORA, A_CONTACT_FLAG, 0), "flagged contact"},
+    {Context(T_MQTT, A_TLS_VERIFIED, 0, true), "MQTT verified, managed"},
+    {Context(T_NETCON, A_NETCON_ADMIN, 0), "Ethernet admin"},
+  };
+  for (const Caller& k : callers) {
+    Context e = k.plain;
+    e.enrolled = true;
+    for (uint8_t cls = 0; cls < C_COUNT; cls++) {
+      SCOPED_TRACE(std::string(k.name) + " class " + std::to_string(cls));
+      const Verdict before = decide(k.plain, cls), after = decide(e, cls);
+      if (cls == C_READ || cls == C_REBOOT) {
+        EXPECT_EQ(after.reason, before.reason) << "reads and reboot are the table's, enrolled or not";
+      } else if (cls == C_DESTRUCTIVE && principalOf(e) == P_CABLE) {
+        EXPECT_EQ(after.reason, before.reason) << "the cable keeps erase and factory reset";
+        EXPECT_TRUE(after.allow);
+      } else if (before.allow) {
+        EXPECT_FALSE(after.allow);
+        EXPECT_EQ(after.reason, R_ENROLLED);
+      } else {
+        EXPECT_EQ(after.reason, before.reason) << "a cell that already refused keeps its own reason";
+      }
+    }
+  }
+}
+
+TEST(Enrolled, TheFlagIsIgnoredForASignedCallerAndNeverLoosensAnything) {
+  for (uint8_t t = T_NONE; t <= T_NETCON; t++)
+    for (uint8_t a = A_NONE; a <= A_SIGNED; a++)
+      for (uint8_t posture : {(uint8_t)0, (uint8_t)1})
+        for (uint8_t cls = 0; cls < C_COUNT; cls++) {
+          const Context plain(t, a, posture);
+          Context e = plain;
+          e.enrolled = true;
+          const Verdict v0 = decide(plain, cls), v1 = decide(e, cls);
+          if (principalOf(plain) == P_SIGNED) EXPECT_EQ(v1.reason, v0.reason);
+          if (!v0.allow) EXPECT_FALSE(v1.allow) << (int)t << "/" << (int)a << "/" << (int)cls;
+        }
+}
+
+TEST(Enrolled, TheCableIsTheOnlyUnsignedCallerThatKeepsTheDestructiveClass) {
+  for (uint8_t posture : {(uint8_t)0, (uint8_t)1}) {
+    EXPECT_TRUE(decide(enrolledCtx(T_USB, A_CABLE, posture), C_DESTRUCTIVE).allow);
+    EXPECT_FALSE(decide(enrolledCtx(T_BLE, A_PAIRED_PIN, posture), C_DESTRUCTIVE).allow) << "no BLE factory reset";
+  }
+  EXPECT_EQ(decide(enrolledCtx(T_BLE, A_PAIRED_PIN, 0), C_DESTRUCTIVE).reason, R_ENROLLED);
+  EXPECT_TRUE(decide(Context(T_BLE, A_PAIRED_PIN, 0), C_DESTRUCTIVE).allow) << "standalone: unchanged";
+}
+
+TEST(Enrolled, AUnsignedCommandLineIsRefusedWithAnExplicitReplyAndAnAuditEntry) {
+  char r[160];
+  Posture::audit().clear();
+  Outcome o;
+  EXPECT_TRUE(gate("set name x", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+  EXPECT_STREQ(r, "ERR: this device belongs to a Deployment; the change must be signed");
+  EXPECT_EQ(Posture::audit().n, 1);
+  EXPECT_EQ(Posture::audit().e[0].caller, Posture::CALLER_CABLE);
+  for (const char* line : {"set prv.key 00", "set posture hardened", "set mqtt.profile 0 manage on"}) {
+    EXPECT_TRUE(gate(line, enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o)) << line;
+    EXPECT_FALSE(o.allowed) << line;
+  }
+  EXPECT_FALSE(gate("get name", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o)) << "reads run";
+  EXPECT_TRUE(o.allowed);
+  EXPECT_FALSE(gate("reboot", enrolledCtx(T_BLE, A_PAIRED_PIN, 0), ROLE_COMPANION, 5, r, sizeof(r), &o)) << "reboot runs";
+  EXPECT_FALSE(gate("set name x", Context(T_USB, A_SIGNED, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+}
+
+TEST(Enrolled, MeconCanReportsTheVerdict) {
+  char r[160];
+  handleMecon("get mecon.cli.check set name x", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, r, sizeof(r));
+  EXPECT_STREQ(r, "> class=write enrolled-unsigned");
+  handleMecon("get mecon.cli.check get name", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, r, sizeof(r));
+  EXPECT_STREQ(r, "> class=read allowed");
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

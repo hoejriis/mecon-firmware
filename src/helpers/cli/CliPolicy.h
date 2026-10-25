@@ -75,7 +75,8 @@ enum Reason : uint8_t {
   R_MQTT_UNVERIFIED,    // the broker session is not TLS-verified
   R_MQTT_READONLY,      // Hardened and the broker profile is not flagged for management
   R_NEEDS_FLAG,         // table-internal: allowed when the broker profile is flagged for management
-  R_NETCON_OFF          // the Ethernet console is off in Hardened
+  R_NETCON_OFF,         // the Ethernet console is off in Hardened
+  R_ENROLLED            // the device holds a Deployment record: an unsigned caller may not change it (AUTHORITY.md section 9)
 };
 
 // Who the context resolves to: one row of the table.
@@ -101,6 +102,9 @@ struct Context {
   bool remote = false;     // over the air or over the broker
   uint8_t posture = 0;     // Posture::NORMAL (0) or anything else = Hardened
   bool mgmt = false;       // MQTT: the broker profile in use is flagged for management
+  // The device holds a Deployment record (healthy or corrupt). Set by the one place that gates a command line
+  // (MyMesh::handleCommand) and for the factory-reset frame; a context built anywhere else leaves it false.
+  bool enrolled = false;
 
   Context() { }
   Context(uint8_t t, uint8_t a, uint8_t posture_, bool mgmt_ = false)
@@ -202,6 +206,13 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   Reason r = tableCell(p, c.posture != 0, cls);
   if (r == R_NEEDS_FLAG) r = c.mgmt ? R_ALLOW : R_MQTT_READONLY;
   if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;   // lowering protection: a cable
+  // Once the device holds a Deployment record, only a member's signature changes it, or someone with the cable for the
+  // recovery operations (AUTHORITY.md sections 9 and 11). So an unsigned caller keeps reads and reboot, and every other
+  // class is refused whatever the table says for this transport; only the cable keeps the destructive class (erase,
+  // factory reset). Fails closed: anything that is not a read or reboot counts, so a new class is refused until decided.
+  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && cls != C_REBOOT &&
+      !(p == P_CABLE && cls == C_DESTRUCTIVE))
+    r = R_ENROLLED;
   Verdict v;
   v.allow = r == R_ALLOW;
   v.reason = r;

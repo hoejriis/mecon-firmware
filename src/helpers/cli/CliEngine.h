@@ -36,6 +36,7 @@ inline const char* refusalText(uint8_t reason, const Resolved& r) {
     case R_MQTT_UNVERIFIED: return "ERR: management needs a TLS-verified broker";
     case R_MQTT_READONLY: return "ERR: management is off for this broker profile";
     case R_NETCON_OFF: return "ERR: the Ethernet console is off in hardened posture";
+    case R_ENROLLED: return "ERR: this device belongs to a Deployment; the change must be signed";
     default: return "ERR: not permitted";
   }
 }
