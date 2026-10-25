@@ -1,5 +1,13 @@
 # Supported hardware and roles
 
+## Verification policy — owner decision, 25 October 2026
+
+Only four test boards are available: **Heltec V3, Heltec V4, Seeed Wio Tracker L1 and SenseCAP T1000-E**. Public firmware must be hardware-verified on these boards for their applicable roles, transports and advertised capabilities. Availability does not mean a check has passed; the evidence matrix records actual board, role, commit, test and result. T1000-E remains compile-only until #1 supplies hardware evidence.
+
+All other repository board environments receive **software verification only**: compilation, size checks where configured, and applicable unit/simulation/conformance tests. Publish the checks actually run and their results, including exclusions and known upstream failures. A build pass proves compilation, not runtime behaviour; a shared-stack test on another board is not hardware evidence for this board. No additional board purchase or unavailable-board UAT is required to close software-only work.
+
+Public documentation must distinguish **hardware verified**, **software verified (with checks specified)**, **failed**, and **not verified**, at board/role/feature level. Never silently promote a board or all its features from partial evidence. The four-board hardware gate applies to applicable capabilities as they are implemented, not unsupported features. This policy supersedes older requests to wait for hardware on other boards. Release timing remains separate.
+
 > **Public availability:** this repository publishes source-only pre-releases (0.1.x) with no binaries. Hardware verification has started on a Heltec V3, a Heltec V4 and a Wio Tracker L1: what was checked on which board and build, and what is still only compiled, is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). No target has yet passed the full hardware gate below. The 16 Heltec V3/V4, T1000-E and Wio Tracker L1 environments (Companion, Repeater, Room server and, on the Heltec boards, the standalone Companion) compile on every pull request, and compiling is not support. Read the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for the private beta versus public target distinction. Every table below describes the intended MECON-stage target, not accepted builds.
 
 The first public release planned to serve a MECON fleet is **mecon-firmware 0.8.0** (public releases from 0.1.0 are standalone), built on released **MeshCore 1.18.0 from upstream `main`**. The public line (from 0.1.0) and the private 0.9x reference line are separate lines; their version numbers do not order across each other. A target is called supported only after its derived build passes its real-hardware gate.
@@ -64,7 +72,7 @@ The Wio Tracker L1 (nRF52840) runs the MECON RF repeater. It has no Wi-Fi, BLE o
 
 ## Other boards
 
-Roughly seventy further boards are built in CI and classified "software proven": they compile, and nothing more is claimed. Compiled is not supported; a board enters the tables above only after a real-hardware test.
+All other board environments are software-verification targets under the policy above. Use the current CI matrix for the environment count and actual results; describe build-only evidence as such. No hardware verification is claimed for these boards.
 
 ## Device UI / attention
 
