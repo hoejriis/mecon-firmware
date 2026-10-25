@@ -70,6 +70,8 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | ESP-IDF 5.3: battery reading | 4,122 mV (4,139 mV on 2.0.17 the same hour) | 2026-10-24, bd138cf9 |
 | ESP-IDF 5.3: loop task stack (standalone) | least free since boot (`loop_stack_free`): BLE idle 5,516 B, after a PIN pairing and CLI over BLE 5,500 B, Wi-Fi + TLS MQTT 5,516 B (2.0.17: 5,520 / 5,488 B in BLE; its Wi-Fi reading was not captured) | 2026-10-24, 8c192a4a |
 | Device interface (standalone) | every request fixture plus the health stream, 24 of 24 over each transport: USB, BLE (two runs) and MQTT through a TLS broker with a CA anchor (`mecon/<device_id>/req`, `resp`, `ev/health`) | 2026-10-24, 6f82504c |
+| Device interface (Repeater build, USB console) | every request fixture for the Repeater role plus the health stream, `mecon> ` lines through `tools/mecon_iface_hw.py console`: 24 of 24, after the receive-buffer fix (before it, lines over about 160 bytes were lost over the native USB) | 2026-10-25, 866ece59 |
+| Device interface (Room server build, USB console) | the same suite for the Room server role: 24 of 24 | 2026-10-25, 866ece59 |
 
 ## Seeed Wio Tracker L1 (wiotest)
 
