@@ -17,7 +17,7 @@ The standalone Normal and Hardened postures are implemented, without a Deploymen
 - No management transport grants an unrestricted shell, arbitrary execution surface or raw secret-store access merely because it is authenticated.
 - Security posture controls local exposure; it does not redefine who has Deployment authority.
 
-The canonical Backend-side Deployment authority contract is maintained by MeshContinuum (`DEPLOYMENT_AUTHORITY_CONTRACT.md`). Firmware implementations must consume that contract rather than inventing transport-specific trust rules.
+The Deployment authority layer is the public [Management authority contract](contract/AUTHORITY.md) in this repository. Firmware and managers implement that contract rather than inventing transport-specific trust rules. *(Corrected 2026-10-25: this paragraph earlier named a Backend-side contract maintained by MeshContinuum. By owner decision the generic contract is public here, and conformance with any Backend's own contract is checked under #118.)*
 
 ## Normal and Hardened posture
 

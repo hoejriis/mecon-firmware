@@ -15,6 +15,7 @@ The contract set is intended to be **implementation-complete**: a firmware devel
 - [Direct USB/BLE protocol](DIRECT_READER_PROTOCOL.md)
 - [Device settings](DEVICE_SETTINGS.md)
 - [Security and authority](SECURITY_AND_AUTHORITY.md)
+- [Management authority contract v1](AUTHORITY.md): Deployment, authority sets, signed requests and events, replay, record, reset scopes (design under review)
 - [Reference firmware today (legacy wire)](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line): what the 0.9x firmware speaks now; informative, not normative
 
 The complete functional scope is enumerated in [`../FIRMWARE_IMPLEMENTATION_SPEC.md`](../FIRMWARE_IMPLEMENTATION_SPEC.md). Every device-visible item there must either be specified in this contract set or explicitly identified as a native MeshCore 1.18 operation that MECON reuses unchanged.
