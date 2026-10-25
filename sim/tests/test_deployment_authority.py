@@ -6,12 +6,14 @@ firmware's own verifier. The reference signer is itself checked against the vect
 import base64
 import json
 import os
+import socket
 import sys
 import time
 
 import pytest
 from sim import ed25519_ref, mqtt_broker
-from sim.harness import CompanionClient, MqttEnv, WifiEnv
+from sim import harness
+from sim.harness import CompanionClient, MqttEnv, WifiEnv, audit_file
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
@@ -158,7 +160,9 @@ def test_a_signed_config_apply_runs_and_a_resend_runs_nothing(nodes):
     r = d.send(w)
     assert r["status"] == "ok" and r["result"]["complete"], r
     assert d.name() == "> Signed1"
-    assert d.c.cli("set name Meanwhile") == "OK"
+    # an unsigned CLI write is refused once enrolled (contract section 9), so the change in between comes from the app's own
+    # native frame, which the table does not gate for the cable
+    assert d.c.request(bytes([8]) + b"Meanwhile")[0] == 0
     again = d.send(w)
     assert again == r, "the same bytes get the stored result"
     assert d.name() == "> Meanwhile", "and run nothing"
@@ -415,3 +419,350 @@ def test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after(nodes, t
     assert len(h["channel_nonce"]) == 32 and h["channel_nonce"] != d.nonce()
     r = b.iface_request(dev, wrap(d.node_key, "identity.key.export", job=2, nonce=d.nonce()))
     assert r["error"] == "bad_channel_nonce", "a nonce issued on USB is no good over MQTT: %s" % r
+
+
+# ------------------------------------------------------------------ the provisioned marker, reset, and the recovery paths
+# (contract sections 4, 9 and 11)
+
+def marker_path(d):
+    return d.n.dir.rstrip("/") + ".prov"   # beside the data directory, not inside it
+
+
+def record_files(d):
+    return [f for f in ("mecon_dep_a", "mecon_dep_b", "mecon_depm_a", "mecon_depm_b") if os.path.exists(os.path.join(d.n.dir, f))]
+
+
+def wreck_record(d):
+    """Both copies of the record damaged (not removed), the way a failing flash would leave them; the node is down."""
+    for f in ("mecon_dep_a", "mecon_dep_b"):
+        p = os.path.join(d.n.dir, f)
+        if os.path.exists(p):
+            open(p, "wb").write(b"\x00garbage")
+
+
+def lose_record(d):
+    """Both copies of the record gone, the node down: a file system that was formatted, or files deleted by hand."""
+    for f in ("mecon_dep_a", "mecon_dep_b", "mecon_depm_a", "mecon_depm_b"):
+        p = os.path.join(d.n.dir, f)
+        if os.path.exists(p):
+            os.remove(p)
+
+
+def revive(d):
+    d.n.start()
+    d.attach()
+
+
+def wait_audit(node, want, secs=8):
+    """The persisted audit entries (oldest first) once one equals `want` = (event, caller, what), else what was seen."""
+    end = time.time() + secs
+    seen = None
+    while time.time() < end:
+        seen = audit_file(node)
+        if seen and any((e[1], e[2], e[3]) == want for e in seen):
+            return seen
+        time.sleep(0.3)
+    return seen
+
+
+def test_the_provisioned_marker_makes_lost_files_corrupt_not_absent(nodes):
+    d = boot(nodes, "mk")
+    assert not os.path.exists(marker_path(d)), "a standalone device has no marker"
+    assert d.provision()["status"] == "ok"
+    assert os.path.exists(marker_path(d)), "written at the first provisioning, beside the data directory"
+    assert not os.path.exists(os.path.join(d.n.dir, "prov")), "and not inside the file system"
+    d.n.stop()
+    lose_record(d)
+    assert record_files(d) == []
+    revive(d)
+    assert d.i.request("deployment.get")["result"] == {"state": "corrupt"}, "the marker keeps first use closed"
+    r = d.provision()
+    assert r["status"] == "refused" and r["error"] == "deployment_record_corrupt", "no unsigned first provisioning: %s" % r
+    assert d.i.request("status.get")["result"]["deployment"]["state"] == "corrupt"
+    assert d.send(wrap(d.node_key, "config.apply", apply_name("M"), job=1))["error"] == "deployment_record_corrupt"
+
+
+def test_without_the_marker_a_device_with_no_files_is_a_new_device(nodes):
+    d = boot(nodes, "mk2")
+    d.n.stop()
+    open(marker_path(d), "wb").close()   # control: the marker alone is what makes the difference
+    revive(d)
+    assert d.i.request("deployment.get")["result"] == {"state": "corrupt"}
+    d.n.stop()
+    os.remove(marker_path(d))
+    revive(d)
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}
+    assert d.provision()["status"] == "ok"
+
+
+def test_a_platform_with_no_marker_store_never_provisions_unsigned(nodes):
+    d = boot(nodes, "mk3")
+    d.n.stop()
+    open(marker_path(d) + ".unsupported", "wb").close()   # the simulated board behaving like an nRF52 build
+    revive(d)
+    r = d.provision()
+    assert r["status"] == "refused" and r["error"] == "unsupported", r
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}, "nothing was written"
+    assert not os.path.exists(marker_path(d)) and record_files(d) == []
+
+
+def test_a_signed_reset_over_usb_unenrols_and_keeps_the_rest(nodes):
+    d = boot(nodes, "rs")
+    assert d.c.cli("set name Kept") == "OK"
+    key = d.node_key
+    dev_id = d.i.request("hello")["result"]["device_id"]
+    assert d.provision()["status"] == "ok"
+    assert d.send(wrap(d.node_key, "config.apply", apply_name("Kept2"), job=1))["status"] == "ok"
+    assert set(record_files(d)) >= {"mecon_dep_a", "mecon_depm_a"}
+    r = d.send(wrap(d.node_key, "deployment.reset", job=2))
+    assert r["status"] == "ok", r
+    assert r["result"]["state"] == "none"
+    assert r["result"]["removed"] == ["record", "marks", "marker"], r
+    assert r["result"]["kept"] == ["node_key", "device_id", "configuration", "contacts", "channels"]
+    assert record_files(d) == [] and not os.path.exists(marker_path(d)), "record, marks and marker are gone"
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}
+    assert "channel_nonce" not in d.i.request("hello")["result"], "a device with no Deployment again"
+    d.reboot()
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}, "and stays so"
+    assert d.node_key == key and d.i.request("hello")["result"]["device_id"] == dev_id, "node key and device_id kept"
+    assert d.name() == "> Kept2", "configuration kept"
+    assert d.provision()["status"] == "ok", "first use is open again, and needs the cable"
+    # the old signed bytes are not a way back in
+    again = d.send(wrap(d.node_key, "deployment.reset", job=2))
+    assert again["status"] == "ok" or again["error"] in ("duplicate", "replay"), again
+
+
+def test_an_unsigned_reset_of_a_healthy_record_is_refused_even_over_the_cable(nodes):
+    d = boot(nodes, "ru")
+    d.provision()
+    r = d.i.request("deployment.reset")
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    assert d.i.request("deployment.get")["result"]["state"] == "provisioned"
+    assert os.path.exists(marker_path(d)) and "mecon_dep_a" in record_files(d) + ["mecon_dep_a"]
+    assert d.i.request("deployment.get")["result"]["authority_revision"] == 1
+
+
+def test_an_unsigned_reset_over_the_cable_recovers_a_corrupt_record(nodes):
+    d = boot(nodes, "rc")
+    d.c.cli("set name Mine")
+    d.provision()
+    d.n.stop()
+    wreck_record(d)
+    revive(d)
+    assert d.i.request("deployment.get")["result"] == {"state": "corrupt"}
+    r = d.i.request("deployment.reset")
+    assert r["status"] == "ok" and "record" in r["result"]["removed"] and "marker" in r["result"]["removed"], r
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}
+    assert record_files(d) == [] and not os.path.exists(marker_path(d))
+    assert d.name() == "> Mine"
+    assert d.provision()["status"] == "ok"
+    # a reset of a device with nothing to reset says so
+    d.send(wrap(d.node_key, "deployment.reset", job=1))
+    assert d.i.request("deployment.reset")["error"] == "not_enrolled"
+
+
+def test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_waits_for_local_unlock(nodes):
+    d = boot(nodes, "rh")
+    assert d.c.cli("set posture hardened") == "OK - posture hardened"
+    d.provision()
+    r = d.send(wrap(d.node_key, "deployment.reset", job=1))
+    assert r["status"] == "refused" and r["error"] == "hardened", r
+    assert d.i.request("deployment.get")["result"]["state"] == "provisioned"
+    d.n.stop()
+    wreck_record(d)
+    revive(d)
+    r = d.i.request("deployment.reset")
+    assert r["status"] == "refused" and r["error"] == "not_supported_yet", r
+    assert d.i.request("deployment.get")["result"] == {"state": "corrupt"}
+    assert os.path.exists(marker_path(d))
+
+
+def test_a_factory_reset_over_the_cable_clears_the_marker_and_the_record(nodes):
+    d = boot(nodes, "fc")
+    d.provision()
+    assert os.path.exists(marker_path(d))
+    d.c._send(bytes([harness.CMD_FACTORY_RESET]) + b"reset")   # the cable's reset is unchanged by enrolment
+    assert d.n.wait_exit(10) == 75
+    assert not os.path.exists(marker_path(d)), "the factory reset clears the marker"
+    revive(d)
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}
+    assert d.provision()["status"] == "ok"
+
+
+PIN = 424242
+
+
+def test_a_ble_factory_reset_is_refused_once_enrolled_and_audited(nodes):
+    n = nodes("companion_standalone", "fb", seed=33, rtc=RTC).start()
+    u = CompanionClient(n)
+    u.device_query()
+    u.app_start()
+    assert u.cli("set pin %d" % PIN).startswith("> pin is now")
+    u.close()
+    n.restart()
+    d = Dev(n)
+    b = n.connect_ble(PIN)
+    b.app_start()
+    # control: before enrolment the same frame over the same link resets the device (test_companion_ble)
+    assert d.provision()["status"] == "ok"
+    f = b.request(bytes([harness.CMD_FACTORY_RESET]) + b"reset")
+    assert f[0] == harness.RESP_ERR and f[1] == harness.ERR_NOT_PERMITTED, f
+    assert n.proc.poll() is None, "the device did not reset"
+    assert d.i.request("deployment.get")["result"]["state"] == "provisioned"
+    assert os.path.exists(marker_path(d)) and "mecon_dep_a" in record_files(d)
+    seen = wait_audit(n, (2, 2, 5))   # refused / ble / factory-reset
+    assert seen and any((e[1], e[2], e[3]) == (2, 2, 5) for e in seen), seen
+    b.close()
+
+
+def test_a_ble_factory_reset_still_works_on_a_device_with_no_record(nodes):
+    n = nodes("companion_standalone", "fb2", seed=34, rtc=RTC).start()
+    u = CompanionClient(n)
+    u.device_query()
+    u.app_start()
+    assert u.cli("set pin %d" % PIN).startswith("> pin is now")
+    u.close()
+    n.restart()
+    b = n.connect_ble(PIN)
+    b.app_start()
+    b._send(bytes([harness.CMD_FACTORY_RESET]) + b"reset")
+    assert n.wait_exit(10) == 75
+
+
+def rescue(node, command, until, timeout=25):
+    """The rescue console: a long press in the first 8 s of the UI opens it on the serial port; returns what `command`
+    printed up to the text `until`."""
+    s = node.connect()
+    s.settimeout(0.3)
+    node.ui.press("long")
+    buf = b""
+
+    def read_until(marker, secs):
+        nonlocal buf
+        end = time.time() + secs
+        while time.time() < end and marker not in buf:
+            try:
+                got = s.recv(4096)
+            except OSError:
+                continue
+            if got == b"":
+                break
+            buf += got
+        return marker in buf
+
+    assert read_until(b"CLI Rescue", 10), buf
+    buf = b""
+    s.sendall(command.encode() + b"\r")
+    read_until(until, timeout)
+    s.close()
+    return buf.decode(errors="replace")
+
+
+def snapshot_files(d):
+    out = {}
+    for f in record_files(d):
+        out[f] = open(os.path.join(d.n.dir, f), "rb").read()
+    return out
+
+
+def test_the_rescue_rebuild_keeps_the_record_its_marks_and_the_marker(nodes):
+    d = boot(nodes, "rb")
+    d.provision()
+    assert d.send(wrap(d.node_key, "config.apply", apply_name("Rb"), job=3))["status"] == "ok"
+    before = snapshot_files(d)
+    assert before and os.path.exists(marker_path(d))
+    d.n.stop()
+    d.n.start()
+    out = rescue(d.n, "rebuild", b"damaged\n")
+    assert "rebuilt" in out, out
+    d.n.stop()
+    revive(d)
+    g = d.i.request("deployment.get")["result"]
+    assert g["state"] == "provisioned" and g["authority_revision"] == 1, g
+    assert g["members"][0]["mark"] == 3, "the marks came back too"
+    assert os.path.exists(marker_path(d))
+    assert snapshot_files(d) == before, "byte for byte"
+    assert d.send(wrap(d.node_key, "config.apply", apply_name("Rb2"), job=4))["status"] == "ok"
+
+
+def test_a_rescue_rebuild_that_cannot_read_the_record_refuses_and_changes_nothing(nodes):
+    d = boot(nodes, "rbu")
+    d.provision()
+    d.n.stop()
+    victim = os.path.join(d.n.dir, "mecon_dep_a")
+    os.chmod(victim, 0o000)   # exists, cannot be read
+    try:
+        d.n.start()
+        out = rescue(d.n, "rebuild", b"unreadable", timeout=10)
+        assert "record unreadable; use deployment.reset or factory reset" in out, out
+        assert "rebuilt" not in out, "nothing was rebuilt"
+    finally:
+        d.n.stop()
+        os.chmod(victim, 0o644)
+    revive(d)
+    assert d.i.request("deployment.get")["result"]["state"] in ("provisioned", "corrupt"), "never silently unenrolled"
+    assert d.i.request("deployment.get")["result"] != {"state": "none"}
+    assert os.path.exists(marker_path(d))
+
+
+def test_the_rescue_erase_is_a_cable_recovery_and_clears_the_marker(nodes):
+    d = boot(nodes, "re")
+    d.provision()
+    d.n.stop()
+    d.n.start()
+    out = rescue(d.n, "erase", b"erase done")
+    assert "erase done" in out, out
+    assert not os.path.exists(marker_path(d))
+    d.n.stop()
+    revive(d)
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}
+
+
+def test_an_unsigned_cli_write_over_the_usb_frame_is_refused_once_enrolled_but_a_read_works(nodes):
+    d = boot(nodes, "cw")
+    assert d.c.cli("set name Before") == "OK", "standalone: unchanged"
+    d.provision()
+    reply = d.c.cli("set name After")
+    assert reply == "ERR: this device belongs to a Deployment; the change must be signed", reply
+    for line in ("set posture hardened", "set prv.key " + "00" * 64, "set mqtt.profile 0 manage on", "set pin 111111"):
+        assert d.c.cli(line).startswith("ERR: "), line
+    assert d.name() == "> Before", "nothing changed"
+    assert d.c.cli("get posture") == "> normal", "reads work"
+    assert d.c.cli("get radio").startswith(">") and d.c.cli("ver").startswith("v")
+    seen = wait_audit(d.n, (2, 1, 1))   # refused / cable / cli
+    assert seen and any((e[1], e[2], e[3]) == (2, 1, 1) for e in seen), seen
+    # a signed write is the way, and the unsigned one is still refused after it
+    assert d.send(wrap(d.node_key, "config.apply", apply_name("Signed"), job=1))["status"] == "ok"
+    assert d.name() == "> Signed"
+    assert d.c.cli("set name After").startswith("ERR: ")
+    # a corrupt record counts as enrolled
+    d.n.stop()
+    wreck_record(d)
+    revive(d)
+    assert d.c.cli("set name After").startswith("ERR: ")
+    assert d.c.cli("get posture") == "> normal"
+    # the cable keeps the destructive class: the recovery operations stay possible
+    d.c._send(bytes([harness.CMD_FACTORY_RESET]) + b"reset")
+    assert d.n.wait_exit(10) == 75
+
+
+@pytest.mark.timescale(10)
+def test_reset_and_unsigned_cli_writes_are_refused_over_mqtt(nodes, tmp_path, broker):
+    b = broker()
+    d, dev = mqtt_boot(nodes, tmp_path, "mr", b)
+    node_id = d.c.pub_key[:4].hex()
+    r = b.cli_request(node_id, "set name PreEnrol")
+    assert r is not None and r["status"] == "ok", "control: standalone, the verified broker may write: %s" % r
+    assert d.provision()["status"] == "ok"
+    r = b.cli_request(node_id, "set name ViaCli")
+    assert r is not None and r["status"] == "refused" and "belongs to a Deployment" in r["reply"], r
+    assert d.name() == "> PreEnrol"
+    r = b.cli_request(node_id, "get name")
+    assert r is not None and r["status"] == "ok" and r["reply"] == "> PreEnrol", "a read works: %s" % r
+    # the reset: unsigned and signed, both refused over a broker
+    r = b.iface_request(dev, {"v": 1, "id": "u1", "op": "deployment.reset"})
+    assert r == {"v": 1, "id": "u1", "status": "refused", "error": "unauthenticated"}, r
+    r = b.iface_request(dev, wrap(d.node_key, "deployment.reset", job=1))
+    assert r["status"] == "refused" and r["error"] == "usb_only", r
+    assert d.i.request("deployment.get")["result"]["state"] == "provisioned"
+    assert os.path.exists(marker_path(d))
