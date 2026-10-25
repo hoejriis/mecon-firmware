@@ -557,7 +557,7 @@ mutate gate_refusal_what_is_wrong src/helpers/cli/CliEngine.h "    case R_CLI_OF
 mutate gate_not_run_by_the_companion examples/companion_radio/MyMesh.cpp "if (Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {" "if (false && Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {" sim/tests/test_companion_remote_cli.py
 mutate gate_not_run_by_the_front_door_unit src/helpers/Posture.h "if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, now, reply, max)) return true;" "" unit:test_posture
 mutate gate_default_password_session_not_recognised src/helpers/Posture.h "isDefaultAdminPassword(admin_pw, build_default) ? Cli::A_ADMIN_DEFAULT_PW : Cli::A_ADMIN" "Cli::A_ADMIN" sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
-mutate frame_gate_skipped examples/companion_radio/MyMesh.cpp "if (frame != Cli::FR_NONE && !Cli::allowFrame(serialContext(), frame, now)) {" "if (false) {" sim/tests/test_companion_transport.py
+mutate frame_gate_skipped examples/companion_radio/MyMesh.cpp "if (frame != Cli::FR_NONE && !Cli::allowFrame(fctx, frame, now)) {" "if (false) {" sim/tests/test_companion_transport.py
 mutate frame_context_trusts_every_interface examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isTrustedTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" "if (_serial) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" sim/tests/test_companion_transport.py
 mutate frame_context_cable_is_not_a_cable examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isCableTransport()) return Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture);" "if (_serial && _serial->isCableTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" sim/tests/test_postures_companion.py::test_usb_factory_reset_recovers_a_hardened_companion
 mutate contact_context_is_a_cable examples/companion_radio/MyMesh.cpp "setCliCaller(Cli::Context(Cli::T_LORA, Cli::A_CONTACT_FLAG, _prefs.posture), Posture::CALLER_REMOTE_CLI);" "setCliCaller(Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture), Posture::CALLER_CABLE);" sim/tests/test_companion_remote_cli.py
@@ -926,6 +926,28 @@ mutate deploy_replay_runs examples/companion_radio/MeconDeploy.cpp '    if (rv =
 mutate deploy_unsigned_write_after_enrolment examples/companion_radio/MeconIface.cpp '  if (self->_dep_ls != Dep::LS_ABSENT && !self->_signed && op.priv != PRIV_READ &&' '  if (false && !self->_signed && op.priv != PRIV_READ &&' $DA::test_unsigned_writes_are_refused_once_enrolled_but_reads_work
 mutate deploy_signed_principal_may_erase src/helpers/cli/CliPolicy.h '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW),' '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           ALLOW,           ALLOW),' unit:test_cli_engine
 mutate deploy_signed_context_follows_the_signature_not_the_transport src/helpers/cli/CliPolicy.h '  if (c.remote != wire_remote) return P_UNTRUSTED;   // a local-looking remote caller, or the reverse: fail closed' '' unit:test_cli_engine
+# --- the second slice (AUTHORITY.md sections 4, 9, 11): the provisioned marker, deployment.reset, the recovery paths
+mutate deploy_marker_ignored_at_load examples/companion_radio/MeconDeploy.cpp '    // No copy of the record, but the provisioned marker says there was one: corrupt, never absent (section 4).
+    _dep_ls = Dep::withMarker(Dep::LS_ABSENT, Dep::markerRead());' '    _dep_ls = Dep::LS_ABSENT;' $DA::test_the_provisioned_marker_makes_lost_files_corrupt_not_absent
+mutate deploy_marker_not_written_at_first_provisioning examples/companion_radio/MeconDeploy.cpp '    if (!has && !Dep::markerSet()) { c.error = "storage"; st = ST_BUSY; goto done; }' '' $DA::test_the_provisioned_marker_makes_lost_files_corrupt_not_absent
+mutate deploy_unsupported_marker_still_provisions examples/companion_radio/MeconDeploy.cpp '  if (!has && Dep::markerRead() == Dep::MK_UNSUPPORTED) { c.error = "unsupported"; return ST_REFUSED; }' '' $DA::test_a_platform_with_no_marker_store_never_provisions_unsigned
+mutate deploy_reset_unsigned_on_a_healthy_record examples/companion_radio/MeconDeploy.cpp '    if (!m->_signed) { if (m->_dep) m->_dep->auth_rejections++; c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_an_unsigned_reset_of_a_healthy_record_is_refused_even_over_the_cable
+mutate deploy_reset_over_a_broker examples/companion_radio/MeconDeploy.cpp '    if (!usb) { m->_dep->auth_rejections++; c.error = "usb_only"; return ST_REFUSED; }' '' $DA::test_reset_and_unsigned_cli_writes_are_refused_over_mqtt
+mutate deploy_reset_leaves_the_marker examples/companion_radio/MeconDeploy.cpp 'st->removeDeploymentCopies(marks_slot, DataStore::DEP_MARKS) && Dep::markerClear();' 'st->removeDeploymentCopies(marks_slot, DataStore::DEP_MARKS);' $DA::test_a_signed_reset_over_usb_unenrols_and_keeps_the_rest
+mutate deploy_reset_in_hardened examples/companion_radio/MeconDeploy.cpp '  if (Posture::isHardened(cx.posture)) {
+    if (m->_dep) m->_dep->auth_rejections++;
+    c.error = corrupt' '  if (false) {
+    if (m->_dep) m->_dep->auth_rejections++;
+    c.error = corrupt' $DA::test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_waits_for_local_unlock
+mutate deploy_factory_reset_keeps_the_marker examples/companion_radio/MeconDeploy.cpp '  Dep::markerClear();   // the format does not touch it; only a reset and the factory reset do' '' $DA::test_a_factory_reset_over_the_cable_clears_the_marker_and_the_record
+mutate deploy_ble_factory_reset_when_enrolled examples/companion_radio/MyMesh.cpp '    if (frame == Cli::FR_FACTORY_RESET) fctx.enrolled = _iface.enrolled();' '' $DA::test_a_ble_factory_reset_is_refused_once_enrolled_and_audited
+mutate deploy_rebuild_without_reading_the_record examples/companion_radio/MyMesh.cpp '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
+      if (!snap) {' '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
+      if (false) {' $DA::test_a_rescue_rebuild_that_cannot_read_the_record_refuses_and_changes_nothing
+mutate deploy_cli_gate_not_told_the_device_is_enrolled examples/companion_radio/MyMesh.cpp '    ctx.enrolled = _iface.enrolled();   // the one place that gates a command line: every adapter and the rescue console' '    ctx.enrolled = false;' $DA::test_an_unsigned_cli_write_over_the_usb_frame_is_refused_once_enrolled_but_a_read_works
+mutate deploy_enrolled_rule_dropped_from_the_table src/helpers/cli/CliPolicy.h '  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && cls != C_REBOOT &&' '  if (false && c.enrolled && p != P_SIGNED && cls != C_READ && cls != C_REBOOT &&' unit:test_cli_engine
+mutate deploy_enrolled_rule_takes_the_cables_destructive_class src/helpers/cli/CliPolicy.h '      !(p == P_CABLE && cls == C_DESTRUCTIVE))' '      false)' unit:test_cli_engine
+mutate deploy_marker_alone_reads_as_absent src/helpers/deployment/DepMarker.h 'return (ls == LS_ABSENT && m == MK_PRESENT) ? LS_CORRUPT : ls;' 'return ls;' unit:test_dep_state
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
