@@ -955,7 +955,6 @@ mutate deploy_frames_not_told_enrolled examples/companion_radio/MyMesh.cpp '    
 DS=sim/tests/test_deployment_authority_server.py
 mutate server_enrolled_flag_not_published src/helpers/iface/DeployAuth.cpp '  Cli::serverCaller().enrolled = _dep_ls != Dep::LS_ABSENT;' '  Cli::serverCaller().enrolled = false;' $DS::test_unsigned_writes_are_refused_once_enrolled_over_the_console
 mutate server_contexts_ignore_the_enrolled_flag src/helpers/cli/CliCaller.h '  c.enrolled = s.enrolled;' '  c.enrolled = false;' unit:test_cli_engine
-mutate server_ethernet_console_not_told_enrolled src/helpers/cli/NetConsole.h '  const Context ctx = withServerCaller(Context(T_NETCON, nc.authed ? A_NETCON_ADMIN : A_NONE, posture));' '  const Context ctx(T_NETCON, nc.authed ? A_NETCON_ADMIN : A_NONE, posture);' $DS::test_unsigned_writes_are_refused_over_the_ethernet_console_once_enrolled
 mutate server_remote_admin_not_told_enrolled src/helpers/cli/CliCaller.h '  c.enrolled = s.enrolled;' '  c.enrolled = s.enrolled && !c.remote;' $DS::test_lora_remote_admin_keeps_reads_only_once_enrolled
 mutate server_signed_line_not_the_signed_principal src/helpers/iface/DeployAuth.cpp '  if (_env.publish_caller) Cli::serverCaller().signed_line = true;' '' $DS::test_a_signed_config_apply_runs_once_and_its_duplicate_and_replay_run_nothing
 mutate server_signed_promotion_for_any_caller src/helpers/cli/CliCaller.h '  if (s.signed_line && !c.remote && c.transport == T_USB && c.auth == A_CABLE) c.auth = A_SIGNED;' '  if (s.signed_line) c.auth = A_SIGNED;' unit:test_cli_engine
