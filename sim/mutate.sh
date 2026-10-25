@@ -1012,6 +1012,9 @@ mutate marks_fallback_not_detected src/helpers/deployment/DepRecord.cpp '  if (o
 mutate marks_fallback_trusted src/helpers/deployment/DepState.cpp 'reconcileMarks(distrust ? nullptr : &lm.marks, s->set, &s->marks);' 'reconcileMarks(s->marks_lost ? nullptr : &lm.marks, s->set, &s->marks);' sim/tests/test_deployment_authority.py::test_a_damaged_marks_copy_blocks_every_member_so_a_captured_request_cannot_run_again
 mutate marks_fallback_not_reported src/helpers/iface/DeployAuth.cpp '  w.key("marks_fallback"); w.boolean(s.marks_fallback);' '  w.key("marks_fallback"); w.boolean(false);' sim/tests/test_deployment_authority.py::test_a_damaged_marks_copy_blocks_every_member_so_a_captured_request_cannot_run_again
 
+# --- second review (L2): the stock-array rescue rebuild puts the marker back right after the format
+mutate rescue_rebuild_marker_late examples/companion_radio/MyMesh.cpp '      if (!_iface.restoreMarker(snap)) Serial.println("  Error: the provisioned marker could not be written back; use deployment.reset");' '' sim/tests/test_deployment_authority.py::test_a_stock_array_rescue_rebuild_puts_the_marker_back_before_anything_else
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

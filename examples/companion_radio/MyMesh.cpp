@@ -2587,6 +2587,11 @@ void MyMesh::checkCLIRescueCmd() {
       if (isolated > 0) { Serial.print("  > "); Serial.print(isolated); Serial.println(" damaged bucket(s) kept aside as /ct<N>.bad"); }
 #else
       bool success = _store->formatFileSystem();
+#ifdef ENABLE_MECON_IFACE
+      // The format erased the provisioned marker too (NVS on ESP32): it goes back before anything else, so a power cut from
+      // here on reads as a corrupt record, never as a device that was never provisioned (AUTHORITY.md section 4).
+      if (!_iface.restoreMarker(snap)) Serial.println("  Error: the provisioned marker could not be written back; use deployment.reset");
+#endif
       if (success) {
         _store->saveMainIdentity(self_id);
         savePrefs();

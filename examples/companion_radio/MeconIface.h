@@ -101,6 +101,7 @@ public:
   // cannot be read; the rebuild is then refused.
   typedef Iface::DeployAuth::RecordSnapshot RecordSnapshot;
   RecordSnapshot* snapshotRecord() { return _auth.snapshotRecord(); }
+  bool restoreMarker(const RecordSnapshot* s) { return _auth.restoreMarker(s); }
   bool restoreRecord(RecordSnapshot* s) { return _auth.restoreRecord(s); }
   static void freeSnapshot(RecordSnapshot* s) { Iface::DeployAuth::freeSnapshot(s); }
 

@@ -936,6 +936,12 @@ DeployAuth::RecordSnapshot* DeployAuth::snapshotRecord() {
   return s;
 }
 
+bool DeployAuth::restoreMarker(const RecordSnapshot* s) {
+  if (!s) return false;
+  if (s->marker != Dep::MK_PRESENT || Dep::markerRead() == Dep::MK_PRESENT) return true;
+  return Dep::markerSet();
+}
+
 bool DeployAuth::restoreRecord(RecordSnapshot* s) {
   if (!s) return false;
   bool ok = true;

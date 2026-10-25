@@ -114,6 +114,9 @@ public:
   // be read; the rebuild is then refused.
   struct RecordSnapshot;
   RecordSnapshot* snapshotRecord();
+  // Only the marker, at once after a format that erased it (ESP32 erases NVS with the file system): a power cut before the
+  // files are back then reads as corrupt, never as a device that was never provisioned.
+  bool restoreMarker(const RecordSnapshot* s);
   bool restoreRecord(RecordSnapshot* s);
   static void freeSnapshot(RecordSnapshot* s);
 

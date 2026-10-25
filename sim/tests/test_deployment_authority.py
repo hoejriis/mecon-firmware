@@ -736,6 +736,26 @@ def test_the_rescue_rebuild_keeps_the_record_its_marks_and_the_marker(nodes):
     assert d.send(wrap(d.node_key, "config.apply", apply_name("Rb2"), job=4))["status"] == "ok"
 
 
+def test_a_stock_array_rescue_rebuild_puts_the_marker_back_before_anything_else(nodes):
+    # this build formats the file system (and, as on ESP32, the format takes the marker with it)
+    n = nodes("companion_standalone_stockcontacts", "rbm", seed=36, rtc=RTC).start()
+    d = Dev(n)
+    d.provision()
+    assert os.path.exists(marker_path(d))
+    n.stop()
+    n.fault = "/identity/_main.id.tmp:10"   # power cut while the identity is written, the first file after the format
+    n.start()
+    out = rescue(n, "rebuild", b"cut", timeout=6)
+    assert n.wait_exit(10) == 99, out
+    assert os.path.exists(marker_path(d)), "the marker was back before the identity was written"
+    assert not os.path.exists(os.path.join(n.dir, "mecon_dep_a")), "control: the format did remove the record files"
+    n.fault = None
+    revive(d)
+    assert d.i.request("deployment.get")["result"]["state"] == "corrupt", "lost files with the marker are corrupt, never absent"
+    r = d.provision()
+    assert r["status"] == "refused" and r["error"] == "deployment_record_corrupt", r
+
+
 def test_a_rescue_rebuild_that_cannot_read_the_record_refuses_and_changes_nothing(nodes):
     d = boot(nodes, "rbu")
     d.provision()
