@@ -2,7 +2,7 @@
 
 Who may command a device, and how the device knows. This page is the public, generic contract: a device and any conforming manager can implement it from this page, the [device interface](DEVICE_INTERFACE.md), and the test vectors in this repository. It needs no particular Backend, broker, domain or product workflow. How MECON maps its own Deployments, ownership and federation onto it is [#118](https://github.com/hoejriis/mecon-firmware/issues/118). Checking conformance with any existing Backend is done there too, not here.
 
-> **Status: design under review ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)), not shipped.** The authority-set, rotation, record, replay and signed-request checks are implemented on a development branch with unit tests and public test vectors. None of it is in a release, and no role enforces it yet. Section 15 lists what the security review is asked to decide. This page changes if the review changes it, and the wire objects marked *provisional* are the ones most likely to change.
+> **Status: design under review ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)), not shipped.** The authority-set, rotation, record, replay and signed-request checks are implemented on a development branch with unit tests and public test vectors. None of it is in a release, and no role enforces it yet. The first security review is folded in (section 15). The implementation is being brought in line with it, and the wire objects marked *provisional* may still change.
 
 ## 1. Terms
 
@@ -18,7 +18,8 @@ A broker login, a TLS session, a paired BLE link, a USB cable, a LoRa route and 
 ## 2. Encodings
 
 - `deployment_id` and `instance_id`: 32 lowercase hex characters. Public keys: 64 hex characters (32 bytes). Signatures: standard base64 with padding, 88 characters (64 bytes). A device accepts hex in either case and nothing else; a wrong length is malformed.
-- Every signature is Ed25519 over `DOMAIN || 0x00 || [SUFFIX || 0x00] || TEXT`. TEXT is the signed JSON text **exactly as transmitted**. Nothing is canonicalised: the device verifies the bytes it received, then parses them. A manager must send the same bytes it signed.
+- Every signature is Ed25519 over `DOMAIN || 0x00 || [SUFFIX || 0x00] || TEXT`. Nothing is canonicalised: the device verifies the bytes it has, then parses them, and a manager must send the same bytes it signed.
+  - Where the signed text travels as a JSON string inside another object (an authority set, a request `body`), TEXT is that string's **decoded value**: its bytes after the enclosing JSON's escapes are undone. Any escaping that decodes to the same bytes verifies the same.
 
 | Object | Domain | Suffix |
 |---|---|---|
@@ -43,8 +44,9 @@ Carried as a string beside its signature (`authority_set`, `authority_set_sig`).
 
 - **Members:** at most 8. No two members may share an `instance_id` or a public key.
 - **`admitted_revision`:** the revision at which that member was (re)admitted. It is never greater than the set's `authority_revision`.
-- **`revoked`:** at most 32 ids. A revoked id may not also be a member.
-- **Size:** a set text is at most 3,072 bytes.
+- **`revoked`:** at most 16 ids. A revoked id may not also be a member. Revoked ids that no longer matter (the manager can no longer be admitted under that id) may be dropped by a later revision.
+- **`authority_epoch`:** 1 to 2³¹. A device refuses a larger epoch, which could never rotate.
+- **Size:** a set text is at most 2,048 bytes. That is 8 members and 16 revoked ids with room to spare, and it keeps a provisioning inside the 4,096-byte message bound after escaping (section 6.1).
 
 ### 3.2 Rotation statement
 
@@ -62,15 +64,17 @@ A v1.0 device-interface request travels as the exact `body` string of a wrapper:
 {"mecon_auth":1,"issuer":"<instance_id>","sig":"<base64>","body":"<the request JSON text>"}
 ```
 
-The body is the v1.0 request plus five bound fields:
+The body is the v1.0 request plus six bound fields:
 
 | Field | Meaning |
 |---|---|
+| `issuer` | the same `instance_id` as the wrapper's `issuer`; a mismatch is `bad_signature` |
 | `deployment_id` | the Deployment the request is for |
 | `authority_revision` | the authority-set revision the manager signed under |
 | `issued_at` | the manager's clock, informational |
 | `target_public_key` | the device's node key; binds the request to one device |
-| `job_id` | an unsigned 32-bit id, per manager and job class (section 8). Required on every state-changing operation; absent on reads |
+| `job_id` | an unsigned 32-bit id, strictly increasing per manager (section 8). Required on every operation except the plain reads of section 7.1 |
+| `channel_nonce` | required only on the sensitive operations of section 7.1: the nonce the device issued for the link the request arrives on |
 
 One suffix (`iface`) for every operation, so the same signed bytes are valid over MQTT, USB, BLE and LoRa. The operation is inside the body, so a request for one operation can never be replayed as another. A wrapper is at most 4,096 bytes, the interface's message bound. A frame whose top-level object has `mecon_auth` is a wrapper. The v1.0 `auth` member stays reserved, and a request carrying it is still refused.
 
@@ -90,15 +94,18 @@ A device signs each interface event and result with its node key, so its origin 
 - **Writes.** A write goes to the copy that does not hold the newest record, with generation + 1, so a power cut leaves the previous record intact.
 - **Load.** On load, the intact copy with the highest generation wins. A copy whose stored set no longer verifies against its stored DAK counts as damaged.
 - **Corrupt is never absent.** If something exists and nothing is intact, the record is **corrupt**. A corrupt record is never treated as absent, because absent means "no Deployment" and would reopen an unsigned first provisioning. Failing to allocate memory while loading is corrupt too.
-- **Provisioned marker.** A separate one-byte marker is written at the first provisioning and removed only by an unenrollment scope (section 11). If both copies are missing but the marker is present, the record is corrupt, not absent. Without the marker, losing both files would reopen first use. *(Decision for the review, section 15.)*
+- **Provisioned marker.** A one-byte marker is written at the first provisioning. If both copies are missing but the marker is present, the record is corrupt, not absent; without the marker, losing both files would reopen first use.
+  - The marker lives **outside the file system that holds the record**, because a file system that fails to mount may be formatted by the platform: in NVS on ESP32, and in a reserved flash page on nRF52.
+  - Only two operations clear it: `deployment.reset` and the factory reset (section 11). Nothing else, a file system format included, clears it.
 - **Contents.** The payload holds:
   - the contract version, `deployment_id` and a 1 to 64 byte display name;
   - the DAK, `authority_epoch` and `authority_revision`, and the set text with its signature;
   - `provision_revision`;
-  - the hash of the local unlock secret, if set (section 10);
-  - optional broker-profile roles (transport metadata, never authority);
-  - per-member replay state (section 8).
-- **Fallback flag.** When the device falls back to the older copy because the newer one is damaged, it says so in `status.deployment`. The older copy's watermarks may be behind.
+  - the local unlock secret, if set (section 10);
+  - optional broker-profile roles (transport metadata, never authority).
+- **Replay marks are kept apart.** Each member's sequence mark (section 8) lives in a small separate record. It has two copies framed the same way, so a power cut leaves the previous marks. A signed request then rewrites tens of bytes, not the whole record with its set text. That matters on nRF52, where the file system is 28 KB and flash wears out.
+- **A write that fails is a refusal.** When the device cannot persist a mark or a record, it answers `busy` and runs nothing.
+- **Fallback flag.** When the device falls back to the older copy of either record because the newer one is damaged, it says so in `status.deployment` (`fallback: true`). The older marks may be behind; a manager that sees the flag raises its sequence before its next request (section 8).
 
 ## 5. Accepting an authority set
 
@@ -107,7 +114,7 @@ In this order, stopping at the first failure; nothing changes on a failure:
 1. The signature verifies with the DAK of the set's `authority_epoch`, after any rotation delivered with it → else `bad_authority_signature`.
 2. The text parses, and every field is in range (section 3.1) → else `bad_authority_set`.
 3. `deployment_id` is the stored one → else `wrong_deployment`.
-4. `authority_epoch` is the device's epoch after the rotations → else `untrusted_authority_key`.
+4. `authority_epoch` is the device's epoch after the rotations → else `untrusted_authority_key`. Steps 3 and 4 use these codes, not `bad_authority_set`.
 5. `authority_revision` against the stored revision:
    - lower → `stale_revision`;
    - equal → `duplicate`: acknowledged, nothing written. The text must be byte-identical to the stored set, or it is `bad_authority_set`.
@@ -116,7 +123,11 @@ In this order, stopping at the first failure; nothing changes on a failure:
    - a member it holds may not have its `admitted_revision` lowered.
 
    Either breach → `bad_authority_set`. A removed and re-added manager therefore always carries the revision of its re-admission.
-7. Commit (section 4). Replay state is kept for members still present at the same `admitted_revision`, emptied for a re-admitted member, dropped for removed members, and empty for new ones.
+7. Commit (section 4). A member still present at the same `admitted_revision` keeps its mark. A re-admitted member's mark is reset to 0, so its sequence restarts while check 6 refuses everything it signed before. A removed member's mark is dropped, and a new member starts at 0.
+
+Section 5 applies to every delivery of a set: `deployment.provision` and `deployment.authority_update` alike, the byte-identical rule for an equal revision included. A set at the device's revision whose bytes differ is evidence that the DAK signed two different sets for one revision. It is refused and counted in `auth_rejections`, never acknowledged.
+
+A device that has not received a rotation still trusts the previous DAK. A DAK that is compromised is therefore recovered by rotating it on every device; a device the rotation cannot reach needs physical re-provisioning.
 
 ## 6. Provisioning and updates
 
@@ -127,12 +138,19 @@ Arguments, as one `deployment` object:
 - `node_public_key` (must be this device's: else `wrong_device`);
 - `provision_revision`;
 - `dak` and `authority_epoch`;
-- `authority_set` and `authority_set_sig`, with `rotations` optional;
+- `authority_set` and `authority_set_sig`;
+- `unlock_secret` (optional; section 10);
 - `broker_roles` (optional: `[{"profile":n,"role":"primary"|"secondary"|"local"}]`, each naming an existing MQTT profile, else `bad_broker_roles`).
 
 Product profiles (section 14) may add fields; a device ignores fields it does not know.
 
-- **First provisioning** (no record, no marker) is trust on first use: it pins the DAK. It is accepted unsigned only from a caller physically present or locally bound (section 10, *decision for the review*).
+A provisioning carries no rotations. A device whose DAK has rotated gets `deployment.authority_update` first, so a provisioning always fits the 4,096-byte message with its set text escaped, even inside a signed wrapper.
+
+- **First provisioning** (no record, no marker) is trust on first use: it pins the DAK. It is accepted unsigned from exactly two callers, both physically present:
+  - the USB cable;
+  - BLE paired with the device's own random PIN. A build with a static PIN, a default PIN (0 or 123456) or a PIN compiled into the image never counts.
+
+  Never from the TCP port, a broker of any kind (a broker would gain first-use trust over every reset or unenrolled device it can reach) or LoRa.
 - **A device that holds a record** accepts `deployment.provision` only when signed by a current member. An unsigned re-send of a byte-identical `deployment` object returns the stored read-back; anything else unsigned is `unauthenticated`.
 - **Order and commit.** Checks run in the order above, then section 5 on the set. One commit, and the answer is read back from storage. An equal `provision_revision` with identical content is `duplicate`; a lower one is `stale_revision`.
 
@@ -142,7 +160,7 @@ A newer authority set, with any rotations before it, for a device that holds a r
 
 ### 6.3 `deployment.get`
 
-An open read: the stored set and its signature, `deployment_id`, the epoch and revisions. It reveals nothing secret. The same set is published retained at `mecon/<device_id>/authority` over MQTT.
+An open read: the stored set and its signature, `deployment_id`, the epoch and revisions, the fallback flag, and each member's current sequence mark. A manager that lost track of its sequence (a restore from backup) reads its mark and continues above it. It reveals nothing secret. The same set is published retained at `mecon/<device_id>/authority` over MQTT.
 
 ## 7. Checking a signed request
 
@@ -158,21 +176,34 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 | 4b | `target_public_key` is this device's node key | `wrong_device` |
 | 5 | `authority_revision` ≤ the device's stored revision | `authority_revision_ahead`: the manager knows a newer set than the device; it delivers it with `deployment.authority_update` |
 | 6 | `authority_revision` ≥ the member's `admitted_revision` | `stale_authority`: signed before this member's (re)admission |
-| — | a state-changing operation carries `job_id` | `unauthenticated` |
-| 7 | replay (section 8) | `replay` |
+| 6b | `issuer` in the body equals the wrapper's | `bad_signature` |
+| — | an operation that is not a plain read (7.1) carries `job_id` | `unauthenticated` |
+| — | a sensitive operation (7.1) carries the `channel_nonce` of this link | `bad_channel_nonce` |
+| 7 | the sequence (section 8) | `replay`; `duplicate` for the id at the mark |
 
-- The body is parsed only after check 3, so nothing unsigned is ever parsed past the wrapper.
+- The body is parsed only after check 3, so nothing unsigned is ever parsed past the wrapper. When a transport fragments a message (LoRa, [#115](https://github.com/hoejriis/mecon-firmware/issues/115)), check 3 runs on the reassembled body. Reassembly is bounded per message id, and parts of different messages are never combined.
 - A device whose record is corrupt answers every request except the recovery ones (section 11) with `deployment_record_corrupt`.
 - A request refused before execution consumes no `job_id` and moves no watermark.
 - Every refusal increments `auth_rejections` in `status.deployment`. A Reader's single unsigned readiness probe on attach is answered and is not counted.
 
+### 7.1 Plain, state-changing and sensitive operations
+
+- **Plain reads** are an allowlist: `hello`, `status.get`, `config.schema`, `config.get` of keys that are not secret, `deployment.get`, `job.get`, `job.list`, and `sub.start`/`sub.stop` of the streams that are not private. A signed plain read carries no `job_id`. Replaying it elsewhere returns only what that operation returns to anyone allowed to read.
+- **Every other operation**, including any the device does not recognise as a plain read, carries a `job_id` and is subject to section 8. A captured request can then run at most once.
+- **Sensitive operations** are those whose reply is itself secret or private:
+  - `identity.key.export` and `ble.pin.get`;
+  - `sub.start` of a private stream (screen, location, logs, and inventory entries).
+
+  On top of the `job_id`, each must carry the `channel_nonce` the device issued for the link it arrives on. A device issues a fresh nonce per link, readable with `hello` on that link and replaced when the link drops, and a nonce is used once. A request captured on one link and replayed over another link (the attacker's own USB, BLE or broker session) fails before the reply exists.
+
 ## 8. Replay
 
-- **Windows.** One sliding window of 24 per member per job class. The classes are `cmd` (operations that are not settings) and `settings` (`config.apply`). The record keeps room for 4 classes.
-- **State.** The state is the highest accepted `job_id` and a 24-bit map of the ids below it. A new id runs, a duplicate inside the window is answered from the result cache (never run again), and an id below the window is refused as `replay`. Id 0 is never valid.
-- **At most once.** The watermark is persisted **before** the request runs. A power cut between the write and the run loses the request: its manager sees no result and signs it again under a new `job_id`. The other order would let a redelivered request run twice.
-- **No adoption.** A run of out-of-window ids that verify can only be old signed requests replayed in order, so a device never adopts a "restarted" sequence. A manager whose sequence really restarted is re-admitted with a higher `admitted_revision`. That empties its watermarks, and check 6 refuses everything it signed before.
-- The per-member state belongs to the member's current `admitted_revision`, and section 5 step 7 decides what survives a set change.
+- **One strictly increasing sequence per member.** The device keeps one mark per member: the highest `job_id` it accepted. A request with a `job_id` above the mark runs. One equal to the mark is a duplicate: it never runs again, and it gets the stored result, or `duplicate` with no result when the result was not kept. One below the mark is refused as `replay`. Id 0 is never valid. Every operation that carries a `job_id` shares the one sequence, whatever it does.
+- **Why strict, and not a window.** With a window, a request that an intermediary (a broker, a bridge) held back could still run after newer ones, out of order. A held `config.apply` released after its successor would put back an old setting, and a held reboot or reset could fire late. With one strict sequence, the moment a newer request runs, every older one the intermediary still holds is dead.
+- **Retry with the same bytes.** A manager that gets no answer resends the **same signed request**, never the same work under a new id. The answer is the stored result, or `duplicate` (it ran, or a power cut lost it after the mark was saved) and the manager reads the state. Signing a new id is how a manager deliberately abandons the older request.
+- **One request at a time per member.** A manager sends its next state-changing request when the previous one has an answer. Managers of one Deployment do not drive one device concurrently. Their sequences are independent, so the device cannot order one manager's held request against another's.
+- **At most once.** The mark is persisted **before** the request runs. The other order would let a redelivered request run twice after a power cut.
+- **No adoption.** A run of verified ids below the mark can only be old signed requests, so a device never adopts a "restarted" sequence. A manager that lost its sequence reads its mark (`deployment.get`) and continues above it. If it cannot, it is re-admitted with a higher `admitted_revision`, which resets its mark while check 6 refuses everything it signed before.
 
 ## 9. Caller kinds
 
@@ -181,20 +212,23 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 | Caller | No record (standalone) | Record, Normal | Record, Hardened | Record corrupt |
 |---|---|---|---|---|
 | signed | not applicable: nothing to verify against (`unauthenticated`) | per class: read, write, reboot, posture (with a controlled reboot), and the reset scopes section 11 allows | the same | `deployment_record_corrupt` |
-| USB cable, unsigned | today's table | reads, native messaging, and the first-use and recovery operations of section 11; **no configuration writes** | identification, and the local-unlock handshake | identification; `deployment.reset` |
-| BLE paired (own PIN), unsigned | today's table | native messaging and reads; no configuration writes | BLE is not started | reads |
+| USB cable, unsigned | today's table | reads, native messaging, and the recovery operations of section 11; **no configuration writes** | identification, and the local-unlock handshake | identification; `deployment.reset` |
+| BLE paired (own PIN), unsigned | today's table | native messaging and reads; no configuration writes, **no factory reset** | BLE is not started | reads |
 | MQTT, TLS verified, unsigned | today's table | reads (`status.get`, `config.schema`, `deployment.get`); state changes refused `unauthenticated` | the same | reads; else `deployment_record_corrupt` |
 | local unlock (section 10) | not applicable | as signed, for reads and to unlock the posture | the management surface | `deployment.reset` only |
 | LoRa remote admin (native) | today's table | reads only | reads and `reboot` | reads |
 
-The table is the proposal for the review (section 15). Its point is that a transport never becomes authority: once a device belongs to a Deployment, changing it needs a member's signature or someone physically present.
+Its point is that a transport never becomes authority: once a device belongs to a Deployment, changing it needs a member's signature or someone physically present.
+
+- BLE loses the native factory reset once a record exists. Otherwise a BLE factory reset followed by a BLE first provisioning would let a paired phone take a device over without touching it.
+- Every path that formats or rebuilds storage keeps the record, or is gated as `deployment.reset` is. That includes the rescue console's `rebuild`, which reformats and saves back identity, settings, contacts and channels: it saves the record back too. A recovery path is never a silent unenrollment.
 
 ## 10. Local unlock
 
 A device entering Hardened while it holds a record must first hold a **local unlock secret**, so that a Reader can always unlock it over USB.
-- The secret is written once over USB and stored only as its hash.
-- It is never the provisioning credential, never readable, and never valid over any other transport.
-- The unlock is an HMAC challenge over USB from a Reader that holds the secret.
+- The secret is set only by an authority: in the `deployment` object of a provisioning (`unlock_secret`, 32 random bytes), or by a signed request. It is never set unsigned, so the first person with a cable cannot set it.
+- The device stores the secret itself, as a secret: an HMAC challenge needs the key, so a hash would not do. It lives in the record, is never readable over any surface, and is removed by `deployment.reset` and the factory reset.
+- The unlock is an HMAC-SHA-256 challenge over USB only. The device sends a fresh random challenge, and a Reader holding the secret answers it.
 
 The unlock grants the reads and posture unlock shown in section 9. It never grants key export or configuration writes beyond what signed callers have.
 
@@ -209,17 +243,20 @@ The unlock grants the reads and posture unlock shown in section 9. It never gran
 | `deployment.reset`, corrupt record | the same | the same | USB cable in Normal; local unlock in Hardened |
 | posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed, or the cable |
 | `identity.rotate` (new owner) | node key, contacts, message queue | configuration, record, channels, posture | signed; refused without a readable record |
-| factory reset | everything, the record and `device_id` included | nothing | the cable only; never remote |
+| rescue `rebuild` | nothing: it reformats and saves everything back, the record included | everything | the cable |
+| factory reset | everything, the record, the provisioned marker and `device_id` included | nothing | the cable only; never remote, never BLE once enrolled |
 
 Rules:
 - Each operation removes exactly what it names.
-- A factory reset regenerates `device_id`. After erase the device is a new device, so a manager cannot re-attach old state to it. *(Decision for the review.)*
+- A factory reset regenerates `device_id` from the cryptographic RNG. After erase the device is a new device, so a manager cannot re-attach old state to it.
+- Removing the record's two copies deletes the older copy first, so a power cut in between never brings an older record back.
 - Moving to a different Deployment is unenrollment followed by a first provisioning, which needs physical presence again.
 - Rotation runs in this order: generate, save, swap, drop contacts and queue, then one self-advert. The device reports the old and the new public key.
 
 ## 12. Keys, randomness and secrets
 
-- **Device keys and secrets** come from the hardware RNG, through the platform's cryptographic RNG: the node key, the local unlock challenge, the BLE PIN and `device_id`.
+- **Device keys and secrets** come from the platform's cryptographic RNG, fed by the hardware RNG: `esp_fill_random` on ESP32, and the nRF52's hardware RNG peripheral. This covers the node key, `device_id`, the BLE PIN, the local unlock challenge and the channel nonces. Never Arduino `random()`, which is a seeded libc PRNG on some cores.
+- A signed update that names a minimum firmware version is bound to the record before a device enforces it, so downgrading the firmware cannot drop the rule ([#110](https://github.com/hoejriis/mecon-firmware/issues/110)).
 - **The DAK and manager keys** never exist on a device. Only public keys and signatures do.
 - **The node private key** leaves a device only under the custody rule in [Security and authority](SECURITY_AND_AUTHORITY.md):
   - before provisioning, over a USB cable;
@@ -229,23 +266,29 @@ Rules:
 
 ## 13. Error codes
 
-`unauthenticated`, `unsupported_auth_version`, `unknown_issuer`, `issuer_revoked`, `bad_signature`, `wrong_deployment`, `wrong_device`, `authority_revision_ahead`, `stale_authority`, `replay`, `payload_too_large`, `deployment_record_corrupt`, `bad_authority_signature`, `bad_authority_set`, `stale_revision`, `untrusted_authority_key`, `unsupported_contract_version`, `bad_broker_roles`, `bad_deployment_name`, and `duplicate` (an acknowledgement, not a refusal). An unknown code is a refusal.
+`unauthenticated`, `unsupported_auth_version`, `unknown_issuer`, `issuer_revoked`, `bad_signature`, `wrong_deployment`, `wrong_device`, `authority_revision_ahead`, `stale_authority`, `replay`, `bad_channel_nonce`, `payload_too_large`, `deployment_record_corrupt`, `bad_authority_signature`, `bad_authority_set`, `stale_revision`, `untrusted_authority_key`, `unsupported_contract_version`, `bad_broker_roles`, `bad_deployment_name`, and `duplicate` (an acknowledgement, not a refusal). An unknown code is a refusal.
 
 ## 14. Product profiles
 
 A product built on this contract may add fields to the `deployment` object and its own job classes. These must not weaken any check above, and the profile must say which fields it adds. MECON's profile is [#118](https://github.com/hoejriis/mecon-firmware/issues/118); its outage sync-key generation and its migration of legacy job sequences are defined there, not here. A generic device ignores profile fields it does not implement.
 
-## 15. Open for the security review
+## 15. Review outcome
 
-1. **First provisioning.** Which callers may provision unsigned. Proposed: the USB cable in either posture, and BLE paired with the device's own PIN through a Reader. Never the TCP port, a default-PIN link, an unverified broker or LoRa. Should a verified broker profile flagged for management (the flag is set only locally) also count?
-2. **Unsigned configuration writes over USB in Normal once enrolled.** Proposed: refused (section 9).
-3. **One `iface` suffix** for all operations, against one suffix per operation.
-4. **Remote erase:** never (section 11).
-5. **Boot counter save failure:** sign nothing (section 3.4).
-6. **`device_id`** regenerated at factory reset.
-7. **The provisioned marker** (section 4).
-8. **No sequence adoption** for signed managers (section 8).
-9. **LoRa:** #115 carries this same wrapper, so the size bound and fragmentation there must keep check 3 over the reassembled body. A route, proxy or channel key adds nothing.
+The first security review (2026-10-25) decided the questions this page had left open. The answers are folded into the sections above:
+
+| Question | Decision | Section |
+|---|---|---|
+| Who may provision unsigned | the USB cable, and BLE paired with the device's own random PIN; never a broker, the TCP port, a default or static PIN, or LoRa | 6.1 |
+| Unsigned configuration writes over USB once enrolled | refused; recovery paths keep the record | 9, 11 |
+| One suffix for every operation | kept; replay across transports is closed by `job_id` on everything but plain reads, and by the channel nonce on sensitive replies | 3.3, 7.1 |
+| Remote erase | never | 11 |
+| Boot counter save failure | sign nothing | 3.4 |
+| `device_id` at factory reset | regenerated, from the cryptographic RNG | 11, 12 |
+| The provisioned marker | kept, outside the formatted file system | 4 |
+| Sequence adoption | never; one strict sequence per member, marks readable | 6.3, 8 |
+| LoRa fragmentation | check 3 on the reassembled body; bounded per message id | 7 |
+
+The review also changed: the size limits (2,048-byte set, 16 revoked ids, no rotations in a provisioning); marks kept apart from the record, and a failed write refused; the local unlock secret set only by an authority and stored as a secret; the byte-identical rule for every set delivery; the delete order; the error codes of section 5; the epoch bound; and binding `issuer` into the body.
 
 ## 16. Conformance
 
@@ -254,5 +297,5 @@ A product built on this contract may add fields to the `deployment` object and i
   - every check of sections 5 and 7, in order;
   - the record framing under damage of either copy and a power cut at each step;
   - the membership and re-admission rules;
-  - replay at the window edges and across a reboot.
+  - the sequence at the mark, below it and across a reboot, and a failed mark write refusing the request.
 - Simulated-board tests over every transport follow when the roles enforce the record.
