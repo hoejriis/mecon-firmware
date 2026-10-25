@@ -132,8 +132,8 @@ TEST_P(PrivilegeMatrix, EveryCellOfTheTableIsAsWritten) {
         EXPECT_EQ(v.allow, want == R_ALLOW);
         // "lowers protection" is for a cable: no other caller gets through with the flag, whatever its cell says
         const Verdict lower = decide(ctx, cls, F_CABLE_ONLY);
-        EXPECT_EQ(lower.allow, want == R_ALLOW && want_p == P_CABLE);
-        if (want == R_ALLOW && want_p != P_CABLE) EXPECT_EQ(lower.reason, R_NOT_PERMITTED);
+        EXPECT_EQ(lower.allow, want == R_ALLOW && (want_p == P_CABLE || want_p == P_SIGNED));
+        if (want == R_ALLOW && want_p != P_CABLE && want_p != P_SIGNED) EXPECT_EQ(lower.reason, R_NOT_PERMITTED);
         else EXPECT_EQ(lower.reason, want);
       }
     }
@@ -169,7 +169,7 @@ TEST(PrivilegeProperties, ASignedCallerNeverEraseNorReadsKeysOnAnyTransport) {
       EXPECT_FALSE(decide(c, C_SECRET).allow);
       EXPECT_TRUE(decide(c, C_WRITE).allow);
       EXPECT_TRUE(decide(c, C_REBOOT).allow);
-      EXPECT_FALSE(decide(c, C_POSTURE, F_CABLE_ONLY).allow) << "lowering protection stays with the cable";
+      EXPECT_TRUE(decide(c, C_POSTURE, F_CABLE_ONLY).allow) << "a signed request may lower the posture (section 11: signed, or the cable)";
     }
   EXPECT_EQ(principalOf(Context(T_BUTTON, A_SIGNED, 0)), P_UNTRUSTED);
   EXPECT_EQ(principalOf(Context(T_NONE, A_SIGNED, 0)), P_UNTRUSTED);
@@ -268,8 +268,8 @@ TEST(Registry, RepeaterClassification) {
 }
 
 TEST(Registry, SetPostureArgumentsAreClassifiedLikeThePostureHandlerParsesThem) {
-  EXPECT_EQ(resolve("set posture hardened", ROLE_COMPANION).flags, 0);
-  EXPECT_EQ(resolve("set posture   hardened", ROLE_COMPANION).flags, 0);       // the handler skips spaces too
+  EXPECT_EQ(resolve("set posture hardened", ROLE_COMPANION).flags, F_RAISES);
+  EXPECT_EQ(resolve("set posture   hardened", ROLE_COMPANION).flags, F_RAISES);       // the handler skips spaces too
   EXPECT_EQ(resolve("set posture normal", ROLE_COMPANION).flags, F_CABLE_ONLY);
   EXPECT_EQ(resolve("set posture normal confirm", ROLE_COMPANION).flags, F_CABLE_ONLY);
   EXPECT_EQ(resolve("set posture  normal confirm", ROLE_COMPANION).flags, F_CABLE_ONLY);
@@ -746,7 +746,9 @@ TEST(Unlocked, ACommandLineFromAnUnlockedCableMayChangeThePostureInNormalOnly) {
   Outcome o;
   EXPECT_TRUE(gate("set posture hardened", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
   EXPECT_FALSE(o.allowed);
-  EXPECT_FALSE(gate("set posture hardened", unlockedCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  Context u = unlockedCtx(T_USB, A_CABLE, 0);
+  u.has_unlock_secret = true;   // an unlocked cable implies a secret in the record
+  EXPECT_FALSE(gate("set posture hardened", u, ROLE_COMPANION, 5, r, sizeof(r), &o));
   EXPECT_TRUE(o.allowed);
   EXPECT_TRUE(gate("set posture normal confirm", unlockedCtx(T_USB, A_CABLE, 1), ROLE_COMPANION, 5, r, sizeof(r), &o));
   EXPECT_FALSE(o.allowed);
@@ -812,4 +814,57 @@ TEST(ServerCaller, FormattedCallsTheRegisteredHookOnce) {
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
+}
+
+// ---- lowering by a signed request, and Hardened only with a local unlock secret (AUTHORITY.md sections 10 and 11)
+
+TEST(Posture2, ASignedRequestMayLowerTheFlaggedPostureCommandsAndNoOtherWireCallerMay) {
+  for (uint8_t t : {T_USB, T_BLE, T_TCP, T_MQTT, T_LORA}) {
+    EXPECT_TRUE(decide(Context(t, A_SIGNED, 1), C_POSTURE, F_CABLE_ONLY).allow) << "transport " << (int)t;
+  }
+  char r[160];
+  Outcome o;
+  Context sig(T_MQTT, A_SIGNED, 1);
+  sig.enrolled = true;
+  EXPECT_FALSE(gate("set posture normal confirm", sig, ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_TRUE(o.allowed) << "signed, enrolled, Hardened to Normal";
+  EXPECT_TRUE(gate("set posture normal confirm", enrolledCtx(T_BLE, A_PAIRED_PIN, 1), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed) << "an unsigned paired phone still may not";
+  EXPECT_TRUE(gate("set posture normal confirm", Context(T_MQTT, A_TLS_VERIFIED, 1), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+}
+
+TEST(Posture2, EnteringHardenedWhileEnrolledNeedsALocalUnlockSecretInTheRecord) {
+  Context sig(T_USB, A_SIGNED, 0);
+  sig.enrolled = true;
+  Verdict v = decide(sig, C_POSTURE, F_RAISES);
+  EXPECT_FALSE(v.allow);
+  EXPECT_EQ(v.reason, R_NO_UNLOCK_SECRET);
+  sig.has_unlock_secret = true;
+  EXPECT_TRUE(decide(sig, C_POSTURE, F_RAISES).allow);
+  char r[160];
+  Outcome o;
+  Context nos(T_MQTT, A_SIGNED, 0);
+  nos.enrolled = true;
+  EXPECT_TRUE(gate("set posture hardened", nos, ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+  EXPECT_EQ(o.reason, R_NO_UNLOCK_SECRET);
+  EXPECT_STREQ(r, "ERR: set a local unlock secret before Hardened (the device belongs to a Deployment)");
+  nos.has_unlock_secret = true;
+  EXPECT_FALSE(gate("set posture hardened", nos, ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_TRUE(o.allowed);
+  // a device with no record is untouched by the rule
+  EXPECT_TRUE(decide(Context(T_USB, A_CABLE, 0), C_POSTURE, F_RAISES).allow);
+  EXPECT_TRUE(decide(Context(T_BLE, A_PAIRED_PIN, 0), C_POSTURE, F_RAISES).allow);
+  // the server's context carries the fact from the record's owner
+  ServerCaller& sc = serverCaller();
+  sc.enrolled = true;
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 0)).has_unlock_secret);
+  static bool have = false;
+  sc.has_secret = [](void*) { return have; };
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 0)).has_unlock_secret);
+  have = true;
+  EXPECT_TRUE(withServerCaller(Context(T_USB, A_CABLE, 0)).has_unlock_secret);
+  sc.has_secret = nullptr;
+  sc.enrolled = false;
 }

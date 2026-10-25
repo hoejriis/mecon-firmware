@@ -957,6 +957,19 @@ def test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_open
     assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL
 
 
+def test_an_unlocked_cable_may_enter_hardened_because_the_record_holds_the_secret_and_without_one_nobody_unsigned_may(nodes):
+    d = boot_with_secret(nodes, "us1h")
+    assert d.c.cli("set posture hardened") == NOT_ENROLLED_REFUSAL, "control: locked"
+    r = try_unlock(d.i.request)
+    assert r["status"] == "ok", r
+    assert d.c.cli("set posture hardened") == "OK - posture hardened", "the record holds a secret: the rule lets it through"
+    assert d.c.cli("get posture") == "> hardened"
+    nosecret = boot(nodes, "us1n")
+    nosecret.provision()
+    assert nosecret.c.cli("set posture hardened") == NOT_ENROLLED_REFUSAL
+    assert nosecret.c.cli("get posture") == "> normal", "no secret in the record: never Hardened by an unsigned caller"
+
+
 def test_in_hardened_the_unlock_opens_reads_and_the_reset_of_a_corrupt_record_and_nothing_else(nodes):
     d = boot_with_secret(nodes, "us2", posture="hardened")
     assert try_unlock(d.i.request)["status"] == "ok", "the handshake is open in Hardened"

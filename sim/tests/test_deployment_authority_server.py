@@ -421,6 +421,16 @@ def test_the_console_unlock_opens_the_posture_in_normal_and_nothing_else(nodes, 
 
 
 @pytest.mark.parametrize("kind", KINDS)
+def test_an_unlocked_console_may_enter_hardened_because_the_record_holds_the_secret(nodes, kind):
+    d = boot_with_secret(nodes, kind, "uj" + kind)
+    assert d.cli.command("set posture hardened") == ENROLLED_REFUSAL, "control: locked"
+    r = try_unlock(d.i.request)
+    assert r["status"] == "ok", r
+    assert d.cli.command("set posture hardened").startswith("OK"), "the record holds a secret: the rule lets it through"
+    assert d.cli.command("get posture") == "> hardened"
+
+
+@pytest.mark.parametrize("kind", KINDS)
 def test_in_hardened_the_console_unlock_resets_a_corrupt_record_and_opens_nothing_else(nodes, kind):
     d = boot_with_secret(nodes, kind, "uh" + kind, posture="hardened")
     assert try_unlock(d.i.request)["status"] == "ok"

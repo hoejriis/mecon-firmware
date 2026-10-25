@@ -62,6 +62,8 @@ public:
 
   // Whether the device holds a Deployment record, healthy or corrupt: an unsigned caller then changes nothing.
   bool enrolled() const { return _dep_ls != Dep::LS_ABSENT; }
+  // Whether the record holds a local unlock secret (section 10): required before the device enters Hardened while enrolled.
+  bool hasUnlockSecret() const { return unlockSecret() != nullptr; }
   Dep::LoadState state() const { return _dep_ls; }
   bool isSigned() const { return _signed; }
   // The caller of the request about to be dispatched (a transport, or the broker).

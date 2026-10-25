@@ -205,6 +205,8 @@ void DeployAuth::begin(const Env& env) {
   if (_env.publish_caller) {
     Cli::serverCaller().on_format = [](void* u) { static_cast<DeployAuth*>(u)->onFactoryReset(); };
     Cli::serverCaller().on_format_user = this;
+    Cli::serverCaller().has_secret = [](void* u) { return static_cast<DeployAuth*>(u)->hasUnlockSecret(); };
+    Cli::serverCaller().has_secret_user = this;
   }
   load();
 }

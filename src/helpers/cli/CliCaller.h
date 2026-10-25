@@ -28,6 +28,9 @@ struct ServerCaller {
   // built, so the 10 minutes lapse on their own; null: never.
   bool (*unlocked)(void* user) = nullptr;
   void* unlocked_user = nullptr;
+  // Whether the record holds a local unlock secret, asked each time a context is built (it changes with a signed request).
+  bool (*has_secret)(void* user) = nullptr;
+  void* has_secret_user = nullptr;
 };
 
 inline ServerCaller& serverCaller() {
@@ -40,6 +43,7 @@ inline ServerCaller& serverCaller() {
 inline Context withServerCaller(Context c) {
   const ServerCaller& s = serverCaller();
   c.enrolled = s.enrolled;
+  c.has_unlock_secret = s.has_secret && s.has_secret(s.has_secret_user);
   c.unlocked = s.unlocked && !s.signed_line && !c.remote && c.transport == T_USB && c.auth == A_CABLE && s.unlocked(s.unlocked_user);
   if (s.signed_line && !c.remote && c.transport == T_USB && c.auth == A_CABLE) c.auth = A_SIGNED;
   return c;

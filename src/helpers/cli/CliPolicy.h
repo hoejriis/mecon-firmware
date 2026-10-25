@@ -59,7 +59,8 @@ enum Class : uint8_t {
 
 enum Flags : uint8_t {
   F_CABLE_ONLY = 1,   // lowers protection: only the cable may, whatever the class cell says for the other local callers
-  F_QUIET = 2         // registry only: a "local console only" refusal is explained but not audited
+  F_QUIET = 2,        // registry only: a "local console only" refusal is explained but not audited
+  F_RAISES = 4        // raises protection to Hardened: with a record, only once the record holds a local unlock secret
 };
 
 enum Reason : uint8_t {
@@ -76,7 +77,8 @@ enum Reason : uint8_t {
   R_MQTT_READONLY,      // Hardened and the broker profile is not flagged for management
   R_NEEDS_FLAG,         // table-internal: allowed when the broker profile is flagged for management
   R_NETCON_OFF,         // the Ethernet console is off in Hardened
-  R_ENROLLED            // the device holds a Deployment record: an unsigned caller may not change it (AUTHORITY.md section 9)
+  R_ENROLLED,           // the device holds a Deployment record: an unsigned caller may not change it (AUTHORITY.md section 9)
+  R_NO_UNLOCK_SECRET    // entering Hardened with a record needs a local unlock secret in it first (AUTHORITY.md section 10)
 };
 
 // Who the context resolves to: one row of the table.
@@ -110,6 +112,9 @@ struct Context {
   // (Iface::DeployAuth) for the cable link only; honoured by decide() and unlockManagement() for the cable principal and
   // by no other.
   bool unlocked = false;
+  // The Deployment record holds a local unlock secret (AUTHORITY.md section 10), set wherever `enrolled` is. Without it the
+  // device may not enter Hardened while enrolled, so a Reader could never unlock it. False is the safe default.
+  bool has_unlock_secret = false;
 
   Context() { }
   Context(uint8_t t, uint8_t a, uint8_t posture_, bool mgmt_ = false)
@@ -214,7 +219,8 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   const Principal p = principalOf(c);
   Reason r = tableCell(p, c.posture != 0, cls);
   if (r == R_NEEDS_FLAG) r = c.mgmt ? R_ALLOW : R_MQTT_READONLY;
-  if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;   // lowering protection: a cable
+  // Lowering protection: a cable, or a member's signature ("signed, or the cable", section 11).
+  if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE && p != P_SIGNED) r = R_NOT_PERMITTED;
   // Once the device holds a Deployment record, only a member's signature changes it, or someone with the cable for the
   // recovery operations (AUTHORITY.md sections 9 and 11). So an unsigned caller keeps reads, a local one (cable, paired
   // BLE) also reboot, and every other class is refused whatever the table says for this transport; a remote caller (MQTT,
@@ -227,6 +233,7 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&
       !(p == P_CABLE && cls == C_DESTRUCTIVE) && !unlock_posture)
     r = R_ENROLLED;
+  if (r == R_ALLOW && (flags & F_RAISES) && c.enrolled && !c.has_unlock_secret) r = R_NO_UNLOCK_SECRET;
   Verdict v;
   v.allow = r == R_ALLOW;
   v.reason = r;

@@ -98,6 +98,7 @@ inline const char* reasonName(uint8_t r) {
     case R_MQTT_READONLY: return "broker-read-only";
     case R_NETCON_OFF: return "ethernet-console-off";
     case R_ENROLLED: return "enrolled-unsigned";
+    case R_NO_UNLOCK_SECRET: return "no-unlock-secret";
   }
   return "?";
 }

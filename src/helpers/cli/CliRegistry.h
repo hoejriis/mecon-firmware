@@ -118,7 +118,7 @@ inline Resolved resolve(const char* cmd, uint8_t role) {
   if (isSetPosture(cmd, arg)) {
     r.cls = C_POSTURE;
     r.what = Posture::W_POSTURE;
-    if (strcmp(arg, "hardened") != 0) r.flags = F_CABLE_ONLY;
+    r.flags = strcmp(arg, "hardened") != 0 ? F_CABLE_ONLY : F_RAISES;
     return r;
   }
   if (role == ROLE_COMPANION && isMgmtFlag(cmd)) {

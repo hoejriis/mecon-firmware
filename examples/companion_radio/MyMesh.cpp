@@ -2292,6 +2292,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     ctx.remote = sender_timestamp != 0;
 #ifdef ENABLE_MECON_IFACE
     ctx.enrolled = _iface.enrolled();   // the one place that gates a command line: every adapter and the rescue console
+    ctx.has_unlock_secret = _iface.hasUnlockSecret();
 #endif
     Cli::Outcome outcome;
     if (Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {
@@ -2346,6 +2347,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     ctx.remote = sender_timestamp != 0;
 #ifdef ENABLE_MECON_IFACE
     ctx.enrolled = _iface.enrolled();   // so `mecon.can` reports the verdict the gate would give
+    ctx.has_unlock_secret = _iface.hasUnlockSecret();
 #endif
     if (Cli::handleMecon(command, ctx, Cli::ROLE_COMPANION, reply, 150)) return true;
   }
