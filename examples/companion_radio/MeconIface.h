@@ -68,6 +68,20 @@ public:
   static Iface::Status opDeployGet(Iface::OpContext& c);
   static Iface::Status opDeployProvision(Iface::OpContext& c);
   static Iface::Status opDeployUpdate(Iface::OpContext& c);
+  static Iface::Status opDeployReset(Iface::OpContext& c);
+  // Whether the device holds a Deployment record, healthy or corrupt: an unsigned caller then changes nothing
+  // (AUTHORITY.md section 9). The CLI privilege table takes it as Context.enrolled.
+  bool enrolled() const { return _dep_ls != Dep::LS_ABSENT; }
+  // After a factory reset has formatted the storage: the provisioned marker goes with the record, and the state in
+  // memory follows what is now stored.
+  void onFactoryReset();
+  // The rescue console's rebuild must not unenrol (section 9, 11): the record's two copies, the marks' two copies and
+  // the provisioned marker are read before it, and written back after. A null snapshot means something exists that
+  // cannot be read; the rebuild is then refused.
+  struct RecordSnapshot;
+  RecordSnapshot* snapshotRecord();
+  bool restoreRecord(RecordSnapshot* s);
+  static void freeSnapshot(RecordSnapshot* s);
 
   static const size_t QUEUE_BYTES = 2048;   // per transport, allocated on its first message
   static const size_t RESULT_MAX = 1536;    // largest result an operation writes in one piece (pages above that)

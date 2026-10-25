@@ -7,7 +7,9 @@
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
 #include <helpers/CryptoRNG.h>
+#include <helpers/deployment/DepMarker.h>
 #include <helpers/deployment/DepProvision.h>
+#include <helpers/Posture.h>
 #include <helpers/deployment/DepReplay.h>
 #include <new>
 #include <stdlib.h>
@@ -206,7 +208,11 @@ void MeconIface::deployLoad() {
     st->readDeploymentCopy(slot, &probe, 0, &len, &exists);
     any = any || exists;
   }
-  if (!any) return;
+  if (!any) {
+    // No copy of the record, but the provisioned marker says there was one: corrupt, never absent (section 4).
+    _dep_ls = Dep::withMarker(Dep::LS_ABSENT, Dep::markerRead());
+    return;
+  }
   uint8_t* buf[2] = { static_cast<uint8_t*>(malloc(Dep::MAX_FRAME)), static_cast<uint8_t*>(malloc(Dep::MAX_FRAME)) };
   uint8_t* mbuf[2] = { static_cast<uint8_t*>(malloc(Dep::MARKS_FRAME)), static_cast<uint8_t*>(malloc(Dep::MARKS_FRAME)) };
   if (!buf[0] || !buf[1] || !mbuf[0] || !mbuf[1]) {
@@ -238,6 +244,8 @@ void MeconIface::deployLoad() {
   }
   for (uint8_t* p : buf) if (p) { memset(p, 0, Dep::MAX_FRAME); free(p); }   // the frames hold the unlock secret
   for (uint8_t* p : mbuf) free(p);
+  // A record that loads but has no marker (provisioned before the marker existed, or the marker was lost) gets it back.
+  if (_dep_ls == Dep::LS_OK && Dep::markerRead() == Dep::MK_ABSENT) Dep::markerSet();
 }
 
 void MeconIface::writeDeploymentStatus(JsonWriter& w, bool hardened) { Dep::depWriteStatus(w, _dep_ls, _dep, hardened); }
@@ -508,6 +516,9 @@ Status MeconIface::opDeployProvision(OpContext& c) {
   const bool present = (cx.transport == Cli::T_USB && cx.auth == Cli::A_CABLE) ||
                        (cx.transport == Cli::T_BLE && cx.auth == Cli::A_PAIRED_PIN);
   if (!has && !m->_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }
+  // A first provisioning needs the provisioned marker, outside the file system (section 4). A platform with nowhere to keep
+  // it cannot tell a device that was never provisioned from one whose files were lost, so it never provisions unsigned.
+  if (!has && Dep::markerRead() == Dep::MK_UNSUPPORTED) { c.error = "unsupported"; return ST_REFUSED; }
 
   DepWork* k = new (std::nothrow) DepWork();
   if (!k) { c.error = "no-memory"; return ST_BUSY; }
@@ -540,8 +551,16 @@ Status MeconIface::opDeployProvision(OpContext& c) {
       c.error = Dep::provErrCode(pe);
       goto done;
     }
-    // Commit: the record, then its marks, then the answer read back from storage.
-    if (!m->commit(k)) { c.error = "storage"; st = ST_BUSY; goto done; }
+    // Commit: the marker first on a first provisioning (a failure after it leaves the device reading as corrupt, which the
+    // cable can reset; a failure before it must not leave a record with no marker), then the record, then its marks, then
+    // the answer read back from storage.
+    if (!has && !Dep::markerSet()) { c.error = "storage"; st = ST_BUSY; goto done; }
+    if (!m->commit(k)) {
+      if (!has) Dep::markerClear();   // nothing was written: back to a device with no Deployment (if this fails, it reads corrupt)
+      c.error = "storage";
+      st = ST_BUSY;
+      goto done;
+    }
     if (!m->saveMarksFor(k->set)) { c.error = "marks"; st = ST_BUSY; goto done; }
     if (!m->readCurrent(k)) { c.error = "storage"; st = ST_FAILED; goto done; }
     writeFields(w, *m->_dep, k->cur.rec, k->cur.set_text, false);
@@ -625,5 +644,142 @@ done:
   delete k;
   return st;
 }
+
+// ---- unenrolment: reset, factory reset, and the rescue console's rebuild
+
+namespace {
+
+// Whether any copy of one of the two files exists, without reading it.
+bool anyCopy(DataStore* st, DataStore::DepFile which) {
+  for (int slot = 0; slot < 2; slot++) {
+    size_t len;
+    bool exists = false;
+    uint8_t probe;
+    st->readDeploymentCopy(slot, &probe, 0, &len, &exists, which);
+    if (exists) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+// deployment.reset (AUTHORITY.md section 11): removes the record (older copy first), the marks, the local unlock secret and
+// the provisioned marker; keeps the node key, device_id, configuration, contacts and channels. A healthy record: only
+// signed, only over the USB cable, only in Normal. A corrupt record: the unsigned USB cable in Normal. Local unlock, the
+// way for a corrupt record in Hardened, is not built yet.
+Status MeconIface::opDeployReset(OpContext& c) {
+  MeconIface* m = self(c);
+  JsonWriter& w = *c.out;
+  const Cli::Context& cx = m->_ctx;
+  if (m->_dep_ls == Dep::LS_ABSENT) { c.error = "not_enrolled"; return ST_REFUSED; }
+  const bool corrupt = m->_dep_ls != Dep::LS_OK;
+  const bool usb = cx.transport == Cli::T_USB;
+  if (!corrupt) {
+    if (!m->_signed) { if (m->_dep) m->_dep->auth_rejections++; c.error = "unauthenticated"; return ST_REFUSED; }
+    if (!usb) { m->_dep->auth_rejections++; c.error = "usb_only"; return ST_REFUSED; }
+  } else if (m->_signed || !usb || cx.auth != Cli::A_CABLE) {
+    if (m->_dep) m->_dep->auth_rejections++;
+    c.error = "deployment_record_corrupt";
+    return ST_REFUSED;
+  }
+  if (Posture::isHardened(cx.posture)) {
+    if (m->_dep) m->_dep->auth_rejections++;
+    c.error = corrupt ? "not_supported_yet" : "hardened";
+    return ST_REFUSED;
+  }
+  DataStore* st = m->_mesh->_store;
+  const int rec_slot = m->_dep ? m->_dep->slot : -1;
+  const int marks_slot = m->_dep ? m->_dep->marks_slot : -1;
+  const bool had_record = anyCopy(st, DataStore::DEP_RECORD);
+  const bool had_marks = anyCopy(st, DataStore::DEP_MARKS);
+  const bool had_unlock = m->_dep && m->_dep_ls == Dep::LS_OK && m->_dep->rec.has_unlock;
+  const bool had_marker = Dep::markerRead() == Dep::MK_PRESENT;
+  // The record first, the older copy first within it; the marker last, so a step that fails leaves the device reading as
+  // enrolled or corrupt, never as a device with no Deployment while part of it remains.
+  const bool ok = st->removeDeploymentCopies(rec_slot, DataStore::DEP_RECORD) &&
+                  st->removeDeploymentCopies(marks_slot, DataStore::DEP_MARKS) && Dep::markerClear();
+  if (m->_dep) Dep::depFree(m->_dep);
+  m->deployLoad();   // the state in memory is what is now stored
+  if (!ok) { c.error = "storage"; return ST_FAILED; }
+  w.key("state"); w.str("none");
+  w.key("removed"); w.beginArray();
+  if (had_record) w.str("record");
+  if (had_marks) w.str("marks");
+  if (had_unlock) w.str("unlock_secret");
+  if (had_marker) w.str("marker");
+  w.endArray();
+  w.key("kept"); w.beginArray();
+  w.str("node_key"); w.str("device_id"); w.str("configuration"); w.str("contacts"); w.str("channels");
+  w.endArray();
+  return ST_OK;
+}
+
+void MeconIface::onFactoryReset() {
+  Dep::markerClear();   // the format does not touch it; only a reset and the factory reset do
+  if (_dep) Dep::depFree(_dep);
+  _dep = nullptr;
+  _dep_ls = Dep::withMarker(Dep::LS_ABSENT, Dep::markerRead());   // a marker that would not clear reads as corrupt
+}
+
+// The four stored files and the marker, as the rescue console's rebuild must find them again.
+struct MeconIface::RecordSnapshot {
+  uint8_t* data[4];   // record A, record B, marks A, marks B
+  size_t len[4];
+  bool exists[4];
+  Dep::MarkerState marker;
+  RecordSnapshot() { memset(this, 0, sizeof(*this)); }
+  ~RecordSnapshot() {
+    for (uint8_t* p : data) if (p) { memset(p, 0, Dep::MAX_FRAME); free(p); }   // the record holds the unlock secret
+  }
+};
+
+static DataStore::DepFile whichOf(int i) { return i < 2 ? DataStore::DEP_RECORD : DataStore::DEP_MARKS; }
+static size_t capOf(int i) { return i < 2 ? Dep::MAX_FRAME : Dep::MARKS_FRAME; }
+
+MeconIface::RecordSnapshot* MeconIface::snapshotRecord() {
+  RecordSnapshot* s = new (std::nothrow) RecordSnapshot();
+  if (!s) return nullptr;
+  s->marker = Dep::markerRead();
+  for (int i = 0; i < 4; i++) {
+    uint8_t* probe = static_cast<uint8_t*>(malloc(capOf(i)));
+    if (!probe) { delete s; return nullptr; }
+    size_t len = 0;
+    bool exists = false;
+    const bool ok = _mesh->_store->readDeploymentCopy(i & 1, probe, capOf(i), &len, &exists, whichOf(i));
+    if (exists && !ok) { memset(probe, 0, capOf(i)); free(probe); delete s; return nullptr; }   // exists, cannot be read
+    if (!exists) { free(probe); continue; }
+    s->data[i] = probe;
+    s->len[i] = len;
+    s->exists[i] = true;
+  }
+  return s;
+}
+
+bool MeconIface::restoreRecord(RecordSnapshot* s) {
+  if (!s) return false;
+  bool ok = true;
+  // The marker first: if a copy below fails to come back, the device then reads as corrupt, never as unenrolled.
+  if (s->marker == Dep::MK_PRESENT && Dep::markerRead() != Dep::MK_PRESENT) ok = Dep::markerSet() && ok;
+  uint8_t* now = static_cast<uint8_t*>(malloc(Dep::MAX_FRAME));
+  if (!now) return false;
+  for (int i = 0; i < 4; i++) {
+    if (!s->exists[i]) continue;
+    size_t len = 0;
+    bool exists = false;
+    const bool same = _mesh->_store->readDeploymentCopy(i & 1, now, capOf(i), &len, &exists, whichOf(i)) && exists &&
+                      len == s->len[i] && memcmp(now, s->data[i], len) == 0;
+    if (same) continue;   // a rebuild that did not format leaves them as they were: no flash wear
+    ok = _mesh->_store->writeDeploymentCopy(i & 1, s->data[i], s->len[i], whichOf(i)) && ok;
+    ok = _mesh->_store->readDeploymentCopy(i & 1, now, capOf(i), &len, &exists, whichOf(i)) && exists &&
+         len == s->len[i] && memcmp(now, s->data[i], len) == 0 && ok;
+  }
+  memset(now, 0, Dep::MAX_FRAME);
+  free(now);
+  if (_dep) Dep::depFree(_dep);
+  deployLoad();   // the state in memory is what is now stored
+  return ok;
+}
+
+void MeconIface::freeSnapshot(RecordSnapshot* s) { delete s; }
 
 #endif  // ENABLE_MECON_IFACE

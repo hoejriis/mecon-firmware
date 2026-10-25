@@ -30,7 +30,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
-                                    "deployment.authority_update"};
+                                    "deployment.authority_update", "deployment.reset"};
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -52,6 +52,7 @@ const OpEntry OPS[] = {
   {"deployment.get", MeconIface::opDeployGet, PRIV_READ, false},
   {"deployment.provision", MeconIface::opDeployProvision, PRIV_WRITE, true},
   {"deployment.authority_update", MeconIface::opDeployUpdate, PRIV_WRITE, true},
+  {"deployment.reset", MeconIface::opDeployReset, PRIV_WRITE, true},
 };
 
 }  // namespace
@@ -182,8 +183,9 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
+  // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).
   if (self->_dep_ls != Dep::LS_ABSENT && !self->_signed && op.priv != PRIV_READ &&
-      strcmp(op.name, "deployment.provision") != 0) {
+      strcmp(op.name, "deployment.provision") != 0 && strcmp(op.name, "deployment.reset") != 0) {
     self->_deny = self->_dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";
     if (self->_dep) self->_dep->auth_rejections++;
     return false;

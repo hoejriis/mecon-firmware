@@ -1136,7 +1136,12 @@ void MyMesh::handleCmdFrame(size_t len) {
   const uint32_t now = getRTCClock()->getCurrentTime();
   {
     const uint8_t frame = frameGate(len);
-    if (frame != Cli::FR_NONE && !Cli::allowFrame(serialContext(), frame, now)) {
+    Cli::Context fctx = serialContext();
+#ifdef ENABLE_MECON_IFACE
+    // Once enrolled, the app's factory reset is the cable's alone (AUTHORITY.md section 9): the privilege table decides it.
+    if (frame == Cli::FR_FACTORY_RESET) fctx.enrolled = _iface.enrolled();
+#endif
+    if (frame != Cli::FR_NONE && !Cli::allowFrame(fctx, frame, now)) {
       MESH_DEBUG_PRINTLN("command %d refused for this caller", (int)cmd_frame[0]);
       writeErrFrame(ERR_CODE_NOT_PERMITTED);
       return;
@@ -2243,6 +2248,9 @@ uint8_t MyMesh::runMqttCli(const Cli::Context& ctx, const char* cmd, char* reply
 // A factory reset returns the device to Normal; the audit log (erased with the files) is written again with
 // the reset on it, so the history of what happened before the reset is not itself a casualty of it.
 void MyMesh::recordFactoryReset(uint8_t caller) {
+#ifdef ENABLE_MECON_IFACE
+  _iface.onFactoryReset();   // the record went with the format; the provisioned marker goes with it
+#endif
   _prefs.posture = Posture::NORMAL;
   Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_FACTORY_RESET, caller, Posture::W_NONE);
   auditStore().flush(millis());
@@ -2272,6 +2280,9 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     Cli::Context ctx = _cli_ctx;
     ctx.posture = _prefs.posture;
     ctx.remote = sender_timestamp != 0;
+#ifdef ENABLE_MECON_IFACE
+    ctx.enrolled = _iface.enrolled();   // the one place that gates a command line: every adapter and the rescue console
+#endif
     Cli::Outcome outcome;
     if (Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {
       _cli_refused = !outcome.allowed;
@@ -2323,6 +2334,9 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     Cli::Context ctx = _cli_ctx;
     ctx.posture = _prefs.posture;
     ctx.remote = sender_timestamp != 0;
+#ifdef ENABLE_MECON_IFACE
+    ctx.enrolled = _iface.enrolled();   // so `mecon.can` reports the verdict the gate would give
+#endif
     if (Cli::handleMecon(command, ctx, Cli::ROLE_COMPANION, reply, 150)) return true;
   }
   if (board.handleCommand(command, sender_timestamp, reply)) {
@@ -2516,10 +2530,20 @@ void MyMesh::checkCLIRescueCmd() {
 
     reply_buf[0] = 0;
     setCliCaller(Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture), Posture::CALLER_CABLE);   // the rescue console is the USB / UART serial port
-    if (handleCommand(cli_command, 0, reply_buf)) {
+    // erase and rebuild are the cable's recovery operations (AUTHORITY.md section 11), decided below, not command lines
+    const bool recovery = strcmp(cli_command, "rebuild") == 0 || strcmp(cli_command, "erase") == 0;
+    if (!recovery && handleCommand(cli_command, 0, reply_buf)) {
       // command was handled, print reply output
       Serial.print("  "); Serial.print(reply_buf); Serial.println();
     } else if (strcmp(cli_command, "rebuild") == 0) {
+#ifdef ENABLE_MECON_IFACE
+      // A rebuild must not unenrol: the Deployment record, its marks and the provisioned marker are read first, and written
+      // back after. If they cannot be read, nothing is rebuilt.
+      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
+      if (!snap) {
+        Serial.println("  Error: record unreadable; use deployment.reset or factory reset");
+      } else {
+#endif
 #ifndef CONTACTS_STOCK_ARRAY
       // The contacts are rebuilt from the persistent store itself, so the file system is not formatted (that would
       // erase the contacts that are not in the cache). The other files are written again from memory.
@@ -2530,6 +2554,9 @@ void MyMesh::checkCLIRescueCmd() {
       auditStore().flush(millis());
       int damaged = 0, isolated = 0;
       int kept = rebuildContacts(&damaged, &isolated);
+#ifdef ENABLE_MECON_IFACE
+      if (!_iface.restoreRecord(snap)) Serial.println("  Error: the Deployment record could not be written back; use deployment.reset");
+#endif
       Serial.print("  > rebuilt "); Serial.print(kept); Serial.print(" contacts, "); Serial.print(damaged); Serial.println(" damaged");
       if (isolated > 0) { Serial.print("  > "); Serial.print(isolated); Serial.println(" damaged bucket(s) kept aside as /ct<N>.bad"); }
 #else
@@ -2541,10 +2568,17 @@ void MyMesh::checkCLIRescueCmd() {
         saveChannels();
         Posture::audit().markAllDirty();   // the format erased the audit file; the log is still in RAM
         auditStore().flush(millis());
+#ifdef ENABLE_MECON_IFACE
+        if (!_iface.restoreRecord(snap)) Serial.println("  Error: the Deployment record could not be written back; use deployment.reset");
+#endif
         Serial.println("  > erase and rebuild done");
       } else {
         Serial.println("  Error: erase failed");
       }
+#endif
+#ifdef ENABLE_MECON_IFACE
+      }
+      MeconIface::freeSnapshot(snap);
 #endif
     } else if (strcmp(cli_command, "erase") == 0) {
       bool success = _store->formatFileSystem();
