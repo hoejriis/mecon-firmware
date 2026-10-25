@@ -595,7 +595,7 @@ static Context enrolledCtx(uint8_t t, uint8_t a, uint8_t posture, bool mgmt = fa
   return c;
 }
 
-TEST(Enrolled, AnUnsignedCallerKeepsReadsAndRebootAndLosesEveryOtherClass) {
+TEST(Enrolled, AnUnsignedCallerKeepsReadsALocalOneRebootAndLosesEveryOtherClass) {
   struct Caller { Context plain; const char* name; };
   const Caller callers[] = {
     {Context(T_USB, A_CABLE, 0), "cable"},
@@ -611,8 +611,8 @@ TEST(Enrolled, AnUnsignedCallerKeepsReadsAndRebootAndLosesEveryOtherClass) {
     for (uint8_t cls = 0; cls < C_COUNT; cls++) {
       SCOPED_TRACE(std::string(k.name) + " class " + std::to_string(cls));
       const Verdict before = decide(k.plain, cls), after = decide(e, cls);
-      if (cls == C_READ || cls == C_REBOOT) {
-        EXPECT_EQ(after.reason, before.reason) << "reads and reboot are the table's, enrolled or not";
+      if (cls == C_READ || (cls == C_REBOOT && !e.remote)) {
+        EXPECT_EQ(after.reason, before.reason) << "reads, and a local reboot, are the table's, enrolled or not";
       } else if (cls == C_DESTRUCTIVE && principalOf(e) == P_CABLE) {
         EXPECT_EQ(after.reason, before.reason) << "the cable keeps erase and factory reset";
         EXPECT_TRUE(after.allow);

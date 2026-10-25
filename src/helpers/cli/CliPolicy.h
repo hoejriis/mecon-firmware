@@ -207,10 +207,11 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   if (r == R_NEEDS_FLAG) r = c.mgmt ? R_ALLOW : R_MQTT_READONLY;
   if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;   // lowering protection: a cable
   // Once the device holds a Deployment record, only a member's signature changes it, or someone with the cable for the
-  // recovery operations (AUTHORITY.md sections 9 and 11). So an unsigned caller keeps reads and reboot, and every other
-  // class is refused whatever the table says for this transport; only the cable keeps the destructive class (erase,
-  // factory reset). Fails closed: anything that is not a read or reboot counts, so a new class is refused until decided.
-  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && cls != C_REBOOT &&
+  // recovery operations (AUTHORITY.md sections 9 and 11). So an unsigned caller keeps reads, a local one (cable, paired
+  // BLE) also reboot, and every other class is refused whatever the table says for this transport; a remote caller (MQTT,
+  // LoRa) keeps reads only. Only the cable keeps the destructive class (erase, factory reset). Fails closed: anything that
+  // is not a read or a local reboot counts, so a new class is refused until decided.
+  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&
       !(p == P_CABLE && cls == C_DESTRUCTIVE))
     r = R_ENROLLED;
   Verdict v;

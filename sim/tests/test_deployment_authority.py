@@ -160,20 +160,26 @@ def test_a_signed_config_apply_runs_and_a_resend_runs_nothing(nodes):
     r = d.send(w)
     assert r["status"] == "ok" and r["result"]["complete"], r
     assert d.name() == "> Signed1"
-    # an unsigned CLI write is refused once enrolled (contract section 9), so the change in between comes from the app's own
-    # native frame, which the table does not gate for the cable
-    assert d.c.request(bytes([8]) + b"Meanwhile")[0] == 0
     again = d.send(w)
     assert again == r, "the same bytes get the stored result"
+    # an unsigned change is refused once enrolled (contract section 9), the app's settings frame included: the change in
+    # between is a second signed request, and the first one's bytes then run nothing
+    assert d.c.request(bytes([8]) + b"Unsigned")[1] == 7, "an unsigned settings frame is refused once enrolled"
+    w2 = wrap(d.node_key, "config.apply", apply_name("Meanwhile"), job=2)
+    assert d.send(w2)["status"] == "ok"
+    refused = d.send(w)
+    assert refused["status"] == "refused" and refused["error"] == "replay", refused
     assert d.name() == "> Meanwhile", "and run nothing"
-    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 1
-    # after a reboot the result cache is gone, the mark is not: duplicate, with nothing to show for it
+    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 2
+    # after a reboot the result cache is gone, the mark is not: the request at the mark is a duplicate with nothing to
+    # show for it, and the older one is still refused
     d.reboot()
     assert d.name() == "> Meanwhile"
-    dup = d.send(w)
+    dup = d.send(w2)
     assert dup["status"] == "failed" and dup["error"] == "duplicate", dup
+    assert d.send(w)["error"] == "replay"
     assert d.name() == "> Meanwhile"
-    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 1, "the mark survived the reboot"
+    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 2, "the mark survived the reboot"
 
 
 def test_a_mark_that_cannot_be_written_runs_nothing_and_is_not_consumed(nodes):

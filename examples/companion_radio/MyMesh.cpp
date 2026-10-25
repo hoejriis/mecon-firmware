@@ -1138,8 +1138,9 @@ void MyMesh::handleCmdFrame(size_t len) {
     const uint8_t frame = frameGate(len);
     Cli::Context fctx = serialContext();
 #ifdef ENABLE_MECON_IFACE
-    // Once enrolled, the app's factory reset is the cable's alone (AUTHORITY.md section 9): the privilege table decides it.
-    if (frame == Cli::FR_FACTORY_RESET) fctx.enrolled = _iface.enrolled();
+    // Once enrolled, an unsigned app changes no settings and only the cable factory-resets (AUTHORITY.md section 9): the
+    // privilege table decides every gated frame with the enrolled flag. Messaging frames are not gated.
+    fctx.enrolled = _iface.enrolled();
 #endif
     if (frame != Cli::FR_NONE && !Cli::allowFrame(fctx, frame, now)) {
       MESH_DEBUG_PRINTLN("command %d refused for this caller", (int)cmd_frame[0]);
