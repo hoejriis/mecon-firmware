@@ -3,6 +3,7 @@
 #include <string.h>
 #include <string>
 #include <vector>
+#include "helpers/deployment/DepMarker.h"
 #include "helpers/deployment/DepState.h"
 #include "../test_deployment_vectors/vectors.h"
 
@@ -205,6 +206,16 @@ TEST_F(Fx, FallingBackToTheOlderCopyIsFlagged) {
   ASSERT_EQ(LS_OK, depLoad(of(a), Copy{ nullptr, 0 }, &s));
   EXPECT_FALSE(s->other_damaged);   // an absent copy is not a damaged one
   depFree(s);
+}
+
+TEST(ProvisionedMarker, NoCopyAndTheMarkerPresentIsCorruptNeverAbsent) {
+  EXPECT_EQ(LS_CORRUPT, withMarker(LS_ABSENT, MK_PRESENT)) << "both copies gone: first use must stay closed";
+  EXPECT_EQ(LS_ABSENT, withMarker(LS_ABSENT, MK_ABSENT)) << "a device that was never provisioned";
+  EXPECT_EQ(LS_ABSENT, withMarker(LS_ABSENT, MK_UNSUPPORTED)) << "nothing to check (the unsigned first provisioning is refused instead)";
+  for (MarkerState m : {MK_ABSENT, MK_PRESENT, MK_UNSUPPORTED}) {
+    EXPECT_EQ(LS_OK, withMarker(LS_OK, m));
+    EXPECT_EQ(LS_CORRUPT, withMarker(LS_CORRUPT, m));
+  }
 }
 
 int main(int argc, char** argv) {
