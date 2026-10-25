@@ -728,6 +728,55 @@ def test_the_rescue_erase_is_a_cable_recovery_and_clears_the_marker(nodes):
     assert d.i.request("deployment.get")["result"] == {"state": "none"}
 
 
+FILES_REFUSED = "file commands are refused"
+
+
+def test_the_rescue_file_commands_are_refused_while_a_record_exists_healthy_or_corrupt(nodes):
+    d = boot(nodes, "rf")
+    d.provision()
+    before = snapshot_files(d)
+    d.n.stop()
+    d.n.start()
+    for cmd in ("cat UserData/mecon_dep_a", "ls /", "rm UserData/mecon_dep_a", "rm UserData/mecon_depm_b"):
+        d.n.stop()
+        d.n.start()
+        out = rescue(d.n, cmd, FILES_REFUSED.encode(), timeout=8)
+        assert FILES_REFUSED in out, (cmd, out)
+        assert "removed" not in out and "Listing" not in out, (cmd, out)
+    d.n.stop()
+    assert snapshot_files(d) == before, "every record file is still there, byte for byte"
+    wreck_record(d)   # corrupt: the files exist but cannot be read as a record
+    damaged = snapshot_files(d)
+    d.n.start()
+    for cmd in ("cat UserData/mecon_dep_a", "rm UserData/mecon_dep_a"):
+        d.n.stop()
+        d.n.start()
+        out = rescue(d.n, cmd, FILES_REFUSED.encode(), timeout=8)
+        assert FILES_REFUSED in out, (cmd, out)
+    d.n.stop()
+    assert snapshot_files(d) == damaged
+
+
+def test_the_rescue_file_commands_are_refused_in_hardened_with_no_record_and_work_in_normal_standalone(nodes):
+    d = boot(nodes, "rf2")
+    d.n.stop()
+    d.n.start()
+    out = rescue(d.n, "ls /", b"Listing files", timeout=8)
+    assert "Listing files" in out and FILES_REFUSED not in out, "a standalone Normal device keeps the console as it was: " + out
+    d.n.stop()
+    d.n.start()
+    d.attach()
+    assert d.c.cli("set posture hardened") == "OK - posture hardened"
+    d.n.stop()
+    d.n.start()
+    out = rescue(d.n, "cat UserData/new_prefs", FILES_REFUSED.encode(), timeout=8)
+    assert FILES_REFUSED in out, out
+    d.n.stop()
+    d.n.start()
+    out = rescue(d.n, "rm UserData/new_prefs", FILES_REFUSED.encode(), timeout=8)
+    assert FILES_REFUSED in out, out
+
+
 def test_an_unsigned_cli_write_over_the_usb_frame_is_refused_once_enrolled_but_a_read_works(nodes):
     d = boot(nodes, "cw")
     assert d.c.cli("set name Before") == "OK", "standalone: unchanged"

@@ -2513,6 +2513,13 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   return false;  // not handled
 }
 
+bool MyMesh::rescueFilesLocked() {
+#ifdef ENABLE_MECON_IFACE
+  if (_iface.enrolled()) return true;   // a healthy or a corrupt record
+#endif
+  return _prefs.posture != Posture::NORMAL;
+}
+
 void MyMesh::checkCLIRescueCmd() {
   int len = strlen(cli_command);
   // `cli_command` must stay NUL-terminated within its bounds. If it ever isn't,
@@ -2542,7 +2549,14 @@ void MyMesh::checkCLIRescueCmd() {
     setCliCaller(Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture), Posture::CALLER_CABLE);   // the rescue console is the USB / UART serial port
     // erase and rebuild are the cable's recovery operations (AUTHORITY.md section 11), decided below, not command lines
     const bool recovery = strcmp(cli_command, "rebuild") == 0 || strcmp(cli_command, "erase") == 0;
-    if (!recovery && handleCommand(cli_command, 0, reply_buf)) {
+    const bool file_cmd = memcmp(cli_command, "ls", 2) == 0 || memcmp(cli_command, "cat", 3) == 0 || memcmp(cli_command, "rm ", 3) == 0;
+    if (file_cmd && rescueFilesLocked()) {
+      // The file commands read and delete the record (the local unlock secret is in it), the marks and the identity file
+      // (the node key): they would bypass sections 9 to 11 of AUTHORITY.md. Refused whatever the posture while a record
+      // exists, and in Hardened even without one, with a reply that says why. Factory reset ("erase") and "rebuild" are
+      // the recovery paths.
+      Serial.println("  Error: file commands are refused on a device that belongs to a Deployment or is Hardened; use rebuild or erase");
+    } else if (!recovery && handleCommand(cli_command, 0, reply_buf)) {
       // command was handled, print reply output
       Serial.print("  "); Serial.print(reply_buf); Serial.println();
     } else if (strcmp(cli_command, "rebuild") == 0) {

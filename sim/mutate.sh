@@ -990,6 +990,12 @@ mutate unlock_set_unlock_not_sensitive src/helpers/deployment/DepWrapper.cpp ' |
 
 mutate unlock_salvage_takes_the_older_frame src/helpers/deployment/DepState.cpp '      if (s->has_salvage && gen <= best) continue;' '' unit:test_dep_state
 
+# --- second review (H1): the rescue console's file commands
+mutate rescue_files_not_locked examples/companion_radio/MyMesh.cpp '    if (file_cmd && rescueFilesLocked()) {' '    if (false) {' sim/tests/test_deployment_authority.py::test_the_rescue_file_commands_are_refused_while_a_record_exists_healthy_or_corrupt
+mutate rescue_files_open_in_hardened examples/companion_radio/MyMesh.cpp '  return _prefs.posture != Posture::NORMAL;
+}' '  return false;
+}' sim/tests/test_deployment_authority.py::test_the_rescue_file_commands_are_refused_in_hardened_with_no_record_and_work_in_normal_standalone
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
