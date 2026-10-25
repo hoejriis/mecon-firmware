@@ -1,5 +1,6 @@
 #include "MyMesh.h"
 #include <helpers/AuditStore.h>
+#include <helpers/CryptoRNG.h>
 
 #include <Arduino.h> // needed for PlatformIO
 #ifdef ENABLE_WIFI_INTERFACE
@@ -969,7 +970,8 @@ void MyMesh::begin() {
   {
     uint8_t device_id[16];
     uint32_t epoch = 0;
-    _store->bootDeviceMeta(getRNG(), device_id, &epoch);   // a failed save still leaves this boot's values
+    CryptoRNG crng(getRNG());   // device_id must not follow from a small seed (docs/contract/AUTHORITY.md section 12)
+    _store->bootDeviceMeta(&crng, device_id, &epoch);   // a failed save still leaves this boot's values
     _iface.begin(this, device_id, epoch);
   }
 #endif
