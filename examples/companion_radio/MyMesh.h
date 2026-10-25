@@ -75,7 +75,6 @@
 #include <helpers/TransportKeyStore.h>
 #ifdef ENABLE_MECON_IFACE
   #include "MeconIface.h"
-  #include <helpers/deployment/DepState.h>
 #endif
 
 /* -------------------------------------------------------------------------------------- */
@@ -134,7 +133,6 @@ public:
   const char* hardwareName() const { return board.getManufacturerName(); }
   uint16_t batteryMilliVolts() { return board.getBattMilliVolts(); }
   uint8_t postureValue() const { return _prefs.posture; }
-  const Dep::DepState* deployment() const { return _dep; }   // nullptr: no Deployment record
   MeconIface& iface() { return _iface; }
   bool ifaceWritable(const BaseSerialInterface* src) const { return _serial && !_serial->isWriteBusy() && src; }
   void ifaceWrite(const BaseSerialInterface* src, const uint8_t* frame, size_t len) {
@@ -315,8 +313,6 @@ private:
 #ifdef ENABLE_MECON_IFACE
   friend class MeconIface;
   MeconIface _iface;
-  Dep::DepState* _dep = nullptr;               // on the heap only when a record (or a corrupt one) exists
-  void loadDeployment();
 #endif
   void setCliCaller(const Cli::Context& ctx, uint8_t caller);
   void recordFactoryReset(uint8_t caller);

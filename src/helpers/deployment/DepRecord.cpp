@@ -84,6 +84,7 @@ size_t encodeRecord(const Record& rec, const char* set_text, uint32_t generation
   w.u8(rec.n_replay);
   for (int i = 0; i < rec.n_replay; i++) {
     w.bytes(rec.replay[i].instance_id, ID_LEN);
+    w.u32(rec.replay[i].admitted_revision);
     for (int c = 0; c < JOB_CLASSES; c++) {
       w.u32(rec.replay[i].wm[c].mark);
       w.u32(rec.replay[i].wm[c].mask);
@@ -140,6 +141,7 @@ bool decodeRecord(const uint8_t* buf, size_t len, Record* rec, const char** set_
   if (x.n_replay > MAX_MEMBERS) return false;
   for (int i = 0; i < x.n_replay; i++) {
     p.bytes(x.replay[i].instance_id, ID_LEN);
+    x.replay[i].admitted_revision = p.u32();
     for (int c = 0; c < JOB_CLASSES; c++) {
       x.replay[i].wm[c].mark = p.u32();
       x.replay[i].wm[c].mask = p.u32();
@@ -186,14 +188,34 @@ void nextWrite(const Loaded& cur, int* slot, uint32_t* generation) {
   *generation = cur.generation + 1;
 }
 
+static const IssuerReplay* storedIssuer(const Record& rec, const uint8_t id[ID_LEN]) {
+  for (int j = 0; j < rec.n_replay; j++)
+    if (memcmp(rec.replay[j].instance_id, id, ID_LEN) == 0) return &rec.replay[j];
+  return nullptr;
+}
+
+Err checkMembership(const Record& cur, const AuthoritySet& set) {
+  for (int i = 0; i < set.n_members; i++) {
+    const Member& m = set.members[i];
+    const IssuerReplay* old = storedIssuer(cur, m.instance_id);
+    if (!old) {
+      if (m.admitted_revision <= cur.authority_revision) return BAD_AUTHORITY_SET;   // new here, admitted before?
+    } else if (m.admitted_revision < old->admitted_revision) {
+      return BAD_AUTHORITY_SET;                                                     // admission moved back
+    }
+  }
+  return OK;
+}
+
 void reconcileReplay(Record* rec, const AuthoritySet& set) {
   IssuerReplay next[MAX_MEMBERS];
   memset(next, 0, sizeof(next));
   for (int i = 0; i < set.n_members; i++) {
     memcpy(next[i].instance_id, set.members[i].instance_id, ID_LEN);
-    for (int j = 0; j < rec->n_replay; j++)
-      if (memcmp(rec->replay[j].instance_id, set.members[i].instance_id, ID_LEN) == 0)
-        memcpy(next[i].wm, rec->replay[j].wm, sizeof(next[i].wm));
+    next[i].admitted_revision = set.members[i].admitted_revision;
+    const IssuerReplay* old = storedIssuer(*rec, set.members[i].instance_id);
+    if (old && old->admitted_revision == set.members[i].admitted_revision)
+      memcpy(next[i].wm, old->wm, sizeof(next[i].wm));   // the same admission: its replay state stands
   }
   memcpy(rec->replay, next, sizeof(next));
   rec->n_replay = set.n_members;

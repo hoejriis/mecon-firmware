@@ -37,6 +37,7 @@ const char* wrapErrCode(WrapErr e);   // contract spelling; WR_MALFORMED and WR_
 
 struct Verified {
   int member;               // index in the authority set
+  char op[33];              // the body's operation
   const char* body;         // the decoded body, in the caller's buffer, NUL terminated
   size_t body_len;
   bool has_job;             // false for a read-only operation, which carries no job id
@@ -44,9 +45,14 @@ struct Verified {
   uint32_t stamped_revision;
 };
 
+// Whether an operation changes state: such a request must carry a job id, so that replay protection covers it.
+typedef bool (*MutatingFn)(const char* op);
+
 // Checks 1 to 6 for wire against the stored record and its parsed set. body_buf receives the decoded body (it must
-// hold MAX_WRAPPED bytes). own_node_key is this device's node public key (the device binding, check 4b).
+// hold MAX_WRAPPED bytes). own_node_key is this device's node public key (the device binding, check 4b). A
+// state-changing operation (mutating) without a job id is refused: unauthenticated, as a body without its bound fields.
 WrapErr verifyWrapped(const char* wire, size_t len, const Record& rec, const AuthoritySet& set,
-                      const uint8_t own_node_key[KEY_LEN], char* body_buf, size_t cap, Verified* out);
+                      const uint8_t own_node_key[KEY_LEN], MutatingFn mutating, char* body_buf, size_t cap,
+                      Verified* out);
 
 }  // namespace Dep

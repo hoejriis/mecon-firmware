@@ -31,6 +31,7 @@ static Record sample(uint32_t prov = 1) {
   r.n_replay = 2;
   for (int m = 0; m < 2; m++) {
     memset(r.replay[m].instance_id, 0x10 + m, ID_LEN);
+    r.replay[m].admitted_revision = 1;
     r.replay[m].wm[JC_CMD] = { 100u + m, 0x00F0F0u };
     r.replay[m].wm[JC_SETTINGS] = { 7u, 1u };
   }
@@ -71,6 +72,7 @@ TEST(DepRecord, RoundTrip) {
   ASSERT_EQ(2, d.n_replay);
   EXPECT_EQ(101u, d.replay[1].wm[JC_CMD].mark);
   EXPECT_EQ(0x00F0F0u, d.replay[1].wm[JC_CMD].mask);
+  EXPECT_EQ(1u, d.replay[1].admitted_revision);
 }
 
 TEST(DepRecord, EveryFlippedByteIsRejected) {
@@ -220,12 +222,14 @@ TEST(DepRecord, PowerCutAtEveryByteKeepsTheOldRecord) {
 }
 
 TEST(DepRecord, ReplayFollowsMembership) {
-  Record r = sample();   // members 0x10.. and 0x11..
+  Record r = sample();   // members 0x10.. and 0x11.., admitted at 1
   AuthoritySet s;
   memset(&s, 0, sizeof(s));
   s.n_members = 2;
-  memset(s.members[0].instance_id, 0x11, ID_LEN);   // kept
+  memset(s.members[0].instance_id, 0x11, ID_LEN);   // kept, same admission
+  s.members[0].admitted_revision = 1;
   memset(s.members[1].instance_id, 0x22, ID_LEN);   // added
+  s.members[1].admitted_revision = 4;
   reconcileReplay(&r, s);
   ASSERT_EQ(2, r.n_replay);
   EXPECT_EQ(101u, r.replay[0].wm[JC_CMD].mark);     // 0x11's state carried
@@ -233,6 +237,42 @@ TEST(DepRecord, ReplayFollowsMembership) {
   EXPECT_EQ(0x22, r.replay[1].instance_id[0]);
   // 0x10 was dropped: nothing of it remains.
   for (int i = 0; i < r.n_replay; i++) EXPECT_NE(0x10, r.replay[i].instance_id[0]);
+  EXPECT_EQ(4u, r.replay[1].admitted_revision);
+}
+
+// A member re-admitted (its admitted_revision raised) starts with empty watermarks: check 6 refuses what it signed
+// before, and nothing of its old window must make an old id look new or a new id look old.
+TEST(DepRecord, ReAdmissionEmptiesTheWatermarks) {
+  Record r = sample();
+  AuthoritySet s;
+  memset(&s, 0, sizeof(s));
+  s.n_members = 1;
+  memset(s.members[0].instance_id, 0x11, ID_LEN);
+  s.members[0].admitted_revision = 5;
+  reconcileReplay(&r, s);
+  ASSERT_EQ(1, r.n_replay);
+  EXPECT_EQ(0u, r.replay[0].wm[JC_CMD].mark);
+  EXPECT_EQ(5u, r.replay[0].admitted_revision);
+}
+
+TEST(DepRecord, MembershipRules) {
+  Record r = sample();   // stored revision 3; members 0x10, 0x11 admitted at 1
+  r.authority_revision = 3;
+  AuthoritySet s;
+  memset(&s, 0, sizeof(s));
+  s.n_members = 2;
+  memset(s.members[0].instance_id, 0x10, ID_LEN);
+  s.members[0].admitted_revision = 1;
+  memset(s.members[1].instance_id, 0x33, ID_LEN);   // new to the device
+  s.members[1].admitted_revision = 4;               // admitted after the stored revision: fine
+  EXPECT_EQ(OK, checkMembership(r, s));
+  s.members[1].admitted_revision = 3;               // claims an admission the device should already have seen
+  EXPECT_EQ(BAD_AUTHORITY_SET, checkMembership(r, s));
+  s.members[1].admitted_revision = 4;
+  s.members[0].admitted_revision = 0;               // an admission moved back
+  EXPECT_EQ(BAD_AUTHORITY_SET, checkMembership(r, s));
+  s.members[0].admitted_revision = 2;               // moved forward: a re-admission, allowed
+  EXPECT_EQ(OK, checkMembership(r, s));
 }
 
 int main(int argc, char** argv) {

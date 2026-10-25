@@ -297,9 +297,11 @@ bool DataStore::writeDeploymentCopy(int slot, const uint8_t* frame, size_t len) 
 }
 
 bool DataStore::removeDeploymentCopies() {
-  bool a = !AtomicFile::exists(_fs, depPath(0)) || removeFile(_fs, depPath(0));
-  bool b = !AtomicFile::exists(_fs, depPath(1)) || removeFile(_fs, depPath(1));
-  return a && b;
+  // With any .tmp / .new beside them: a leftover verified .new would otherwise be swapped back in at the next boot by
+  // AtomicFile::recover and resurrect the record a reset removed.
+  AtomicFile::discard(_fs, depPath(0));
+  AtomicFile::discard(_fs, depPath(1));
+  return !AtomicFile::exists(_fs, depPath(0)) && !AtomicFile::exists(_fs, depPath(1));
 }
 
 bool DataStore::savePrefs(NodePrefs& _prefs) {

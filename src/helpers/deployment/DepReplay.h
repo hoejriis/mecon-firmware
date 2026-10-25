@@ -25,8 +25,10 @@ enum ReplayVerdict : uint8_t {
 // Job id 0 is never a real id: refused as too old.
 ReplayVerdict replayCheck(const Watermark& w, uint32_t job_id);
 
-// Records job_id as accepted. Call only after replayCheck returned RV_NEW, and persist w before the result
-// leaves the device.
+// Records job_id as accepted. Call only after replayCheck returned RV_NEW, and persist w BEFORE the request runs:
+// at most once, not at least once. A power cut between the write and the run then loses the request, which its issuer
+// sees as no result and re-signs under a new job id; the other order would let a cut after the run but before the
+// write execute it a second time when the same signed request is delivered again.
 void markAccepted(Watermark* w, uint32_t job_id);
 
 }  // namespace Dep

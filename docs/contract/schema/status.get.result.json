@@ -27,37 +27,6 @@
       "properties": {"count": {"type": "integer", "minimum": 0}, "capacity": {"type": "integer", "minimum": 0}}
     },
     "connectivity": {"type": "string", "enum": ["ble", "wifi"], "description": "Absent on a build without connectivity modes."},
-    "posture": {"type": "string", "enum": ["normal", "hardened"]},
-    "deployment": {
-      "description": "The Deployment record (Deployment authority contract v1, section 11). Absent on a device with no Deployment: absent means no record, not an empty one. A corrupt record is present with state \"corrupt\" and only what is still readable.",
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["contract_version", "deployment_id", "authority_epoch", "authority_revision", "provision_revision",
-                       "sync_key_generation", "posture", "auth_rejections"],
-          "properties": {
-            "contract_version": {"const": 1},
-            "deployment_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
-            "authority_epoch": {"type": "integer", "minimum": 0},
-            "authority_revision": {"type": "integer", "minimum": 1},
-            "provision_revision": {"type": "integer", "minimum": 1},
-            "sync_key_generation": {"type": "integer", "minimum": 0},
-            "posture": {"type": "string", "enum": ["normal", "hardened"]},
-            "auth_rejections": {"type": "integer", "minimum": 0, "description": "Refusals since boot."}
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["contract_version", "state", "auth_rejections"],
-          "properties": {
-            "contract_version": {"const": 1},
-            "state": {"const": "corrupt"},
-            "auth_rejections": {"type": "integer", "minimum": 0}
-          }
-        }
-      ]
-    }
+    "posture": {"type": "string", "enum": ["normal", "hardened"]}
   }
 }

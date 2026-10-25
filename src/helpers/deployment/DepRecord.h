@@ -28,6 +28,7 @@ struct Watermark {
 
 struct IssuerReplay {
   uint8_t instance_id[ID_LEN];
+  uint32_t admitted_revision;   // the member's admitted_revision these watermarks belong to
   Watermark wm[JOB_CLASSES];
 };
 
@@ -62,7 +63,7 @@ struct Record {
 
 const size_t FRAME_OVERHEAD = 4 + 4 + 2 + 4;
 const size_t MAX_PAYLOAD = 1 + ID_LEN + 1 + MAX_NAME + KEY_LEN + 4 + 4 + 4 + 4 + 1 + 32 + SIG_LEN + 2 + MAX_SET_TEXT +
-                           1 + MAX_ROLES * 2 + 1 + MAX_MEMBERS * (ID_LEN + JOB_CLASSES * 8);
+                           1 + MAX_ROLES * 2 + 1 + MAX_MEMBERS * (ID_LEN + 4 + JOB_CLASSES * 8);
 const size_t MAX_FRAME = FRAME_OVERHEAD + MAX_PAYLOAD;
 
 // Writes the frame for rec with its set text into out. Returns the frame length, 0 when it does not fit or a
@@ -98,8 +99,15 @@ void loadRecord(const Copy& a, const Copy& b, Loaded* out);
 // intact (absent or corrupt) it is A at generation 1.
 void nextWrite(const Loaded& cur, int* slot, uint32_t* generation);
 
-// The record's members' replay state after an authority set change: kept for members still present, dropped for
-// members removed, empty for members added (contract section 7).
+// Membership rules for a new authority set against the stored record (contract sections 4 and 7): a member the device
+// does not hold must have been admitted after the device's stored revision (a removed and re-added Backend carries the
+// revision of its re-admission, never an older one), and a member it holds may not have its admitted_revision lowered.
+// BAD_AUTHORITY_SET otherwise. Not applied to a first provisioning, which has nothing stored.
+Err checkMembership(const Record& cur, const AuthoritySet& set);
+
+// The record's members' replay state after an authority set change: kept for a member still present at the same
+// admitted_revision, emptied for a re-admitted member (its admitted_revision raised), dropped for members removed,
+// empty for members added (contract section 7).
 void reconcileReplay(Record* rec, const AuthoritySet& set);
 
 }  // namespace Dep

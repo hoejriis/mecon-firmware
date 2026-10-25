@@ -15,18 +15,23 @@ static bool intact(const Copy& c, DepState* into) {
          into->set.authority_revision == into->rec.authority_revision;
 }
 
-DepState* depLoad(const Copy& a, const Copy& b) {
-  if (!a.data && !b.data) return nullptr;
+LoadState depLoad(const Copy& a, const Copy& b, DepState** out) {
+  *out = nullptr;
+  if (!a.data && !b.data) return LS_ABSENT;
   DepState* s = new (std::nothrow) DepState();
-  if (!s) return nullptr;
+  DepState* tmp = s ? new (std::nothrow) DepState() : nullptr;
+  if (!s || !tmp) {   // cannot check: corrupt, never absent
+    delete s;
+    return LS_CORRUPT;
+  }
   memset(s, 0, sizeof(*s));
   s->state = LS_CORRUPT;
   s->slot = -1;
-  DepState* tmp = new (std::nothrow) DepState();
-  if (!tmp) return s;   // cannot check: report corrupt rather than absent
   const Copy* c[2] = { &a, &b };
+  bool ok[2] = { false, false };
   for (int i = 0; i < 2; i++) {
     if (!intact(*c[i], tmp)) continue;
+    ok[i] = true;
     if (s->state != LS_OK || tmp->generation > s->generation) {
       s->state = LS_OK;
       s->slot = i;
@@ -36,7 +41,12 @@ DepState* depLoad(const Copy& a, const Copy& b) {
     }
   }
   delete tmp;
-  return s;
+  if (s->state == LS_OK) {
+    const int other = 1 - s->slot;
+    s->other_damaged = c[other]->data && !ok[other];
+  }
+  *out = s;
+  return s->state;
 }
 
 void depFree(DepState* s) { delete s; }
@@ -50,12 +60,12 @@ static void hexOut(char* out, const uint8_t* b, size_t n) {
   out[2 * n] = 0;
 }
 
-void depWriteStatus(Iface::JsonWriter& w, const DepState* s, bool hardened) {
-  if (!s) return;
+void depWriteStatus(Iface::JsonWriter& w, LoadState state, const DepState* s, bool hardened) {
+  if (state == LS_ABSENT) return;
   w.key("deployment");
   w.beginObject();
   w.key("contract_version"); w.unum(1);
-  if (s->state != LS_OK) {
+  if (state != LS_OK || !s) {
     // Present, so it is never read as legacy; nothing that cannot be read is reported.
     w.key("state"); w.str("corrupt");
   } else {
@@ -68,7 +78,7 @@ void depWriteStatus(Iface::JsonWriter& w, const DepState* s, bool hardened) {
     w.key("sync_key_generation"); w.unum(s->rec.sync_key_generation);
     w.key("posture"); w.str(hardened ? "hardened" : "normal");
   }
-  w.key("auth_rejections"); w.unum(s->auth_rejections);
+  w.key("auth_rejections"); w.unum(s ? s->auth_rejections : 0);
   w.endObject();
 }
 

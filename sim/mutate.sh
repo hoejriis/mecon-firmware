@@ -830,6 +830,22 @@ mutate config_leading_zero_accepted src/helpers/iface/IfaceConfig.cpp '  if (dn 
 mutate config_empty_profile_not_null src/helpers/iface/IfaceConfig.cpp '    *is_null = !(field == F_WIFI_SSID' '    *is_null = false && !(field == F_WIFI_SSID' unit:test_iface_config
 mutate config_radio_format_unchecked src/helpers/iface/IfaceConfig.cpp '      if (k.format && !checkFormat(k.format, out)) {' '      if (false) {' unit:test_iface_config
 mutate iface_cache_entry_too_small_for_an_apply src/helpers/iface/IfaceCache.h '#define IFACE_CACHE_ENTRY_CAP 384' '#define IFACE_CACHE_ENTRY_CAP 128' unit:test_iface_config
+# Deployment authority, device side (the security review of 2026-10-25)
+mutate dep_membership_stale_admission_ok src/helpers/deployment/DepRecord.cpp '      if (m.admitted_revision <= cur.authority_revision) return BAD_AUTHORITY_SET;   // new here, admitted before?' '' unit:test_dep_record
+mutate dep_membership_lowered_ok src/helpers/deployment/DepRecord.cpp '    } else if (m.admitted_revision < old->admitted_revision) {' '    } else if (false) {' unit:test_dep_record
+mutate dep_readmission_keeps_marks src/helpers/deployment/DepRecord.cpp '    if (old && old->admitted_revision == set.members[i].admitted_revision)' '    if (old)' unit:test_dep_record
+mutate dep_admitted_not_stored src/helpers/deployment/DepRecord.cpp '    x.replay[i].admitted_revision = p.u32();' '    p.u32();' unit:test_dep_record
+mutate dep_update_skips_membership src/helpers/deployment/DepProvision.cpp '  if (checkMembership(cur, *set) != OK) return P_BAD_AUTHORITY_SET;' '' unit:test_dep_provision
+mutate dep_provision_skips_membership src/helpers/deployment/DepProvision.cpp '  if (se == OK && has && checkMembership(*cur, *set) != OK) return P_BAD_AUTHORITY_SET;' '' unit:test_dep_provision
+mutate dep_duplicate_text_not_compared src/helpers/deployment/DepProvision.cpp '  if (se == DUPLICATE && (p.set_len != cur->set_len' '  if (false && (p.set_len != cur->set_len' unit:test_dep_provision
+mutate dep_weak_dak_pinned src/helpers/deployment/DepProvision.cpp '    if (weakKey(p.dak)) return P_UNTRUSTED_AUTHORITY_KEY;' '' unit:test_dep_provision
+mutate dep_duplicate_member_key_ok src/helpers/deployment/DepAuthority.cpp '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0 ||
+          memcmp(s->members[j].public_key, mb.public_key, KEY_LEN) == 0)' '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0)' unit:test_dep_authority
+mutate dep_weak_member_key_ok src/helpers/deployment/DepAuthority.cpp '    if (weakKey(mb.public_key)) return BAD_AUTHORITY_SET;' '' unit:test_dep_authority
+mutate dep_weak_rotation_key_ok src/helpers/deployment/DepAuthority.cpp ' && from != 0xFFFFFFFFu && !weakKey(key)) {' ' && from != 0xFFFFFFFFu) {' unit:test_dep_authority
+mutate dep_weak_key_test_disabled src/helpers/deployment/DepAuthority.cpp '  return !fe_isnonzero(p.X) && !fe_isnonzero(d);   // the identity: X = 0, Y = Z' '  return false;' unit:test_dep_authority
+mutate dep_fallback_not_flagged src/helpers/deployment/DepState.cpp '    s->other_damaged = c[other]->data && !ok[other];' '    s->other_damaged = false;' unit:test_dep_state
+mutate dep_job_id_optional src/helpers/deployment/DepWrapper.cpp '    if (!out->has_job && (!mutating || mutating(out->op))) goto done;' '' unit:test_dep_wrapper
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

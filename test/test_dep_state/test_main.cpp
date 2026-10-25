@@ -53,7 +53,7 @@ struct Fx : ::testing::Test {
     char buf[512];
     Iface::JsonWriter w(buf, sizeof(buf));
     w.beginObject();
-    depWriteStatus(w, s, hardened);
+    depWriteStatus(w, s ? s->state : LS_ABSENT, s, hardened);
     w.endObject();
     EXPECT_TRUE(w.ok());
     return std::string(buf, w.size());
@@ -62,13 +62,16 @@ struct Fx : ::testing::Test {
 
 TEST_F(Fx, AbsentIsNoStateAndNoStatusObject) {
   Copy none = { nullptr, 0 };
-  EXPECT_EQ(nullptr, depLoad(none, none));
+  DepState* s = (DepState*)1;
+  EXPECT_EQ(LS_ABSENT, depLoad(none, none, &s));
+  EXPECT_EQ(nullptr, s);
   EXPECT_EQ("{}", status(nullptr));
 }
 
 TEST_F(Fx, IntactRecordLoadsWithItsSet) {
   auto a = frame(rec(1), 1), b = frame(rec(2), 2);
-  DepState* s = depLoad(of(a), of(b));
+  DepState* s = nullptr;
+  depLoad(of(a), of(b), &s);
   ASSERT_NE(nullptr, s);
   ASSERT_EQ(LS_OK, s->state);
   EXPECT_EQ(1, s->slot);
@@ -87,7 +90,8 @@ TEST_F(Fx, AStoredSetThatNoLongerVerifiesIsCorrupt) {
   Record r = rec();
   r.set_sig[3] ^= 1;   // a frame with a valid CRC around a set the stored key did not sign
   auto a = frame(r, 1);
-  DepState* s = depLoad(of(a), Copy{ nullptr, 0 });
+  DepState* s = nullptr;
+  depLoad(of(a), Copy{ nullptr, 0 }, &s);
   ASSERT_NE(nullptr, s);
   EXPECT_EQ(LS_CORRUPT, s->state);
   std::string j = status(s);
@@ -96,7 +100,7 @@ TEST_F(Fx, AStoredSetThatNoLongerVerifiesIsCorrupt) {
   depFree(s);
   // The other copy intact: it wins.
   auto good = frame(rec(), 1);
-  s = depLoad(of(a), of(good));
+  depLoad(of(a), of(good), &s);
   ASSERT_EQ(LS_OK, s->state);
   EXPECT_EQ(1, s->slot);
   depFree(s);
@@ -108,7 +112,8 @@ TEST_F(Fx, NewerCopyWithABadSetLosesToTheOlderIntactOne) {
   Record bad = rec(2);
   bad.set_sig[0] ^= 1;
   auto a = frame(rec(1), 1), b = frame(bad, 2);
-  DepState* s = depLoad(of(a), of(b));
+  DepState* s = nullptr;
+  depLoad(of(a), of(b), &s);
   ASSERT_NE(nullptr, s);
   ASSERT_EQ(LS_OK, s->state);
   EXPECT_EQ(0, s->slot);
@@ -120,7 +125,8 @@ TEST_F(Fx, RevisionMismatchBetweenRecordAndSetIsCorrupt) {
   Record r = rec();
   r.authority_revision = 5;
   auto a = frame(r, 1);
-  DepState* s = depLoad(of(a), Copy{ nullptr, 0 });
+  DepState* s = nullptr;
+  depLoad(of(a), Copy{ nullptr, 0 }, &s);
   ASSERT_NE(nullptr, s);
   EXPECT_EQ(LS_CORRUPT, s->state);
   depFree(s);
@@ -128,9 +134,28 @@ TEST_F(Fx, RevisionMismatchBetweenRecordAndSetIsCorrupt) {
 
 TEST_F(Fx, GarbageIsCorruptNotAbsent) {
   std::vector<uint8_t> junk(40, 0xAB);
-  DepState* s = depLoad(of(junk), Copy{ nullptr, 0 });
+  DepState* s = nullptr;
+  depLoad(of(junk), Copy{ nullptr, 0 }, &s);
   ASSERT_NE(nullptr, s);
   EXPECT_EQ(LS_CORRUPT, s->state);
+  depFree(s);
+}
+
+// The newer copy damaged, the older intact: the older one loads, and the fallback is flagged (its replay state may
+// be behind what the device had accepted).
+TEST_F(Fx, FallingBackToTheOlderCopyIsFlagged) {
+  auto a = frame(rec(1), 1);
+  std::vector<uint8_t> junk(40, 0xAB);
+  DepState* s = nullptr;
+  ASSERT_EQ(LS_OK, depLoad(of(a), of(junk), &s));
+  EXPECT_TRUE(s->other_damaged);
+  depFree(s);
+  auto b = frame(rec(2), 2);
+  ASSERT_EQ(LS_OK, depLoad(of(a), of(b), &s));
+  EXPECT_FALSE(s->other_damaged);
+  depFree(s);
+  ASSERT_EQ(LS_OK, depLoad(of(a), Copy{ nullptr, 0 }, &s));
+  EXPECT_FALSE(s->other_damaged);   // an absent copy is not a damaged one
   depFree(s);
 }
 

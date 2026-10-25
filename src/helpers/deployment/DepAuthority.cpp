@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ed_25519.h"
+extern "C" {
+#include "ge.h"
+}
 #include "helpers/iface/IfaceJson.h"
 
 namespace Dep {
@@ -20,6 +23,21 @@ const char* errCode(Err e) {
     case UNTRUSTED_AUTHORITY_KEY: return "untrusted_authority_key";
   }
   return "failed";
+}
+
+bool weakKey(const uint8_t key[KEY_LEN]) {
+  ge_p3 a;
+  if (ge_frombytes_negate_vartime(&a, key) != 0) return true;   // not on the curve
+  ge_p2 p;
+  ge_p1p1 t;
+  ge_p3_to_p2(&p, &a);
+  for (int i = 0; i < 3; i++) {   // 8 * point
+    ge_p2_dbl(&t, &p);
+    ge_p1p1_to_p2(&p, &t);
+  }
+  fe d;
+  fe_sub(d, p.Y, p.Z);
+  return !fe_isnonzero(p.X) && !fe_isnonzero(d);   // the identity: X = 0, Y = Z
 }
 
 int AuthoritySet::memberIndex(const uint8_t id[ID_LEN]) const {
@@ -134,8 +152,13 @@ static Err parseSet(const JsonDoc& d, AuthoritySet* s) {
       return BAD_AUTHORITY_SET;
     // Admitted at a revision this set has not reached yet: malformed, not something to round down.
     if (mb.admitted_revision == 0 || mb.admitted_revision > s->authority_revision) return BAD_AUTHORITY_SET;
+    if (weakKey(mb.public_key)) return BAD_AUTHORITY_SET;
+    // Distinct ids and distinct keys: the issuer field is not signed, so two members sharing a key would let a
+    // command signed by one be presented under the other's name and replay window.
     for (int j = 0; j < i; j++)
-      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0) return BAD_AUTHORITY_SET;
+      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0 ||
+          memcmp(s->members[j].public_key, mb.public_key, KEY_LEN) == 0)
+        return BAD_AUTHORITY_SET;
   }
 
   s->n_revoked = 0;
@@ -190,7 +213,7 @@ Err applyRotation(const char* text, size_t len, const uint8_t sig[SIG_LEN], cons
       getHex(*d, 0, "deployment_id", dep, ID_LEN) && getU32(*d, 0, "from_epoch", &from) &&
       getU32(*d, 0, "to_epoch", &to) && getHex(*d, 0, "new_public_key", key, KEY_LEN)) {
     if (memcmp(dep, deployment_id, ID_LEN) != 0) e = WRONG_DEPLOYMENT;
-    else if (from == st->authority_epoch && to == from + 1 && from != 0xFFFFFFFFu) {
+    else if (from == st->authority_epoch && to == from + 1 && from != 0xFFFFFFFFu && !weakKey(key)) {
       memcpy(st->dak, key, KEY_LEN);
       st->authority_epoch = to;
       e = OK;

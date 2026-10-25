@@ -69,6 +69,7 @@ ProvErr checkProvision(const ProvisionPayload& p, const ProvisionContext& ctx, R
   } else {
     // Nothing to chain from: the payload's key is the one being pinned (trust on first use). A rotation chain sent
     // with a first provisioning has no stored key to start from and is not applied.
+    if (weakKey(p.dak)) return P_UNTRUSTED_AUTHORITY_KEY;
     memcpy(root.dak, p.dak, KEY_LEN);
     root.authority_epoch = p.authority_epoch;
   }
@@ -78,6 +79,12 @@ ProvErr checkProvision(const ProvisionPayload& p, const ProvisionContext& ctx, R
                     has ? cur->authority_revision : 0 };
   Err se = acceptSet(p.set_text, p.set_len, p.set_sig, sc, set);
   if (se != OK && se != DUPLICATE) return fromSetErr(se);
+  // An equal revision is the set already held, byte for byte; a different text or signature at the same revision is
+  // two sets claiming one revision, refused rather than written over the stored one.
+  if (se == DUPLICATE && (p.set_len != cur->set_len || memcmp(p.set_text, ctx.current->set_text, p.set_len) != 0 ||
+                          memcmp(p.set_sig, cur->set_sig, SIG_LEN) != 0))
+    return P_BAD_AUTHORITY_SET;
+  if (se == OK && has && checkMembership(*cur, *set) != OK) return P_BAD_AUTHORITY_SET;
   if (p.has_migrating_issuer && set->memberIndex(p.migrating_issuer) < 0) return P_BAD_AUTHORITY_SET;
 
   // 6. provision_revision: higher applies; equal is a duplicate only when nothing differs.
@@ -139,6 +146,7 @@ ProvErr checkAuthorityUpdate(const Loaded& current, const Rotation* rotations, u
   Err se = acceptSet(set_text, set_len, set_sig, sc, set);
   if (se == DUPLICATE) return P_DUPLICATE;
   if (se != OK) return fromSetErr(se);
+  if (checkMembership(cur, *set) != OK) return P_BAD_AUTHORITY_SET;
   Record r = cur;
   memcpy(r.dak, root.dak, KEY_LEN);
   r.authority_epoch = root.authority_epoch;

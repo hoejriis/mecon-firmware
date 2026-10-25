@@ -61,7 +61,8 @@ static bool u32Field(const JsonDoc& d, const char* key, uint32_t* out) {
 }
 
 WrapErr verifyWrapped(const char* wire, size_t len, const Record& rec, const AuthoritySet& set,
-                      const uint8_t own_node_key[KEY_LEN], char* body_buf, size_t cap, Verified* out) {
+                      const uint8_t own_node_key[KEY_LEN], MutatingFn mutating, char* body_buf, size_t cap,
+                      Verified* out) {
   if (len > MAX_WRAPPED) return WR_PAYLOAD_TOO_LARGE;
   RequestDoc* d = new (std::nothrow) RequestDoc();
   if (!d) return WR_MALFORMED;
@@ -108,6 +109,10 @@ WrapErr verifyWrapped(const char* wire, size_t len, const Record& rec, const Aut
     if (out->stamped_revision < set.members[member].admitted_revision) { e = WR_STALE_AUTHORITY; goto done; }
     out->has_job = jsonFind(*d, 0, "job_id") >= 0;
     if (out->has_job && (!u32Field(*d, "job_id", &out->job_id) || out->job_id == 0)) goto done;
+    // The operation, and a job id whenever it changes state: without one nothing guards it against replay.
+    int to = jsonFind(*d, 0, "op");
+    if (to < 0 || !jsonGetString(*d, to, out->op, sizeof(out->op), CS_NAME, 1)) goto done;
+    if (!out->has_job && (!mutating || mutating(out->op))) goto done;
   }
   out->member = member;
   e = WR_OK;

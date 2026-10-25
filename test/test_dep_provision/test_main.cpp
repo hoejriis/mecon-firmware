@@ -3,6 +3,7 @@
 #include <string.h>
 #include <string>
 #include <vector>
+#include "ed_25519.h"
 #include "helpers/deployment/DepProvision.h"
 #include "../test_deployment_vectors/vectors.h"
 
@@ -22,6 +23,34 @@ static std::string textOf(const char* signed_hex) {
 }
 
 static bool profiles(void*, uint8_t i) { return i < 4; }
+
+// A set signed by DAK 1 at epoch 1, members as "<id>:<pub>:<admitted>" entries.
+static std::string setOf(uint32_t rev, const std::vector<std::string>& members, uint32_t issued = 1) {
+  std::string m;
+  for (size_t i = 0; i < members.size(); i++) {
+    std::string e = members[i];
+    size_t a = e.find(':'), b = e.rfind(':');
+    m += std::string(i ? "," : "") + "{\"instance_id\":\"" + e.substr(0, a) + "\",\"public_key\":\"" +
+         e.substr(a + 1, b - a - 1) + "\",\"admitted_revision\":" + e.substr(b + 1) + "}";
+  }
+  return std::string("{\"v\":1,\"deployment_id\":\"") + DEPLOYMENT_ID + "\",\"authority_epoch\":1,\"authority_revision\":" +
+         std::to_string(rev) + ",\"issued_at\":" + std::to_string(issued) + ",\"members\":[" + m + "],\"revoked\":[]}";
+}
+
+static std::vector<uint8_t> signDak1(const std::string& text) {
+  uint8_t pub[32], prv[64];
+  std::vector<uint8_t> seed(32);
+  hexToBytes(SEED_DAK_EPOCH_1, 64, seed.data(), 32);
+  ed25519_create_keypair(pub, prv, seed.data());
+  std::string m = std::string("MECON-AUTHSET-v1") + '\0' + text;
+  std::vector<uint8_t> sig(64);
+  ed25519_sign(sig.data(), (const uint8_t*)m.data(), m.size(), pub, prv);
+  return sig;
+}
+
+static std::string mem(const char* id, const char* pub, int adm) {
+  return std::string(id) + ":" + pub + ":" + std::to_string(adm);
+}
 
 struct Fx : ::testing::Test {
   std::string set1 = textOf(AUTHORITY_SET_REV1_SIGNED_HEX), set2 = textOf(AUTHORITY_SET_REV2_SIGNED_HEX);
@@ -262,6 +291,87 @@ TEST_F(Fx, AuthorityUpdateRotatesAndAdmits) {
   Loaded none;
   memset(&none, 0, sizeof(none));
   EXPECT_EQ(P_UNTRUSTED_AUTHORITY_KEY, checkAuthorityUpdate(none, nullptr, 0, set1.data(), set1.size(), sig1, &rec, &set));
+}
+
+// Contract sections 4 and 7: a member new to the device carries the revision of its admission, never an older one.
+TEST_F(Fx, AStaleAdmissionIsRefusedOnUpdate) {
+  ProvisionPayload p = first();
+  ASSERT_EQ(P_OK, run(p));   // stored: revision 1, member a admitted at 1
+  commit(p);
+  Record before = rec;
+  std::string t = setOf(2, {mem(INSTANCE_IDS_A, PUB_INSTANCE_A, 1), mem(INSTANCE_IDS_B, PUB_INSTANCE_B, 1)});
+  auto sig = signDak1(t);
+  EXPECT_EQ(P_BAD_AUTHORITY_SET, checkAuthorityUpdate(cur, nullptr, 0, t.data(), t.size(), sig.data(), &rec, &set));
+  std::string ok = setOf(2, {mem(INSTANCE_IDS_A, PUB_INSTANCE_A, 1), mem(INSTANCE_IDS_B, PUB_INSTANCE_B, 2)});
+  auto sig2 = signDak1(ok);
+  EXPECT_EQ(P_OK, checkAuthorityUpdate(cur, nullptr, 0, ok.data(), ok.size(), sig2.data(), &rec, &set));
+  (void)before;
+}
+
+TEST_F(Fx, AnAdmissionMovedBackIsRefused) {
+  ProvisionPayload p = first();
+  ASSERT_EQ(P_OK, run(p));
+  commit(p);
+  std::string t2 = setOf(2, {mem(INSTANCE_IDS_A, PUB_INSTANCE_A, 2)});   // a re-admitted at 2
+  auto s2 = signDak1(t2);
+  ASSERT_EQ(P_OK, checkAuthorityUpdate(cur, nullptr, 0, t2.data(), t2.size(), s2.data(), &rec, &set));
+  stored_text = t2;
+  cur.rec = rec;
+  cur.set_text = stored_text.data();
+  std::string t3 = setOf(3, {mem(INSTANCE_IDS_A, PUB_INSTANCE_A, 1)});   // and now back to 1
+  auto s3 = signDak1(t3);
+  EXPECT_EQ(P_BAD_AUTHORITY_SET, checkAuthorityUpdate(cur, nullptr, 0, t3.data(), t3.size(), s3.data(), &rec, &set));
+}
+
+TEST_F(Fx, ReAdmissionThroughAnUpdateEmptiesTheWatermarks) {
+  ProvisionPayload p = first();
+  ASSERT_EQ(P_OK, run(p));
+  rec.replay[0].wm[JC_CMD] = { 500, 3 };
+  commit(p);
+  std::string t = setOf(2, {mem(INSTANCE_IDS_A, PUB_INSTANCE_A, 2)});
+  auto sig = signDak1(t);
+  ASSERT_EQ(P_OK, checkAuthorityUpdate(cur, nullptr, 0, t.data(), t.size(), sig.data(), &rec, &set));
+  EXPECT_EQ(0u, rec.replay[0].wm[JC_CMD].mark);
+  EXPECT_EQ(2u, rec.replay[0].admitted_revision);
+}
+
+// A second provisioning naming the stored revision with a different set text: two sets claiming one revision.
+TEST_F(Fx, ADifferentSetAtTheStoredRevisionIsRefused) {
+  ProvisionPayload p = first();
+  ASSERT_EQ(P_OK, run(p));
+  commit(p);
+  std::string other = setOf(1, {mem(INSTANCE_IDS_A, PUB_INSTANCE_A, 1)}, 999);   // revision 1, other bytes
+  auto sig = signDak1(other);
+  ProvisionPayload q = first();
+  q.provision_revision = 2;
+  q.set_text = other.data();
+  q.set_len = other.size();
+  memcpy(q.set_sig, sig.data(), SIG_LEN);
+  EXPECT_EQ(P_BAD_AUTHORITY_SET, run(q));
+  ProvisionPayload same = first();   // the identical set at a higher provision_revision is fine
+  same.provision_revision = 2;
+  EXPECT_EQ(P_OK, run(same));
+}
+
+TEST_F(Fx, AStaleAdmissionIsRefusedOnProvisioning) {
+  ProvisionPayload p = first();
+  ASSERT_EQ(P_OK, run(p));
+  commit(p);
+  std::string t = setOf(2, {mem(INSTANCE_IDS_A, PUB_INSTANCE_A, 1), mem(INSTANCE_IDS_B, PUB_INSTANCE_B, 1)});
+  auto sig = signDak1(t);
+  ProvisionPayload q = first();
+  q.provision_revision = 2;
+  q.set_text = t.data();
+  q.set_len = t.size();
+  memcpy(q.set_sig, sig.data(), SIG_LEN);
+  EXPECT_EQ(P_BAD_AUTHORITY_SET, run(q));
+}
+
+TEST_F(Fx, AWeakKeyIsNeverPinned) {
+  ProvisionPayload p = first();
+  memset(p.dak, 0, KEY_LEN);
+  p.dak[0] = 1;   // the identity point
+  EXPECT_EQ(P_UNTRUSTED_AUTHORITY_KEY, run(p));
 }
 
 int main(int argc, char** argv) {

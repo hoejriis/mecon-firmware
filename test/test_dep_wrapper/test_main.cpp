@@ -71,8 +71,9 @@ struct Fx : ::testing::Test {
     set.members[1].admitted_revision = 2;
   }
 
+  static bool mutatingOp(const char* op) { return strcmp(op, "hello") != 0 && strcmp(op, "status.get") != 0; }
   WrapErr check(const std::string& wire) {
-    return verifyWrapped(wire.data(), wire.size(), rec, set, node.data(), body, sizeof(body), &v);
+    return verifyWrapped(wire.data(), wire.size(), rec, set, node.data(), mutatingOp, body, sizeof(body), &v);
   }
 
   std::string bodyText(uint32_t rev = 2, const char* target = PUB_DEVICE_NODE, const char* job = ",\"job_id\":5") {
@@ -140,8 +141,14 @@ TEST_F(Fx, RevisionChecks) {
 }
 
 TEST_F(Fx, JobId) {
-  ASSERT_EQ(WR_OK, check(wrap(bodyText(2, PUB_DEVICE_NODE, ""), SEED_INSTANCE_B, INSTANCE_IDS_B)));
+  // config.apply changes state: without a job id nothing guards it against replay, so it is refused.
+  EXPECT_EQ(WR_MALFORMED, check(wrap(bodyText(2, PUB_DEVICE_NODE, ""), SEED_INSTANCE_B, INSTANCE_IDS_B)));
+  // A read needs none.
+  std::string read = bodyText(2, PUB_DEVICE_NODE, "");
+  read.replace(read.find("config.apply"), 12, "status.get");
+  ASSERT_EQ(WR_OK, check(wrap(read, SEED_INSTANCE_B, INSTANCE_IDS_B)));
   EXPECT_FALSE(v.has_job);
+  EXPECT_STREQ("status.get", v.op);
   EXPECT_EQ(WR_MALFORMED, check(wrap(bodyText(2, PUB_DEVICE_NODE, ",\"job_id\":0"), SEED_INSTANCE_B, INSTANCE_IDS_B)));
 }
 

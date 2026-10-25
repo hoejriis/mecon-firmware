@@ -953,31 +953,6 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
 #endif
 }
 
-#ifdef ENABLE_MECON_IFACE
-// Both copies of the Deployment record, read into transient buffers. A copy that exists but cannot be read (or a
-// buffer that cannot be allocated while a copy exists) is passed on as present and unreadable, so the record is
-// reported corrupt rather than absent.
-void MyMesh::loadDeployment() {
-  static uint8_t none[1];
-  Dep::Copy copies[2] = { { nullptr, 0 }, { nullptr, 0 } };
-  uint8_t* bufs[2] = { nullptr, nullptr };
-  for (int i = 0; i < 2; i++) {
-    bufs[i] = static_cast<uint8_t*>(malloc(Dep::MAX_FRAME));
-    size_t len = 0;
-    bool exists = false;
-    bool read = _store->readDeploymentCopy(i, bufs[i] ? bufs[i] : none, bufs[i] ? Dep::MAX_FRAME : 0, &len, &exists);
-    if (exists) {
-      copies[i].data = bufs[i] && read ? bufs[i] : none;
-      copies[i].len = bufs[i] && read ? len : 0;
-    }
-  }
-  _dep = Dep::depLoad(copies[0], copies[1]);
-  free(bufs[0]);
-  free(bufs[1]);
-  if (_dep) MESH_DEBUG_PRINTLN("deployment record: %s", _dep->state == Dep::LS_OK ? "ok" : "CORRUPT");
-}
-#endif
-
 void MyMesh::begin() {
   BaseChatMesh::begin();
 
@@ -997,7 +972,6 @@ void MyMesh::begin() {
     _store->bootDeviceMeta(getRNG(), device_id, &epoch);   // a failed save still leaves this boot's values
     _iface.begin(this, device_id, epoch);
   }
-  loadDeployment();
 #endif
 
 // if name is provided as a build flag, use that as default node name instead

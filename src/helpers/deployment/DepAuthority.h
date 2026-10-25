@@ -72,6 +72,11 @@ struct RootState {
 Err applyRotation(const char* text, size_t len, const uint8_t sig[SIG_LEN], const uint8_t deployment_id[ID_LEN],
                   RootState* st);
 
+// A public key that must not be trusted: not a point on the curve, or a point of small order (eight times it is the
+// identity), against which a signature proves nothing. Checked for every key a device would trust: a set's members,
+// a rotation's new DAK, the DAK of a first provisioning.
+bool weakKey(const uint8_t key[KEY_LEN]);
+
 // Wire encodings (section 2).
 bool hexToBytes(const char* hex, size_t hex_len, uint8_t* out, size_t n);   // exactly 2n chars, either case
 bool base64ToSig(const char* b64, size_t len, uint8_t out[SIG_LEN]);        // exactly 88 chars with padding

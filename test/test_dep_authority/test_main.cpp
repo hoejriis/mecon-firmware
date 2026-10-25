@@ -146,7 +146,13 @@ TEST_F(Fx, AFullSetParses) {
   for (int i = 0; i < MAX_MEMBERS; i++) {
     char id[33];
     snprintf(id, sizeof(id), "%032x", i + 1);
-    members += (i ? "," : "") + member(id, PUB_INSTANCE_A, 1);
+    // A distinct real key per member: members may not share one.
+    uint8_t seed[32] = {0}, pub[32], prv[64];
+    seed[0] = (uint8_t)(i + 1);
+    ed25519_create_keypair(pub, prv, seed);
+    char pub_hex[65];
+    for (int k = 0; k < 32; k++) snprintf(pub_hex + 2 * k, 3, "%02x", pub[k]);
+    members += (i ? "," : "") + member(id, pub_hex, 1);
   }
   for (int i = 0; i < MAX_REVOKED; i++) {
     char id[33];
@@ -191,6 +197,42 @@ TEST_F(Fx, RotationToAnotherDeploymentIsRefused) {
                      "\",\"from_epoch\":1,\"to_epoch\":3,\"new_public_key\":\"" + PUB_DAK_EPOCH_2 + "\"}";
   auto sig2 = signWith(SEED_DAK_EPOCH_1, "MECON-DAKROT-v1", skip);
   EXPECT_EQ(UNTRUSTED_AUTHORITY_KEY, applyRotation(skip.data(), skip.size(), sig2.data(), dep.data(), &st));
+}
+
+// Two members sharing one public key: refused, as the unsigned issuer field could then move a command between their
+// replay windows.
+TEST_F(Fx, DuplicateMemberKeysAreRefused) {
+  std::string two = "[" + member("0123456789abcdef0123456789abcdef", PUB_INSTANCE_A, 1) + "," +
+                    member("fedcba9876543210fedcba9876543210", PUB_INSTANCE_A, 1) + "]";
+  EXPECT_EQ(BAD_AUTHORITY_SET, signedSet(setText(two), first(dak1, 1)));
+}
+
+TEST(WeakKeys, SmallOrderPointsAreRefusedRealKeysPass) {
+  uint8_t identity[32] = {1};   // y = 1: the neutral element
+  uint8_t order4[32] = {0};     // y = 0: a point of order 4
+  EXPECT_TRUE(weakKey(identity));
+  EXPECT_TRUE(weakKey(order4));
+  std::vector<uint8_t> real = hex(PUB_DAK_EPOCH_1);
+  EXPECT_FALSE(weakKey(real.data()));
+  EXPECT_FALSE(weakKey(hex(PUB_INSTANCE_B).data()));
+}
+
+TEST_F(Fx, AWeakMemberKeyIsRefused) {
+  std::string weak(64, '0');   // all-zero key: order 4
+  EXPECT_EQ(BAD_AUTHORITY_SET, signedSet(setText("[" + member("0123456789abcdef0123456789abcdef", weak.c_str(), 1) + "]"),
+                                         first(dak1, 1)));
+}
+
+TEST_F(Fx, ARotationToAWeakKeyIsRefused) {
+  std::string weak = "01" + std::string(62, '0');   // the identity point
+  std::string rot = "{\"v\":1,\"deployment_id\":\"" + std::string(DEPLOYMENT_ID) +
+                    "\",\"from_epoch\":1,\"to_epoch\":2,\"new_public_key\":\"" + weak + "\"}";
+  auto sig = signWith(SEED_DAK_EPOCH_1, "MECON-DAKROT-v1", rot);
+  RootState st;
+  memcpy(st.dak, dak1.data(), 32);
+  st.authority_epoch = 1;
+  EXPECT_EQ(UNTRUSTED_AUTHORITY_KEY, applyRotation(rot.data(), rot.size(), sig.data(), dep.data(), &st));
+  EXPECT_EQ(1u, st.authority_epoch);
 }
 
 int main(int argc, char** argv) {
