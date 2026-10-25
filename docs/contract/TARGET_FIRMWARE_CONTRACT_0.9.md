@@ -26,7 +26,7 @@ No transport exposes unrestricted shell, arbitrary NVS/memory access or arbitrar
 
 Transport reachability and device authority are separate.
 
-Firmware consumes the frozen MeshContinuum Deployment authority contract (`DEPLOYMENT_AUTHORITY_CONTRACT.md`). A device stores the Deployment identity/trust material required by that contract. Backend instance keys are trusted only when authorized by the Deployment trust root and current authority generation/revocation state.
+Firmware implements the public [Management authority contract](AUTHORITY.md) *(corrected 2026-10-25: earlier a MeshContinuum-maintained contract; see #95)*. A device stores the Deployment identity/trust material required by that contract. Backend instance keys are trusted only when authorized by the Deployment trust root and current authority generation/revocation state.
 
 Broker discovery, DNS/mDNS, network location, TLS establishment or possession of MQTT credentials do **not** independently grant authority to issue device-management commands.
 
