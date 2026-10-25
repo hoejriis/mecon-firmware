@@ -60,6 +60,11 @@ static unsigned long userBtnDownAt = 0;
 #endif
 
 void setup() {
+#if defined(ESP_PLATFORM) && defined(ENABLE_MECON_IFACE)
+  // A device-interface line is up to 1,600 bytes. Over a board's native USB (Heltec V4) the host delivers it at USB
+  // speed, faster than the loop drains the default 256-byte buffer, and the rest is lost; a UART at 115200 is slow enough.
+  Serial.setRxBufferSize(2048);
+#endif
   Serial.begin(115200);
   delay(1000);
 
