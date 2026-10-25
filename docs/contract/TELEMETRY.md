@@ -1,6 +1,6 @@
 # Telemetry catalogue
 
-> **Status: catalogue recorded before the code; the `health` stream is built, the rest is being built.** Each family below says what is implemented today. This page is the one telemetry model: the device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server), with the same meaning on every transport. Where [CORE_DEVICE_CONTRACT](CORE_DEVICE_CONTRACT.md) or [MQTT_PROTOCOL](MQTT_PROTOCOL.md) describe telemetry differently, this page is the newer decision.
+> **Status: catalogue recorded before the code. Built: `health`, `radio`, `power`, `runtime`, `observations` (every role with the device interface) and `connectivity` (Companion builds with a network). The rest is being built.** Each family below says what is implemented today. This page is the one telemetry model: the device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server), with the same meaning on every transport. Where [CORE_DEVICE_CONTRACT](CORE_DEVICE_CONTRACT.md) or [MQTT_PROTOCOL](MQTT_PROTOCOL.md) describe telemetry differently, this page is the newer decision.
 
 ## 1. Model
 
@@ -19,13 +19,13 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | Stream | Content | Class | Default / minimum period | Status |
 |---|---|---|---|---|
 | `health` | uptime, heap and stack, battery, contacts | read | 60 s / 5 s | built |
-| `runtime` | reset reason, boot times, version and build identity, loop health | read | event at boot; snapshot 300 s / 60 s | next |
-| `radio` | packet and error counters, noise floor, last RSSI and SNR, airtime, duty cycle | read | 60 s / 5 s | next |
-| `connectivity` | Wi-Fi, MQTT, BLE and USB link state; changes as events | read | 60 s / 10 s, plus events | next |
-| `power` | battery voltage, external power, charger, USB and solar detection | read | 300 s / 30 s | next |
+| `runtime` | reset reason, abnormal reset, boot times | read | 300 s / 60 s | built (loop health: next) |
+| `radio` | packet and error counters, noise floor, last RSSI and SNR, airtime, duty cycle | read | 60 s / 5 s | built |
+| `connectivity` | Wi-Fi, MQTT, BLE and USB link state; changes as events | read | 60 s / 10 s, plus an event at each change | built for Wi-Fi and MQTT on Companion builds with a network (BLE and USB link state: next) |
+| `power` | battery voltage, external power, charger, USB and solar detection | read | 300 s / 30 s | built |
 | `environment` | readings of the attached sensors, with units and sensor identity | read | 300 s / 30 s | next |
 | `location` | GNSS position, fix, satellites and age | location (private) | 300 s / 30 s | after trust |
-| `observations` | each received packet: raw bytes, RSSI, SNR, time | read | event per packet, at most 10/s | next |
+| `observations` | each received packet: raw bytes, RSSI, SNR | read | event per packet, at most 10/s (no period) | built |
 | `logs` | audit events and bounded diagnostics, with severity and category | posture | events | after trust |
 | `inventory` | contacts, neighbours, channels: counts and entries | read for counts; private for entries | 3600 s / 300 s | counts next; entries after trust |
 | `screen` | framebuffer snapshots of the device's own display | private | on request, at most 1 per 5 s | after trust |
@@ -43,20 +43,20 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | `battery_mv` | mV | `getBattMilliVolts()` | all | `null` when the board cannot measure it |
 | `contacts.count`, `.capacity` | entries | contact store | Companion | absent on the server roles |
 
-### `runtime` (next)
+### `runtime` (built; `loop_gap_ms` and `heap_low` next)
 | Field | Unit | Source | Notes |
 |---|---|---|---|
 | `reset_reason` | text | `getResetReason()` | ESP32 and nRF52; `null` elsewhere. Includes panic, watchdog and brownout on ESP32 |
 | `abnormal_reset` | bool | derived from `reset_reason` | true for panic, watchdog, brownout; `null` where the reason is unknown |
 | `shutdown_reason` | text | nRF52 GPREGRET2 | nRF52 only |
 | `boot_ms.store`, `.mesh`, `.setup` | ms | `BootTimes` | `null` for an unmarked stage |
-| `firmware`, `upstream`, `hardware`, `role` | text | as `hello` | in the boot event |
+| `firmware`, `upstream`, `hardware`, `role` | text | as `hello` | next: a boot event; today in `hello` only |
 | `loop_gap_ms.max` | ms | loop timer | the longest loop pass since the last snapshot; not yet measured on real boards |
 | `heap_low` | bool | `HeapFloor` | Companion; the low-memory state the display shows |
 
 A crash record (panic backtrace kept across a reset) is **unsupported** in this firmware today: nothing keeps one. It needs an ESP32 core-dump partition or an RTC-retained record and is a separate piece of work.
 
-### `radio` (next)
+### `radio` (built)
 | Field | Unit | Source | Notes |
 |---|---|---|---|
 | `rx.flood`, `rx.direct`, `tx.flood`, `tx.direct` | packets | Dispatcher counters | |
@@ -67,20 +67,21 @@ A crash record (panic backtrace kept across a reset) is **unsupported** in this 
 | `airtime.tx_ms`, `airtime.rx_ms` | ms | Dispatcher | cumulative since boot |
 | `duty.limit_bp`, `duty.used_ms`, `duty.limit_ms` | 0.01 %, ms | duty window | the trailing hour; seeded at the limit after boot |
 
-### `connectivity` (next)
+### `connectivity` (built for Wi-Fi and MQTT)
 | Field | Unit | Source | Notes |
 |---|---|---|---|
 | `mode` | `ble`/`wifi` | connectivity mode | Companion builds with modes |
-| `wifi.state`, `.profile`, `.ssid`, `.rssi_dbm`, `.ip`, `.up_s` | | Wi-Fi controller | absent without Wi-Fi; SSID shown, password never |
+| `wifi.state`, `.profile`, `.ssid`, `.rssi_dbm`, `.ip`, `.up_s` | | Wi-Fi controller | SSID shown, password never; fields of a link that is not up are `null` |
 | `wifi.last_fail` | text | Wi-Fi core | the reason the last join failed |
 | `mqtt.state`, `.profile`, `.broker`, `.tls`, `.up_s` | | MQTT controller | `tls` is `plain`, `verified` or `unverified` |
-| `mqtt.reconnects` | count | MQTT controller | since boot |
+| `mqtt.reconnects` | count | MQTT controller | sessions after the first since boot |
+| `mqtt.browsing` | bool | MQTT controller | looking for a discovery broker |
 | `ble.connected` | bool | BLE interface | Companion BLE builds |
 | `usb.connected` | bool | serial interface | where the host link is detectable |
 
 Events: one on every state change of Wi-Fi, MQTT or BLE, carrying the new state.
 
-### `power` (next)
+### `power` (built)
 | Field | Unit | Source | Notes |
 |---|---|---|---|
 | `battery_mv` | mV | board | `null` when not measurable |
@@ -94,8 +95,8 @@ No state of charge is reported: no board here measures it, and a percentage comp
 ### `environment` (next)
 One entry per attached sensor reading: `{"sensor": <type>, "quantity": <name>, "value", "unit", "age_s", "fault"}`. Quantities: temperature (°C), relative humidity (%), pressure (hPa), voltage (V), current (A), power (W), soil moisture (%), distance (mm), and the MCU temperature (°C) where the board reads it. Altitude derived from pressure is reported as derived. Sensors are detected at boot; one that is not fitted is absent.
 
-### `observations` (next)
-Each received packet: `{"raw": <hex>, "rssi_dbm", "snr_db", "len"}`, before parsing, as the radio heard it. The payload is the mesh's own ciphertext; nothing is decrypted for it. At most 10 events per second per device; above that a drop counter.
+### `observations` (built)
+Each received packet: `{"raw": <hex>, "len", "rssi_dbm", "snr_db", "dropped"}`, before parsing, as the radio heard it. The payload is the mesh's own ciphertext; nothing is decrypted for it. At most 10 events per second per device; `dropped` counts the packets not sent since the previous event. `sub.start` takes no `period_s` for it (refused with `no-period`, reported as `null`). On the console, a packet that arrives while a request line is being typed counts as dropped.
 
 ### `location`, `logs`, `inventory` entries, `screen` (after trust)
 - `location`: latitude, longitude (degrees), altitude (m), satellites, fix, `age_s`. Location is private: its class is decided with the Deployment authority stage.
