@@ -26,7 +26,8 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 }
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop"};
+                                    "sub.start", "sub.stop", "deployment.get", "deployment.provision",
+                                    "deployment.authority_update", "deployment.reset"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -41,6 +42,9 @@ Status opHello(OpContext& c) {
   w.key("firmware"); w.str(mecon::versionFull());
   w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
   w.key("epoch"); w.unum(m->epoch());
+  // The channel nonce of the console link, only once a Deployment record exists (AUTHORITY.md section 7.1).
+  const char* nonce = m->helloNonce();
+  if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
   w.key("capabilities"); w.beginArray();
   for (const char* cap : CAPABILITIES) w.str(cap);
   writeStreamCapabilities(w, m->produced());
@@ -73,7 +77,9 @@ Status opStatus(OpContext& c) {
   w.key("device_id"); w.str(m->deviceIdHex());
   w.key("epoch"); w.unum(m->epoch());
   writeHealth(w, m);
-  w.key("posture"); w.str(Posture::isHardened(m->host().posture(m->host().user)) ? "hardened" : "normal");
+  const bool hardened = Posture::isHardened(m->host().posture(m->host().user));
+  w.key("posture"); w.str(hardened ? "hardened" : "normal");
+  m->auth().writeStatus(w, hardened);
   return ST_OK;
 }
 
@@ -98,6 +104,10 @@ Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
 Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
+Status opDeployGet(OpContext& c) { return self(c)->auth().opGet(c); }
+Status opDeployProvision(OpContext& c) { return self(c)->auth().opProvision(c); }
+Status opDeployUpdate(OpContext& c) { return self(c)->auth().opUpdate(c); }
+Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
 
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
@@ -107,11 +117,11 @@ const OpEntry OPS[] = {
   {"config.apply", opApply, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
+  {"deployment.get", opDeployGet, PRIV_READ, false},
+  {"deployment.provision", opDeployProvision, PRIV_WRITE, true},
+  {"deployment.authority_update", opDeployUpdate, PRIV_WRITE, true},
+  {"deployment.reset", opDeployReset, PRIV_WRITE, true},
 };
-
-Cli::Context consoleContext(const ConsoleIface::Host& h) {
-  return Cli::Context(Cli::T_USB, Cli::A_CABLE, h.posture(h.user));
-}
 
 }  // namespace
 
@@ -119,6 +129,14 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _host = host;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
+  _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
+  if (_host.dep_store) {
+    DeployAuth::Env env;
+    env.store = _host.dep_store;
+    env.node_key = _host.node_key;
+    env.publish_caller = true;   // the front door, CommonCLI and the Ethernet console read it (Cli::serverCaller)
+    _auth.begin(env);
+  }
   observeSink().fn = onObserve;
   observeSink().user = this;
 }
@@ -151,13 +169,36 @@ bool ConsoleIface::cliRun(void* user, const char* line, char* reply, size_t cap)
 bool ConsoleIface::cliAllow(void* user, const char* line) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
   const Cli::Resolved r = Cli::resolve(line, Cli::ROLE_REPEATER);
-  return Cli::decide(consoleContext(s->_host), r.cls, r.flags).allow;
+  return Cli::decide(s->_ctx, r.cls, r.flags).allow;
 }
 
 bool ConsoleIface::authorize(void* user, const OpEntry& op, const Request&) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  s->_deny = nullptr;
+  switch (s->_auth.preAuthorize(op, &s->_deny)) {
+    case DeployAuth::PRE_ALLOW: return true;
+    case DeployAuth::PRE_DENY: return false;
+    case DeployAuth::PRE_TABLE: break;
+  }
   const uint8_t cls = op.priv == PRIV_READ ? Cli::C_READ : op.priv == PRIV_WRITE ? Cli::C_WRITE : Cli::C_POSTURE;
-  return Cli::decide(consoleContext(s->_host), cls).allow;
+  return Cli::decide(s->_ctx, cls).allow;
+}
+
+const char* ConsoleIface::denyReason(void* user) { return static_cast<ConsoleIface*>(user)->_deny; }
+
+// One request through the dispatcher as the caller ctx: the cable, or the signed principal on it. The posture is read
+// again each time, so a posture change takes effect on the next line.
+int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char* out, size_t cap, ResultCache* cache) {
+  _ctx = ctx;
+  _ctx.posture = _host.posture(_host.user);
+  _auth.setContext(_ctx);
+  Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
+  d.setDenyReason(denyReason);
+  return d.handle(msg, len, out, cap, cache);
+}
+
+int ConsoleIface::runSigned(void* user, const Cli::Context& ctx, const char* body, size_t len, char* out, size_t cap) {
+  return static_cast<ConsoleIface*>(user)->run(ctx, body, len, out, cap, nullptr);   // job ids guard replay; no id cache
 }
 
 void ConsoleIface::startLine() {
@@ -213,8 +254,12 @@ void ConsoleIface::answer(Print& out) {
       if (!_cache) {
         n = writeResult(res, OUT_MAX, "", ST_BUSY, nullptr, "no-memory");
       } else {
-        Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
-        n = d.handle(_line, _len, res, OUT_MAX, _cache);
+        if (!_nonce[0]) DeployAuth::issueNonce(_nonce);   // issued when the link's first request arrives
+        const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
+        if (DeployAuth::isWrapper(_line, _len))
+          n = _auth.dispatchSigned(cable, _nonce, _line, _len, _cache, runSigned, this, res, OUT_MAX);
+        else
+          n = run(cable, _line, _len, res, OUT_MAX, _cache);
       }
     }
     if (n > 0) printLine(out, res, (size_t)n);

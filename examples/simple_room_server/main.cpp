@@ -33,7 +33,9 @@ static char command[MAX_POST_TEXT_LEN+1];
   #include <helpers/iface/ConsoleIface.h>
   #include <helpers/iface/DeviceMeta.h>
   #include <helpers/CryptoRNG.h>
+  #include <helpers/deployment/DepFsStore.h>
   static Iface::ConsoleIface the_iface;
+  static Dep::FsStore dep_store;   // the Deployment record's files, on the role's own file system
   static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
     char cmd[160], out[160];
     snprintf(cmd, sizeof(cmd), "%s", line);
@@ -133,7 +135,9 @@ void setup() {
     Iface::bootDeviceMeta(fs, &crng, device_id, &epoch);   // a failed save still leaves this boot's values
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "room", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
-                                       &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory };
+                                       &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
+                                       &dep_store };
+    dep_store.setFs(fs);
     the_iface.begin(host, device_id, epoch);
   }
 #endif
