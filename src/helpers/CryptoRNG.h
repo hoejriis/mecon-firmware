@@ -10,6 +10,7 @@
 // knows it has work to do.
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include <Mesh.h>
 
 #if defined(ESP_PLATFORM)
@@ -30,14 +31,11 @@ public:
 #if defined(ESP_PLATFORM)
     esp_fill_random(dest, sz);   // the hardware RNG, whitened; full entropy while the radio (Wi-Fi or BLE) is on
 #elif defined(NRF52_PLATFORM)
-    // The SoftDevice owns the RNG peripheral and keeps a pool of hardware random bytes; wait for enough to be there.
-    size_t done = 0;
-    while (done < sz) {
-      uint8_t avail = 0;
-      sd_rand_application_bytes_available_get(&avail);
-      if (avail == 0) continue;
-      uint8_t n = (uint8_t)((sz - done) < avail ? (sz - done) : avail);
-      if (sd_rand_application_vector_get(dest + done, n) == 0) done += n;
+    if (!nrf52Fill(dest, sz)) {
+      // Neither source delivered in its bound: the caller's RNG, never a hang. Without one the output is zero, which the
+      // callers that need secrecy (the nonce, the challenge) refuse.
+      if (_fallback) _fallback->random(dest, sz);
+      else memset(dest, 0, sz);
     }
 #elif defined(ARDUINO_ARCH_RP2040)
     for (size_t i = 0; i < sz; i += 4) {
@@ -63,4 +61,47 @@ public:
 
 private:
   mesh::RNG* _fallback;
+#if defined(NRF52_PLATFORM)
+  // Polls are bounded by count: this runs before the SoftDevice may be up (the Companion draws its BLE PIN at boot), so
+  // it can neither wait on the SoftDevice's pool nor assume it exists.
+  static const uint32_t RNG_POLLS = 400000;
+
+  static bool nrf52Fill(uint8_t* dest, size_t sz) {
+    uint8_t sd_enabled = 0;
+    if (sd_softdevice_is_enabled(&sd_enabled) != NRF_SUCCESS) return false;
+    if (sd_enabled) {
+      // The SoftDevice owns the RNG peripheral and keeps a pool of hardware random bytes.
+      size_t done = 0;
+      uint32_t polls = 0;
+      while (done < sz) {
+        uint8_t avail = 0;
+        if (sd_rand_application_bytes_available_get(&avail) != NRF_SUCCESS) return false;
+        if (avail == 0) {
+          if (++polls > RNG_POLLS) return false;
+          continue;
+        }
+        uint8_t n = (uint8_t)((sz - done) < avail ? (sz - done) : avail);
+        if (sd_rand_application_vector_get(dest + done, n) != NRF_SUCCESS) return false;
+        done += n;
+      }
+      return true;
+    }
+    // No SoftDevice: the peripheral is ours. Bias correction on (it costs time, not entropy), one byte per VALRDY.
+    NRF_RNG->CONFIG = RNG_CONFIG_DERCEN_Enabled << RNG_CONFIG_DERCEN_Pos;
+    NRF_RNG->EVENTS_VALRDY = 0;
+    NRF_RNG->TASKS_START = 1;
+    bool ok = true;
+    for (size_t i = 0; i < sz && ok; i++) {
+      uint32_t polls = 0;
+      while (NRF_RNG->EVENTS_VALRDY == 0) {
+        if (++polls > RNG_POLLS) { ok = false; break; }
+      }
+      if (!ok) break;
+      dest[i] = (uint8_t)NRF_RNG->VALUE;
+      NRF_RNG->EVENTS_VALRDY = 0;
+    }
+    NRF_RNG->TASKS_STOP = 1;
+    return ok;
+  }
+#endif
 };
