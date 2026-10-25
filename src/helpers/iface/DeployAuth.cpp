@@ -550,9 +550,9 @@ Status DeployAuth::opProvision(OpContext& c) {
   }
   const bool has = _dep_ls == Dep::LS_OK;
   const Cli::Context& cx = _ctx;
-  // Unsigned first provisioning: trust on first use, accepted only from a caller that is physically present.
-  const bool present = (cx.transport == Cli::T_USB && cx.auth == Cli::A_CABLE) ||
-                       (cx.transport == Cli::T_BLE && cx.auth == Cli::A_PAIRED_PIN);
+  // Unsigned first provisioning: trust on first use, accepted only from the USB cable. BLE never counts, whatever its PIN:
+  // the device cannot tell a PIN it drew for the session from one compiled into the image or chosen by the user.
+  const bool present = cx.transport == Cli::T_USB && cx.auth == Cli::A_CABLE;
   if (!has && !_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }
   // A first provisioning needs the provisioned marker, outside the file system (section 4). A platform with nowhere to keep
   // it cannot tell a device that was never provisioned from one whose files were lost, so it never provisions unsigned.

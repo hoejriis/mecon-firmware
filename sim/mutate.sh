@@ -996,6 +996,9 @@ mutate rescue_files_open_in_hardened examples/companion_radio/MyMesh.cpp '  retu
 }' '  return false;
 }' sim/tests/test_deployment_authority.py::test_the_rescue_file_commands_are_refused_in_hardened_with_no_record_and_work_in_normal_standalone
 
+# --- second review (M1): an unsigned first provisioning is the cable's alone
+mutate provision_unsigned_over_ble src/helpers/iface/DeployAuth.cpp '  const bool present = cx.transport == Cli::T_USB && cx.auth == Cli::A_CABLE;' '  const bool present = (cx.transport == Cli::T_USB && cx.auth == Cli::A_CABLE) || (cx.transport == Cli::T_BLE && cx.auth == Cli::A_PAIRED_PIN);' sim/tests/test_deployment_authority.py::test_an_unsigned_first_provisioning_over_ble_is_refused_whatever_the_pin_and_the_cable_still_works
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

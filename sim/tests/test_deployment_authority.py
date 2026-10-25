@@ -625,6 +625,26 @@ def test_a_ble_factory_reset_is_refused_once_enrolled_and_audited(nodes):
     b.close()
 
 
+def test_an_unsigned_first_provisioning_over_ble_is_refused_whatever_the_pin_and_the_cable_still_works(nodes):
+    n = nodes("companion_standalone", "bp1", seed=35, rtc=RTC).start()
+    u = CompanionClient(n)
+    u.device_query()
+    u.app_start()
+    assert u.cli("set pin %d" % PIN).startswith("> pin is now"), "a PIN the user chose: not one the device drew"
+    u.close()
+    n.restart()
+    d = Dev(n)
+    b = n.connect_ble(PIN)
+    b.app_start()
+    bi = mecon_iface.IfaceClient(b._send, b._read_frame)
+    r = bi.request("deployment.provision", provision_args(d.node_key))
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}, "nothing was stored"
+    assert not os.path.exists(marker_path(d)) and not record_files(d)
+    assert d.provision()["status"] == "ok", "the cable may"
+    b.close()
+
+
 def test_a_ble_factory_reset_still_works_on_a_device_with_no_record(nodes):
     n = nodes("companion_standalone", "fb2", seed=34, rtc=RTC).start()
     u = CompanionClient(n)
