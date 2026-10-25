@@ -45,10 +45,16 @@ public:
       for (size_t k = 0; k < 4 && i + k < sz; k++) dest[i + k] = (uint8_t)(r >> (8 * k));
     }
 #elif defined(__linux__) || defined(__APPLE__)
-    FILE* f = fopen("/dev/urandom", "rb");   // the simulated boards and the host tests
+    // The simulated boards and the host tests are not a security target, and their screen captures and fixtures must
+    // repeat: the seeded fallback when the caller gives one, /dev/urandom otherwise.
+    if (_fallback) {
+      _fallback->random(dest, sz);
+      return;
+    }
+    FILE* f = fopen("/dev/urandom", "rb");
     size_t got = f ? fread(dest, 1, sz, f) : 0;
     if (f) fclose(f);
-    if (got != sz && _fallback) _fallback->random(dest, sz);
+    (void)got;
 #else
   #warning "CryptoRNG: no cryptographic RNG for this platform; falling back to the caller's RNG"
     if (_fallback) _fallback->random(dest, sz);
