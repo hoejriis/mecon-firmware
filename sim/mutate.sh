@@ -847,12 +847,15 @@ mutate stream_tx_flood_direct_swapped src/helpers/iface/Streams.cpp '  w.key("fl
 mutate stream_period_unbounded src/helpers/iface/Streams.cpp '  if (pt >= 0 && !jsonGetInt(*c.doc, pt, def.min_s, def.max_s, &period)) return ST_INVALID;' '  if (pt >= 0 && !jsonGetInt(*c.doc, pt, 1, 100000, &period)) return ST_INVALID;' sim/tests/test_telemetry_streams.py::test_the_stream_table_bounds_requests
 mutate obs_companion_sink_not_registered examples/companion_radio/MeconIface.cpp '  observeSink().fn = onObserve;' '  (void)0;' sim/tests/test_telemetry_streams.py::test_observations_carry_each_received_packet_as_heard
 mutate obs_hex_nibbles_swapped src/helpers/iface/Streams.cpp '  for (int i = 0; i < len; i++) { data[n++] = H[raw[i] >> 4]; data[n++] = H[raw[i] & 15]; }' '  for (int i = 0; i < len; i++) { data[n++] = H[raw[i] & 15]; data[n++] = H[raw[i] >> 4]; }' sim/tests/test_telemetry_streams.py::test_observations_carry_each_received_packet_as_heard
-mutate obs_limiter_refuses_all src/helpers/iface/Streams.cpp '  if (!tokens) { dropped++; return false; }' '  dropped++; return false;' sim/tests/test_telemetry_streams.py::test_observations_carry_each_received_packet_as_heard
+mutate obs_limiter_refuses_all src/helpers/iface/Streams.h '    if (!tokens) { dropped++; return false; }' '    dropped++; return false;' sim/tests/test_telemetry_streams.py::test_observations_carry_each_received_packet_as_heard
 mutate obs_event_stream_takes_a_period src/helpers/iface/Streams.cpp '  if (pt >= 0 && def.events()) { c.error = "no-period"; return ST_INVALID; }' '' sim/tests/test_telemetry_streams.py::test_an_event_stream_takes_no_period
 mutate conn_change_not_detected examples/companion_radio/MeconIface.cpp '    if (sig != _conn_last) {' '    if (false) {' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
 mutate conn_stream_not_registered examples/companion_radio/main.cpp '  the_mesh.iface().setConnectivity(ifaceConnWrite, ifaceConnSignature);' '  (void)0;' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
 mutate conn_tls_names_swapped examples/companion_radio/main.cpp '  static const char* const TLS[] = {"plain", "verified", "unverified"};' '  static const char* const TLS[] = {"plain", "unverified", "verified"};' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
 mutate conn_reconnects_not_counted src/helpers/mqtt/MqttController.cpp '  _sessions++;' '' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
+mutate loopgap_never_raised src/helpers/iface/Streams.h '    if (last && now - last > max) max = now - last;' '' unit:test_streams
+mutate loopgap_read_not_reset src/helpers/iface/Streams.h '  uint32_t take() { uint32_t m = max; max = 0; return m; }' '  uint32_t take() { return max; }' unit:test_streams
+mutate obs_limiter_refills_to_full src/helpers/iface/Streams.h '      tokens = tokens + refill > OBS_RATE ? OBS_RATE : tokens + refill;' '      tokens = OBS_RATE;' unit:test_streams
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

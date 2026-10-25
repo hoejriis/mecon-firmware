@@ -88,6 +88,7 @@ private:
   void streamTick(uint32_t now);
   static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
   Iface::ObsLimiter _obs;
+  Iface::LoopGap _gap;
   ConnWriteFn _conn_write = nullptr;
   ConnSignatureFn _conn_sig = nullptr;
   uint32_t _conn_last = 0;

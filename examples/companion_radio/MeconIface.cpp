@@ -291,7 +291,7 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
       break;
     }
     case SID_POWER: writePower(w, board); break;
-    case SID_RUNTIME: writeRuntime(w, board); break;
+    case SID_RUNTIME: writeRuntime(w, board, _gap); break;
     case SID_CONNECTIVITY:
       if (!_conn_write) return false;
       _conn_write(w);
@@ -337,6 +337,7 @@ void MeconIface::streamTick(uint32_t now) {
 }
 
 void MeconIface::loop(uint32_t now) {
+  _gap.tick(now);
   streamTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;

@@ -75,6 +75,7 @@ def test_each_stream_sends_its_first_event_at_once(nodes, make, stream):
     if stream == "runtime":
         assert isinstance(d["boot_ms"]["setup"], int), d
         assert d["reset_reason"] is None and d["abnormal_reset"] is None, "the simulated board has no reset reason"
+        assert isinstance(d["loop_gap_ms"]["max"], int) and d["loop_gap_ms"]["max"] >= 0, d   # measured natively
     if stream == "radio":
         assert d["duty"]["limit_bp"] > 0, d
 

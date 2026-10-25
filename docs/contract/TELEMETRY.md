@@ -19,7 +19,7 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | Stream | Content | Class | Default / minimum period | Status |
 |---|---|---|---|---|
 | `health` | uptime, heap and stack, battery, contacts | read | 60 s / 5 s | built |
-| `runtime` | reset reason, abnormal reset, boot times | read | 300 s / 60 s | built (loop health: next) |
+| `runtime` | reset reason, abnormal reset, boot times, longest loop pass | read | 300 s / 60 s | built |
 | `radio` | packet and error counters, noise floor, last RSSI and SNR, airtime, duty cycle | read | 60 s / 5 s | built |
 | `connectivity` | Wi-Fi, MQTT, BLE and USB link state; changes as events | read | 60 s / 10 s, plus an event at each change | built for Wi-Fi and MQTT on Companion builds with a network (BLE and USB link state: next) |
 | `power` | battery voltage, external power, charger, USB and solar detection | read | 300 s / 30 s | built |
@@ -43,7 +43,7 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | `battery_mv` | mV | `getBattMilliVolts()` | all | `null` when the board cannot measure it |
 | `contacts.count`, `.capacity` | entries | contact store | Companion | absent on the server roles |
 
-### `runtime` (built; `loop_gap_ms` and `heap_low` next)
+### `runtime` (built; `heap_low` and the boot event next)
 | Field | Unit | Source | Notes |
 |---|---|---|---|
 | `reset_reason` | text | `getResetReason()` | ESP32 and nRF52; `null` elsewhere. Includes panic, watchdog and brownout on ESP32 |
@@ -51,7 +51,7 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | `shutdown_reason` | text | nRF52 GPREGRET2 | nRF52 only |
 | `boot_ms.store`, `.mesh`, `.setup` | ms | `BootTimes` | `null` for an unmarked stage |
 | `firmware`, `upstream`, `hardware`, `role` | text | as `hello` | next: a boot event; today in `hello` only |
-| `loop_gap_ms.max` | ms | loop timer | the longest loop pass since the last snapshot; not yet measured on real boards |
+| `loop_gap_ms.max` | ms | the device interface's loop tick | the longest main-loop pass since the previous runtime event; reading it resets it. 0 before two passes |
 | `heap_low` | bool | `HeapFloor` | Companion; the low-memory state the display shows |
 
 A crash record (panic backtrace kept across a reset) is **unsupported** in this firmware today: nothing keeps one. It needs an ESP32 core-dump partition or an RTC-retained record and is a separate piece of work.

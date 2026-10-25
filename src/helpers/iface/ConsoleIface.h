@@ -78,6 +78,7 @@ private:
   bool writeStream(int stream, JsonWriter& w);
   static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
   ObsLimiter _obs;
+  LoopGap _gap;
   Print* _out = nullptr;   // the console, for events raised outside loop()
 };
 

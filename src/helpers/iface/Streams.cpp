@@ -86,17 +86,6 @@ uint32_t StreamClock::due(SubSet* const* sets, int nsets, uint32_t now) {
   return mask;
 }
 
-bool ObsLimiter::take(uint32_t now) {
-  const uint32_t refill = (now - last_ms) * OBS_RATE / 1000;
-  if (refill) {
-    tokens = tokens + refill > OBS_RATE ? OBS_RATE : tokens + refill;
-    last_ms = now;
-  }
-  if (!tokens) { dropped++; return false; }
-  tokens--;
-  return true;
-}
-
 int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts, float snr,
                      float rssi, const uint8_t* raw, int len, uint32_t dropped) {
   if (len < 0 || len > 255) return -1;
@@ -195,7 +184,7 @@ static bool containsNoCase(const char* s, const char* word) {
   return false;
 }
 
-void writeRuntime(JsonWriter& w, mesh::MainBoard& b) {
+void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap) {
   const char* why = b.getResetReasonString(b.getResetReason());
   const bool known = why && strcmp(why, "Not available") != 0;
   w.key("reset_reason"); if (known) w.str(why); else w.null();
@@ -210,6 +199,9 @@ void writeRuntime(JsonWriter& w, mesh::MainBoard& b) {
     const mecon::boot::Stage st = (mecon::boot::Stage)s;
     if (mecon::boot::isMarked(st)) w.unum(mecon::boot::at(st)); else w.null();
   }
+  w.endObject();
+  w.key("loop_gap_ms"); w.beginObject();
+  w.key("max"); w.unum(gap.take());
   w.endObject();
 }
 

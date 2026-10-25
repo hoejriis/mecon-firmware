@@ -56,7 +56,16 @@ struct ObsLimiter {
   uint32_t tokens = OBS_RATE;
   uint32_t last_ms = 0;
   uint32_t dropped = 0;
-  bool take(uint32_t now);
+  bool take(uint32_t now) {
+    const uint32_t refill = (now - last_ms) * OBS_RATE / 1000;
+    if (refill) {
+      tokens = tokens + refill > OBS_RATE ? OBS_RATE : tokens + refill;
+      last_ms = now;
+    }
+    if (!tokens) { dropped++; return false; }
+    tokens--;
+    return true;
+  }
 };
 // Writes one observations event envelope (seq advanced in clock) into ev; its length, or -1 when it does not fit.
 int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts, float snr,
@@ -78,7 +87,18 @@ void writeRadio(JsonWriter& w, mesh::Dispatcher& d, mesh::Radio& r, const RadioC
 // does not have).
 void writePower(JsonWriter& w, mesh::MainBoard& b);
 
-// Reset reason and boot times.
-void writeRuntime(JsonWriter& w, mesh::MainBoard& b);
+// The longest pass of the main loop since the last read: ticked once per pass by the glue, read and reset by the
+// runtime stream. 0 until two passes have been seen.
+struct LoopGap {
+  uint32_t last = 0, max = 0;
+  void tick(uint32_t now) {
+    if (last && now - last > max) max = now - last;
+    last = now;
+  }
+  uint32_t take() { uint32_t m = max; max = 0; return m; }
+};
+
+// Reset reason, boot times, and the loop's longest gap since the previous runtime event.
+void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap);
 
 }  // namespace Iface

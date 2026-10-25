@@ -229,7 +229,7 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
       break;
     }
     case SID_POWER: writePower(w, *_host.board); break;
-    case SID_RUNTIME: writeRuntime(w, *_host.board); break;
+    case SID_RUNTIME: writeRuntime(w, *_host.board, _gap); break;
     default: return false;
   }
   w.endObject();
@@ -238,6 +238,7 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
 
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
+  _gap.tick(now);
   if (_collecting) return;   // an event never lands in the middle of a request being typed
   SubSet* sets[1] = { &_subs };
   const uint32_t due = _clock.due(sets, 1, now);
