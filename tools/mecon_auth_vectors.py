@@ -1,6 +1,6 @@
-"""Public test vectors for the Deployment authority layer (contract v1, as published in MeshContinuum).
+"""Public test vectors for the Deployment authority layer (docs/contract/AUTHORITY.md, management authority v1).
 
-Generated from the public contract text with this repository's own test keys, so an independently written Backend
+Generated from the public contract with this repository's own test keys, so an independently written Backend
 can check its signing against them. Every key below is derived from a public label: they are test keys, never valid
 anywhere. Deterministic: running it twice gives the same bytes (Ed25519 signing is deterministic).
 
@@ -94,8 +94,8 @@ def build():
 
     # Provisional: a device-interface request carried as the wrapper body, suffix "iface".
     body = compact({"v": 1, "id": "r-1", "op": "config.apply", "args": {"values": {"name": "test.example"}},
-                    "deployment_id": DEPLOYMENT_ID, "authority_revision": 2, "issued_at": 1790001100,
-                    "target_public_key": node.pub_hex, "job_id": 1})
+                    "issuer": ib, "deployment_id": DEPLOYMENT_ID, "authority_revision": 2,
+                    "issued_at": 1790001100, "target_public_key": node.pub_hex, "job_id": 1})
     req_bytes = signed(DOMAIN_DEVMSG, b"iface", body.encode())
 
     # Provisional: a signed health event, suffix = the stream name.

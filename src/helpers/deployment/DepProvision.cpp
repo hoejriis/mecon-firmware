@@ -59,17 +59,15 @@ ProvErr checkProvision(const ProvisionPayload& p, const ProvisionContext& ctx, R
   if (has) {
     memcpy(root.dak, cur->dak, KEY_LEN);
     root.authority_epoch = cur->authority_epoch;
-    if (p.n_rotations > MAX_ROTATIONS) return P_UNTRUSTED_AUTHORITY_KEY;
-    for (int i = 0; i < p.n_rotations; i++) {
-      Err e = applyRotation(p.rotations[i].text, p.rotations[i].len, p.rotations[i].sig, cur->deployment_id, &root);
-      if (e != OK) return e == WRONG_DEPLOYMENT ? P_WRONG_DEPLOYMENT : P_UNTRUSTED_AUTHORITY_KEY;
-    }
+    // A provisioning carries no rotations: a device whose key has moved gets authority_update first, which keeps a
+    // provisioning inside the message bound (docs/contract/AUTHORITY.md section 6.1).
+    if (p.n_rotations > 0) return P_UNTRUSTED_AUTHORITY_KEY;
     if (memcmp(root.dak, p.dak, KEY_LEN) != 0 || root.authority_epoch != p.authority_epoch)
       return P_UNTRUSTED_AUTHORITY_KEY;
   } else {
-    // Nothing to chain from: the payload's key is the one being pinned (trust on first use). A rotation chain sent
-    // with a first provisioning has no stored key to start from and is not applied.
-    if (weakKey(p.dak)) return P_UNTRUSTED_AUTHORITY_KEY;
+    // Nothing to chain from: the payload's key is the one being pinned (trust on first use).
+    if (p.n_rotations > 0 || weakKey(p.dak) || p.authority_epoch == 0 || p.authority_epoch > MAX_EPOCH)
+      return P_UNTRUSTED_AUTHORITY_KEY;
     memcpy(root.dak, p.dak, KEY_LEN);
     root.authority_epoch = p.authority_epoch;
   }
@@ -124,7 +122,11 @@ ProvErr checkProvision(const ProvisionPayload& p, const ProvisionContext& ctx, R
   r.set_len = (uint16_t)p.set_len;
   r.n_roles = p.n_roles;
   memcpy(r.roles, p.roles, sizeof(r.roles));
-  if (se == OK) reconcileReplay(&r, *set);   // a duplicate set leaves membership, and replay state, as they are
+  if (se == OK) setAdmissions(&r, *set);   // a duplicate set leaves membership as it is
+  if (p.has_unlock) {
+    r.has_unlock = true;
+    memcpy(r.unlock_secret, p.unlock_secret, UNLOCK_LEN);
+  }
   *out = r;
   return P_OK;
 }
@@ -144,7 +146,14 @@ ProvErr checkAuthorityUpdate(const Loaded& current, const Rotation* rotations, u
   }
   SetContext sc = { root.dak, cur.deployment_id, root.authority_epoch, true, cur.authority_revision };
   Err se = acceptSet(set_text, set_len, set_sig, sc, set);
-  if (se == DUPLICATE) return P_DUPLICATE;
+  // An equal revision is the set already held, byte for byte; anything else at that revision is the key signing two
+  // sets for one revision, refused and never acknowledged (as for a provisioning).
+  if (se == DUPLICATE) {
+    if (set_len != cur.set_len || memcmp(set_text, current.set_text, set_len) != 0 ||
+        memcmp(set_sig, cur.set_sig, SIG_LEN) != 0)
+      return P_BAD_AUTHORITY_SET;
+    return P_DUPLICATE;
+  }
   if (se != OK) return fromSetErr(se);
   if (checkMembership(cur, *set) != OK) return P_BAD_AUTHORITY_SET;
   Record r = cur;
@@ -153,7 +162,7 @@ ProvErr checkAuthorityUpdate(const Loaded& current, const Rotation* rotations, u
   r.authority_revision = set->authority_revision;
   memcpy(r.set_sig, set_sig, SIG_LEN);
   r.set_len = (uint16_t)set_len;
-  reconcileReplay(&r, *set);
+  setAdmissions(&r, *set);
   *out = r;
   return P_OK;
 }

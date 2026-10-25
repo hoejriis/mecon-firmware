@@ -53,7 +53,7 @@ struct R {
 size_t encodeRecord(const Record& rec, const char* set_text, uint32_t generation, uint8_t* out, size_t cap) {
   size_t name_len = strnlen(rec.deployment_name, MAX_NAME + 1);
   if (name_len < 1 || name_len > MAX_NAME || rec.set_len == 0 || rec.set_len > MAX_SET_TEXT || !set_text ||
-      rec.n_replay > MAX_MEMBERS || rec.n_roles > MAX_ROLES)
+      rec.n_adm > MAX_MEMBERS || rec.n_roles > MAX_ROLES)
     return 0;
   W w = { out, cap, 0, false };
   w.bytes("MDR1", 4);
@@ -70,8 +70,8 @@ size_t encodeRecord(const Record& rec, const char* set_text, uint32_t generation
   w.u32(rec.authority_revision);
   w.u32(rec.provision_revision);
   w.u32(rec.sync_key_generation);
-  w.u8(rec.has_usb_auth ? 1 : 0);
-  w.bytes(rec.usb_auth_hash, 32);
+  w.u8(rec.has_unlock ? 1 : 0);
+  w.bytes(rec.unlock_secret, UNLOCK_LEN);
   w.bytes(rec.set_sig, SIG_LEN);
   w.u16(rec.set_len);
   w.bytes(set_text, rec.set_len);
@@ -81,14 +81,10 @@ size_t encodeRecord(const Record& rec, const char* set_text, uint32_t generation
     w.u8(rec.roles[i].profile);
     w.u8(rec.roles[i].role);
   }
-  w.u8(rec.n_replay);
-  for (int i = 0; i < rec.n_replay; i++) {
-    w.bytes(rec.replay[i].instance_id, ID_LEN);
-    w.u32(rec.replay[i].admitted_revision);
-    for (int c = 0; c < JOB_CLASSES; c++) {
-      w.u32(rec.replay[i].wm[c].mark);
-      w.u32(rec.replay[i].wm[c].mask);
-    }
+  w.u8(rec.n_adm);
+  for (int i = 0; i < rec.n_adm; i++) {
+    w.bytes(rec.adm[i].instance_id, ID_LEN);
+    w.u32(rec.adm[i].admitted_revision);
   }
   if (w.fail) return 0;
   size_t payload = w.n - start;
@@ -124,8 +120,8 @@ bool decodeRecord(const uint8_t* buf, size_t len, Record* rec, const char** set_
   x.sync_key_generation = p.u32();
   uint8_t ua = p.u8();
   if (ua > 1) return false;
-  x.has_usb_auth = ua == 1;
-  p.bytes(x.usb_auth_hash, 32);
+  x.has_unlock = ua == 1;
+  p.bytes(x.unlock_secret, UNLOCK_LEN);
   p.bytes(x.set_sig, SIG_LEN);
   x.set_len = p.u16();
   if (x.set_len == 0 || x.set_len > MAX_SET_TEXT) return false;
@@ -137,15 +133,11 @@ bool decodeRecord(const uint8_t* buf, size_t len, Record* rec, const char** set_
     x.roles[i].role = p.u8();
     if (x.roles[i].role > ROLE_LOCAL) return false;
   }
-  x.n_replay = p.u8();
-  if (x.n_replay > MAX_MEMBERS) return false;
-  for (int i = 0; i < x.n_replay; i++) {
-    p.bytes(x.replay[i].instance_id, ID_LEN);
-    x.replay[i].admitted_revision = p.u32();
-    for (int c = 0; c < JOB_CLASSES; c++) {
-      x.replay[i].wm[c].mark = p.u32();
-      x.replay[i].wm[c].mask = p.u32();
-    }
+  x.n_adm = p.u8();
+  if (x.n_adm > MAX_MEMBERS) return false;
+  for (int i = 0; i < x.n_adm; i++) {
+    p.bytes(x.adm[i].instance_id, ID_LEN);
+    x.adm[i].admitted_revision = p.u32();
   }
   if (p.fail || p.n != len - 4) return false;   // every payload byte accounted for
   *set_text = reinterpret_cast<const char*>(st);
@@ -188,16 +180,16 @@ void nextWrite(const Loaded& cur, int* slot, uint32_t* generation) {
   *generation = cur.generation + 1;
 }
 
-static const IssuerReplay* storedIssuer(const Record& rec, const uint8_t id[ID_LEN]) {
-  for (int j = 0; j < rec.n_replay; j++)
-    if (memcmp(rec.replay[j].instance_id, id, ID_LEN) == 0) return &rec.replay[j];
+static const Admission* storedAdmission(const Record& rec, const uint8_t id[ID_LEN]) {
+  for (int j = 0; j < rec.n_adm; j++)
+    if (memcmp(rec.adm[j].instance_id, id, ID_LEN) == 0) return &rec.adm[j];
   return nullptr;
 }
 
 Err checkMembership(const Record& cur, const AuthoritySet& set) {
   for (int i = 0; i < set.n_members; i++) {
     const Member& m = set.members[i];
-    const IssuerReplay* old = storedIssuer(cur, m.instance_id);
+    const Admission* old = storedAdmission(cur, m.instance_id);
     if (!old) {
       if (m.admitted_revision <= cur.authority_revision) return BAD_AUTHORITY_SET;   // new here, admitted before?
     } else if (m.admitted_revision < old->admitted_revision) {
@@ -207,18 +199,130 @@ Err checkMembership(const Record& cur, const AuthoritySet& set) {
   return OK;
 }
 
-void reconcileReplay(Record* rec, const AuthoritySet& set) {
-  IssuerReplay next[MAX_MEMBERS];
-  memset(next, 0, sizeof(next));
+void setAdmissions(Record* rec, const AuthoritySet& set) {
+  memset(rec->adm, 0, sizeof(rec->adm));
   for (int i = 0; i < set.n_members; i++) {
-    memcpy(next[i].instance_id, set.members[i].instance_id, ID_LEN);
-    next[i].admitted_revision = set.members[i].admitted_revision;
-    const IssuerReplay* old = storedIssuer(*rec, set.members[i].instance_id);
-    if (old && old->admitted_revision == set.members[i].admitted_revision)
-      memcpy(next[i].wm, old->wm, sizeof(next[i].wm));   // the same admission: its replay state stands
+    memcpy(rec->adm[i].instance_id, set.members[i].instance_id, ID_LEN);
+    rec->adm[i].admitted_revision = set.members[i].admitted_revision;
   }
-  memcpy(rec->replay, next, sizeof(next));
-  rec->n_replay = set.n_members;
+  rec->n_adm = set.n_members;
+}
+
+// ---- marks
+
+int Marks::indexOf(const uint8_t id[ID_LEN]) const {
+  for (int i = 0; i < n; i++)
+    if (memcmp(m[i].instance_id, id, ID_LEN) == 0) return i;
+  return -1;
+}
+
+size_t encodeMarks(const Marks& m, uint32_t generation, uint8_t* out, size_t cap) {
+  if (m.n > MAX_MEMBERS) return 0;
+  W w = { out, cap, 0, false };
+  w.bytes("MDM1", 4);
+  w.u32(generation);
+  size_t len_at = w.n;
+  w.u16(0);
+  size_t start = w.n;
+  w.u32(m.revision);
+  w.u8(m.n);
+  for (int i = 0; i < m.n; i++) {
+    w.bytes(m.m[i].instance_id, ID_LEN);
+    w.u32(m.m[i].admitted_revision);
+    w.u32(m.m[i].wm.mark);
+  }
+  if (w.fail) return 0;
+  size_t payload = w.n - start;
+  out[len_at] = (uint8_t)payload;
+  out[len_at + 1] = (uint8_t)(payload >> 8);
+  w.u32(crc32(out, w.n));
+  return w.fail ? 0 : w.n;
+}
+
+bool decodeMarks(const uint8_t* buf, size_t len, Marks* m, uint32_t* generation) {
+  if (!buf || len < FRAME_OVERHEAD || len > MARKS_FRAME || memcmp(buf, "MDM1", 4) != 0) return false;
+  R r = { buf, len, 4, false };
+  uint32_t gen = r.u32();
+  uint16_t payload = r.u16();
+  if (FRAME_OVERHEAD + payload != len) return false;
+  uint32_t stored = (uint32_t)buf[len - 4] | (uint32_t)buf[len - 3] << 8 | (uint32_t)buf[len - 2] << 16 |
+                    (uint32_t)buf[len - 1] << 24;
+  if (crc32(buf, len - 4) != stored) return false;
+  R p = { buf, len - 4, 10, false };
+  memset(m, 0, sizeof(*m));
+  m->revision = p.u32();
+  m->n = p.u8();
+  if (m->n > MAX_MEMBERS) return false;
+  for (int i = 0; i < m->n; i++) {
+    p.bytes(m->m[i].instance_id, ID_LEN);
+    m->m[i].admitted_revision = p.u32();
+    m->m[i].wm.mark = p.u32();
+  }
+  if (p.fail || p.n != len - 4) return false;
+  *generation = gen;
+  return true;
+}
+
+void loadMarks(const Copy& a, const Copy& b, LoadedMarks* out) {
+  out->state = LS_ABSENT;
+  out->slot = -1;
+  out->generation = 0;
+  const Copy* c[2] = { &a, &b };
+  bool present = false;
+  for (int i = 0; i < 2; i++) {
+    if (!c[i]->data) continue;
+    present = true;
+    Marks mk;
+    uint32_t g;
+    if (!decodeMarks(c[i]->data, c[i]->len, &mk, &g)) continue;
+    if (out->state != LS_OK || g > out->generation) {
+      out->state = LS_OK;
+      out->slot = i;
+      out->generation = g;
+      out->marks = mk;
+    }
+  }
+  if (out->state != LS_OK && present) out->state = LS_CORRUPT;
+}
+
+void nextMarksWrite(const LoadedMarks& cur, int* slot, uint32_t* generation) {
+  if (cur.state != LS_OK) {
+    *slot = 0;
+    *generation = 1;
+    return;
+  }
+  *slot = 1 - cur.slot;
+  *generation = cur.generation + 1;
+}
+
+int reconcileMarks(const Marks* stored, const AuthoritySet& set, Marks* out) {
+  Marks next;
+  memset(&next, 0, sizeof(next));
+  next.revision = set.authority_revision;
+  int blocked = 0;
+  for (int i = 0; i < set.n_members; i++) {
+    const Member& mem = set.members[i];
+    MemberMark& nm = next.m[i];
+    memcpy(nm.instance_id, mem.instance_id, ID_LEN);
+    nm.admitted_revision = mem.admitted_revision;
+    const int j = stored ? stored->indexOf(mem.instance_id) : -1;
+    if (!stored) {
+      nm.wm.mark = MARK_BLOCKED;                          // the marks were lost: nothing to trust
+    } else if (j < 0) {
+      // Not in the stored marks: new only if admitted after the set those marks followed, else its mark was lost.
+      nm.wm.mark = mem.admitted_revision > stored->revision ? 0 : MARK_BLOCKED;
+    } else if (mem.admitted_revision > stored->m[j].admitted_revision) {
+      nm.wm.mark = 0;                                     // re-admitted: check 6 refuses what it signed before
+    } else {
+      nm.wm = stored->m[j].wm;                            // the same admission, or the record fell back: keep it
+      nm.admitted_revision = stored->m[j].admitted_revision > mem.admitted_revision ? stored->m[j].admitted_revision
+                                                                                     : mem.admitted_revision;
+    }
+    if (nm.wm.mark == MARK_BLOCKED) blocked++;
+  }
+  next.n = set.n_members;
+  *out = next;
+  return blocked;
 }
 
 }  // namespace Dep

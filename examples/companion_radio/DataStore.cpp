@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "DataStore.h"
 #include <helpers/AtomicFile.h>
+#include <helpers/deployment/DepRecord.h>
 
 #if defined(EXTRAFS) || defined(QSPIFLASH)
   #define MAX_BLOBRECS 100
@@ -275,10 +276,13 @@ bool DataStore::bootDeviceMeta(mesh::RNG* rng, uint8_t device_id[16], uint32_t* 
   return AtomicFile::save(_fs, PATH, [&rec](Stream& s) { return s.write(rec, sizeof(rec)) == sizeof(rec); }, !have);
 }
 
-static const char* depPath(int slot) { return slot == 0 ? "/mecon_dep_a" : "/mecon_dep_b"; }
+static const char* depPath(int slot, DataStore::DepFile which) {
+  if (which == DataStore::DEP_MARKS) return slot == 0 ? "/mecon_depm_a" : "/mecon_depm_b";
+  return slot == 0 ? "/mecon_dep_a" : "/mecon_dep_b";
+}
 
-bool DataStore::readDeploymentCopy(int slot, uint8_t* buf, size_t cap, size_t* len, bool* exists) {
-  const char* path = depPath(slot);
+bool DataStore::readDeploymentCopy(int slot, uint8_t* buf, size_t cap, size_t* len, bool* exists, DepFile which) {
+  const char* path = depPath(slot, which);
   *len = 0;
   AtomicFile::recover(_fs, path);
   *exists = AtomicFile::exists(_fs, path);
@@ -292,16 +296,19 @@ bool DataStore::readDeploymentCopy(int slot, uint8_t* buf, size_t cap, size_t* l
   return ok;
 }
 
-bool DataStore::writeDeploymentCopy(int slot, const uint8_t* frame, size_t len) {
-  return AtomicFile::save(_fs, depPath(slot), [frame, len](Stream& s) { return s.write(frame, len) == len; });
+bool DataStore::writeDeploymentCopy(int slot, const uint8_t* frame, size_t len, DepFile which) {
+  return AtomicFile::save(_fs, depPath(slot, which), [frame, len](Stream& s) { return s.write(frame, len) == len; });
 }
 
-bool DataStore::removeDeploymentCopies() {
+bool DataStore::removeDeploymentCopies(int newer_slot, DepFile which) {
   // With any .tmp / .new beside them: a leftover verified .new would otherwise be swapped back in at the next boot by
-  // AtomicFile::recover and resurrect the record a reset removed.
-  AtomicFile::discard(_fs, depPath(0));
-  AtomicFile::discard(_fs, depPath(1));
-  return !AtomicFile::exists(_fs, depPath(0)) && !AtomicFile::exists(_fs, depPath(1));
+  // AtomicFile::recover and resurrect the record a reset removed. The older copy goes first, so a power cut between the
+  // two deletions leaves the newer one rather than bringing the older back.
+  int order[2];
+  Dep::removalOrder(newer_slot, order);
+  AtomicFile::discard(_fs, depPath(order[0], which));
+  AtomicFile::discard(_fs, depPath(order[1], which));
+  return !AtomicFile::exists(_fs, depPath(0, which)) && !AtomicFile::exists(_fs, depPath(1, which));
 }
 
 bool DataStore::savePrefs(NodePrefs& _prefs) {

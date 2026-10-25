@@ -50,6 +50,8 @@ struct ProvisionPayload {
   uint32_t sync_key_generation;
   uint8_t n_roles;
   BrokerRoleEntry roles[MAX_ROLES];
+  bool has_unlock;                  // unlock_secret: 32 bytes, set only by an authority (contract section 10)
+  uint8_t unlock_secret[UNLOCK_LEN];
   bool has_migrating_issuer;
   uint8_t migrating_issuer[ID_LEN];
 };

@@ -41,9 +41,13 @@ public:
   // The Deployment record's two copies (src/helpers/deployment/DepRecord.h), slot 0 = A, 1 = B. A read reports
   // whether the file exists separately from whether it could be read whole: an existing copy that cannot be read
   // makes the record corrupt, never absent.
-  bool readDeploymentCopy(int slot, uint8_t* buf, size_t cap, size_t* len, bool* exists);
-  bool writeDeploymentCopy(int slot, const uint8_t* frame, size_t len);
-  bool removeDeploymentCopies();
+  // which: DEP_RECORD, or DEP_MARKS for the sequence marks' own two copies (DepRecord.h).
+  enum DepFile : uint8_t { DEP_RECORD = 0, DEP_MARKS = 1 };
+  bool readDeploymentCopy(int slot, uint8_t* buf, size_t cap, size_t* len, bool* exists, DepFile which = DEP_RECORD);
+  bool writeDeploymentCopy(int slot, const uint8_t* frame, size_t len, DepFile which = DEP_RECORD);
+  // Removes both copies, the older first (newer_slot: the slot that loaded as the winner, -1 when none did), with any
+  // .tmp / .new beside them.
+  bool removeDeploymentCopies(int newer_slot, DepFile which = DEP_RECORD);
   void loadPrefs(NodePrefs& prefs);
   bool savePrefs(NodePrefs& prefs);
   // The stock whole-table file (/contacts3): read for the migration into the contact store, and kept as the

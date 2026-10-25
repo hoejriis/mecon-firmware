@@ -1,5 +1,4 @@
-// The signed-request replay window: new, duplicate, too old, out-of-order arrival inside the window, a reboot
-// (the persisted state) and the absence of any sequence-reset adoption.
+// The strict per-member sequence (docs/contract/AUTHORITY.md section 8).
 #include <gtest/gtest.h>
 #include "helpers/deployment/DepReplay.h"
 
@@ -12,65 +11,51 @@ static Watermark accept(Watermark w, uint32_t id) {
 }
 
 TEST(DepReplay, FreshStateTakesAnyRealId) {
-  Watermark w = { 0, 0 };
+  Watermark w = { 0 };
   EXPECT_EQ(RV_NEW, replayCheck(w, 1));
   EXPECT_EQ(RV_NEW, replayCheck(w, 100000));
   EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 0));
 }
 
-TEST(DepReplay, ExactRepeatIsADuplicate) {
-  Watermark w = accept({ 0, 0 }, 5);
+TEST(DepReplay, TheMarkIsADuplicate) {
+  Watermark w = accept({ 0 }, 5);
   EXPECT_EQ(RV_DUPLICATE, replayCheck(w, 5));
 }
 
-TEST(DepReplay, OutOfOrderInsideTheWindowRunsOnce) {
-  Watermark w = { 0, 0 };
-  w = accept(w, 10);
-  w = accept(w, 12);       // 11 still in flight
-  w = accept(w, 11);       // arrives late: new
-  EXPECT_EQ(RV_DUPLICATE, replayCheck(w, 11));
-  EXPECT_EQ(RV_DUPLICATE, replayCheck(w, 10));
-  EXPECT_EQ(RV_DUPLICATE, replayCheck(w, 12));
+// The held-back request: once a newer id has run, every older one is dead, however recent.
+TEST(DepReplay, AnOlderIdNeverRunsAfterANewerOne) {
+  Watermark w = accept({ 0 }, 100);
+  w = accept(w, 101);
+  EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 100));
+  EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 99));
+  EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 1));
 }
 
-TEST(DepReplay, WindowEdge) {
-  Watermark w = accept({ 0, 0 }, 100);
-  EXPECT_EQ(RV_NEW, replayCheck(w, 100 - (REPLAY_WINDOW - 1)));   // the oldest id the window still tracks
-  EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 100 - REPLAY_WINDOW));
+TEST(DepReplay, GapsAreAllowedForward) {
+  Watermark w = accept({ 0 }, 3);
+  w = accept(w, 50);                       // ids 4..49 were never sent, or were abandoned by the manager
+  EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 20));
+  EXPECT_EQ(RV_NEW, replayCheck(w, 51));
 }
 
-TEST(DepReplay, ABigJumpForgetsTheOldWindow) {
-  Watermark w = accept(accept({ 0, 0 }, 1), 2);
-  w = accept(w, 2 + REPLAY_WINDOW + 5);
-  EXPECT_EQ(1u, w.mask);
-  EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 2));
+TEST(DepReplay, AStoredMarkIsTheWholeState) {
+  Watermark persisted = accept(accept({ 0 }, 7), 9);   // what a reboot reads back
+  EXPECT_EQ(RV_DUPLICATE, replayCheck(persisted, 9));
+  EXPECT_EQ(RV_TOO_OLD, replayCheck(persisted, 8));
+  EXPECT_EQ(RV_NEW, replayCheck(persisted, 10));
 }
 
-// The persisted pair is the whole state: a guard rebuilt from it after a reboot refuses every id it accepted.
-TEST(DepReplay, RebootKeepsEveryAcceptedIdRefused) {
-  Watermark w = { 0, 0 };
-  for (uint32_t id : { 3u, 5u, 6u, 9u, 20u, 21u }) w = accept(w, id);
-  Watermark persisted = w;   // what the record stores
-  for (uint32_t id : { 3u, 5u, 6u, 9u, 20u, 21u }) EXPECT_NE(RV_NEW, replayCheck(persisted, id)) << id;
-  for (uint32_t id : { 4u, 7u, 8u, 10u, 19u }) EXPECT_EQ(RV_NEW, replayCheck(persisted, id)) << id;
+TEST(DepReplay, ABlockedMemberRunsNothing) {
+  Watermark w = { MARK_BLOCKED };
+  EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 1));
+  EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 0xFFFFFFFEu));
+  EXPECT_EQ(RV_DUPLICATE, replayCheck(w, 0xFFFFFFFFu));   // the mark itself: answered, never run
 }
 
-// A stored mask that lost bit 0 must still refuse the mark itself.
-TEST(DepReplay, MarkIsAlwaysAccepted) {
-  Watermark w = { 50, 0 };
-  EXPECT_EQ(RV_DUPLICATE, replayCheck(w, 50));
-}
-
-// Old signed requests replayed in increasing order, all below the window: each is refused, and no run of them
-// ever moves the window (no adoption).
-TEST(DepReplay, NoAdoptionFromARunOfOldIds) {
-  Watermark w = accept({ 0, 0 }, 1000);
-  Watermark before = w;
-  for (uint32_t id = 900; id < 960; id++) {
-    EXPECT_EQ(RV_TOO_OLD, replayCheck(w, id)) << id;
-  }
-  EXPECT_EQ(before.mark, w.mark);
-  EXPECT_EQ(before.mask, w.mask);
+TEST(DepReplay, MarkAcceptedNeverMovesBack) {
+  Watermark w = accept({ 0 }, 40);
+  markAccepted(&w, 12);
+  EXPECT_EQ(40u, w.mark);
 }
 
 int main(int argc, char** argv) {

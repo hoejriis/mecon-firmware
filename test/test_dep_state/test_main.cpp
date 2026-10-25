@@ -37,8 +37,9 @@ struct Fx : ::testing::Test {
     r.sync_key_generation = 4;
     base64ToSig(AUTHORITY_SET_REV1_SIG, 88, r.set_sig);
     r.set_len = (uint16_t)set1.size();
-    r.n_replay = 1;
-    hexToBytes(INSTANCE_IDS_A, 32, r.replay[0].instance_id, ID_LEN);
+    r.n_adm = 1;
+    hexToBytes(INSTANCE_IDS_A, 32, r.adm[0].instance_id, ID_LEN);
+    r.adm[0].admitted_revision = 1;
     return r;
   }
   std::vector<uint8_t> frame(const Record& r, uint32_t gen) {
@@ -83,6 +84,52 @@ TEST_F(Fx, IntactRecordLoadsWithItsSet) {
   EXPECT_NE(std::string::npos, j.find("\"provision_revision\":2"));
   EXPECT_NE(std::string::npos, j.find("\"posture\":\"hardened\""));
   EXPECT_EQ(std::string::npos, j.find("\"state\""));
+  depFree(s);
+}
+
+static std::vector<uint8_t> marksFrame(uint32_t revision, uint32_t admitted, uint32_t mark, uint32_t gen) {
+  Marks m;
+  memset(&m, 0, sizeof(m));
+  m.revision = revision;
+  m.n = 1;
+  hexToBytes(INSTANCE_IDS_A, 32, m.m[0].instance_id, ID_LEN);
+  m.m[0].admitted_revision = admitted;
+  m.m[0].wm.mark = mark;
+  std::vector<uint8_t> b(MARKS_FRAME);
+  b.resize(encodeMarks(m, gen, b.data(), b.size()));
+  return b;
+}
+
+TEST_F(Fx, MarksLoadAndReconcileWithTheRecord) {
+  auto a = frame(rec(1), 1);
+  DepState* s = nullptr;
+  ASSERT_EQ(LS_OK, depLoad(of(a), Copy{ nullptr, 0 }, &s));
+  auto m = marksFrame(1, 1, 33, 4);
+  depLoadMarks(s, of(m), Copy{ nullptr, 0 });
+  EXPECT_FALSE(s->marks_lost);
+  EXPECT_FALSE(s->marks_dirty);
+  EXPECT_EQ(0, s->blocked);
+  EXPECT_EQ(33u, s->marks.m[0].wm.mark);
+  EXPECT_EQ(0, s->marks_slot);
+  EXPECT_EQ(4u, s->marks_generation);
+  depFree(s);
+}
+
+// Marks lost while the record exists: fail closed, every member blocked, and the blocked state written back.
+TEST_F(Fx, LostMarksBlockEveryMember) {
+  auto a = frame(rec(1), 1);
+  DepState* s = nullptr;
+  ASSERT_EQ(LS_OK, depLoad(of(a), Copy{ nullptr, 0 }, &s));
+  depLoadMarks(s, Copy{ nullptr, 0 }, Copy{ nullptr, 0 });
+  EXPECT_TRUE(s->marks_lost);
+  EXPECT_TRUE(s->marks_dirty);
+  EXPECT_EQ(1, s->blocked);
+  EXPECT_EQ(MARK_BLOCKED, s->marks.m[0].wm.mark);
+  EXPECT_NE(std::string::npos, status(s).find("\"blocked_members\":1"));
+  std::vector<uint8_t> junk(20, 0x55);   // corrupt is lost too, never a fresh start
+  depLoadMarks(s, of(junk), Copy{ nullptr, 0 });
+  EXPECT_TRUE(s->marks_lost);
+  EXPECT_EQ(MARK_BLOCKED, s->marks.m[0].wm.mark);
   depFree(s);
 }
 
@@ -149,6 +196,7 @@ TEST_F(Fx, FallingBackToTheOlderCopyIsFlagged) {
   DepState* s = nullptr;
   ASSERT_EQ(LS_OK, depLoad(of(a), of(junk), &s));
   EXPECT_TRUE(s->other_damaged);
+  EXPECT_NE(std::string::npos, status(s).find("\"fallback\":true"));   // reported, so a manager raises its sequence
   depFree(s);
   auto b = frame(rec(2), 2);
   ASSERT_EQ(LS_OK, depLoad(of(a), of(b), &s));

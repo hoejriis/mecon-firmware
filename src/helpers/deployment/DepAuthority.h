@@ -12,9 +12,11 @@ const int ID_LEN = 16;          // deployment_id, instance_id: 16 bytes, 32 hex 
 const int KEY_LEN = 32;
 const int SIG_LEN = 64;
 const int MAX_MEMBERS = 8;
-const int MAX_REVOKED = 32;
+const int MAX_REVOKED = 16;
 const int MAX_ROTATIONS = 8;
-const size_t MAX_SET_TEXT = 3072;  // an authority set text; 8 members and 32 revoked ids fit in about 2.4 KB
+const size_t MAX_SET_TEXT = 2048;  // an authority set text; 8 members and 16 revoked ids fit in about 1.8 KB, and a
+                                   // provisioning carrying it escaped stays inside the 4,096-byte message
+const uint32_t MAX_EPOCH = 0x80000000u;   // a larger authority_epoch could never rotate
 
 // The contract's error codes (section 8) this module can produce, plus OK and DUPLICATE (an equal revision:
 // acknowledged, nothing changes).

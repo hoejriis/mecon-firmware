@@ -133,7 +133,8 @@ static Err parseSet(const JsonDoc& d, AuthoritySet* s) {
   uint32_t v;
   if (!getU32(d, 0, "v", &v) || v != 1) return BAD_AUTHORITY_SET;
   if (!getHex(d, 0, "deployment_id", s->deployment_id, ID_LEN)) return BAD_AUTHORITY_SET;
-  if (!getU32(d, 0, "authority_epoch", &s->authority_epoch)) return BAD_AUTHORITY_SET;
+  if (!getU32(d, 0, "authority_epoch", &s->authority_epoch) || s->authority_epoch == 0 || s->authority_epoch > MAX_EPOCH)
+    return BAD_AUTHORITY_SET;
   if (!getU32(d, 0, "authority_revision", &s->authority_revision) || s->authority_revision == 0)
     return BAD_AUTHORITY_SET;
   int it = jsonFind(d, 0, "issued_at");
@@ -190,8 +191,8 @@ Err acceptSet(const char* text, size_t len, const uint8_t sig[SIG_LEN], const Se
   if (e != OK) return e;
 
   // 3. Its Deployment. 4. Its epoch, after any rotation delivered with it.
-  if (memcmp(out->deployment_id, ctx.deployment_id, ID_LEN) != 0) return BAD_AUTHORITY_SET;
-  if (out->authority_epoch != ctx.authority_epoch) return BAD_AUTHORITY_SET;
+  if (memcmp(out->deployment_id, ctx.deployment_id, ID_LEN) != 0) return WRONG_DEPLOYMENT;
+  if (out->authority_epoch != ctx.authority_epoch) return UNTRUSTED_AUTHORITY_KEY;
   // 5. Revision: higher applies, equal is a duplicate, lower is stale.
   if (ctx.has_stored) {
     if (out->authority_revision == ctx.stored_revision) return DUPLICATE;
@@ -213,7 +214,7 @@ Err applyRotation(const char* text, size_t len, const uint8_t sig[SIG_LEN], cons
       getHex(*d, 0, "deployment_id", dep, ID_LEN) && getU32(*d, 0, "from_epoch", &from) &&
       getU32(*d, 0, "to_epoch", &to) && getHex(*d, 0, "new_public_key", key, KEY_LEN)) {
     if (memcmp(dep, deployment_id, ID_LEN) != 0) e = WRONG_DEPLOYMENT;
-    else if (from == st->authority_epoch && to == from + 1 && from != 0xFFFFFFFFu && !weakKey(key)) {
+    else if (from == st->authority_epoch && to == from + 1 && to <= MAX_EPOCH && !weakKey(key)) {
       memcpy(st->dak, key, KEY_LEN);
       st->authority_epoch = to;
       e = OK;

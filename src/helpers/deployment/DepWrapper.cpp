@@ -22,6 +22,7 @@ const char* wrapErrCode(WrapErr e) {
     case WR_AUTHORITY_REVISION_AHEAD: return "authority_revision_ahead";
     case WR_STALE_AUTHORITY: return "stale_authority";
     case WR_PAYLOAD_TOO_LARGE: return "payload_too_large";
+    case WR_BAD_CHANNEL_NONCE: return "bad_channel_nonce";
     case WR_MALFORMED: return "unauthenticated";
   }
   return "failed";
@@ -60,9 +61,31 @@ static bool u32Field(const JsonDoc& d, const char* key, uint32_t* out) {
   return true;
 }
 
+static bool streamIsPrivate(const JsonDoc& d) {
+  static const char* const PRIVATE[] = { "screen", "location", "logs", "inventory.entries" };
+  char name[33];
+  int ta = jsonFind(d, 0, "args");
+  int ts = ta >= 0 ? jsonFind(d, ta, "stream") : -1;
+  if (ts < 0 || !jsonGetString(d, ts, name, sizeof(name), CS_NAME, 1)) return true;   // unreadable: the strict side
+  for (const char* p : PRIVATE)
+    if (strcmp(name, p) == 0) return true;
+  return false;
+}
+
+OpClass contractOpClass(const char* op, const JsonDoc& body) {
+  static const char* const PLAIN[] = { "hello", "status.get", "config.schema", "config.get", "deployment.get",
+                                       "job.get", "job.list" };
+  for (const char* p : PLAIN)
+    if (strcmp(op, p) == 0) return OPC_PLAIN;
+  if (strcmp(op, "sub.start") == 0 || strcmp(op, "sub.stop") == 0)
+    return streamIsPrivate(body) ? (strcmp(op, "sub.start") == 0 ? OPC_SENSITIVE : OPC_JOB) : OPC_PLAIN;
+  if (strcmp(op, "identity.key.export") == 0 || strcmp(op, "ble.pin.get") == 0) return OPC_SENSITIVE;
+  return OPC_JOB;
+}
+
 WrapErr verifyWrapped(const char* wire, size_t len, const Record& rec, const AuthoritySet& set,
-                      const uint8_t own_node_key[KEY_LEN], MutatingFn mutating, char* body_buf, size_t cap,
-                      Verified* out) {
+                      const uint8_t own_node_key[KEY_LEN], OpClassFn classify, const char* link_nonce, char* body_buf,
+                      size_t cap, Verified* out) {
   if (len > MAX_WRAPPED) return WR_PAYLOAD_TOO_LARGE;
   RequestDoc* d = new (std::nothrow) RequestDoc();
   if (!d) return WR_MALFORMED;
@@ -97,7 +120,7 @@ WrapErr verifyWrapped(const char* wire, size_t len, const Record& rec, const Aut
   // The body: parsed only now that it is known to be signed.
   if (jsonParse(*d, out->body, out->body_len) != J_OK) goto done;
   {
-    uint8_t dep[ID_LEN], target[KEY_LEN];
+    uint8_t dep[ID_LEN], target[KEY_LEN], bound_issuer[ID_LEN];
     // 4. This Deployment. 4b. This device.
     if (!hexField(*d, "deployment_id", dep, ID_LEN)) goto done;
     if (memcmp(dep, rec.deployment_id, ID_LEN) != 0) { e = WR_WRONG_DEPLOYMENT; goto done; }
@@ -107,12 +130,26 @@ WrapErr verifyWrapped(const char* wire, size_t len, const Record& rec, const Aut
     if (!u32Field(*d, "authority_revision", &out->stamped_revision)) goto done;
     if (out->stamped_revision > rec.authority_revision) { e = WR_AUTHORITY_REVISION_AHEAD; goto done; }
     if (out->stamped_revision < set.members[member].admitted_revision) { e = WR_STALE_AUTHORITY; goto done; }
+    // 6b. The issuer the signature was checked against is the one the body names.
+    if (!hexField(*d, "issuer", bound_issuer, ID_LEN)) goto done;
+    if (memcmp(bound_issuer, issuer, ID_LEN) != 0) { e = WR_BAD_SIGNATURE; goto done; }
     out->has_job = jsonFind(*d, 0, "job_id") >= 0;
     if (out->has_job && (!u32Field(*d, "job_id", &out->job_id) || out->job_id == 0)) goto done;
-    // The operation, and a job id whenever it changes state: without one nothing guards it against replay.
+    // The operation, and a job id on anything that is not a plain read: without one nothing guards it against replay.
     int to = jsonFind(*d, 0, "op");
     if (to < 0 || !jsonGetString(*d, to, out->op, sizeof(out->op), CS_NAME, 1)) goto done;
-    if (!out->has_job && (!mutating || mutating(out->op))) goto done;
+    out->cls = classify ? classify(out->op, *d) : OPC_JOB;
+    if (out->cls != OPC_PLAIN && !out->has_job) goto done;
+    // A sensitive reply goes only to the link the device issued the nonce on.
+    if (out->cls == OPC_SENSITIVE) {
+      char nonce[65];
+      int tn = jsonFind(*d, 0, "channel_nonce");
+      if (!link_nonce || tn < 0 || !jsonGetString(*d, tn, nonce, sizeof(nonce), CS_ID, 1) ||
+          strcmp(nonce, link_nonce) != 0) {
+        e = WR_BAD_CHANNEL_NONCE;
+        goto done;
+      }
+    }
   }
   out->member = member;
   e = WR_OK;

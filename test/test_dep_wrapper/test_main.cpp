@@ -1,5 +1,5 @@
-// Signed interface requests: the command envelope's checks 1 to 6 (Deployment authority contract v1, section 6),
-// against the public iface vector and wrappers this test signs with the vectors' seeds.
+// Signed interface requests: checks 1 to 6b, the job-id and channel-nonce rules (docs/contract/AUTHORITY.md
+// section 7), against the public iface vector and wrappers this test signs with the vectors' seeds.
 #include <gtest/gtest.h>
 #include <string.h>
 #include <string>
@@ -38,8 +38,11 @@ static std::string escape(const std::string& s) {
   return o;
 }
 
-// A wrapper around body signed with seed, naming issuer.
-static std::string wrap(const std::string& body, const char* seed_hex, const char* issuer, int version = 1) {
+// A wrapper around body signed with seed, naming issuer. A body that does not name an issuer gets the wrapper's
+// (check 6b binds the two); a test of a mismatch names one itself.
+static std::string wrap(std::string body, const char* seed_hex, const char* issuer, int version = 1) {
+  if (body.find("\"issuer\"") == std::string::npos && !body.empty() && body[0] == '{')
+    body = std::string("{\"issuer\":\"") + issuer + "\"," + body.substr(1);
   uint8_t pub[32], prv[64], sig[64];
   ed25519_create_keypair(pub, prv, hex(seed_hex).data());
   std::string m = std::string("MECON-DEVMSG-v1") + '\0' + "iface" + '\0' + body;
@@ -71,9 +74,17 @@ struct Fx : ::testing::Test {
     set.members[1].admitted_revision = 2;
   }
 
-  static bool mutatingOp(const char* op) { return strcmp(op, "hello") != 0 && strcmp(op, "status.get") != 0; }
+  const char* nonce = "n0nce-for-this-link";
   WrapErr check(const std::string& wire) {
-    return verifyWrapped(wire.data(), wire.size(), rec, set, node.data(), mutatingOp, body, sizeof(body), &v);
+    return verifyWrapped(wire.data(), wire.size(), rec, set, node.data(), contractOpClass, nonce, body, sizeof(body), &v);
+  }
+  std::string opBody(const char* op, const char* args, const char* extra) {
+    return std::string("{\"v\":1,\"id\":\"r-9\",\"op\":\"") + op + "\",\"args\":" + args + ",\"deployment_id\":\"" +
+           DEPLOYMENT_ID + "\",\"authority_revision\":2,\"issued_at\":1,\"target_public_key\":\"" + PUB_DEVICE_NODE +
+           "\"" + extra + "}";
+  }
+  WrapErr checkOp(const char* op, const char* args, const char* extra) {
+    return check(wrap(opBody(op, args, extra), SEED_INSTANCE_B, INSTANCE_IDS_B));
   }
 
   std::string bodyText(uint32_t rev = 2, const char* target = PUB_DEVICE_NODE, const char* job = ",\"job_id\":5") {
@@ -150,6 +161,48 @@ TEST_F(Fx, JobId) {
   EXPECT_FALSE(v.has_job);
   EXPECT_STREQ("status.get", v.op);
   EXPECT_EQ(WR_MALFORMED, check(wrap(bodyText(2, PUB_DEVICE_NODE, ",\"job_id\":0"), SEED_INSTANCE_B, INSTANCE_IDS_B)));
+}
+
+TEST_F(Fx, TheBodyNamesTheSignedIssuer) {
+  std::string b = bodyText();
+  std::string named = std::string("{\"issuer\":\"") + INSTANCE_IDS_A + "\"," + b.substr(1);
+  EXPECT_EQ(WR_BAD_SIGNATURE, check(wrap(named, SEED_INSTANCE_B, INSTANCE_IDS_B)));   // signed by b, body says a
+  std::string bare = b;   // no issuer in the body at all: unbound, refused
+  uint8_t pub[32], prv[64], sig[64];
+  ed25519_create_keypair(pub, prv, hex(SEED_INSTANCE_B).data());
+  std::string m = std::string("MECON-DEVMSG-v1") + '\0' + "iface" + '\0' + bare;
+  ed25519_sign(sig, (const uint8_t*)m.data(), m.size(), pub, prv);
+  std::string w = std::string("{\"mecon_auth\":1,\"issuer\":\"") + INSTANCE_IDS_B + "\",\"sig\":\"" + b64(sig, 64) +
+                  "\",\"body\":\"" + escape(bare) + "\"}";
+  EXPECT_EQ(WR_MALFORMED, check(w));
+}
+
+// Plain reads are an allowlist; anything else, an unknown operation included, needs a job id (contract section 7.1).
+TEST_F(Fx, PlainReadsAreAnAllowlist) {
+  EXPECT_EQ(WR_OK, checkOp("hello", "{}", ""));
+  EXPECT_EQ(OPC_PLAIN, v.cls);
+  EXPECT_EQ(WR_OK, checkOp("config.get", "{\"keys\":[\"name\"]}", ""));
+  EXPECT_EQ(WR_OK, checkOp("sub.start", "{\"stream\":\"health\"}", ""));
+  EXPECT_EQ(WR_MALFORMED, checkOp("device.reboot", "{}", ""));
+  EXPECT_EQ(WR_MALFORMED, checkOp("some.future.op", "{}", ""));
+  EXPECT_EQ(WR_OK, checkOp("some.future.op", "{}", ",\"job_id\":7"));
+  EXPECT_EQ(OPC_JOB, v.cls);
+  EXPECT_EQ(WR_MALFORMED, checkOp("sub.stop", "{\"stream\":\"screen\"}", ""));   // private stream: a job
+}
+
+// A sensitive reply goes only to the link the device issued the nonce on.
+TEST_F(Fx, SensitiveOperationsNeedThisLinksNonce) {
+  const char* job = ",\"job_id\":8";
+  EXPECT_EQ(WR_MALFORMED, checkOp("identity.key.export", "{}", ""));                       // no job id
+  EXPECT_EQ(WR_BAD_CHANNEL_NONCE, checkOp("identity.key.export", "{}", job));              // no nonce
+  EXPECT_EQ(WR_BAD_CHANNEL_NONCE, checkOp("ble.pin.get", "{}", ",\"job_id\":8,\"channel_nonce\":\"other-link\""));
+  EXPECT_EQ(WR_OK, checkOp("ble.pin.get", "{}", ",\"job_id\":8,\"channel_nonce\":\"n0nce-for-this-link\""));
+  EXPECT_EQ(OPC_SENSITIVE, v.cls);
+  EXPECT_EQ(WR_BAD_CHANNEL_NONCE, checkOp("sub.start", "{\"stream\":\"screen\"}", job));
+  EXPECT_EQ(WR_BAD_CHANNEL_NONCE, checkOp("sub.start", "{}", job));                        // unreadable stream: strict
+  nonce = nullptr;   // a link with no nonce issued: no sensitive operation at all
+  EXPECT_EQ(WR_BAD_CHANNEL_NONCE,
+            checkOp("ble.pin.get", "{}", ",\"job_id\":8,\"channel_nonce\":\"n0nce-for-this-link\""));
 }
 
 TEST_F(Fx, Oversize) {

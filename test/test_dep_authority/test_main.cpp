@@ -112,14 +112,21 @@ TEST_F(Fx, RevisionRules) {
   EXPECT_EQ(STALE_REVISION, accept(t, sig, newer));
 }
 
-TEST_F(Fx, WrongEpochOrDeploymentIsABadSet) {
+// Contract section 5 steps 3 and 4 have their own codes, not bad_authority_set.
+TEST_F(Fx, WrongEpochOrDeploymentHaveTheirOwnCodes) {
   std::string t = textOf(AUTHORITY_SET_REV1_SIGNED_HEX);
   auto sig = sigOf(AUTHORITY_SET_REV1_SIG);
-  EXPECT_EQ(BAD_AUTHORITY_SET, accept(t, sig, first(dak1, 2)));
+  EXPECT_EQ(UNTRUSTED_AUTHORITY_KEY, accept(t, sig, first(dak1, 2)));
   std::vector<uint8_t> other = dep;
   other[0] ^= 1;
   SetContext c = { dak1.data(), other.data(), 1, false, 0 };
-  EXPECT_EQ(BAD_AUTHORITY_SET, accept(t, sig, c));
+  EXPECT_EQ(WRONG_DEPLOYMENT, accept(t, sig, c));
+}
+
+TEST_F(Fx, AnEpochThatCouldNeverRotateIsRefused) {
+  EXPECT_EQ(BAD_AUTHORITY_SET, signedSet(setText("[" + member(INSTANCE_IDS_A, PUB_INSTANCE_A, 1) + "]", 1, 0), first(dak1, 0)));
+  EXPECT_EQ(BAD_AUTHORITY_SET,
+            signedSet(setText("[" + member(INSTANCE_IDS_A, PUB_INSTANCE_A, 1) + "]", 1, MAX_EPOCH + 1), first(dak1, MAX_EPOCH + 1)));
 }
 
 TEST_F(Fx, MembershipShapeRules) {

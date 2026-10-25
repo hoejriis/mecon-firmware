@@ -833,19 +833,38 @@ mutate iface_cache_entry_too_small_for_an_apply src/helpers/iface/IfaceCache.h '
 # Deployment authority, device side (the security review of 2026-10-25)
 mutate dep_membership_stale_admission_ok src/helpers/deployment/DepRecord.cpp '      if (m.admitted_revision <= cur.authority_revision) return BAD_AUTHORITY_SET;   // new here, admitted before?' '' unit:test_dep_record
 mutate dep_membership_lowered_ok src/helpers/deployment/DepRecord.cpp '    } else if (m.admitted_revision < old->admitted_revision) {' '    } else if (false) {' unit:test_dep_record
-mutate dep_readmission_keeps_marks src/helpers/deployment/DepRecord.cpp '    if (old && old->admitted_revision == set.members[i].admitted_revision)' '    if (old)' unit:test_dep_record
-mutate dep_admitted_not_stored src/helpers/deployment/DepRecord.cpp '    x.replay[i].admitted_revision = p.u32();' '    p.u32();' unit:test_dep_record
+mutate dep_admitted_not_stored src/helpers/deployment/DepRecord.cpp '    x.adm[i].admitted_revision = p.u32();' '    p.u32();' unit:test_dep_record
 mutate dep_update_skips_membership src/helpers/deployment/DepProvision.cpp '  if (checkMembership(cur, *set) != OK) return P_BAD_AUTHORITY_SET;' '' unit:test_dep_provision
 mutate dep_provision_skips_membership src/helpers/deployment/DepProvision.cpp '  if (se == OK && has && checkMembership(*cur, *set) != OK) return P_BAD_AUTHORITY_SET;' '' unit:test_dep_provision
 mutate dep_duplicate_text_not_compared src/helpers/deployment/DepProvision.cpp '  if (se == DUPLICATE && (p.set_len != cur->set_len' '  if (false && (p.set_len != cur->set_len' unit:test_dep_provision
-mutate dep_weak_dak_pinned src/helpers/deployment/DepProvision.cpp '    if (weakKey(p.dak)) return P_UNTRUSTED_AUTHORITY_KEY;' '' unit:test_dep_provision
+mutate dep_update_duplicate_not_compared src/helpers/deployment/DepProvision.cpp '    if (set_len != cur.set_len || memcmp(set_text, current.set_text, set_len) != 0 ||' '    if (false &&' unit:test_dep_provision
+mutate dep_weak_dak_pinned src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0 || weakKey(p.dak) || p.authority_epoch == 0 || p.authority_epoch > MAX_EPOCH)' '    if (p.n_rotations > 0 || p.authority_epoch == 0 || p.authority_epoch > MAX_EPOCH)' unit:test_dep_provision
+mutate dep_first_epoch_unbounded src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0 || weakKey(p.dak) || p.authority_epoch == 0 || p.authority_epoch > MAX_EPOCH)' '    if (p.n_rotations > 0 || weakKey(p.dak))' unit:test_dep_provision
+mutate dep_provision_rotation_applied src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0) return P_UNTRUSTED_AUTHORITY_KEY;' '' unit:test_dep_provision
 mutate dep_duplicate_member_key_ok src/helpers/deployment/DepAuthority.cpp '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0 ||
           memcmp(s->members[j].public_key, mb.public_key, KEY_LEN) == 0)' '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0)' unit:test_dep_authority
 mutate dep_weak_member_key_ok src/helpers/deployment/DepAuthority.cpp '    if (weakKey(mb.public_key)) return BAD_AUTHORITY_SET;' '' unit:test_dep_authority
-mutate dep_weak_rotation_key_ok src/helpers/deployment/DepAuthority.cpp ' && from != 0xFFFFFFFFu && !weakKey(key)) {' ' && from != 0xFFFFFFFFu) {' unit:test_dep_authority
+mutate dep_weak_rotation_key_ok src/helpers/deployment/DepAuthority.cpp ' && to <= MAX_EPOCH && !weakKey(key)) {' ' && to <= MAX_EPOCH) {' unit:test_dep_authority
 mutate dep_weak_key_test_disabled src/helpers/deployment/DepAuthority.cpp '  return !fe_isnonzero(p.X) && !fe_isnonzero(d);   // the identity: X = 0, Y = Z' '  return false;' unit:test_dep_authority
+mutate dep_set_epoch_unbounded src/helpers/deployment/DepAuthority.cpp ' || s->authority_epoch == 0 || s->authority_epoch > MAX_EPOCH)' ')' unit:test_dep_authority
+mutate dep_wrong_deployment_code src/helpers/deployment/DepAuthority.cpp '  if (memcmp(out->deployment_id, ctx.deployment_id, ID_LEN) != 0) return WRONG_DEPLOYMENT;' '  if (memcmp(out->deployment_id, ctx.deployment_id, ID_LEN) != 0) return BAD_AUTHORITY_SET;' unit:test_dep_authority
 mutate dep_fallback_not_flagged src/helpers/deployment/DepState.cpp '    s->other_damaged = c[other]->data && !ok[other];' '    s->other_damaged = false;' unit:test_dep_state
-mutate dep_job_id_optional src/helpers/deployment/DepWrapper.cpp '    if (!out->has_job && (!mutating || mutating(out->op))) goto done;' '' unit:test_dep_wrapper
+mutate dep_fallback_not_reported src/helpers/deployment/DepState.cpp '    w.key("fallback"); w.boolean(s->other_damaged);' '' unit:test_dep_state
+mutate dep_lost_marks_fresh src/helpers/deployment/DepState.cpp '  s->blocked = reconcileMarks(s->marks_lost ? nullptr : &lm.marks, s->set, &s->marks);' '  s->blocked = reconcileMarks(&lm.marks, s->set, &s->marks);' unit:test_dep_state
+mutate dep_replay_window_reopened src/helpers/deployment/DepReplay.cpp '  return job_id == w.mark ? RV_DUPLICATE : RV_TOO_OLD;' '  return job_id == w.mark ? RV_DUPLICATE : (w.mark - job_id < 24 ? RV_NEW : RV_TOO_OLD);' unit:test_dep_replay
+mutate dep_replay_mark_reruns src/helpers/deployment/DepReplay.cpp '  if (job_id > w.mark) return RV_NEW;' '  if (job_id >= w.mark) return RV_NEW;' unit:test_dep_replay
+mutate dep_marks_readmission_kept src/helpers/deployment/DepRecord.cpp '    } else if (mem.admitted_revision > stored->m[j].admitted_revision) {' '    } else if (false) {' unit:test_dep_record
+mutate dep_marks_fallback_reopens src/helpers/deployment/DepRecord.cpp '      nm.wm = stored->m[j].wm;                            // the same admission, or the record fell back: keep it' '      nm.wm.mark = stored->m[j].admitted_revision == mem.admitted_revision ? stored->m[j].wm.mark : 0;' unit:test_dep_record
+mutate dep_marks_missing_member_fresh src/helpers/deployment/DepRecord.cpp '      nm.wm.mark = mem.admitted_revision > stored->revision ? 0 : MARK_BLOCKED;' '      nm.wm.mark = 0;' unit:test_dep_record
+mutate dep_marks_lost_fresh src/helpers/deployment/DepRecord.cpp '      nm.wm.mark = MARK_BLOCKED;                          // the marks were lost: nothing to trust' '      nm.wm.mark = 0;' unit:test_dep_record
+mutate dep_removal_newer_first src/helpers/deployment/DepRecord.h '  order[0] = known ? 1 - newer_slot : 0;' '  order[0] = known ? newer_slot : 0;' unit:test_dep_record
+mutate dep_job_id_optional src/helpers/deployment/DepWrapper.cpp '    if (out->cls != OPC_PLAIN && !out->has_job) goto done;' '' unit:test_dep_wrapper
+mutate dep_unknown_op_plain src/helpers/deployment/DepWrapper.cpp '  return OPC_JOB;
+}' '  return OPC_PLAIN;
+}' unit:test_dep_wrapper
+mutate dep_issuer_unbound src/helpers/deployment/DepWrapper.cpp '    if (memcmp(bound_issuer, issuer, ID_LEN) != 0) { e = WR_BAD_SIGNATURE; goto done; }' '' unit:test_dep_wrapper
+mutate dep_nonce_unchecked src/helpers/deployment/DepWrapper.cpp '    if (out->cls == OPC_SENSITIVE) {' '    if (false) {' unit:test_dep_wrapper
+mutate dep_private_stream_plain src/helpers/deployment/DepWrapper.cpp '    if (strcmp(name, p) == 0) return true;' '    if (strcmp(name, p) == 0) return false;' unit:test_dep_wrapper
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

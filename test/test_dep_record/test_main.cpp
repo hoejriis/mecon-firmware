@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <string.h>
 #include <string>
+#include <tuple>
 #include <vector>
 #include "helpers/deployment/DepRecord.h"
 
@@ -21,19 +22,17 @@ static Record sample(uint32_t prov = 1) {
   r.authority_revision = 3;
   r.provision_revision = prov;
   r.sync_key_generation = 4;
-  r.has_usb_auth = true;
-  memset(r.usb_auth_hash, 0x5A, 32);
+  r.has_unlock = true;
+  memset(r.unlock_secret, 0x5A, UNLOCK_LEN);
   memset(r.set_sig, 0x33, SIG_LEN);
   r.set_len = (uint16_t)strlen(SET_TEXT);
   r.n_roles = 2;
   r.roles[0] = { 0, ROLE_PRIMARY };
   r.roles[1] = { 3, ROLE_LOCAL };
-  r.n_replay = 2;
+  r.n_adm = 2;
   for (int m = 0; m < 2; m++) {
-    memset(r.replay[m].instance_id, 0x10 + m, ID_LEN);
-    r.replay[m].admitted_revision = 1;
-    r.replay[m].wm[JC_CMD] = { 100u + m, 0x00F0F0u };
-    r.replay[m].wm[JC_SETTINGS] = { 7u, 1u };
+    memset(r.adm[m].instance_id, 0x10 + m, ID_LEN);
+    r.adm[m].admitted_revision = 1;
   }
   return r;
 }
@@ -63,16 +62,15 @@ TEST(DepRecord, RoundTrip) {
   EXPECT_EQ(0, memcmp(r.dak, d.dak, KEY_LEN));
   EXPECT_EQ(2u, d.authority_epoch);
   EXPECT_EQ(4u, d.sync_key_generation);
-  EXPECT_TRUE(d.has_usb_auth);
-  EXPECT_EQ(0, memcmp(r.usb_auth_hash, d.usb_auth_hash, 32));
+  EXPECT_TRUE(d.has_unlock);
+  EXPECT_EQ(0, memcmp(r.unlock_secret, d.unlock_secret, UNLOCK_LEN));
   EXPECT_EQ(0, memcmp(r.set_sig, d.set_sig, SIG_LEN));
   ASSERT_EQ(2, d.n_roles);
   EXPECT_EQ(3, d.roles[1].profile);
   EXPECT_EQ(ROLE_LOCAL, d.roles[1].role);
-  ASSERT_EQ(2, d.n_replay);
-  EXPECT_EQ(101u, d.replay[1].wm[JC_CMD].mark);
-  EXPECT_EQ(0x00F0F0u, d.replay[1].wm[JC_CMD].mask);
-  EXPECT_EQ(1u, d.replay[1].admitted_revision);
+  ASSERT_EQ(2, d.n_adm);
+  EXPECT_EQ(0x11, d.adm[1].instance_id[0]);
+  EXPECT_EQ(1u, d.adm[1].admitted_revision);
 }
 
 TEST(DepRecord, EveryFlippedByteIsRejected) {
@@ -221,38 +219,141 @@ TEST(DepRecord, PowerCutAtEveryByteKeepsTheOldRecord) {
   }
 }
 
-TEST(DepRecord, ReplayFollowsMembership) {
-  Record r = sample();   // members 0x10.. and 0x11.., admitted at 1
+static AuthoritySet setOf(uint32_t revision, std::initializer_list<std::pair<uint8_t, uint32_t>> members) {
   AuthoritySet s;
   memset(&s, 0, sizeof(s));
-  s.n_members = 2;
-  memset(s.members[0].instance_id, 0x11, ID_LEN);   // kept, same admission
-  s.members[0].admitted_revision = 1;
-  memset(s.members[1].instance_id, 0x22, ID_LEN);   // added
-  s.members[1].admitted_revision = 4;
-  reconcileReplay(&r, s);
-  ASSERT_EQ(2, r.n_replay);
-  EXPECT_EQ(101u, r.replay[0].wm[JC_CMD].mark);     // 0x11's state carried
-  EXPECT_EQ(0u, r.replay[1].wm[JC_CMD].mark);       // a new member starts empty
-  EXPECT_EQ(0x22, r.replay[1].instance_id[0]);
-  // 0x10 was dropped: nothing of it remains.
-  for (int i = 0; i < r.n_replay; i++) EXPECT_NE(0x10, r.replay[i].instance_id[0]);
-  EXPECT_EQ(4u, r.replay[1].admitted_revision);
+  s.authority_revision = revision;
+  for (auto& m : members) {
+    memset(s.members[s.n_members].instance_id, m.first, ID_LEN);
+    s.members[s.n_members].admitted_revision = m.second;
+    s.n_members++;
+  }
+  return s;
 }
 
-// A member re-admitted (its admitted_revision raised) starts with empty watermarks: check 6 refuses what it signed
-// before, and nothing of its old window must make an old id look new or a new id look old.
-TEST(DepRecord, ReAdmissionEmptiesTheWatermarks) {
+static Marks marksOf(uint32_t revision, std::initializer_list<std::tuple<uint8_t, uint32_t, uint32_t>> members) {
+  Marks m;
+  memset(&m, 0, sizeof(m));
+  m.revision = revision;
+  for (auto& x : members) {
+    memset(m.m[m.n].instance_id, std::get<0>(x), ID_LEN);
+    m.m[m.n].admitted_revision = std::get<1>(x);
+    m.m[m.n].wm.mark = std::get<2>(x);
+    m.n++;
+  }
+  return m;
+}
+
+// The older copy is deleted first, so a cut between the two deletions never brings the older record back.
+TEST(DepRecord, RemovalDeletesTheOlderCopyFirst) {
+  int o[2];
+  removalOrder(1, o);
+  EXPECT_EQ(0, o[0]);
+  EXPECT_EQ(1, o[1]);
+  removalOrder(0, o);
+  EXPECT_EQ(1, o[0]);
+  EXPECT_EQ(0, o[1]);
+  removalOrder(-1, o);
+  EXPECT_EQ(0, o[0]);
+  EXPECT_EQ(1, o[1]);
+}
+
+TEST(DepRecord, AdmissionsFollowTheSet) {
   Record r = sample();
-  AuthoritySet s;
-  memset(&s, 0, sizeof(s));
-  s.n_members = 1;
-  memset(s.members[0].instance_id, 0x11, ID_LEN);
-  s.members[0].admitted_revision = 5;
-  reconcileReplay(&r, s);
-  ASSERT_EQ(1, r.n_replay);
-  EXPECT_EQ(0u, r.replay[0].wm[JC_CMD].mark);
-  EXPECT_EQ(5u, r.replay[0].admitted_revision);
+  setAdmissions(&r, setOf(4, { { 0x11, 1 }, { 0x22, 4 } }));
+  ASSERT_EQ(2, r.n_adm);
+  EXPECT_EQ(0x22, r.adm[1].instance_id[0]);
+  EXPECT_EQ(4u, r.adm[1].admitted_revision);
+}
+
+TEST(DepMarks, RoundTripAndDamage) {
+  Marks m = marksOf(3, { { 0x10, 1, 100 }, { 0x11, 2, MARK_BLOCKED } });
+  std::vector<uint8_t> b(MARKS_FRAME);
+  size_t n = encodeMarks(m, 9, b.data(), b.size());
+  ASSERT_GT(n, 0u);
+  b.resize(n);
+  Marks d;
+  uint32_t g;
+  ASSERT_TRUE(decodeMarks(b.data(), b.size(), &d, &g));
+  EXPECT_EQ(9u, g);
+  EXPECT_EQ(3u, d.revision);
+  ASSERT_EQ(2, d.n);
+  EXPECT_EQ(100u, d.m[0].wm.mark);
+  EXPECT_EQ(MARK_BLOCKED, d.m[1].wm.mark);
+  for (size_t i = 0; i < b.size(); i++) {   // any flipped byte is caught
+    std::vector<uint8_t> x = b;
+    x[i] ^= 0x01;
+    EXPECT_FALSE(decodeMarks(x.data(), x.size(), &d, &g)) << i;
+  }
+  EXPECT_FALSE(decodeMarks(b.data(), b.size() - 1, &d, &g));
+}
+
+TEST(DepMarks, NewestIntactCopyWinsAndDamageIsNotAbsence) {
+  Marks a = marksOf(3, { { 0x10, 1, 5 } }), bm = marksOf(3, { { 0x10, 1, 6 } });
+  std::vector<uint8_t> fa(MARKS_FRAME), fb(MARKS_FRAME);
+  fa.resize(encodeMarks(a, 1, fa.data(), fa.size()));
+  fb.resize(encodeMarks(bm, 2, fb.data(), fb.size()));
+  LoadedMarks L;
+  loadMarks({ fa.data(), fa.size() }, { fb.data(), fb.size() }, &L);
+  ASSERT_EQ(LS_OK, L.state);
+  EXPECT_EQ(6u, L.marks.m[0].wm.mark);
+  int slot;
+  uint32_t gen;
+  nextMarksWrite(L, &slot, &gen);
+  EXPECT_EQ(0, slot);
+  EXPECT_EQ(3u, gen);
+  fb[12] ^= 1;   // the newer copy damaged: the older one stands
+  loadMarks({ fa.data(), fa.size() }, { fb.data(), fb.size() }, &L);
+  ASSERT_EQ(LS_OK, L.state);
+  EXPECT_EQ(5u, L.marks.m[0].wm.mark);
+  fa[12] ^= 1;   // both damaged: corrupt, never absent
+  loadMarks({ fa.data(), fa.size() }, { fb.data(), fb.size() }, &L);
+  EXPECT_EQ(LS_CORRUPT, L.state);
+  loadMarks({ nullptr, 0 }, { nullptr, 0 }, &L);
+  EXPECT_EQ(LS_ABSENT, L.state);
+}
+
+TEST(DepMarks, ReconcileKeepsDropsAndStartsMembers) {
+  Marks stored = marksOf(3, { { 0x10, 1, 100 }, { 0x11, 1, 101 } });
+  Marks out;
+  EXPECT_EQ(0, reconcileMarks(&stored, setOf(4, { { 0x11, 1 }, { 0x22, 4 } }), &out));
+  ASSERT_EQ(2, out.n);
+  EXPECT_EQ(4u, out.revision);
+  EXPECT_EQ(101u, out.m[0].wm.mark);   // the same admission keeps its mark
+  EXPECT_EQ(0u, out.m[1].wm.mark);     // admitted after the stored marks' revision: a new member
+  EXPECT_LT(out.indexOf(stored.m[0].instance_id), 0);   // 0x10 removed: dropped
+}
+
+// A re-admitted member starts at 0: check 6 refuses everything it signed before.
+TEST(DepMarks, ReAdmissionStartsTheSequenceAgain) {
+  Marks stored = marksOf(3, { { 0x11, 1, 500 } });
+  Marks out;
+  reconcileMarks(&stored, setOf(5, { { 0x11, 5 } }), &out);
+  EXPECT_EQ(0u, out.m[0].wm.mark);
+  EXPECT_EQ(5u, out.m[0].admitted_revision);
+}
+
+// The marks lead the record (it fell back to an older copy): never reopen a sequence.
+TEST(DepMarks, AFallenBackRecordNeverReopensASequence) {
+  Marks stored = marksOf(6, { { 0x11, 5, 40 } });          // written under revision 6, 0x11 re-admitted at 5
+  Marks out;
+  int blocked = reconcileMarks(&stored, setOf(4, { { 0x11, 1 }, { 0x12, 2 } }), &out);
+  EXPECT_EQ(40u, out.m[0].wm.mark);                        // a lower admission in the set does not reset it
+  EXPECT_EQ(5u, out.m[0].admitted_revision);
+  EXPECT_EQ(MARK_BLOCKED, out.m[1].wm.mark);               // 0x12 is not in marks newer than its admission: lost
+  EXPECT_EQ(1, blocked);
+}
+
+// Marks lost while the record exists: every member is blocked until a re-admission.
+TEST(DepMarks, LostMarksBlockEveryMemberUntilReAdmitted) {
+  Marks out;
+  EXPECT_EQ(2, reconcileMarks(nullptr, setOf(4, { { 0x11, 1 }, { 0x12, 3 } }), &out));
+  EXPECT_EQ(MARK_BLOCKED, out.m[0].wm.mark);
+  EXPECT_EQ(MARK_BLOCKED, out.m[1].wm.mark);
+  Marks after;
+  EXPECT_EQ(1, reconcileMarks(&out, setOf(5, { { 0x11, 5 }, { 0x12, 3 } }), &after));
+  EXPECT_EQ(0u, after.m[0].wm.mark);                       // re-admitted: usable again
+  EXPECT_EQ(MARK_BLOCKED, after.m[1].wm.mark);             // not re-admitted: still blocked
 }
 
 TEST(DepRecord, MembershipRules) {

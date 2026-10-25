@@ -51,6 +51,17 @@ LoadState depLoad(const Copy& a, const Copy& b, DepState** out) {
 
 void depFree(DepState* s) { delete s; }
 
+void depLoadMarks(DepState* s, const Copy& a, const Copy& b) {
+  if (!s || s->state != LS_OK) return;
+  LoadedMarks lm;
+  loadMarks(a, b, &lm);
+  s->marks_lost = lm.state != LS_OK;
+  s->marks_slot = lm.state == LS_OK ? lm.slot : -1;
+  s->marks_generation = lm.state == LS_OK ? lm.generation : 0;
+  s->blocked = reconcileMarks(s->marks_lost ? nullptr : &lm.marks, s->set, &s->marks);
+  s->marks_dirty = s->marks_lost || memcmp(&s->marks, &lm.marks, sizeof(Marks)) != 0;
+}
+
 static void hexOut(char* out, const uint8_t* b, size_t n) {
   static const char H[] = "0123456789abcdef";
   for (size_t i = 0; i < n; i++) {
@@ -77,6 +88,8 @@ void depWriteStatus(Iface::JsonWriter& w, LoadState state, const DepState* s, bo
     w.key("provision_revision"); w.unum(s->rec.provision_revision);
     w.key("sync_key_generation"); w.unum(s->rec.sync_key_generation);
     w.key("posture"); w.str(hardened ? "hardened" : "normal");
+    w.key("fallback"); w.boolean(s->other_damaged);
+    w.key("blocked_members"); w.unum((uint32_t)s->blocked);
   }
   w.key("auth_rejections"); w.unum(s ? s->auth_rejections : 0);
   w.endObject();

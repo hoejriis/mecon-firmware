@@ -120,8 +120,26 @@ TEST_F(Fx, FirstProvisioningPinsTheKey) {
   EXPECT_EQ(1u, rec.authority_revision);
   EXPECT_EQ(1u, rec.provision_revision);
   EXPECT_STREQ("Example mesh", rec.deployment_name);
-  ASSERT_EQ(1, rec.n_replay);
-  EXPECT_EQ(0u, rec.replay[0].wm[JC_CMD].mark);
+  ASSERT_EQ(1, rec.n_adm);
+  EXPECT_EQ(1u, rec.adm[0].admitted_revision);
+  EXPECT_FALSE(rec.has_unlock);
+}
+
+TEST_F(Fx, AnUnlockSecretComesOnlyWithTheProvisioning) {
+  ProvisionPayload p = first();
+  p.has_unlock = true;
+  memset(p.unlock_secret, 0x42, UNLOCK_LEN);
+  ASSERT_EQ(P_OK, run(p));
+  EXPECT_TRUE(rec.has_unlock);
+  EXPECT_EQ(0x42, rec.unlock_secret[UNLOCK_LEN - 1]);
+}
+
+TEST_F(Fx, AFirstProvisioningEpochMustBeAbleToRotate) {
+  ProvisionPayload p = first();
+  p.authority_epoch = 0;
+  EXPECT_EQ(P_UNTRUSTED_AUTHORITY_KEY, run(p));
+  p.authority_epoch = MAX_EPOCH + 1;
+  EXPECT_EQ(P_UNTRUSTED_AUTHORITY_KEY, run(p));
 }
 
 TEST_F(Fx, ContractVersionAndDevice) {
@@ -150,18 +168,17 @@ TEST_F(Fx, ResendRules) {
   EXPECT_EQ(P_STALE_REVISION, run(lower));
 }
 
-TEST_F(Fx, RotationCarriesReplayStateForKeptMembers) {
+// A provisioning carries no rotations (contract section 6.1): a moved key arrives through authority_update.
+TEST_F(Fx, ARotationInAProvisioningIsRefused) {
   ProvisionPayload p = first();
   ASSERT_EQ(P_OK, run(p));
-  rec.replay[0].wm[JC_CMD] = { 42, 7 };           // instance a has run commands
   commit(p);
-  ASSERT_EQ(P_OK, run(rotatedRev2()));
-  EXPECT_EQ(0, memcmp(rec.dak, hex(PUB_DAK_EPOCH_2).data(), KEY_LEN));
-  EXPECT_EQ(2u, rec.authority_epoch);
-  EXPECT_EQ(2u, rec.authority_revision);
-  ASSERT_EQ(2, rec.n_replay);
-  EXPECT_EQ(42u, rec.replay[0].wm[JC_CMD].mark);  // a kept
-  EXPECT_EQ(0u, rec.replay[1].wm[JC_CMD].mark);   // b new
+  EXPECT_EQ(P_UNTRUSTED_AUTHORITY_KEY, run(rotatedRev2()));
+  ProvisionPayload f = first();          // nor with a first provisioning
+  f.n_rotations = 1;
+  f.rotations[0] = rotatedRev2().rotations[0];
+  cur.state = LS_ABSENT;
+  EXPECT_EQ(P_UNTRUSTED_AUTHORITY_KEY, run(f));
 }
 
 TEST_F(Fx, NewKeyWithoutItsRotationIsUntrusted) {
@@ -267,7 +284,6 @@ TEST_F(Fx, MigratingIssuerMustBeAMember) {
 TEST_F(Fx, AuthorityUpdateRotatesAndAdmits) {
   ProvisionPayload p = first();
   ASSERT_EQ(P_OK, run(p));
-  rec.replay[0].wm[JC_SETTINGS] = { 9, 1 };
   commit(p);
   Rotation r;
   r.text = rot.data();
@@ -279,14 +295,18 @@ TEST_F(Fx, AuthorityUpdateRotatesAndAdmits) {
   EXPECT_EQ(2u, rec.authority_epoch);
   EXPECT_EQ(2u, rec.authority_revision);
   EXPECT_EQ(1u, rec.provision_revision);          // an update is not a provisioning
-  ASSERT_EQ(2, rec.n_replay);
-  EXPECT_EQ(9u, rec.replay[0].wm[JC_SETTINGS].mark);
+  ASSERT_EQ(2, rec.n_adm);
+  EXPECT_EQ(2u, rec.adm[1].admitted_revision);
   // Without the rotation the new set does not verify against the pinned key.
   EXPECT_EQ(P_BAD_AUTHORITY_SIGNATURE, checkAuthorityUpdate(cur, nullptr, 0, set2.data(), set2.size(), sig2, &rec, &set));
   // The set already held: a duplicate.
   uint8_t sig1[SIG_LEN];
   base64ToSig(AUTHORITY_SET_REV1_SIG, 88, sig1);
   EXPECT_EQ(P_DUPLICATE, checkAuthorityUpdate(cur, nullptr, 0, set1.data(), set1.size(), sig1, &rec, &set));
+  // A different set at the stored revision: the key signed two sets for one revision. Refused, never acknowledged.
+  std::string other = setOf(1, {mem(INSTANCE_IDS_B, PUB_INSTANCE_B, 1)});
+  auto so = signDak1(other);
+  EXPECT_EQ(P_BAD_AUTHORITY_SET, checkAuthorityUpdate(cur, nullptr, 0, other.data(), other.size(), so.data(), &rec, &set));
   // Nothing pinned: refused.
   Loaded none;
   memset(&none, 0, sizeof(none));
@@ -323,16 +343,14 @@ TEST_F(Fx, AnAdmissionMovedBackIsRefused) {
   EXPECT_EQ(P_BAD_AUTHORITY_SET, checkAuthorityUpdate(cur, nullptr, 0, t3.data(), t3.size(), s3.data(), &rec, &set));
 }
 
-TEST_F(Fx, ReAdmissionThroughAnUpdateEmptiesTheWatermarks) {
+TEST_F(Fx, ReAdmissionThroughAnUpdateRaisesTheAdmission) {
   ProvisionPayload p = first();
   ASSERT_EQ(P_OK, run(p));
-  rec.replay[0].wm[JC_CMD] = { 500, 3 };
   commit(p);
   std::string t = setOf(2, {mem(INSTANCE_IDS_A, PUB_INSTANCE_A, 2)});
   auto sig = signDak1(t);
   ASSERT_EQ(P_OK, checkAuthorityUpdate(cur, nullptr, 0, t.data(), t.size(), sig.data(), &rec, &set));
-  EXPECT_EQ(0u, rec.replay[0].wm[JC_CMD].mark);
-  EXPECT_EQ(2u, rec.replay[0].admitted_revision);
+  EXPECT_EQ(2u, rec.adm[0].admitted_revision);   // the marks record resets its sequence (test_dep_record)
 }
 
 // A second provisioning naming the stored revision with a different set text: two sets claiming one revision.

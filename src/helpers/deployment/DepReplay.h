@@ -1,34 +1,33 @@
 #pragma once
-// Replay protection for signed requests: one sliding window per issuer and job class (Deployment authority
-// contract v1, section 7), the RFC 6479 technique. The state is a Watermark (DepRecord.h): the highest job id
-// accepted, and a bitmap of which of the WINDOW ids below it were accepted. Both are persisted together, so a
-// reboot reopens nothing.
+// Replay protection for signed requests (docs/contract/AUTHORITY.md section 8): one strictly increasing sequence per
+// authority-set member. The state is the member's mark, the highest job id accepted, kept in a Watermark (DepRecord.h)
+// and persisted before the request runs, so a reboot reopens nothing.
 //
-// No sequence-reset adoption for signed issuers. An unsigned guard may adopt a sender's restarted sequence after
-// a run of out-of-window ids, because there nothing stops a publisher from sending new ids anyway. With signing,
-// a run of out-of-window ids that verify can only be old signed requests replayed in order, and adopting them
-// would execute one again. A Backend whose job sequence really restarted is re-admitted to the authority set
-// instead: its watermarks are emptied and check 6 (admitted_revision) refuses everything it signed before.
+// Strict, not a window: with a window a request an intermediary held back could still run after newer ones, out of
+// order (an old config.apply putting back a setting, a reboot firing late). With one strict sequence, the moment a newer
+// request runs every older one still held is dead. A manager retries a lost request with the same signed bytes, which
+// lands on the mark and is answered without running again.
+//
+// No sequence-reset adoption: ids below the mark that verify can only be old signed requests. A manager that lost its
+// sequence reads its mark (deployment.get) and continues above it, or is re-admitted, which resets its mark while
+// check 6 (admitted_revision) refuses everything it signed before.
 #include <stdint.h>
 #include "DepRecord.h"
 
 namespace Dep {
 
-const uint8_t REPLAY_WINDOW = 24;
-
 enum ReplayVerdict : uint8_t {
-  RV_NEW = 0,       // not seen: run it, then markAccepted
-  RV_DUPLICATE,     // inside the window and already accepted: answer from the result cache, run nothing
-  RV_TOO_OLD        // below the window: no record either way, refused and reported
+  RV_NEW = 0,       // above the mark: run it, after markAccepted has been persisted
+  RV_DUPLICATE,     // the mark itself: the same request again; answer from the result cache or "duplicate", run nothing
+  RV_TOO_OLD        // below the mark, or 0: refused as replay
 };
 
-// Job id 0 is never a real id: refused as too old.
 ReplayVerdict replayCheck(const Watermark& w, uint32_t job_id);
 
-// Records job_id as accepted. Call only after replayCheck returned RV_NEW, and persist w BEFORE the request runs:
-// at most once, not at least once. A power cut between the write and the run then loses the request, which its issuer
-// sees as no result and re-signs under a new job id; the other order would let a cut after the run but before the
-// write execute it a second time when the same signed request is delivered again.
+// Records job_id as the mark. Call only after replayCheck returned RV_NEW, and persist w BEFORE the request runs: at
+// most once, not at least once. A power cut between the write and the run loses the request; its manager resends the
+// same bytes and is answered "duplicate", and reads the state. The other order would let a cut after the run but before
+// the write execute it a second time when the same signed request is delivered again.
 void markAccepted(Watermark* w, uint32_t job_id);
 
 }  // namespace Dep
