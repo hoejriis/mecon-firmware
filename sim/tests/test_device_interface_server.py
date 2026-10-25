@@ -184,3 +184,10 @@ def test_the_hardware_runner_passes_against_the_simulated_console(nodes):
     last = r.stdout.strip().splitlines()[-1]
     a, b = re.match(r"(\d+) of (\d+) passed", last).groups()
     assert a == b, r.stdout
+
+
+@pytest.mark.parametrize("kind,role", ROLES)
+def test_get_device_id_on_the_console_matches_hello(nodes, kind, role):
+    n, (cli, i) = start(nodes, kind, "did" + role)
+    h = ok(i.request("hello"), "hello.result.json")
+    assert cli.command("get device.id") == "> " + h["device_id"]

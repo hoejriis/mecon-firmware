@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/iface/DeviceId.h>
 #include <helpers/AuditStore.h>
 
 #include <Arduino.h> // needed for PlatformIO
@@ -2316,6 +2317,11 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
   if (strcmp(command, "get name") == 0) {
     sprintf(reply, "> %s", _prefs.node_name);
+    return true;
+  }
+  if (strcmp(command, "get device.id") == 0) {   // the device interface's device_id (DEVICE_INTERFACE.md section 1)
+    if (*Iface::deviceIdHex()) sprintf(reply, "> %s", Iface::deviceIdHex());
+    else strcpy(reply, "Error: unsupported");
     return true;
   }
 
