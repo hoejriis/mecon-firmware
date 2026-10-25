@@ -837,7 +837,7 @@ mutate config_latitude_unbounded src/helpers/iface/IfaceConfig.cpp '    const do
 mutate console_prefix_not_handed_over examples/simple_repeater/main.cpp '      the_iface.startLine();' '      (void)0;' sim/tests/test_device_interface_server.py::test_hello_names_the_role
 mutate console_line_unbounded src/helpers/iface/ConsoleIface.cpp '  if (_len >= MAX_LINE) { _overflow = true; return; }' '  if (_len >= MAX_LINE + 4000) { _overflow = true; return; }' sim/tests/test_device_interface_server.py::test_a_line_too_long_is_refused_not_truncated
 mutate console_echo_line_not_ended src/helpers/iface/ConsoleIface.cpp '  out.print("\r\n");   // ends the console' '  // ends the console' sim/tests/test_device_interface_server.py::test_status_has_no_contact_list
-mutate console_sub_stop_ignored src/helpers/iface/ConsoleIface.cpp 'Status opSubStop(OpContext& c) { return subStop(c, &self(c)->subs(), ConsoleIface::STREAMS_PRODUCED); }' 'Status opSubStop(OpContext& c) { return subStop(c, nullptr, ConsoleIface::STREAMS_PRODUCED); }' sim/tests/test_device_interface_server.py::test_health_events_come_back_as_console_lines
+mutate console_sub_stop_ignored src/helpers/iface/ConsoleIface.cpp 'Status opSubStop(OpContext& c) { return subStop(c, &self(c)->subs(), self(c)->produced()); }' 'Status opSubStop(OpContext& c) { return subStop(c, nullptr, self(c)->produced()); }' sim/tests/test_device_interface_server.py::test_health_events_come_back_as_console_lines
 mutate console_room_reports_repeater examples/simple_room_server/main.cpp 'ifaceBattery, "room",' 'ifaceBattery, "repeater",' sim/tests/test_device_interface_server.py::test_hello_names_the_role
 # telemetry streams (docs/contract/TELEMETRY.md)
 mutate stream_first_event_not_immediate src/helpers/iface/Streams.cpp '  if (!sub.active && !def.events()) *started = s;' '  if (false) *started = s;' sim/tests/test_telemetry_streams.py::test_a_new_subscription_after_a_stop_gets_an_event_at_once
@@ -856,6 +856,11 @@ mutate conn_reconnects_not_counted src/helpers/mqtt/MqttController.cpp '  _sessi
 mutate loopgap_never_raised src/helpers/iface/Streams.h '    if (last && now - last > max) max = now - last;' '' unit:test_streams
 mutate loopgap_read_not_reset src/helpers/iface/Streams.h '  uint32_t take() { uint32_t m = max; max = 0; return m; }' '  uint32_t take() { return max; }' unit:test_streams
 mutate obs_limiter_refills_to_full src/helpers/iface/Streams.h '      tokens = tokens + refill > OBS_RATE ? OBS_RATE : tokens + refill;' '      tokens = OBS_RATE;' unit:test_streams
+mutate lpp_sign_ignored src/helpers/iface/Lpp.cpp '    if (t->is_signed && (raw & (1u << (8 * t->size - 1)))) v -= (int64_t)1 << (8 * t->size);' '' unit:test_lpp
+mutate lpp_everything_signed src/helpers/iface/Lpp.cpp '    if (t->is_signed && (raw & (1u << (8 * t->size - 1))))' '    if ((raw & (1u << (8 * t->size - 1))))' unit:test_lpp
+mutate lpp_gps_not_skipped src/helpers/iface/Lpp.cpp '    if (code == LPP_GPS) {' '    if (false) {' unit:test_lpp
+mutate env_offered_without_sensors src/helpers/iface/ConsoleIface.h '  uint32_t streamsProduced() const { return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0); }' '  uint32_t streamsProduced() const { return STREAMS_PRODUCED | (1u << SID_ENVIRONMENT); }' sim/tests/test_telemetry_streams.py::test_environment_is_absent_without_sensors
+mutate env_not_checked_before_first_answer src/helpers/iface/ConsoleIface.cpp '  if (!_env_checked) refreshEnvironment(millis());' '' sim/tests/test_telemetry_streams.py::test_environment_carries_the_attached_sensors
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

@@ -43,7 +43,7 @@ Status opHello(OpContext& c) {
   w.key("epoch"); w.unum(m->epoch());
   w.key("capabilities"); w.beginArray();
   for (const char* cap : CAPABILITIES) w.str(cap);
-  writeStreamCapabilities(w, ConsoleIface::STREAMS_PRODUCED);
+  writeStreamCapabilities(w, m->produced());
   w.endArray();
   return ST_OK;
 }
@@ -80,12 +80,12 @@ Status opStatus(OpContext& c) {
 Status opSubStart(OpContext& c) {
   int started;
   const uint32_t now = millis();
-  Status st = subStart(c, &self(c)->subs(), ConsoleIface::STREAMS_PRODUCED, now, &started);
+  Status st = subStart(c, &self(c)->subs(), self(c)->produced(), now, &started);
   self(c)->scheduleStream(started, now);
   return st;
 }
 
-Status opSubStop(OpContext& c) { return subStop(c, &self(c)->subs(), ConsoleIface::STREAMS_PRODUCED); }
+Status opSubStop(OpContext& c) { return subStop(c, &self(c)->subs(), self(c)->produced()); }
 
 Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
   ConfigHost host = self(c)->configHost();
@@ -185,8 +185,18 @@ void ConsoleIface::printLine(Print& out, const char* msg, size_t len) {
   out.print("\r\n");
 }
 
+// Whether the environment stream has anything to report: rechecked once a minute, and before the first request is
+// answered (a request can arrive before the first loop pass).
+void ConsoleIface::refreshEnvironment(uint32_t now) {
+  if (!_host.sensors || (_env_checked && now - _env_at < 60000)) return;
+  _env_ok = countEnvironment(*_host.sensors, *_host.board) > 0;
+  _env_checked = true;
+  _env_at = now;
+}
+
 void ConsoleIface::answer(Print& out) {
   _collecting = false;
+  if (!_env_checked) refreshEnvironment(millis());
   out.print("\r\n");   // ends the console's echo of the prefix, as the stock console ends an echoed line
   static const size_t OUT_MAX = 1600;
   char* res = static_cast<char*>(malloc(OUT_MAX));
@@ -230,6 +240,9 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
     }
     case SID_POWER: writePower(w, *_host.board); break;
     case SID_RUNTIME: writeRuntime(w, *_host.board, _gap); break;
+    case SID_ENVIRONMENT:
+      if (!_host.sensors || writeEnvironment(w, *_host.sensors, *_host.board) == 0) return false;
+      break;
     default: return false;
   }
   w.endObject();
@@ -239,6 +252,7 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
   _gap.tick(now);
+  refreshEnvironment(now);
   if (_collecting) return;   // an event never lands in the middle of a request being typed
   SubSet* sets[1] = { &_subs };
   const uint32_t due = _clock.due(sets, 1, now);

@@ -6,6 +6,9 @@
 #include <Dispatcher.h>
 #include <MeshCore.h>
 #include "helpers/BootTimes.h"
+#include "helpers/SensorManager.h"
+#include "Lpp.h"
+#include <math.h>
 
 namespace Iface {
 
@@ -17,6 +20,7 @@ const StreamDef STREAMS[STREAM_COUNT] = {
   {"runtime", 60, 3600, 300},
   {"observations", 0, 0, 0},
   {"connectivity", 10, 3600, 60},
+  {"environment", 30, 3600, 300},
 };
 
 int streamIndex(const char* name, size_t len) {
@@ -170,6 +174,34 @@ void writePower(JsonWriter& w, mesh::MainBoard& b) {
   if (b.hasSolarChargerDetect()) { w.key("solar"); w.boolean(b.isSolarChargerActive()); }
   const uint16_t boot_mv = b.getBootVoltage();
   if (boot_mv) { w.key("boot_mv"); w.unum(boot_mv); }
+}
+
+// ---- environment
+
+static const size_t LPP_CAP = 160;
+
+int writeEnvironment(JsonWriter& w, SensorManager& s, mesh::MainBoard& b) {
+  CayenneLPP lpp(LPP_CAP);
+  s.querySensors(TELEM_PERM_ENVIRONMENT, lpp);
+  w.key("readings"); w.beginArray();
+  int n = decodeLpp(lpp.getBuffer(), lpp.getSize(), w);
+  w.endArray();
+  if (n < 0) n = 0;   // what decoded before a malformed entry stays; the rest is not guessed at
+  const float t = b.getMCUTemperature();
+  if (!isnan(t)) {
+    char num[16];
+    snprintf(num, sizeof(num), "%.1f", (double)t);
+    w.key("mcu_temp_c"); w.raw(num);
+    n++;
+  }
+  return n;
+}
+
+int countEnvironment(SensorManager& s, mesh::MainBoard& b) {
+  char scratch[512];
+  JsonWriter w(scratch, sizeof(scratch));
+  w.beginObject();
+  return writeEnvironment(w, s, b);
 }
 
 // ---- runtime

@@ -36,6 +36,7 @@ public:
     mesh::Radio* radio;
     mesh::MainBoard* board;
     void (*radio_counts)(void* user, RadioCounts* out);
+    SensorManager* sensors;
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS);
@@ -56,6 +57,7 @@ public:
   uint32_t epoch() const { return _epoch; }
   ConfigHost configHost();
   SubSet& subs() { return _subs; }
+  uint32_t produced() const { return streamsProduced(); }
   void scheduleStream(int stream, uint32_t now) { _clock.scheduleNow(stream, now); }
 
 private:
@@ -78,6 +80,10 @@ private:
   bool writeStream(int stream, JsonWriter& w);
   static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
   ObsLimiter _obs;
+  bool _env_ok = false, _env_checked = false;
+  void refreshEnvironment(uint32_t now);
+  uint32_t _env_at = 0;
+  uint32_t streamsProduced() const { return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0); }
   LoopGap _gap;
   Print* _out = nullptr;   // the console, for events raised outside loop()
 };

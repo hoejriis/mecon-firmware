@@ -8,10 +8,11 @@
 #include "IfaceJson.h"
 
 namespace mesh { class Dispatcher; class Radio; class MainBoard; }
+class SensorManager;
 
 namespace Iface {
 
-enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, SID_CONNECTIVITY, STREAM_COUNT };
+enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, SID_CONNECTIVITY, SID_ENVIRONMENT, STREAM_COUNT };
 
 struct StreamDef {
   const char* name;
@@ -97,6 +98,12 @@ struct LoopGap {
   }
   uint32_t take() { uint32_t m = max; max = 0; return m; }
 };
+
+// The environment stream: the attached sensors' readings (decoded from the LPP their manager produces, environment
+// permission only, never location) and the MCU temperature where the board reads one. Returns how many readings it
+// wrote; countEnvironment answers the same without writing, for the stream's discovery.
+int writeEnvironment(JsonWriter& w, SensorManager& s, mesh::MainBoard& b);
+int countEnvironment(SensorManager& s, mesh::MainBoard& b);
 
 // Reset reason, boot times, and the loop's longest gap since the previous runtime event.
 void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap);

@@ -3,11 +3,33 @@
 #include "sim_clock.h"
 #include <random>
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
 SimBoard board;
 SimRadio radio_driver;
 SimRTCClock rtc_clock;
-SensorManager sensors;
+SimSensorManager sensors;
+
+bool SimSensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) {
+  if (!(requester_permissions & TELEM_PERM_ENVIRONMENT)) return false;
+  FILE* f = fopen((g_sim.dir + ".sensors").c_str(), "r");
+  if (!f) return false;
+  int channel;
+  char quantity[24];
+  float value;
+  bool any = false;
+  while (fscanf(f, "%d %23s %f", &channel, quantity, &value) == 3) {
+    if (!strcmp(quantity, "temperature")) telemetry.addTemperature(channel, value);
+    else if (!strcmp(quantity, "humidity")) telemetry.addRelativeHumidity(channel, value);
+    else if (!strcmp(quantity, "pressure")) telemetry.addBarometricPressure(channel, value);
+    else if (!strcmp(quantity, "voltage")) telemetry.addVoltage(channel, value);
+    else continue;
+    any = true;
+  }
+  fclose(f);
+  return any;
+}
 
 void SimBoard::reboot() { fflush(NULL); exit(75); }
 void SimBoard::powerOff() { fflush(NULL); exit(0); }

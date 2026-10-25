@@ -175,6 +175,7 @@ int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, co
   _ctx = ctx;
   _caller = caller;
   _cur_link = link;
+  if (!_env_checked) refreshEnvironment(millis());
   if (!_cache) _cache = new (std::nothrow) ResultCache();   // 3.1 KB, only once the interface is used
   if (!_cache) return writeResult(out, cap, "", ST_BUSY, nullptr, "no-memory");
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
@@ -274,6 +275,15 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
   l->rx.release();
 }
 
+// Whether the environment stream has anything to report: rechecked once a minute (sensors start after the mesh), and
+// before the first request is answered (a request can arrive before the first loop pass).
+void MeconIface::refreshEnvironment(uint32_t now) {
+  if (_env_checked && now - _env_at < 60000) return;
+  _env_ok = countEnvironment(sensors, board) > 0;
+  _env_checked = true;
+  _env_at = now;
+}
+
 SubSet* MeconIface::currentSubs() { return _cur_link ? &_cur_link->subs : &_mqtt_subs; }
 
 // The data of one stream's event (TELEMETRY.md section 3); false when it could not be built.
@@ -292,6 +302,9 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
     }
     case SID_POWER: writePower(w, board); break;
     case SID_RUNTIME: writeRuntime(w, board, _gap); break;
+    case SID_ENVIRONMENT:
+      if (writeEnvironment(w, sensors, board) == 0) return false;   // nothing to report this time
+      break;
     case SID_CONNECTIVITY:
       if (!_conn_write) return false;
       _conn_write(w);
@@ -306,6 +319,7 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
 // subscribed. A full queue drops the event on that transport only; the receiver sees the gap in seq.
 void MeconIface::streamTick(uint32_t now) {
   if (!_ev_up || !_ev_up()) _mqtt_subs.clear();   // a subscription made over MQTT lapses with the session
+  refreshEnvironment(now);
   if (_conn_sig) {   // a link changed state: the connectivity stream sends an event now
     const uint32_t sig = _conn_sig();
     if (sig != _conn_last) {

@@ -33,7 +33,7 @@ def repeater(nodes, name):
 
 def first_event(i, stream, timeout=15.0):
     """Starts the stream and returns its first event, which a new subscription gets at once."""
-    r = i.request("sub.start", {"stream": stream, "period_s": 3600 if stream != "radio" else 5, "lifetime_s": 60})
+    r = i.request("sub.start", {"stream": stream, "period_s": 5 if stream == "radio" else 3600, "lifetime_s": 60})
     assert r["status"] == "ok" and r["result"]["stream"] == stream, r
     end = time.time() + timeout
     while time.time() < end:
@@ -166,3 +166,36 @@ def test_an_event_stream_takes_no_period(nodes):
     n, c, i = companion(nodes, "noper")
     r = i.request("sub.start", {"stream": "observations", "period_s": 5})
     assert r["status"] == "invalid" and r["error"] == "no-period", r
+
+
+
+def sensors_file(nodes_factory_node):
+    return nodes_factory_node.dir + ".sensors"
+
+
+@pytest.mark.parametrize("kind", ["companion_standalone", "repeater"])
+def test_environment_carries_the_attached_sensors(nodes, kind):
+    n = nodes(kind, "env", rtc=RTC)
+    with open(n.dir + ".sensors", "w") as f:   # what the simulated board's sensors read
+        f.write("1 temperature 21.5\n2 humidity 40\n3 pressure 1013.2\n")
+    n.start()
+    if kind == "repeater":
+        cli = CliClient(n)
+        i = mecon_iface.ConsoleClient(cli.sock.sendall, mecon_iface.socket_lines(cli.sock))
+    else:
+        c = CompanionClient(n)
+        c.app_start()
+        i = mecon_iface.IfaceClient(c._send, c._read_frame)
+    assert "stream.environment" in i.request("hello")["result"]["capabilities"]
+    d = check(first_event(i, "environment"), "environment")
+    got = {(r["channel"], r["quantity"]): (r["value"], r["unit"]) for r in d["readings"]}
+    assert got == {(1, "temperature"): (21.5, "C"), (2, "humidity"): (40.0, "%"), (3, "pressure"): (1013.2, "hPa")}, d
+    assert "mcu_temp_c" not in d, "the simulated board reads no MCU temperature"
+
+
+@pytest.mark.parametrize("make", [companion, repeater], ids=["companion", "repeater"])
+def test_environment_is_absent_without_sensors(nodes, make):
+    n, c, i = make(nodes, "noenv")
+    assert "stream.environment" not in i.request("hello")["result"]["capabilities"]
+    r = i.request("sub.start", {"stream": "environment"})
+    assert r["status"] == "invalid" and r["error"] == "unknown-stream", r

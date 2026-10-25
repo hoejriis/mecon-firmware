@@ -146,7 +146,7 @@ void setup() {
     Iface::bootDeviceMeta(fs, &fast_rng, device_id, &epoch);   // a failed save still leaves this boot's values
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "repeater", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
-                                       &the_mesh, &radio_driver, &board, ifaceRadioCounts };
+                                       &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors };
     the_iface.begin(host, device_id, epoch);
   }
 #endif

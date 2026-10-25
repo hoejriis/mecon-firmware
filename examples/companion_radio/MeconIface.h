@@ -45,7 +45,8 @@ public:
     _conn_sig = signature;
   }
   uint32_t streamsProduced() const {
-    return STREAMS_PRODUCED | (_conn_write ? (1u << Iface::SID_CONNECTIVITY) : 0);
+    return STREAMS_PRODUCED | (_conn_write ? (1u << Iface::SID_CONNECTIVITY) : 0) |
+           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0);
   }
   void scheduleStream(int stream, uint32_t now) { _clock.scheduleNow(stream, now); }
 
@@ -92,6 +93,10 @@ private:
   ConnWriteFn _conn_write = nullptr;
   ConnSignatureFn _conn_sig = nullptr;
   uint32_t _conn_last = 0;
+  bool _env_ok = false;          // the environment stream has something to report (sensors start after the mesh)
+  bool _env_checked = false;
+  void refreshEnvironment(uint32_t now);
+  uint32_t _env_at = 0;
   bool writeStream(int stream, Iface::JsonWriter& w);
   uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
   char _id_hex[33] = {0};

@@ -1,6 +1,6 @@
 # Telemetry catalogue
 
-> **Status: catalogue recorded before the code. Built: `health`, `radio`, `power`, `runtime`, `observations` (every role with the device interface) and `connectivity` (Companion builds with a network). The rest is being built.** Each family below says what is implemented today. This page is the one telemetry model: the device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server), with the same meaning on every transport. Where [CORE_DEVICE_CONTRACT](CORE_DEVICE_CONTRACT.md) or [MQTT_PROTOCOL](MQTT_PROTOCOL.md) describe telemetry differently, this page is the newer decision.
+> **Status: catalogue recorded before the code. Built: `health`, `radio`, `power`, `runtime`, `observations`, `environment` (every role with the device interface) and `connectivity` (Companion builds with a network). The rest is being built.** Each family below says what is implemented today. This page is the one telemetry model: the device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server), with the same meaning on every transport. Where [CORE_DEVICE_CONTRACT](CORE_DEVICE_CONTRACT.md) or [MQTT_PROTOCOL](MQTT_PROTOCOL.md) describe telemetry differently, this page is the newer decision.
 
 ## 1. Model
 
@@ -23,7 +23,7 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | `radio` | packet and error counters, noise floor, last RSSI and SNR, airtime, duty cycle | read | 60 s / 5 s | built |
 | `connectivity` | Wi-Fi, MQTT, BLE and USB link state; changes as events | read | 60 s / 10 s, plus an event at each change | built for Wi-Fi and MQTT on Companion builds with a network (BLE and USB link state: next) |
 | `power` | battery voltage, external power, charger, USB and solar detection | read | 300 s / 30 s | built |
-| `environment` | readings of the attached sensors, with units and sensor identity | read | 300 s / 30 s | next |
+| `environment` | readings of the attached sensors, with units, and the MCU temperature | read | 300 s / 30 s | built |
 | `location` | GNSS position, fix, satellites and age | location (private) | 300 s / 30 s | after trust |
 | `observations` | each received packet: raw bytes, RSSI, SNR | read | event per packet, at most 10/s (no period) | built |
 | `logs` | audit events and bounded diagnostics, with severity and category | posture | events | after trust |
@@ -92,8 +92,8 @@ Events: one on every state change of Wi-Fi, MQTT or BLE, carrying the new state.
 
 No state of charge is reported: no board here measures it, and a percentage computed from voltage is not a measurement.
 
-### `environment` (next)
-One entry per attached sensor reading: `{"sensor": <type>, "quantity": <name>, "value", "unit", "age_s", "fault"}`. Quantities: temperature (°C), relative humidity (%), pressure (hPa), voltage (V), current (A), power (W), soil moisture (%), distance (mm), and the MCU temperature (°C) where the board reads it. Altitude derived from pressure is reported as derived. Sensors are detected at boot; one that is not fitted is absent.
+### `environment` (built)
+`readings`: one entry per attached sensor reading, `{"channel", "quantity", "value", "unit"}`, decoded from the Cayenne LPP the sensor manager already produces for the mesh's own telemetry (environment permission only, never location). Quantities and units: temperature (C), humidity (%), pressure (hPa), voltage (V), current (A), power (W), percentage (%), altitude (m), distance (m), luminosity (lx), energy (kWh). `mcu_temp_c` is present where the board reads its MCU temperature. Sensors are detected at boot; one that is not fitted has no entry, and with nothing to report the stream is absent from `hello`, rechecked once a minute. Not yet: a sensor's age and fault flag (the sensor managers do not report either).
 
 ### `observations` (built)
 Each received packet: `{"raw": <hex>, "len", "rssi_dbm", "snr_db", "dropped"}`, before parsing, as the radio heard it. The payload is the mesh's own ciphertext; nothing is decrypted for it. At most 10 events per second per device; `dropped` counts the packets not sent since the previous event. `sub.start` takes no `period_s` for it (refused with `no-period`, reported as `null`). On the console, a packet that arrives while a request line is being typed counts as dropped.
