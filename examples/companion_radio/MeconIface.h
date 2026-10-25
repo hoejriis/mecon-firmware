@@ -7,6 +7,7 @@
 #include <helpers/iface/IfaceDispatch.h>
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/IfaceFrames.h>
+#include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
 
 class MyMesh;
@@ -30,15 +31,11 @@ public:
   typedef bool (*SessionUpFn)();
   void setMqttEvents(EventPublishFn publish, SessionUpFn up) { _ev_publish = publish; _ev_up = up; }
 
-  // Subscriptions (design section 8): a stream runs at the shortest period any subscriber asked for, each event is
-  // built once and goes, with the same (epoch, seq), to every transport subscribed to it.
-  struct Sub {
-    bool active = false;
-    uint32_t period_ms = 0;
-    uint32_t until = 0;        // millis() at which it lapses unless renewed
-  };
-  Sub* currentSub();           // the subscription slot of the transport whose request is being handled
-  void scheduleHealth(uint32_t now) { _health_next = now; }
+  // Subscriptions (Streams.h, TELEMETRY.md): one set per transport, and one for the MQTT session.
+  static const uint32_t STREAMS_PRODUCED = (1u << Iface::SID_HEALTH) | (1u << Iface::SID_RADIO) |
+                                           (1u << Iface::SID_POWER) | (1u << Iface::SID_RUNTIME);
+  Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
+  void scheduleStream(int stream, uint32_t now) { _clock.scheduleNow(stream, now); }
 
   MyMesh* mesh() const { return _mesh; }
   Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this}; }
@@ -53,7 +50,7 @@ private:
     const BaseSerialInterface* src = nullptr;
     Iface::Reassembler rx;
     Iface::OutQueue* q = nullptr;
-    Sub health;
+    Iface::SubSet subs;
   };
   static const int LINKS = 4;               // USB, BLE, TCP and one spare
 
@@ -72,12 +69,12 @@ private:
   MyMesh* _mesh = nullptr;
   Cli::Context _ctx;                        // the caller of the request being handled (a transport, or the broker)
   Link* _cur_link = nullptr;                // its transport, or nullptr for the broker
-  Sub _mqtt_health;
+  Iface::SubSet _mqtt_subs;
   EventPublishFn _ev_publish = nullptr;
   SessionUpFn _ev_up = nullptr;
-  uint32_t _health_seq = 0;                 // per stream per device (design section 3)
-  uint32_t _health_next = 0;
-  void healthTick(uint32_t now);
+  Iface::StreamClock _clock;                // per stream per device: seq (design section 3) and pacing
+  void streamTick(uint32_t now);
+  bool writeStream(int stream, Iface::JsonWriter& w);
   uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
   char _id_hex[33] = {0};
   uint32_t _epoch = 0;

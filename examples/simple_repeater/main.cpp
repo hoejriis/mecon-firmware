@@ -46,6 +46,12 @@ static char command[160];
   }
   static uint8_t ifacePosture(void*) { return the_mesh.getNodePrefs()->posture; }
   static uint16_t ifaceBattery(void*) { return board.getBattMilliVolts(); }
+  static void ifaceRadioCounts(void*, Iface::RadioCounts* c) {
+    c->known = true;
+    c->rx_total = radio_driver.getPacketsRecv();
+    c->tx_total = radio_driver.getPacketsSent();
+    c->rx_errors = radio_driver.getPacketsRecvErrors();
+  }
 #endif
 #ifdef ETHERNET_ENABLED
 static char ethernet_command[160];
@@ -139,7 +145,8 @@ void setup() {
     uint32_t epoch = 0;
     Iface::bootDeviceMeta(fs, &fast_rng, device_id, &epoch);   // a failed save still leaves this boot's values
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "repeater", board.getManufacturerName(),
-                                       the_mesh.self_id.pub_key, nullptr };
+                                       the_mesh.self_id.pub_key, nullptr,
+                                       &the_mesh, &radio_driver, &board, ifaceRadioCounts };
     the_iface.begin(host, device_id, epoch);
   }
 #endif

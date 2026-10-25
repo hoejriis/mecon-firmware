@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.radio.json",
+  "title": "Data of a radio event (TELEMETRY.md section 3)",
+  "type": "object",
+  "required": [
+    "rx",
+    "tx",
+    "queue_full",
+    "cad_timeout",
+    "startrx_timeout",
+    "noise_floor_dbm",
+    "last",
+    "airtime",
+    "duty"
+  ],
+  "properties": {
+    "rx": {
+      "type": "object",
+      "required": [
+        "flood",
+        "direct"
+      ],
+      "properties": {
+        "flood": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "direct": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "tx": {
+      "type": "object",
+      "required": [
+        "flood",
+        "direct"
+      ],
+      "properties": {
+        "flood": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "direct": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "queue_full": {
+      "type": "boolean"
+    },
+    "cad_timeout": {
+      "type": "boolean"
+    },
+    "startrx_timeout": {
+      "type": "boolean"
+    },
+    "noise_floor_dbm": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "null until the driver has calibrated"
+    },
+    "last": {
+      "type": "object",
+      "required": [
+        "rssi_dbm",
+        "snr_db"
+      ],
+      "properties": {
+        "rssi_dbm": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "snr_db": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "airtime": {
+      "type": "object",
+      "required": [
+        "tx_ms",
+        "rx_ms"
+      ],
+      "properties": {
+        "tx_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rx_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "duty": {
+      "type": "object",
+      "required": [
+        "limit_bp",
+        "limit_ms",
+        "used_ms"
+      ],
+      "properties": {
+        "limit_bp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "used_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

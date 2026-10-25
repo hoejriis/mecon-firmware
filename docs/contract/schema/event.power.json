@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.power.json",
+  "title": "Data of a power event (TELEMETRY.md section 3)",
+  "type": "object",
+  "required": [
+    "battery_mv",
+    "external",
+    "charging"
+  ],
+  "properties": {
+    "battery_mv": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "external": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "null where the board cannot tell"
+    },
+    "charging": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "usb_power": {
+      "type": "boolean",
+      "description": "absent without detection"
+    },
+    "solar": {
+      "type": "boolean"
+    },
+    "boot_mv": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

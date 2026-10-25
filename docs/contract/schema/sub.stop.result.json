@@ -4,5 +4,5 @@
   "title": "Result of sub.stop (v1.0)",
   "type": "object",
   "required": ["stream", "active"],
-  "properties": {"stream": {"type": "string", "enum": ["health"]}, "active": {"type": "boolean", "const": false}}
+  "properties": {"stream": {"type": "string", "enum": ["health", "radio", "power", "runtime"]}, "active": {"type": "boolean", "const": false}}
 }

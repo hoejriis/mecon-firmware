@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.runtime.json",
+  "title": "Data of a runtime event (TELEMETRY.md section 3)",
+  "type": "object",
+  "required": [
+    "reset_reason",
+    "abnormal_reset",
+    "boot_ms"
+  ],
+  "properties": {
+    "reset_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "abnormal_reset": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "boot_ms": {
+      "type": "object",
+      "required": [
+        "store",
+        "mesh",
+        "setup"
+      ],
+      "properties": {
+        "store": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mesh": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "setup": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

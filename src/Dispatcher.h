@@ -201,6 +201,7 @@ public:
   unsigned long getRemainingTxBudget();     // limit minus trailing airtime, ms
   /** Writes the `get dutycycle` reply (band, limit, floor, user setting, trailing airtime). */
   void formatDutyCycleReply(char* reply);
+  uint16_t getErrFlags() const { return _err_flags; }   // ERR_EVENT_* set since the last resetStats()
   uint32_t getNumSentFlood() const { return n_sent_flood; }
   uint32_t getNumSentDirect() const { return n_sent_direct; }
   uint32_t getNumRecvFlood() const { return n_recv_flood; }
