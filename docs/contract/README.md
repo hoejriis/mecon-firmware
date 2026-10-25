@@ -1,15 +1,25 @@
 # Public device contract
 
-> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../../README.md) and the [documentation index](../README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (planned and MECON-specific work; not implemented here unless a section says so).** The tagged releases v0.1.0 to v0.1.2 are source-only pre-releases without the device interface. Current `main` implements the generic [device interface v1](DEVICE_INTERFACE.md) and the standalone features in the [README](../../README.md), with real-board evidence in [HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md). The generic work still planned (Issues #95, #96, #109, #110, #114 to #117) and the MECON-specific work (Issues #118 to #123) described here are not implemented. Release timing is a separate decision. This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
-These documents define the canonical device-facing contract for **MECON 1.0**, built on released MeshCore 1.18 from upstream `main`. They are the **target** for the public line (first release mecon-firmware 0.8.0). The private 0.9x reference firmware speaks a legacy wire today (`gateway_id`, `deimos/gw/…`, `enrollment_token`); that shipped behaviour is summarised in [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) and is not yet normative here.
+## Which documents are current
 
-The current consolidated architecture freeze candidate is **[Target Firmware Contract v0.9](TARGET_FIRMWARE_CONTRACT_0.9.md)**. It records the target architecture before the final MeshCore 1.18 API is released/pinned. Contract 1.0 will freeze exact upstream CLI/configuration mappings and MECON extension names/encodings after that gate. MeshCore 1.18.0 was released on 2026-10-15, so the gate is open; the mapping inventory against it has not been completed.
+**Precedence.** [DEVICE_INTERFACE.md](DEVICE_INTERFACE.md) is the current wire contract: the generic interface that `main` implements, over USB, BLE and MQTT, with its [schemas](schema) and [fixtures](fixtures). It is the only document here that describes shipped behaviour. [MQTT_PROTOCOL.md](MQTT_PROTOCOL.md), [CORE_DEVICE_CONTRACT.md](CORE_DEVICE_CONTRACT.md), [DIRECT_READER_PROTOCOL.md](DIRECT_READER_PROTOCOL.md), [DEVICE_SETTINGS.md](DEVICE_SETTINGS.md) and [TARGET_FIRMWARE_CONTRACT_0.9.md](TARGET_FIRMWARE_CONTRACT_0.9.md) are **target or background documents**. Where any of them disagrees with DEVICE_INTERFACE.md (topic names, field names, framing, limits, operations, results, subscriptions, retry and deduplication, capability discovery), DEVICE_INTERFACE.md wins. [SECURITY_AND_AUTHORITY.md](SECURITY_AND_AUTHORITY.md) is a target document for the planned authority layer (generic authority is Issue #95; MECON's Deployment mapping is Issue #118).
+
+Legacy private wire names (`deimos/gw`, `gateway_id`, `deimos_*`) appear in these pages only where marked as the reference firmware's legacy wire. They are not part of the current contract.
+
+Planned work that these target pages feed into, and that is not built: [management over LoRa](../ARCHITECTURE.md#management-over-lora-planned) (private management channels, authorized operations over direct and channel LoRa, compact LoRa telemetry) and the other Issues listed in [CLEAN_REFOUNDING_1_18](../CLEAN_REFOUNDING_1_18.md).
+
+## The target contract set
+
+The documents below define the device-facing **target** contract for the public line, built on released MeshCore 1.18 from upstream `main`. "MECON target" means this target set. It is not a release or a date; release timing is a separate decision. The private 0.9x reference firmware speaks a legacy wire today (`gateway_id`, `deimos/gw/…`, `enrollment_token`); that shipped behaviour is summarised in [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) and is not yet normative here.
+
+The current consolidated architecture freeze candidate is **[Target Firmware Contract v0.9](TARGET_FIRMWARE_CONTRACT_0.9.md)**. It records the target architecture as it stood before MeshCore 1.18 was released and pinned. MeshCore 1.18.0 was released on 2026-10-15 and is pinned. Exact upstream CLI/configuration mappings and MECON extension names/encodings are still to be frozen, and no mapping inventory against 1.18 is recorded in this repository.
 
 The contract set is intended to be **implementation-complete**: a firmware developer should not need the private MVP source to discover required device-visible behaviour, and a backend implementer should not need private MeshContinuum knowledge to integrate. If a required payload, operation, lifecycle, error, setting or capability is missing here, that is a documentation defect.
 
 - [Target Firmware Contract v0.9](TARGET_FIRMWARE_CONTRACT_0.9.md)
-- [Device interface v1 (design)](DEVICE_INTERFACE.md): the one versioned interface across MQTT, USB and BLE; decisions recorded before implementation
+- [Device interface v1](DEVICE_INTERFACE.md): **current and implemented.** The one versioned interface across MQTT, USB and BLE; takes precedence over the pages below
 - [Core device contract](CORE_DEVICE_CONTRACT.md)
 - [MQTT protocol](MQTT_PROTOCOL.md)
 - [Direct USB/BLE protocol](DIRECT_READER_PROTOCOL.md)
@@ -40,7 +50,7 @@ Legacy/private behaviour is **not normative**. `../BACKEND_MIGRATION.md` is the 
 
 ## Completeness gate
 
-Before MECON 1.0 implementation is declared ready, audit the private MVP's historical `DEVICE_HEALTH`, `DEVICE_SETTINGS_PROTOCOL`, `MQTT_GATEWAY_PROTOCOL`, `OUTAGE_SYNC_PROTOCOL` and `PROVISIONING_SERIAL_PROTOCOL` contracts plus deployed backend behaviour. Every still-required capability must be either:
+Before MECON target implementation is declared ready, audit the private MVP's historical `DEVICE_HEALTH`, `DEVICE_SETTINGS_PROTOCOL`, `MQTT_GATEWAY_PROTOCOL`, `OUTAGE_SYNC_PROTOCOL` and `PROVISIONING_SERIAL_PROTOCOL` contracts plus deployed backend behaviour. Every still-required capability must be either:
 
 - represented here as MECON v1;
 - explicitly delegated to a named MeshCore 1.18 native operation; or

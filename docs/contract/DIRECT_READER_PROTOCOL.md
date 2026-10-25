@@ -1,5 +1,7 @@
 # Direct USB/BLE Reader protocol
 
+> **Precedence.** Target document. The implemented USB and BLE framing is command `0x7F` with a bounded fragment layout, and the Repeater and Room server console takes `mecon> ` lines, both defined in [DEVICE_INTERFACE](DEVICE_INTERFACE.md); where this page differs, DEVICE_INTERFACE.md wins. The reference-firmware command numbers named here are legacy wire. The generic authority layer is Issue #95, usable by any conforming manager; MECON's Deployment mapping, membership and ownership workflow is Issue #118. Where this page describes the Deployment-specific workflow, it describes the MECON profile.
+
 ## Current programme boundary — agreed 24 October 2026
 
 The Reader **requires a reachable Backend**. Its USB/BLE connection is a bridge between the device and that Backend. It forwards capability negotiation, authorized operations/results and the full applicable telemetry set using the same logical model as MQTT. It is not an offline authority; disconnected Reader operation, offline history and later synchronization are not designed in this programme.
@@ -10,7 +12,7 @@ The Backend's authority and device provenance survive the bridge. Subscriptions,
 
 Native MeshCore app/CLI use and physical USB recovery described below remain independent of this Reader dependency. References to device access without a Backend do not imply that the MECON Reader itself works offline.
 
-> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../../README.md) and the [documentation index](../README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (planned and MECON-specific work; not implemented here unless a section says so).** The tagged releases v0.1.0 to v0.1.2 are source-only pre-releases without the device interface. Current `main` implements the generic [device interface v1](DEVICE_INTERFACE.md) and the standalone features in the [README](../../README.md), with real-board evidence in [HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md). The generic work still planned (Issues #95, #96, #109, #110, #114 to #117) and the MECON-specific work (Issues #118 to #123) described here are not implemented. Release timing is a separate decision. This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 ## Goal
 
@@ -66,7 +68,7 @@ For targets updated through USB/bootloader DFU: offer, bootloader update, attest
 
 ## Repeater USB
 
-Repeater USB preserves the native 1.18 CLI/recovery model and adds the common MECON logical management operations where advertised. MECON 1.0 does not require a Repeater to pretend to be a Companion binary device.
+Repeater USB preserves the native 1.18 CLI/recovery model and adds the common MECON logical management operations where advertised. MECON target does not require a Repeater to pretend to be a Companion binary device.
 
 The private `mecon_set` / `mecon_status` vocabulary (Observer) and the `mecon …` console lines (Wio) are the reference firmware's current repeater console, not only migration history; public tooling should still discover/use the v1 direct capability rather than encode private command names.
 

@@ -1,4 +1,4 @@
-# Hardware-verified matrix (standalone 0.1.x line)
+# Hardware-verified matrix (`main` commits)
 
 ## Verification policy — owner decision, 25 October 2026
 

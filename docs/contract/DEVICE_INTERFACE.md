@@ -1,12 +1,12 @@
-# Device interface v1 (design)
+# Device interface v1
 
 One logical device model reached over MQTT, USB and BLE. A Backend talks to the device directly over MQTT, or through a Reader that bridges USB or BLE; the device answers the same requests with the same results either way. Native MeshCore 1.18 Companion frames and the Repeater console stay exactly as they are beside it.
 
 > **Status: v1.0 implemented for the Companion, the Repeater and the Room server.** The design was recorded here before the code, and the code follows it. Built: every operation of section 4 on the Companion, over USB and BLE (`0x7F` frames) and MQTT, on the Heltec V3 and V4 standalone builds (`ENABLE_MECON_IFACE`) and the simulated standalone Companion; and on the Repeater and Room server over the USB console (section 7), on the Heltec V3 Repeater and Room server builds and the simulated ones. Verified on the simulated boards, on real Heltec V3 and V4 Companions over all three transports, and on a real Heltec V3 Repeater over its console ([HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md)); the Room server build is verified on the simulated board only. The broader target contract is in the [contract set](README.md); where it and this page differ on wire details, this page is the newer decision and the contract set will be aligned to it as the implementation lands.
 
-## Starting point
+## Starting point (history)
 
-An inventory of the target contract against the fork (77 device-visible items) found 25 met by native MeshCore 1.18 operations, 15 by extensions already in this fork, and 37 missing. Everything MECON-specific is reached today as one line of text CLI: over the Companion's `CMD_RUN_CLI_COMMAND`, the Repeater console and the MQTT `cli/req` topic. There is no device identifier separate from the node key, no capability discovery, no structured settings read or write, no correlated job results and no event streams. This interface adds those, and keeps the CLI as the single place where settings live and where authorization is decided.
+Before v1.0, an inventory of the target contract against the fork (77 device-visible items) found 25 met by native MeshCore 1.18 operations, 15 by extensions already in this fork, and 37 missing. That inventory is not repeated. At that point, everything MECON-specific was reached as one line of text CLI: over the Companion's `CMD_RUN_CLI_COMMAND`, the Repeater console and the MQTT `cli/req` topic. There was no device identifier separate from the node key, no capability discovery, no structured settings read or write, no correlated job results and no event streams. This interface added those, and keeps the CLI as the single place where settings live and where authorization is decided.
 
 ## Decisions
 
@@ -54,7 +54,7 @@ UTF-8 JSON objects. Three shapes:
 | `config.get` | values of the requested keys (write-only keys report `"set"` or `"unset"`) | read; secret keys as the CLI decides |
 | `config.apply` | a list of key/value writes, checked as a whole before any is applied; one result per key | write, per key |
 | `sub.start` / `sub.stop` | start or stop a telemetry stream on this transport, with a requested rate and lifetime | read, per stream |
-| `cancel` | stop a paged or long operation by its `id` | as the operation |
+| `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 
 Native operations stay native: messaging, contacts, channels, adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.
 
@@ -66,7 +66,7 @@ Indexes in keys are **0-based**, as in the CLI: `wifi.profile.0.ssid` is the fir
 
 ### 6. Authorization
 
-Every operation and every key is checked by the CLI privilege engine (`src/helpers/cli/`) with the caller's real context: transport, how it authenticated, and the posture. The same table decides for a CLI line and for an interface request, so a transport change never upgrades a permission and a bridge cannot add any. A request refused by the table never executes and is audited like a refused CLI line. #95 adds Deployment-signed authority as one more caller kind in that table.
+Every operation and every key is checked by the CLI privilege engine (`src/helpers/cli/`) with the caller's real context: transport, how it authenticated, and the posture. The same table decides for a CLI line and for an interface request, so a transport change never upgrades a permission and a bridge cannot add any. A request refused by the table never executes and is audited like a refused CLI line. #95 adds signed authority as one more caller kind in that table.
 
 ### 7. Framing per transport
 
@@ -138,4 +138,4 @@ The simulated-board suite (`sim/tests/test_device_interface.py`) runs every fixt
 
 ## Out of scope for v1.0
 
-Signed authority, enrollment and reset scopes ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)); the full telemetry catalogue, logs and screen frames ([#96](https://github.com/hoejriis/mecon-firmware/issues/96)); messaging over MQTT, outage sync, backfill and OTA jobs (later milestones).
+Signed authority, enrollment and reset scopes ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)); the full telemetry catalogue, logs and screen frames ([#96](https://github.com/hoejriis/mecon-firmware/issues/96)); managed operations ([#109](https://github.com/hoejriis/mecon-firmware/issues/109)); signed updates over IP, USB and BLE ([#110](https://github.com/hoejriis/mecon-firmware/issues/110)); private management channels, authorized LoRa operations and compact LoRa telemetry ([#114](https://github.com/hoejriis/mecon-firmware/issues/114), [#115](https://github.com/hoejriis/mecon-firmware/issues/115), [#116](https://github.com/hoejriis/mecon-firmware/issues/116)); and the MECON-specific messaging, backfill, outage sync and LoRa image delivery ([#119](https://github.com/hoejriis/mecon-firmware/issues/119) to [#121](https://github.com/hoejriis/mecon-firmware/issues/121), [#123](https://github.com/hoejriis/mecon-firmware/issues/123)).

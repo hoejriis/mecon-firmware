@@ -1,6 +1,8 @@
 # Device settings contract
 
-> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../../README.md) and the [documentation index](../README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (planned and MECON-specific work; not implemented here unless a section says so).** The tagged releases v0.1.0 to v0.1.2 are source-only pre-releases without the device interface. Current `main` implements the generic [device interface v1](DEVICE_INTERFACE.md) and the standalone features in the [README](../../README.md), with real-board evidence in [HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md). The generic work still planned (Issues #95, #96, #109, #110, #114 to #117) and the MECON-specific work (Issues #118 to #123) described here are not implemented. Release timing is a separate decision. This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
+> **Precedence.** Target document. The implemented settings operations are `config.schema`, `config.get` and `config.apply` in [DEVICE_INTERFACE](DEVICE_INTERFACE.md) and its [schemas](schema), with up to ten Wi-Fi profiles. Where operation names, limits or effect names here differ, DEVICE_INTERFACE.md wins.
 
 Configuration is one logical model across supported MQTT, USB, BLE and remote MeshCore/LoRa paths. **Released MeshCore 1.18 CLI/configuration semantics and storage are authoritative for native settings.** MECON does not maintain a second authoritative copy of native settings and does not define transport-specific setting semantics.
 
@@ -54,7 +56,7 @@ A reported/readable setting is not automatically writable. Read-only exposure is
 
 ## Canonical namespace
 
-MECON-owned settings use `mecon.*`. New MECON 1.0 devices do not advertise the historical `deimos.*` namespace. Legacy translation belongs in backend/tool adapters. (The reference firmware already advertises `mecon.*`, since 0.25.0, and accepts `deimos.*` permanently as an alias.)
+MECON-owned settings use `mecon.*`. New MECON target devices do not advertise the historical `deimos.*` namespace. Legacy translation belongs in backend/tool adapters. (The reference firmware already advertises `mecon.*`, since 0.25.0, and accepts `deimos.*` permanently as an alias.)
 
 Native mesh/radio/location/routing/GPS/system settings map to released MeshCore 1.18's canonical CLI/configuration model wherever possible. Expected configurable outcomes include node name, applicable radio parameters and location. Final command/path mapping is frozen after 1.18 reaches `main`.
 
@@ -68,7 +70,7 @@ Wi-Fi loss does not stop the native MeshCore role.
 
 ## MQTT
 
-MECON 1.0 describes a **single active-session architecture**:
+MECON target describes a **single active-session architecture**:
 
 - configured cloud endpoint/credentials/namespace;
 - local-broker discovery enabled/policy;
@@ -103,7 +105,7 @@ Protected/managed-contact semantics, if the supported build evicts contacts unde
 
 ## Companion TCP/private legacy features
 
-The private MVP exposed `mecon.companion_tcp.enabled` for an unauthenticated port-5000 Companion TCP listener; the reference firmware still ships it (default off, no authentication when on, latched at boot). This is **not automatically part of MECON 1.0**. After MeshCore 1.18 is released, retain it only if a concrete interoperability requirement remains and the security model explicitly documents the exposure. Backends must not assume it exists on v1 devices.
+The private MVP exposed `mecon.companion_tcp.enabled` for an unauthenticated port-5000 Companion TCP listener; the reference firmware still ships it (default off, no authentication when on, latched at boot). This is **not automatically part of MECON target**. After MeshCore 1.18 is released, retain it only if a concrete interoperability requirement remains and the security model explicitly documents the exposure. Backends must not assume it exists on v1 devices.
 
 ## Secrets
 

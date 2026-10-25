@@ -1,8 +1,8 @@
-# MeshContinuum backend migration to MECON 1.0
+# MeshContinuum backend migration to the public firmware
 
-## Next P3 integration boundary — agreed 24 October 2026
+## Integration boundary — agreed 24 October 2026, updated 25 October 2026
 
-The [approved firmware programme](CLEAN_REFOUNDING_1_18.md#approved-next-p3-programme--24-october-2026) progresses platform consolidation, one common device interface, enrollment/trust and full telemetry before release timing is decided. A standalone public release is not a dependency.
+The [approved firmware programme](CLEAN_REFOUNDING_1_18.md#approved-programme--25-october-2026) divides the work into generic managed-device capabilities (P3: identity and authority, full telemetry, managed operations, signed updates, private management channels, authorized LoRa operations, compact LoRa telemetry, four-board conformance) and later MECON-specific work (P4: Deployment mapping, messaging, backfill, outage and sync behaviour, RF health policy, LoRa image delivery). Platform consolidation and the common device interface are done on `main`. Release timing, production fleet migration and public Backend publication are separate decisions; a standalone public release is not a dependency. The private Backend continues to improve and to adapt to the public firmware.
 
 The Reader currently **depends on a Backend** and bridges USB/BLE devices to it. Backend ingestion must normalize MQTT and bridged USB/BLE into the same capability/versioned device and telemetry model, preserving device provenance, authorization, event identity and correlation across path changes. Offline Reader design is outside this scope.
 
@@ -10,9 +10,9 @@ Telemetry includes raw observations, runtime/resources, radio/connectivity, inve
 
 Later references in this target document to direct operation without infrastructure describe native/device capabilities or future designs, not an implemented offline Reader.
 
-This document is the **single place for backend-side changes required because the public MECON 1.0 firmware differs from the deployed/private MVP**. The firmware and public contract documents describe the desired end state; they must not be polluted with legacy behaviour merely to make migration easier.
+This document is the **single place for backend-side changes required because the public MECON target firmware differs from the deployed/private MVP**. The firmware and public contract documents describe the desired end state; they must not be polluted with legacy behaviour merely to make migration easier.
 
-"Legacy" in this document means the wire the private 0.9x reference firmware speaks today (its shipped behaviour is summarised in [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). The public 0.8.x line and that private line are separate lines: version numbers do not order across them.
+"Legacy" in this document means the wire the private 0.9x reference firmware speaks today (its shipped behaviour is summarised in [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). The public line and that private line are separate lines: version numbers do not order across them.
 
 The current backend must continue to support deployed private-MVP firmware during rollout. Implement compatibility at the backend boundary and remove it only when the old fleet is retired.
 
@@ -44,7 +44,7 @@ The private MVP uses/deployed variants of:
 - historical Deimos/default topic namespaces;
 - role/product labels such as Companion Gateway and Repeater Observer.
 
-### MECON 1.0
+### MECON target
 
 Use backend-neutral MECON vocabulary:
 
@@ -65,7 +65,7 @@ Accept legacy fields/topics while deployed, normalize them to the new device mod
 
 Earlier private builds held several broker profiles and, in some versions, simultaneous broker sessions with independent authority. Since reference firmware 0.51.0 the device opens one session at a time, in the order local, primary, secondary broker. Up to four broker profiles are still stored, each with its own capability grants (`cap_receive_admin_config`, `cap_receive_backfill`, `cap_publish_events`).
 
-### MECON 1.0
+### MECON target
 
 The device has **one active MQTT session**. It automatically prefers an eligible local broker discovered by mDNS and otherwise connects to the configured cloud broker.
 
@@ -84,7 +84,7 @@ The device has **one active MQTT session**. It automatically prefers an eligible
 
 Historical topics include variants such as `raw`, `rx`, `contacts`, `channels`, `result`, `config_schema`, `config_result`, `backfill_result`, `sync_status`, `cmd`, `get_config`, `apply_config`, `sync_config` and `backfill`, with legacy gateway/enrollment fields.
 
-### MECON 1.0
+### MECON target
 
 Use the canonical surfaces and typed envelopes in `contract/MQTT_PROTOCOL.md`: status, observations, events, inventory, results, config, commands and OTA. Envelopes carry protocol/profile versioning, stable message/job identity and backend-neutral device identity.
 
@@ -98,7 +98,7 @@ Implement a protocol adapter mapping every deployed legacy topic/payload into th
 
 Companion, Repeater and MQTT configuration paths have historically used different framing/commands and legacy `deimos.*` names.
 
-### MECON 1.0
+### MECON target
 
 One logical settings contract is carried over MQTT, USB and BLE. MECON extends native MeshCore 1.18 configuration where possible. Three ordered Wi-Fi profiles, cloud MQTT configuration, local discovery policy, outage/private-channel settings and applicable native radio/channel settings are represented through the common schema.
 
@@ -116,7 +116,7 @@ One logical settings contract is carried over MQTT, USB and BLE. MECON extends n
 
 The private firmware implements its own multi-profile Wi-Fi machinery.
 
-### MECON 1.0
+### MECON target
 
 Three ordered profiles remain a product requirement, but the implementation extends MeshCore 1.18's Wi-Fi/runtime configuration.
 
@@ -130,7 +130,7 @@ The user-visible three-profile behaviour remains. Backend code must rely on the 
 
 Direct support evolved incrementally; some operations use native Companion commands, some use MECON/private tunnels. In the 0.9x firmware the passkey is random per device, re-rolled once on upgrade from a non-secret value, settable by a Deployment-signed `ble_passkey` command or by USB command 37, and BLE startup follows documented timing rules; older builds differ.
 
-### MECON 1.0
+### MECON target
 
 Companion uses NimBLE, per-device PIN, standard MeshCore Companion interoperability plus a versioned MECON extension for operations not represented upstream. BLE starts independently of Wi-Fi/MQTT. USB/BLE/MQTT share logical MECON operations.
 
@@ -148,7 +148,7 @@ Companion uses NimBLE, per-device PIN, standard MeshCore Companion interoperabil
 
 Earlier private builds used a fixed/reduced contact-table target (including 64 and temporary lower values during memory mitigation). The 0.9x firmware enforces 50 contacts on Heltec V3 and V4 and 350 on the T1000-E, and reports the runtime capacity.
 
-### MECON 1.0
+### MECON target
 
 Contact capacity is measured after IDF5/NimBLE migration and reported as a capability/resource limit. Managed/protected contacts must survive normal eviction.
 
@@ -166,7 +166,7 @@ The backend has no direct migration requirement for the minimal display changes,
 
 Raw packet reception is exposed through historical `raw`/`rx` paths and role-specific mechanisms.
 
-### MECON 1.0
+### MECON target
 
 The logical object is an `observation`: raw MeshCore bytes plus receiver/time/RSSI/SNR/provenance metadata, regardless of transport or role.
 
@@ -180,7 +180,7 @@ Shipped inputs the current Backend must keep handling until the legacy fleet is 
 
 ## Messaging, inventories and provisioning
 
-MECON 1.0 reuses native MeshCore 1.18 operations where they already solve Companion messaging/contact/channel behaviour and uses MECON typed operations only for additional semantics.
+MECON target reuses native MeshCore 1.18 operations where they already solve Companion messaging/contact/channel behaviour and uses MECON typed operations only for additional semantics.
 
 Backend/Reader code must capability-negotiate whether an operation is native or MECON rather than keying off old product labels. Existing message/contact/channel history should remain one domain model regardless of transport.
 
@@ -205,7 +205,7 @@ Backend parsers and UI must move from legacy health/status field assumptions to 
 
 ## OTA
 
-The private firmware already ships signed-manifest OTA: Ed25519-signed manifests, revert of an unconfirmed update, a signed `ota/ack` (capability `ota_ack_signed`), relay of a full image over one LoRa hop to ESP32 gateways (`ota/relay/*`) and a staged-only LoRa image on the Wio repeater. MECON 1.0 makes managed OTA part of the public contract.
+The private firmware already ships signed-manifest OTA: Ed25519-signed manifests, revert of an unconfirmed update, a signed `ota/ack` (capability `ota_ack_signed`), relay of a full image over one LoRa hop to ESP32 gateways (`ota/relay/*`) and a staged-only LoRa image on the Wio repeater. The target makes managed OTA part of the public contract: signed updates over IP, USB and BLE are planned as Issue #110, and LoRa image delivery as Issue #123. Neither is built in the public firmware yet.
 
 Backend changes:
 
@@ -218,7 +218,7 @@ Backend changes:
 
 ## MeshCore 1.18 capability changes
 
-MECON 1.0 is built on released MeshCore 1.18. Backend/Reader code must not recreate functionality that v1 firmware exposes through native 1.18 operations. During implementation, audit each private backend firmware command against 1.18 and classify it as:
+MECON target is built on released MeshCore 1.18. Backend/Reader code must not recreate functionality that v1 firmware exposes through native 1.18 operations. During implementation, audit each private backend firmware command against 1.18 and classify it as:
 
 1. native 1.18 operation — use native operation;
 2. MECON v1 extension — use public MECON contract;
@@ -226,20 +226,20 @@ MECON 1.0 is built on released MeshCore 1.18. Backend/Reader code must not recre
 
 This audit is a release blocker because it prevents the public firmware from reimplementing obsolete 1.17/private mechanisms solely for backend compatibility.
 
-## Rollout acceptance
+## Rollout acceptance (target; not scheduled)
 
-Before replacing the private MVP fleet, demonstrate against the current MeshContinuum backend/Reader:
+Before replacing the private MVP fleet, which is a separate decision, demonstrate against the current MeshContinuum backend/Reader:
 
-- enrollment/provisioning of all four V3/V4 role targets;
+- enrollment/provisioning of each role that is built for the four verification boards (Heltec V3, Heltec V4, Wio Tracker L1, T1000-E), as those capabilities are implemented;
 - mixed legacy + v1 fleet operation;
-- three Wi-Fi profiles;
+- Wi-Fi profiles (up to ten are built);
 - local MQTT discovery and cloud fallback without duplicate jobs;
 - observations and inventories;
 - config read/write and reconnect-safe changes;
 - Companion messaging and provisioning;
 - direct USB/BLE Reader operation;
 - outage/private-channel behaviour and daily status;
-- OTA lifecycle;
+- update lifecycle (signed updates over IP, USB and BLE are Issue #110; LoRa image delivery is Issue #123);
 - backend handling of dynamic contact/resource capacity;
 - legacy adapters can be identified and later removed independently of the v1 implementation.
 
