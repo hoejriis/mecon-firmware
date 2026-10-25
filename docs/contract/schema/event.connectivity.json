@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.connectivity.json",
+  "title": "Data of a connectivity event (TELEMETRY.md section 3)",
+  "description": "The device's network links. Sent at the stream's period and at once whenever a link changes state or profile. Fields of a link that is not up are null; a password is never included.",
+  "type": "object",
+  "required": [
+    "wifi"
+  ],
+  "properties": {
+    "mode": {
+      "enum": [
+        "ble",
+        "wifi"
+      ]
+    },
+    "wifi": {
+      "type": "object",
+      "required": [
+        "state",
+        "profile",
+        "ssid",
+        "rssi_dbm",
+        "ip",
+        "up_s",
+        "last_fail"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "off",
+            "no-profile",
+            "scanning",
+            "connecting",
+            "connected",
+            "backoff"
+          ]
+        },
+        "profile": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ssid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rssi_dbm": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ip": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "up_s": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_fail": {
+          "enum": [
+            "none",
+            "not-found",
+            "auth",
+            "drops",
+            "timeout",
+            "other"
+          ]
+        }
+      }
+    },
+    "mqtt": {
+      "type": "object",
+      "required": [
+        "state",
+        "profile",
+        "broker",
+        "tls",
+        "up_s",
+        "browsing",
+        "reconnects"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "off",
+            "no-link",
+            "idle",
+            "connecting",
+            "connected",
+            "backoff"
+          ]
+        },
+        "profile": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "broker": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tls": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "plain",
+            "verified",
+            "unverified",
+            null
+          ]
+        },
+        "up_s": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "browsing": {
+          "type": "boolean"
+        },
+        "reconnects": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

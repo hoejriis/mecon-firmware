@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/iface/Observe.h>
 #include <helpers/AuditStore.h>
 #include <algorithm>
 
@@ -475,6 +476,7 @@ const char *MyMesh::getLogDateTime() {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
+  Iface::observe(snr, rssi, raw, len);   // the observations stream, when the device interface is built in
 #if MESH_PACKET_LOGGING
   Serial.print(getLogDateTime());
   Serial.print(" RAW: ");

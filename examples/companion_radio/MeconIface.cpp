@@ -7,6 +7,8 @@
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/cli/CliRegistry.h>
 #include <helpers/iface/IfaceConfig.h>
+#include <helpers/iface/Streams.h>
+#include <helpers/iface/Observe.h>
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +27,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 }
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "stream.health"};
+                                    "sub.start", "sub.stop"};
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -68,6 +70,7 @@ Status opHello(OpContext& c) {
   w.key("epoch"); w.unum(m->epoch());
   w.key("capabilities"); w.beginArray();
   for (const char* cap : CAPABILITIES) w.str(cap);
+  writeStreamCapabilities(w, m->streamsProduced());
   w.endArray();
   return ST_OK;
 }
@@ -109,46 +112,17 @@ Status opStatus(OpContext& c) {
   return ST_OK;
 }
 
-// sub.start {"stream":"health","period_s":5..3600,"lifetime_s":10..600} on the calling transport; sub.stop {"stream"}.
-const int64_t SUB_PERIOD_MIN_S = 5, SUB_PERIOD_MAX_S = 3600, SUB_LIFE_MIN_S = 10, SUB_LIFE_MAX_S = 600;
-
-bool streamArg(OpContext& c, OpContext& err) {
-  char stream[16];
-  const int t = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "stream") : -1;
-  if (!jsonGetString(*c.doc, t, stream, sizeof(stream), CS_NAME, 1)) return false;
-  if (strcmp(stream, "health") != 0) { err.error = "unknown-stream"; return false; }
-  return true;
-}
-
+// sub.start / sub.stop on the calling transport (Streams.h): the stream table decides names, bounds and the reply.
 Status opSubStart(OpContext& c) {
-  if (!streamArg(c, c)) return ST_INVALID;
-  int64_t period = 60, life = 300;
-  const int pt = jsonFind(*c.doc, c.req->args, "period_s"), lt = jsonFind(*c.doc, c.req->args, "lifetime_s");
-  if (pt >= 0 && !jsonGetInt(*c.doc, pt, SUB_PERIOD_MIN_S, SUB_PERIOD_MAX_S, &period)) return ST_INVALID;
-  if (lt >= 0 && !jsonGetInt(*c.doc, lt, SUB_LIFE_MIN_S, SUB_LIFE_MAX_S, &life)) return ST_INVALID;
-  MeconIface::Sub* sub = self(c)->currentSub();
-  if (!sub) { c.error = "no-transport"; return ST_FAILED; }
+  MeconIface* m = self(c);
+  int started;
   const uint32_t now = millis();
-  const bool was = sub->active;
-  sub->active = true;
-  sub->period_ms = (uint32_t)period * 1000;
-  sub->until = now + (uint32_t)life * 1000;
-  if (!was) self(c)->scheduleHealth(now);   // a new subscriber gets the current state at once
-  JsonWriter& w = *c.out;
-  w.key("stream"); w.str("health");
-  w.key("period_s"); w.num(period);
-  w.key("lifetime_s"); w.num(life);
-  return ST_OK;
+  Status st = subStart(c, m->currentSubs(), m->streamsProduced(), now, &started);
+  m->scheduleStream(started, now);
+  return st;
 }
 
-Status opSubStop(OpContext& c) {
-  if (!streamArg(c, c)) return ST_INVALID;
-  MeconIface::Sub* sub = self(c)->currentSub();
-  if (sub) sub->active = false;
-  c.out->key("stream"); c.out->str("health");
-  c.out->key("active"); c.out->boolean(false);
-  return ST_OK;
-}
+Status opSubStop(OpContext& c) { return subStop(c, self(c)->currentSubs(), self(c)->streamsProduced()); }
 
 
 // Settings run as the caller's own CLI lines (design section 5): one store, and the CLI engine authorizes and audits
@@ -201,6 +175,7 @@ int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, co
   _ctx = ctx;
   _caller = caller;
   _cur_link = link;
+  if (!_env_checked) refreshEnvironment(millis());
   if (!_cache) _cache = new (std::nothrow) ResultCache();   // 3.1 KB, only once the interface is used
   if (!_cache) return writeResult(out, cap, "", ST_BUSY, nullptr, "no-memory");
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
@@ -216,6 +191,32 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _mesh = mesh;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
+  observeSink().fn = onObserve;
+  observeSink().user = this;
+}
+
+// One received packet: an observations event to every transport subscribed, within the stream's rate.
+void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  bool any = m->_mqtt_subs.s[SID_OBSERVATIONS].active;
+  for (Link& l : m->_links) any = any || l.subs.s[SID_OBSERVATIONS].active;
+  if (!any) return;
+  const uint32_t now = millis();
+  if (!m->_obs.take(now)) return;
+  char* ev = static_cast<char*>(malloc(RESULT_MAX));
+  if (!ev) { m->_obs.dropped++; return; }
+  const uint32_t ts = m->_mesh->getRTCClock()->getCurrentTime();
+  const int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts >= 1704067200, ts, snr, rssi, raw, len,
+                                 m->_obs.dropped);
+  if (n > 0) {
+    m->_obs.dropped = 0;
+    for (Link& l : m->_links) {
+      if (!l.subs.s[SID_OBSERVATIONS].active || !m->ensureQueue(l)) continue;
+      l.q->push(OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
+    }
+    if (m->_mqtt_subs.s[SID_OBSERVATIONS].active && m->_ev_publish) m->_ev_publish("observations", ev, (size_t)n);
+  }
+  free(ev);
 }
 
 MeconIface::Link* MeconIface::linkFor(const BaseSerialInterface* src, bool create) {
@@ -274,41 +275,96 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
   l->rx.release();
 }
 
-MeconIface::Sub* MeconIface::currentSub() { return _cur_link ? &_cur_link->health : &_mqtt_health; }
+// Whether the environment stream has anything to report: rechecked once a minute (sensors start after the mesh), and
+// before the first request is answered (a request can arrive before the first loop pass).
+void MeconIface::refreshEnvironment(uint32_t now) {
+  if (_env_checked && now - _env_at < 60000) return;
+  _env_ok = countEnvironment(sensors, board) > 0;
+  _env_checked = true;
+  _env_at = now;
+}
 
-// Lapses expired subscriptions, then, when one is due, builds one health event and sends the same bytes to every
-// transport subscribed. A full queue drops the event on that transport only; the receiver sees the gap in seq.
-void MeconIface::healthTick(uint32_t now) {
-  uint32_t period = 0;
-  for (Link& l : _links) {
-    if (l.health.active && (int32_t)(now - l.health.until) >= 0) l.health.active = false;
-    if (l.health.active && (!period || l.health.period_ms < period)) period = l.health.period_ms;
-  }
-  if (_mqtt_health.active && ((int32_t)(now - _mqtt_health.until) >= 0 || !_ev_up || !_ev_up())) _mqtt_health.active = false;
-  if (_mqtt_health.active && (!period || _mqtt_health.period_ms < period)) period = _mqtt_health.period_ms;
-  if (!period || (int32_t)(now - _health_next) < 0) return;
-  _health_next = now + period;
+SubSet* MeconIface::currentSubs() { return _cur_link ? &_cur_link->subs : &_mqtt_subs; }
 
-  char data[384];
-  JsonWriter w(data, sizeof(data));
+// The data of one stream's event (TELEMETRY.md section 3); false when it could not be built.
+bool MeconIface::writeStream(int s, JsonWriter& w) {
   w.beginObject();
-  writeHealth(w, _mesh);
+  switch (s) {
+    case SID_HEALTH: writeHealth(w, _mesh); break;
+    case SID_RADIO: {
+      RadioCounts counts;
+      counts.known = true;
+      counts.rx_total = radio_driver.getPacketsRecv();
+      counts.tx_total = radio_driver.getPacketsSent();
+      counts.rx_errors = radio_driver.getPacketsRecvErrors();
+      writeRadio(w, *_mesh, radio_driver, counts);
+      break;
+    }
+    case SID_POWER: writePower(w, board); break;
+    case SID_RUNTIME: writeRuntime(w, board, _gap); break;
+    case SID_ENVIRONMENT:
+      if (writeEnvironment(w, sensors, board) == 0) return false;   // nothing to report this time
+      break;
+    case SID_INVENTORY: {
+      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());
+      int channels = 0, capacity = 0;
+#ifdef MAX_GROUP_CHANNELS
+      capacity = MAX_GROUP_CHANNELS;
+      ChannelDetails ch;
+      for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
+        if (_mesh->getChannel(i, ch) && ch.name[0]) channels++;
+#endif
+      writeCount(w, "channels", channels, capacity);
+      break;
+    }
+    case SID_CONNECTIVITY:
+      if (!_conn_write) return false;
+      _conn_write(w);
+      break;
+    default: return false;
+  }
   w.endObject();
-  if (!w.ok()) return;
-  char ev[512];
+  return w.ok();
+}
+
+// Lapses expired subscriptions, then builds each stream that is due once and sends the same bytes to every transport
+// subscribed. A full queue drops the event on that transport only; the receiver sees the gap in seq.
+void MeconIface::streamTick(uint32_t now) {
+  if (!_ev_up || !_ev_up()) _mqtt_subs.clear();   // a subscription made over MQTT lapses with the session
+  refreshEnvironment(now);
+  if (_conn_sig) {   // a link changed state: the connectivity stream sends an event now
+    const uint32_t sig = _conn_sig();
+    if (sig != _conn_last) {
+      _conn_last = sig;
+      _clock.scheduleNow(SID_CONNECTIVITY, now);
+    }
+  }
+  SubSet* sets[LINKS + 1];
+  for (int i = 0; i < LINKS; i++) sets[i] = &_links[i].subs;
+  sets[LINKS] = &_mqtt_subs;
+  const uint32_t due = _clock.due(sets, LINKS + 1, now);
+  if (!due) return;
   const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
   const bool ts_known = ts >= 1704067200;   // 2024-01-01: an RTC that has never been set reads far earlier
-  const int n = writeEvent(ev, sizeof(ev), "health", ++_health_seq, _epoch, ts_known, ts, data);
-  if (n <= 0) return;
-  for (Link& l : _links) {
-    if (!l.health.active || !ensureQueue(l)) continue;
-    l.q->push(OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
+  for (int s = 0; s < STREAM_COUNT; s++) {
+    if (!(due & (1u << s))) continue;
+    char data[512];
+    JsonWriter w(data, sizeof(data));
+    if (!writeStream(s, w)) continue;
+    char ev[640];
+    const int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, ts_known, ts, data);
+    if (n <= 0) continue;
+    for (Link& l : _links) {
+      if (!l.subs.s[s].active || !ensureQueue(l)) continue;
+      l.q->push(OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
+    }
+    if (_mqtt_subs.s[s].active && _ev_publish) _ev_publish(STREAMS[s].name, ev, (size_t)n);
   }
-  if (_mqtt_health.active && _ev_publish) _ev_publish("health", ev, (size_t)n);
 }
 
 void MeconIface::loop(uint32_t now) {
-  healthTick(now);
+  _gap.tick(now);
+  streamTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
     if (l.rx.tick(now)) {

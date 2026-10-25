@@ -8,6 +8,7 @@
 #include "helpers/Posture.h"
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/cli/CliRegistry.h"
+#include "Observe.h"
 
 namespace Iface {
 
@@ -25,7 +26,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 }
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "stream.health"};
+                                    "sub.start", "sub.stop"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -42,6 +43,7 @@ Status opHello(OpContext& c) {
   w.key("epoch"); w.unum(m->epoch());
   w.key("capabilities"); w.beginArray();
   for (const char* cap : CAPABILITIES) w.str(cap);
+  writeStreamCapabilities(w, m->produced());
   w.endArray();
   return ST_OK;
 }
@@ -75,44 +77,15 @@ Status opStatus(OpContext& c) {
   return ST_OK;
 }
 
-const int64_t SUB_PERIOD_MIN_S = 5, SUB_PERIOD_MAX_S = 3600, SUB_LIFE_MIN_S = 10, SUB_LIFE_MAX_S = 600;
-
-bool healthStream(OpContext& c) {
-  char stream[16];
-  const int t = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "stream") : -1;
-  if (!jsonGetString(*c.doc, t, stream, sizeof(stream), CS_NAME, 1)) return false;
-  if (strcmp(stream, "health") != 0) { c.error = "unknown-stream"; return false; }
-  return true;
-}
-
 Status opSubStart(OpContext& c) {
-  if (!healthStream(c)) return ST_INVALID;
-  int64_t period = 60, life = 300;
-  const int pt = jsonFind(*c.doc, c.req->args, "period_s"), lt = jsonFind(*c.doc, c.req->args, "lifetime_s");
-  if (pt >= 0 && !jsonGetInt(*c.doc, pt, SUB_PERIOD_MIN_S, SUB_PERIOD_MAX_S, &period)) return ST_INVALID;
-  if (lt >= 0 && !jsonGetInt(*c.doc, lt, SUB_LIFE_MIN_S, SUB_LIFE_MAX_S, &life)) return ST_INVALID;
-  ConsoleIface::Sub& sub = self(c)->health();
+  int started;
   const uint32_t now = millis();
-  const bool was = sub.active;
-  sub.active = true;
-  sub.period_ms = (uint32_t)period * 1000;
-  sub.until = now + (uint32_t)life * 1000;
-  if (!was) self(c)->scheduleHealth(now);
-  JsonWriter& w = *c.out;
-  w.key("stream"); w.str("health");
-  w.key("period_s"); w.num(period);
-  w.key("lifetime_s"); w.num(life);
-  return ST_OK;
+  Status st = subStart(c, &self(c)->subs(), self(c)->produced(), now, &started);
+  self(c)->scheduleStream(started, now);
+  return st;
 }
 
-Status opSubStop(OpContext& c) {
-  if (!healthStream(c)) return ST_INVALID;
-  self(c)->health().active = false;
-  JsonWriter& w = *c.out;
-  w.key("stream"); w.str("health");
-  w.key("active"); w.boolean(false);
-  return ST_OK;
-}
+Status opSubStop(OpContext& c) { return subStop(c, &self(c)->subs(), self(c)->produced()); }
 
 Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
   ConfigHost host = self(c)->configHost();
@@ -146,6 +119,26 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _host = host;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
+  observeSink().fn = onObserve;
+  observeSink().user = this;
+}
+
+// One received packet, as a console line, within the stream's rate. Not while a request is being typed: a line never
+// lands inside another, so that packet counts as dropped.
+void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (!s->_subs.s[SID_OBSERVATIONS].active || !s->_out) return;
+  if (s->_collecting) { s->_obs.dropped++; return; }
+  if (!s->_obs.take(millis())) return;
+  static const size_t CAP = 1024;
+  char* ev = static_cast<char*>(malloc(CAP));
+  if (!ev) { s->_obs.dropped++; return; }
+  const int n = writeObservation(ev, CAP, s->_clock, s->_epoch, false, 0, snr, rssi, raw, len, s->_obs.dropped);
+  if (n > 0) {
+    s->_obs.dropped = 0;
+    s->printLine(*s->_out, ev, (size_t)n);
+  }
+  free(ev);
 }
 
 ConfigHost ConsoleIface::configHost() { return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS}; }
@@ -192,8 +185,18 @@ void ConsoleIface::printLine(Print& out, const char* msg, size_t len) {
   out.print("\r\n");
 }
 
+// Whether the environment stream has anything to report: rechecked once a minute, and before the first request is
+// answered (a request can arrive before the first loop pass).
+void ConsoleIface::refreshEnvironment(uint32_t now) {
+  if (!_host.sensors || (_env_checked && now - _env_at < 60000)) return;
+  _env_ok = countEnvironment(*_host.sensors, *_host.board) > 0;
+  _env_checked = true;
+  _env_at = now;
+}
+
 void ConsoleIface::answer(Print& out) {
   _collecting = false;
+  if (!_env_checked) refreshEnvironment(millis());
   out.print("\r\n");   // ends the console's echo of the prefix, as the stock console ends an echoed line
   static const size_t OUT_MAX = 1600;
   char* res = static_cast<char*>(malloc(OUT_MAX));
@@ -225,19 +228,47 @@ void ConsoleIface::answer(Print& out) {
   _len = 0;
 }
 
-void ConsoleIface::loop(uint32_t now, Print& out) {
-  if (_health.active && (int32_t)(now - _health.until) >= 0) _health.active = false;
-  if (!_health.active || (int32_t)(now - _health_next) < 0 || _collecting) return;
-  _health_next = now + _health.period_ms;
-  char data[384];
-  JsonWriter w(data, sizeof(data));
+bool ConsoleIface::writeStream(int s, JsonWriter& w) {
   w.beginObject();
-  writeHealth(w, this);
+  switch (s) {
+    case SID_HEALTH: writeHealth(w, this); break;
+    case SID_RADIO: {
+      RadioCounts counts;
+      if (_host.radio_counts) _host.radio_counts(_host.user, &counts);
+      writeRadio(w, *_host.dispatcher, *_host.radio, counts);
+      break;
+    }
+    case SID_POWER: writePower(w, *_host.board); break;
+    case SID_RUNTIME: writeRuntime(w, *_host.board, _gap); break;
+    case SID_ENVIRONMENT:
+      if (!_host.sensors || writeEnvironment(w, *_host.sensors, *_host.board) == 0) return false;
+      break;
+    case SID_INVENTORY:
+      if (!_host.inventory) return false;
+      _host.inventory(_host.user, w);
+      break;
+    default: return false;
+  }
   w.endObject();
-  if (!w.ok()) return;
-  char ev[512];
-  const int n = writeEvent(ev, sizeof(ev), "health", ++_health_seq, _epoch, false, 0, data);
-  if (n > 0) printLine(out, ev, (size_t)n);
+  return w.ok();
+}
+
+void ConsoleIface::loop(uint32_t now, Print& out) {
+  _out = &out;
+  _gap.tick(now);
+  refreshEnvironment(now);
+  if (_collecting) return;   // an event never lands in the middle of a request being typed
+  SubSet* sets[1] = { &_subs };
+  const uint32_t due = _clock.due(sets, 1, now);
+  for (int s = 0; s < STREAM_COUNT; s++) {
+    if (!(due & (1u << s))) continue;
+    char data[512];
+    JsonWriter w(data, sizeof(data));
+    if (!writeStream(s, w)) continue;
+    char ev[640];
+    const int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, false, 0, data);
+    if (n > 0) printLine(out, ev, (size_t)n);
+  }
 }
 
 }  // namespace Iface

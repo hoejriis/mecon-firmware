@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include "IfaceConfig.h"
 #include "IfaceDispatch.h"
+#include "Streams.h"
 
 namespace Iface {
 
@@ -30,7 +31,16 @@ public:
     const char* hardware;
     const uint8_t* node_key;              // 32 bytes
     void* user;
+    // For the radio, power and runtime streams.
+    mesh::Dispatcher* dispatcher;
+    mesh::Radio* radio;
+    mesh::MainBoard* board;
+    void (*radio_counts)(void* user, RadioCounts* out);
+    SensorManager* sensors;
+    void (*inventory)(void* user, JsonWriter& w);   // the role's counts (TELEMETRY.md, inventory)
   };
+  static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
+                                           (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY);
 
   void begin(const Host& host, const uint8_t device_id[16], uint32_t epoch);
 
@@ -47,13 +57,9 @@ public:
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
   ConfigHost configHost();
-  struct Sub {
-    bool active = false;
-    uint32_t period_ms = 0;
-    uint32_t until = 0;
-  };
-  Sub& health() { return _health; }
-  void scheduleHealth(uint32_t now) { _health_next = now; }
+  SubSet& subs() { return _subs; }
+  uint32_t produced() const { return streamsProduced(); }
+  void scheduleStream(int stream, uint32_t now) { _clock.scheduleNow(stream, now); }
 
 private:
   static bool authorize(void* self, const OpEntry& op, const Request& req);
@@ -70,9 +76,17 @@ private:
   bool _collecting = false;
   bool _overflow = false;
   ResultCache* _cache = nullptr;
-  Sub _health;
-  uint32_t _health_seq = 0;
-  uint32_t _health_next = 0;
+  SubSet _subs;
+  StreamClock _clock;
+  bool writeStream(int stream, JsonWriter& w);
+  static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
+  ObsLimiter _obs;
+  bool _env_ok = false, _env_checked = false;
+  void refreshEnvironment(uint32_t now);
+  uint32_t _env_at = 0;
+  uint32_t streamsProduced() const { return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0); }
+  LoopGap _gap;
+  Print* _out = nullptr;   // the console, for events raised outside loop()
 };
 
 }  // namespace Iface

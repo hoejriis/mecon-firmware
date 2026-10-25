@@ -187,6 +187,9 @@ public:
 
   void begin(FILESYSTEM* fs);
   void addSystemPost(const char* postData);
+  // Inventory counts for the device interface's telemetry (docs/contract/TELEMETRY.md).
+  int clientCount() const { return acl.getNumClients(); }
+  int clientCapacity() const { return MAX_CLIENTS; }
 
   const char* getFirmwareVer() override { return mecon::versionFull(); }
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }

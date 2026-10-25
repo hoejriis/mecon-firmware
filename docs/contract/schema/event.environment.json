@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.environment.json",
+  "title": "Data of an environment event (TELEMETRY.md section 3)",
+  "description": "The attached sensors' readings, one per entry, and the MCU temperature where the board reads one. A sensor that is not fitted has no entry; the stream itself is absent from hello when there is nothing to report.",
+  "type": "object",
+  "required": [
+    "readings"
+  ],
+  "properties": {
+    "readings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "channel",
+          "quantity",
+          "value",
+          "unit"
+        ],
+        "properties": {
+          "channel": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "quantity": {
+            "enum": [
+              "luminosity",
+              "temperature",
+              "humidity",
+              "pressure",
+              "voltage",
+              "current",
+              "percentage",
+              "altitude",
+              "power",
+              "distance",
+              "energy"
+            ]
+          },
+          "value": {
+            "type": "number"
+          },
+          "unit": {
+            "enum": [
+              "lx",
+              "C",
+              "%",
+              "hPa",
+              "V",
+              "A",
+              "m",
+              "W",
+              "kWh"
+            ]
+          }
+        }
+      }
+    },
+    "mcu_temp_c": {
+      "type": "number"
+    }
+  }
+}

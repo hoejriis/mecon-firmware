@@ -61,6 +61,19 @@ public:
 
   // One status line: state, profile, broker address, TLS state, time connected. Never contains a credential.
   void formatStatus(char* out, size_t cap);
+  // The session as plain values, for telemetry (docs/contract/TELEMETRY.md, connectivity).
+  struct Snapshot {
+    bool active = false;                // started and enabled
+    MqttState state = MqttState::Off;
+    uint8_t profile = MqttCore::NONE;
+    uint32_t addr = 0;                  // broker IPv4, valid while connected
+    uint16_t port = 0;
+    uint8_t tls = 0;                    // 0 plain, 1 verified, 2 unverified
+    uint32_t up_s = 0;
+    bool browsing = false;
+    uint32_t reconnects = 0;            // sessions after the first since boot
+  };
+  void snapshot(Snapshot* out);
   // The retained status topic ("mecon/<node id>/status") and payload.
   const char* statusTopic() const { return _topic; }
 
@@ -108,6 +121,7 @@ private:
   char _iface_resp[48] = {0};
   uint32_t (*_audit_now)() = nullptr;
   uint32_t _cur_addr = 0;
+  uint32_t _sessions = 0;   // sessions established since boot
   uint16_t _cur_port = 0;
   uint32_t _next_status = 0;
   uint32_t _cli_open_at = 0;         // requests before this are ignored: a retained one is replayed to every new subscriber

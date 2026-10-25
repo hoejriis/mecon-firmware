@@ -87,7 +87,13 @@ private:
 extern SimBoard board;
 extern SimRadio radio_driver;
 extern SimRTCClock rtc_clock;
-extern SensorManager sensors;
+// Readings for the environment stream, from "<node dir>.sensors": one "<channel> <quantity> <value>" per line
+// (temperature, humidity, pressure, voltage), read on every query so a test can change them while the node runs.
+class SimSensorManager : public SensorManager {
+public:
+  bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) override;
+};
+extern SimSensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();

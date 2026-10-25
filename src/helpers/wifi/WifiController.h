@@ -25,6 +25,18 @@ public:
 
   // One status line: state, profile, SSID, RSSI, IP, time on the network. Never contains a password.
   void formatStatus(char* out, size_t cap);
+  // The link as plain values, for telemetry (docs/contract/TELEMETRY.md, connectivity).
+  struct Snapshot {
+    bool started = false;
+    WifiState state = WifiState::Off;
+    uint8_t profile = WifiCore::NONE;   // NONE when no profile is joining or joined
+    const char* ssid = nullptr;
+    int rssi = 0;                       // valid while connected
+    char ip[20] = {0};
+    uint32_t up_s = 0;
+    WifiFail last_fail = WifiFail::None;   // of the current profile, or of profile 0 when none is current
+  };
+  void snapshot(Snapshot* out);
   void formatIp(char* out, size_t cap);   // "" when not connected
 
 private:
