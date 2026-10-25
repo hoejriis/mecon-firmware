@@ -42,7 +42,9 @@ enum Auth : uint8_t {
   A_GUEST,                // guest login
   A_CONTACT_FLAG,         // a Companion contact flagged for remote CLI
   A_BUTTON,               // the device button
-  A_NETCON_ADMIN          // `login <admin password>` on one Ethernet console connection, password set, Normal posture
+  A_NETCON_ADMIN,         // `login <admin password>` on one Ethernet console connection, password set, Normal posture
+  A_SIGNED                // a request signed by a current member of the Deployment authority set (AUTHORITY.md section 7),
+                          // on any wire transport; the transport still decides Context.remote
 };
 
 enum Class : uint8_t {
@@ -89,6 +91,7 @@ enum Principal : uint8_t {
   P_MQTT_UNVERIFIED,
   P_BUTTON,
   P_NETCON_ADMIN,     // Ethernet console, logged in with the admin password
+  P_SIGNED,           // a request that passed the signed-request checks (AUTHORITY.md section 9), on any wire transport
   P_COUNT
 };
 
@@ -107,6 +110,12 @@ struct Context {
 inline Principal principalOf(const Context& c) {
   const bool wire_remote = c.transport == T_LORA || c.transport == T_MQTT;
   if (c.remote != wire_remote) return P_UNTRUSTED;   // a local-looking remote caller, or the reverse: fail closed
+  if (c.auth == A_SIGNED) {   // valid on every wire transport; the button and an unset transport are not one
+    switch (c.transport) {
+      case T_USB: case T_BLE: case T_TCP: case T_MQTT: case T_LORA: case T_NETCON: return P_SIGNED;
+      default: return P_UNTRUSTED;
+    }
+  }
   switch (c.transport) {
     case T_USB: return c.auth == A_CABLE ? P_CABLE : P_UNTRUSTED;
     case T_BLE: return c.auth == A_PAIRED_PIN ? P_PAIRED : P_UNTRUSTED;
@@ -173,6 +182,9 @@ inline Reason tableCell(Principal p, bool hardened, uint8_t cls) {
     /* button         H */   CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED) },
     /* Ethernet admin N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW),
     /* Ethernet admin H */   CLI_ROW(NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF) },
+    // signed: custody (secret) comes with its own change; no remote erase, whatever the signature (AUTHORITY.md section 11)
+    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW),
+    /* signed         H */   CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW) },
   };
   if (p >= P_COUNT || cls >= C_COUNT) return R_NOT_PERMITTED;
   return (Reason)T[p][hardened ? 1 : 0][cls];
@@ -193,6 +205,12 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   Verdict v;
   v.allow = r == R_ALLOW;
   v.reason = r;
+  if (p == P_SIGNED) {   // audited as the transport it arrived on
+    v.caller = c.transport == T_USB ? Posture::CALLER_CABLE : c.transport == T_BLE ? Posture::CALLER_BLE
+             : c.transport == T_MQTT ? Posture::CALLER_MQTT : c.transport == T_LORA ? Posture::CALLER_REMOTE_ADMIN
+             : Posture::CALLER_NET;
+    return v;
+  }
   // An untrusted BLE link (default PIN) is audited as the BLE it is, not as "net"; Wi-Fi / Ethernet TCP stay "net".
   v.caller = (p == P_UNTRUSTED && c.transport == T_BLE) ? Posture::CALLER_BLE : auditCaller(p);
   return v;

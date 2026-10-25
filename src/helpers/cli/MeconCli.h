@@ -49,6 +49,7 @@ inline const char* authName(uint8_t a) {
     case A_CONTACT_FLAG: return "contact-flag";
     case A_BUTTON: return "button";
     case A_NETCON_ADMIN: return "netcon-admin";
+    case A_SIGNED: return "signed";
   }
   return "none";
 }
@@ -65,6 +66,7 @@ inline const char* principalName(uint8_t p) {
     case P_MQTT_UNVERIFIED: return "mqtt-unverified";
     case P_BUTTON: return "button";
     case P_NETCON_ADMIN: return "ethernet-admin";
+    case P_SIGNED: return "signed";
   }
   return "untrusted";
 }

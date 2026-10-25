@@ -38,6 +38,7 @@ const Expect EXPECT_TABLE[] = {
   {P_MQTT_UNVERIFIED, "MQTT unverified",  "VVVVVV", "VVVVVV"},
   {P_BUTTON,          "button",           "PPP.PP", "PPP.PP"},
   {P_NETCON_ADMIN,    "Ethernet admin",   ". . Y P Y .", "NNNNNN"},
+  {P_SIGNED,          "signed",           "..P.P.", "..P.P."},
 };
 
 std::string squeeze(const char* s) {
@@ -79,6 +80,12 @@ const Valid VALID[] = {
   {T_MQTT, A_TLS_UNVERIFIED, true, P_MQTT_UNVERIFIED},
   {T_BUTTON, A_BUTTON, false, P_BUTTON},
   {T_NETCON, A_NETCON_ADMIN, false, P_NETCON_ADMIN},
+  {T_USB, A_SIGNED, false, P_SIGNED},
+  {T_BLE, A_SIGNED, false, P_SIGNED},
+  {T_TCP, A_SIGNED, false, P_SIGNED},
+  {T_MQTT, A_SIGNED, true, P_SIGNED},
+  {T_LORA, A_SIGNED, true, P_SIGNED},
+  {T_NETCON, A_SIGNED, false, P_SIGNED},
 };
 
 Principal expectedPrincipal(uint8_t t, uint8_t a, bool remote) {
@@ -135,7 +142,7 @@ TEST_P(PrivilegeMatrix, EveryCellOfTheTableIsAsWritten) {
 static std::vector<Cell> allCells() {
   std::vector<Cell> v;
   for (uint8_t t = T_NONE; t <= T_NETCON; t++)
-    for (uint8_t a = A_NONE; a <= A_NETCON_ADMIN; a++)
+    for (uint8_t a = A_NONE; a <= A_SIGNED; a++)
       for (bool remote : {false, true}) v.push_back({t, a, remote});
   return v;
 }
@@ -149,6 +156,27 @@ TEST(PrivilegeProperties, ARemoteCallerNeverInheritsALocalCallersPrivileges) {
       }
     }
   }
+}
+
+TEST(PrivilegeProperties, ASignedCallerNeverEraseNorReadsKeysOnAnyTransport) {
+  for (uint8_t t : {T_USB, T_BLE, T_TCP, T_MQTT, T_LORA, T_NETCON})
+    for (uint8_t posture : {(uint8_t)0, (uint8_t)1}) {
+      const Context c(t, A_SIGNED, posture);
+      EXPECT_EQ(principalOf(c), P_SIGNED);
+      EXPECT_EQ(c.remote, t == T_MQTT || t == T_LORA) << "remote follows the transport, not the signature";
+      EXPECT_FALSE(decide(c, C_DESTRUCTIVE).allow);
+      EXPECT_FALSE(decide(c, C_SECRET).allow);
+      EXPECT_TRUE(decide(c, C_WRITE).allow);
+      EXPECT_TRUE(decide(c, C_REBOOT).allow);
+      EXPECT_FALSE(decide(c, C_POSTURE, F_CABLE_ONLY).allow) << "lowering protection stays with the cable";
+    }
+  EXPECT_EQ(principalOf(Context(T_BUTTON, A_SIGNED, 0)), P_UNTRUSTED);
+  EXPECT_EQ(principalOf(Context(T_NONE, A_SIGNED, 0)), P_UNTRUSTED);
+  Context lie(T_MQTT, A_SIGNED, 0);
+  lie.remote = false;                      // a signature does not make a broker request local
+  EXPECT_EQ(principalOf(lie), P_UNTRUSTED);
+  EXPECT_EQ(decide(Context(T_USB, A_SIGNED, 0), C_WRITE).caller, Posture::CALLER_CABLE);
+  EXPECT_EQ(decide(Context(T_MQTT, A_SIGNED, 0), C_WRITE).caller, Posture::CALLER_MQTT);
 }
 
 TEST(PrivilegeProperties, UntrustedAndUnverifiedCallersAreRefusedEverything) {

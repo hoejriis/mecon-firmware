@@ -63,6 +63,7 @@ Rows are the callers; per caller the left cell is Normal and the right is Harden
 | **MQTT, TLS verified** | - / - | - / flag | refused | refused | refused | - / flag |
 | **MQTT, plain or unverified TLS** | refused | refused | refused | refused | refused | refused |
 | **device button** | refused | refused | refused | allowed | refused | refused |
+| **signed request** (a current member of the Deployment authority set signed it, on any transport; [Management authority contract](contract/AUTHORITY.md)) | - / - | - / - | refused | - / - | refused | - / - |
 
 - *limited*: a flagged contact reads and reboots only. *off*: Hardened turns the remote CLI (and the Ethernet console) off entirely, reads included.
 - *flag*: allowed only when the broker profile the session runs on is flagged for management (`set mqtt.profile <n> manage on`); otherwise the request is answered `refused` with `ERR: management is off for this broker profile`.
