@@ -11,7 +11,7 @@ namespace mesh { class Dispatcher; class Radio; class MainBoard; }
 
 namespace Iface {
 
-enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, STREAM_COUNT };
+enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, SID_CONNECTIVITY, STREAM_COUNT };
 
 struct StreamDef {
   const char* name;

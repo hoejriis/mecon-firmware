@@ -16,6 +16,7 @@ const StreamDef STREAMS[STREAM_COUNT] = {
   {"power", 30, 3600, 300},
   {"runtime", 60, 3600, 300},
   {"observations", 0, 0, 0},
+  {"connectivity", 10, 3600, 60},
 };
 
 int streamIndex(const char* name, size_t len) {

@@ -143,6 +143,58 @@ void halt() {
   bool wifi_enabled = false;   // set at boot from prefs; false also when no profile is configured
 #endif
 
+#if defined(ENABLE_MECON_IFACE) && defined(ENABLE_WIFI_INTERFACE)
+// The connectivity stream (docs/contract/TELEMETRY.md): the links main.cpp owns, as plain values.
+static void ifaceConnWrite(Iface::JsonWriter& w) {
+#ifdef ENABLE_CONNMODE
+  w.key("mode"); w.str(the_mesh.getConnectivityMode() == ConnMode::WIFI ? "wifi" : "ble");
+#endif
+  WifiController::Snapshot ws;
+  wifiController().snapshot(&ws);
+  w.key("wifi"); w.beginObject();
+  w.key("state"); w.str(WifiCore::stateName(ws.state));
+  const bool joined = ws.state == WifiState::Connected;
+  w.key("profile"); if (ws.profile != WifiCore::NONE) w.unum(ws.profile); else w.null();
+  w.key("ssid"); if (ws.ssid) w.str(ws.ssid); else w.null();
+  w.key("rssi_dbm"); if (joined) w.num(ws.rssi); else w.null();
+  w.key("ip"); if (joined && ws.ip[0]) w.str(ws.ip); else w.null();
+  w.key("up_s"); w.unum(ws.up_s);
+  w.key("last_fail"); w.str(WifiCore::failName(ws.last_fail));
+  w.endObject();
+#ifdef ENABLE_MQTT
+  MqttController::Snapshot ms;
+  mqttController().snapshot(&ms);
+  w.key("mqtt"); w.beginObject();
+  w.key("state"); w.str(ms.active ? MqttCore::stateName(ms.state) : "off");
+  const bool up = ms.state == MqttState::Connected;
+  w.key("profile"); if (ms.profile != MqttCore::NONE) w.unum(ms.profile); else w.null();
+  char broker[24];
+  snprintf(broker, sizeof(broker), "%u.%u.%u.%u:%u", (unsigned)(ms.addr >> 24), (unsigned)((ms.addr >> 16) & 255),
+           (unsigned)((ms.addr >> 8) & 255), (unsigned)(ms.addr & 255), (unsigned)ms.port);
+  w.key("broker"); if (up) w.str(broker); else w.null();
+  static const char* const TLS[] = {"plain", "verified", "unverified"};
+  w.key("tls"); if (up) w.str(TLS[ms.tls]); else w.null();
+  w.key("up_s"); w.unum(ms.up_s);
+  w.key("browsing"); w.boolean(ms.browsing);
+  w.key("reconnects"); w.unum(ms.reconnects);
+  w.endObject();
+#endif
+}
+
+// Changes when any link changes state or profile: the stream then sends an event at once.
+static uint32_t ifaceConnSignature() {
+  WifiController::Snapshot ws;
+  wifiController().snapshot(&ws);
+  uint32_t sig = (uint32_t)ws.state | ((uint32_t)ws.profile << 8);
+#ifdef ENABLE_MQTT
+  MqttController::Snapshot ms;
+  mqttController().snapshot(&ms);
+  sig |= ((uint32_t)ms.state << 16) | ((uint32_t)ms.profile << 24);
+#endif
+  return sig;
+}
+#endif
+
 void setup() {
 #if defined(ENABLE_MECON_IFACE) && defined(ESP32)
   // A multi-frame interface request arrives as one burst; a native USB port (TinyUSB CDC) delivers it at full speed
@@ -273,6 +325,9 @@ void setup() {
     wifi_enabled = false;
     Posture::audit().addOnce(rtc_clock.getCurrentTime(), Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_NET_START);
   }
+#ifdef ENABLE_MECON_IFACE
+  the_mesh.iface().setConnectivity(ifaceConnWrite, ifaceConnSignature);   // reported even while Wi-Fi is off
+#endif
   if (wifi_enabled && wifi_has_profile) {
 #if defined(ESP32)
     board.setInhibitSleep(true);   // prevent sleep when WiFi is active

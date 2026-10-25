@@ -36,6 +36,17 @@ public:
                                            (1u << Iface::SID_POWER) | (1u << Iface::SID_RUNTIME) |
                                            (1u << Iface::SID_OBSERVATIONS);
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
+  // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
+  // stream's data; signature changes whenever a link changes state, which sends an event at once.
+  typedef void (*ConnWriteFn)(Iface::JsonWriter& w);
+  typedef uint32_t (*ConnSignatureFn)();
+  void setConnectivity(ConnWriteFn write, ConnSignatureFn signature) {
+    _conn_write = write;
+    _conn_sig = signature;
+  }
+  uint32_t streamsProduced() const {
+    return STREAMS_PRODUCED | (_conn_write ? (1u << Iface::SID_CONNECTIVITY) : 0);
+  }
   void scheduleStream(int stream, uint32_t now) { _clock.scheduleNow(stream, now); }
 
   MyMesh* mesh() const { return _mesh; }
@@ -77,6 +88,9 @@ private:
   void streamTick(uint32_t now);
   static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
   Iface::ObsLimiter _obs;
+  ConnWriteFn _conn_write = nullptr;
+  ConnSignatureFn _conn_sig = nullptr;
+  uint32_t _conn_last = 0;
   bool writeStream(int stream, Iface::JsonWriter& w);
   uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
   char _id_hex[33] = {0};

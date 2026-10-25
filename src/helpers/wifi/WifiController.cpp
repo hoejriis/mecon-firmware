@@ -236,6 +236,21 @@ void WifiController::formatIp(char* out, size_t cap) {
   if (connected()) snprintf(out, cap, "%s", cstr(WiFi.localIP().toString()));
 }
 
+void WifiController::snapshot(Snapshot* out) {
+  *out = Snapshot();
+  out->started = _started;
+  if (!_started) return;
+  out->state = _core.state();
+  out->profile = _core.current();
+  if (out->profile != WifiCore::NONE) out->ssid = _profiles->ssid(out->profile);
+  if (out->state == WifiState::Connected) {
+    out->rssi = WiFi.RSSI();
+    formatIp(out->ip, sizeof(out->ip));
+    out->up_s = _core.connectedMs(millis()) / 1000;
+  }
+  out->last_fail = _core.lastFail(out->profile != WifiCore::NONE ? out->profile : 0);
+}
+
 void WifiController::formatStatus(char* out, size_t cap) {
   if (!_started) { snprintf(out, cap, "> off"); return; }
   uint32_t now = millis();

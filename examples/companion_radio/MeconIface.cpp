@@ -70,7 +70,7 @@ Status opHello(OpContext& c) {
   w.key("epoch"); w.unum(m->epoch());
   w.key("capabilities"); w.beginArray();
   for (const char* cap : CAPABILITIES) w.str(cap);
-  writeStreamCapabilities(w, MeconIface::STREAMS_PRODUCED);
+  writeStreamCapabilities(w, m->streamsProduced());
   w.endArray();
   return ST_OK;
 }
@@ -117,12 +117,12 @@ Status opSubStart(OpContext& c) {
   MeconIface* m = self(c);
   int started;
   const uint32_t now = millis();
-  Status st = subStart(c, m->currentSubs(), MeconIface::STREAMS_PRODUCED, now, &started);
+  Status st = subStart(c, m->currentSubs(), m->streamsProduced(), now, &started);
   m->scheduleStream(started, now);
   return st;
 }
 
-Status opSubStop(OpContext& c) { return subStop(c, self(c)->currentSubs(), MeconIface::STREAMS_PRODUCED); }
+Status opSubStop(OpContext& c) { return subStop(c, self(c)->currentSubs(), self(c)->streamsProduced()); }
 
 
 // Settings run as the caller's own CLI lines (design section 5): one store, and the CLI engine authorizes and audits
@@ -292,6 +292,10 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
     }
     case SID_POWER: writePower(w, board); break;
     case SID_RUNTIME: writeRuntime(w, board); break;
+    case SID_CONNECTIVITY:
+      if (!_conn_write) return false;
+      _conn_write(w);
+      break;
     default: return false;
   }
   w.endObject();
@@ -302,6 +306,13 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
 // subscribed. A full queue drops the event on that transport only; the receiver sees the gap in seq.
 void MeconIface::streamTick(uint32_t now) {
   if (!_ev_up || !_ev_up()) _mqtt_subs.clear();   // a subscription made over MQTT lapses with the session
+  if (_conn_sig) {   // a link changed state: the connectivity stream sends an event now
+    const uint32_t sig = _conn_sig();
+    if (sig != _conn_last) {
+      _conn_last = sig;
+      _clock.scheduleNow(SID_CONNECTIVITY, now);
+    }
+  }
   SubSet* sets[LINKS + 1];
   for (int i = 0; i < LINKS; i++) sets[i] = &_links[i].subs;
   sets[LINKS] = &_mqtt_subs;

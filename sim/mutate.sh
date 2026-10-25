@@ -849,6 +849,10 @@ mutate obs_companion_sink_not_registered examples/companion_radio/MeconIface.cpp
 mutate obs_hex_nibbles_swapped src/helpers/iface/Streams.cpp '  for (int i = 0; i < len; i++) { data[n++] = H[raw[i] >> 4]; data[n++] = H[raw[i] & 15]; }' '  for (int i = 0; i < len; i++) { data[n++] = H[raw[i] & 15]; data[n++] = H[raw[i] >> 4]; }' sim/tests/test_telemetry_streams.py::test_observations_carry_each_received_packet_as_heard
 mutate obs_limiter_refuses_all src/helpers/iface/Streams.cpp '  if (!tokens) { dropped++; return false; }' '  dropped++; return false;' sim/tests/test_telemetry_streams.py::test_observations_carry_each_received_packet_as_heard
 mutate obs_event_stream_takes_a_period src/helpers/iface/Streams.cpp '  if (pt >= 0 && def.events()) { c.error = "no-period"; return ST_INVALID; }' '' sim/tests/test_telemetry_streams.py::test_an_event_stream_takes_no_period
+mutate conn_change_not_detected examples/companion_radio/MeconIface.cpp '    if (sig != _conn_last) {' '    if (false) {' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
+mutate conn_stream_not_registered examples/companion_radio/main.cpp '  the_mesh.iface().setConnectivity(ifaceConnWrite, ifaceConnSignature);' '  (void)0;' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
+mutate conn_tls_names_swapped examples/companion_radio/main.cpp '  static const char* const TLS[] = {"plain", "verified", "unverified"};' '  static const char* const TLS[] = {"plain", "unverified", "verified"};' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
+mutate conn_reconnects_not_counted src/helpers/mqtt/MqttController.cpp '  _sessions++;' '' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

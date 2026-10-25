@@ -241,6 +241,7 @@ void MqttController::takeResult() {
   _cur_addr = j.addr;
   _cur_port = j.port;
   _core.onConnected(now, j.tls && j.has_anchor);
+  _sessions++;
   if (_cli_fn) _psc.subscribe(_req_topic);   // before the status, so a client that sees the status can send at once
   if (_iface_fn) _psc.subscribe(_iface_req);
   if (_cli_fn || _iface_fn) _cli_open_at = millis() + CLI_SETTLE_MS;
@@ -355,6 +356,23 @@ void MqttController::loop() {
       break;
     default:
       break;
+  }
+}
+
+void MqttController::snapshot(Snapshot* out) {
+  *out = Snapshot();
+  out->active = _started && _enabled;
+  out->reconnects = _sessions > 1 ? _sessions - 1 : 0;
+  if (!out->active) return;
+  out->state = _core.state();
+  out->profile = _core.current();
+  out->browsing = _core.browsing();
+  if (out->state == MqttState::Connected && out->profile != MqttCore::NONE) {
+    const MqttProfile& q = _profiles->p[out->profile];
+    out->tls = !q.useTls() ? 0 : (_core.verified() ? 1 : 2);
+    out->addr = _cur_addr;
+    out->port = _cur_port;
+    out->up_s = _core.connectedMs(millis()) / 1000;
   }
 }
 
