@@ -1,4 +1,4 @@
-# Private MVP → MECON 1.0 contract audit
+# Private MVP → MECON target contract audit
 
 This is the completeness audit required before the public firmware can be considered rebuildable without consulting the private `deimos-mesh-firmware` repository.
 
@@ -16,13 +16,13 @@ Every material private surface is classified as one of:
 
 - **KEEP / MECON v1** — required public behaviour; specify in `docs/contract/`.
 - **NATIVE 1.18** — use the released MeshCore 1.18 primitive and do not invent a parallel MECON implementation.
-- **CHANGE** — product behaviour remains but MECON 1.0 deliberately changes the wire/runtime model; `BACKEND_MIGRATION.md` must describe the backend change.
-- **RETIRE** — private implementation detail or obsolete behaviour not carried into MECON 1.0.
+- **CHANGE** — product behaviour remains but MECON target deliberately changes the wire/runtime model; `BACKEND_MIGRATION.md` must describe the backend change.
+- **RETIRE** — private implementation detail or obsolete behaviour not carried into MECON target.
 - **VERIFY 1.18** — final mapping cannot be frozen until released MeshCore 1.18 is on `main`; the product requirement is nevertheless documented now.
 
 ## MQTT gateway protocol
 
-| Private surface | MECON 1.0 disposition |
+| Private surface | MECON target disposition |
 |---|---|
 | stable gateway identity + node public key | **CHANGE:** canonical `device_id` plus native node key; backend enrollment ID remains backend-local |
 | `deimos/gw/{gateway_id}` topic root | **CHANGE:** provisioned backend-neutral namespace and canonical device subtree |
@@ -53,7 +53,7 @@ Every material private surface is classified as one of:
 
 ## Device settings protocol
 
-| Private surface | MECON 1.0 disposition |
+| Private surface | MECON target disposition |
 |---|---|
 | schema-driven generic settings | **KEEP** |
 | atomic `apply_config` transaction | **KEEP** |
@@ -82,7 +82,7 @@ Every material private surface is classified as one of:
 
 All of these remain required unless the target hardware cannot measure them; unavailable measurements use explicit unknown/null semantics rather than false zeroes.
 
-| Private surface | MECON 1.0 disposition |
+| Private surface | MECON target disposition |
 |---|---|
 | uptime | **KEEP** |
 | reset reason/code + abnormal flag | **KEEP** |
@@ -110,7 +110,7 @@ All of these remain required unless the target hardware cannot measure them; una
 
 ## Outage sync
 
-| Private surface | MECON 1.0 disposition |
+| Private surface | MECON target disposition |
 |---|---|
 | optional configured private channel | **KEEP** |
 | monotonic config version + acknowledgement | **KEEP, but v1 should return explicit job success/failure as well** |
@@ -129,14 +129,14 @@ All of these remain required unless the target hardware cannot measure them; una
 | stock-copy `[DM xx > yy]` representation | **KEEP for compatibility unless 1.18 constraints require revision** |
 | stock-copy airtime roughly doubles | **KEEP warning/test requirement** |
 | outage-sync configured/current status in normal status | **KEEP** |
-| daily private-channel health report | **ADD:** MECON 1.0 behaviour not fully represented by the old outage-sync contract; public resilience contract must specify it (the reference firmware ships a counterpart, the signed status beacon, group-data type 0x4402, every 20 to 23 hours) |
-| MQTT alternate DM/channel path when RF mesh unavailable | **ADD:** MECON 1.0 behaviour; stable message identity/dedup required (shipped in the reference firmware as `send_dm`, `send_channel`, `relay_dm` and backfill) |
+| daily private-channel health report | **ADD:** MECON target behaviour not fully represented by the old outage-sync contract; public resilience contract must specify it (the reference firmware ships a counterpart, the signed status beacon, group-data type 0x4402, every 20 to 23 hours) |
+| MQTT alternate DM/channel path when RF mesh unavailable | **ADD:** MECON target behaviour; stable message identity/dedup required (shipped in the reference firmware as `send_dm`, `send_channel`, `relay_dm` and backfill) |
 
 ## Provisioning and direct USB/BLE
 
-The old first-boot line-JSON provisioning console is explicitly superseded even in the private firmware. MECON 1.0 must not resurrect it.
+The old first-boot line-JSON provisioning console is explicitly superseded even in the private firmware. MECON target must not resurrect it.
 
-| Private/current MVP surface | MECON 1.0 disposition |
+| Private/current MVP surface | MECON target disposition |
 |---|---|
 | first-boot 5-minute JSON serial console | **RETIRE** |
 | `set_wifi`/`set_mqtt`/`set_label` JSON commands | **RETIRE wire format; outcomes remain in common settings/direct management** |

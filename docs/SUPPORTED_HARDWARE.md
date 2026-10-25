@@ -8,67 +8,59 @@ All other repository board environments receive **software verification only**: 
 
 Public documentation must distinguish **hardware verified**, **software verified (with checks specified)**, **failed**, and **not verified**, at board/role/feature level. Never silently promote a board or all its features from partial evidence. The four-board hardware gate applies to applicable capabilities as they are implemented, not unsupported features. This policy supersedes older requests to wait for hardware on other boards. Release timing remains separate.
 
-> **Public availability:** this repository publishes source-only pre-releases (0.1.x) with no binaries. Hardware verification has started on a Heltec V3, a Heltec V4 and a Wio Tracker L1: what was checked on which board and build, and what is still only compiled, is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). No target has yet passed the full hardware gate below. The 16 Heltec V3/V4, T1000-E and Wio Tracker L1 environments (Companion, Repeater, Room server and, on the Heltec boards, the standalone Companion) compile on every pull request, and compiling is not support. Read the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for the private beta versus public target distinction. Every table below describes the intended MECON-stage target, not accepted builds.
+> **Public availability:** this repository publishes source-only pre-releases (0.1.x) with no binaries; the tags are on ESP-IDF 4.4 and have no device interface. Current `main` is ahead of them. Hardware verification has started on a Heltec V3, a Heltec V4 and a Wio Tracker L1: what was checked on which board and build, and what is still only compiled, is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). No target has yet passed the full hardware gate below. The 18 Heltec V3/V4, T1000-E and Wio Tracker L1 environments (Companion, Repeater, Room server and, on the Heltec boards, the standalone Companion) compile on every pull request, and compiling is not support. Read the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for the private beta versus public distinction.
 
-The first public release planned to serve a MECON fleet is **mecon-firmware 0.8.0** (public releases from 0.1.0 are standalone), built on released **MeshCore 1.18.0 from upstream `main`**. The public line (from 0.1.0) and the private 0.9x reference line are separate lines; their version numbers do not order across each other. A target is called supported only after its derived build passes its real-hardware gate.
+The public line is built on released **MeshCore 1.18.0 from upstream `main`**. The public line and the private 0.9x reference line are separate lines; their version numbers do not order across each other. Release timing is a separate decision. A target is called supported only after its derived build passes its real-hardware gate.
 
-MECON uses capability profiles rather than defining the product as ESP32/Wi-Fi/MQTT firmware. The roles below are the **intended 0.8.0 set, subject to acceptance**; non-ESP boards implement portable MECON Core plus the transports/features their hardware actually provides.
+Roles are described by capability rather than by defining the product as ESP32/Wi-Fi/MQTT firmware. The table says what builds on `main` today, from the CI target matrix and [PLATFORM](PLATFORM.md); the evidence for each is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). The managed-device capabilities still planned (identity and authority, updates over IP, USB and BLE, management over LoRa) are in [CLEAN_REFOUNDING_1_18](CLEAN_REFOUNDING_1_18.md) and [ARCHITECTURE](ARCHITECTURE.md#management-over-lora-planned).
 
-| Hardware | Status | Companion | Repeater | IP/Wi-Fi | USB | BLE | MQTT |
-|---|---|---:|---:|---:|---:|---:|---:|
-| Heltec V3 | 0.8.0 target | Companion Gateway | ESP32 Repeater Observer | Yes | Yes | Companion: mode `mqtt` or `ble`, not both; repeater: capability-dependent | one active session |
-| Heltec V4 | 0.8.0 target | Companion Gateway | ESP32 Repeater Observer (new in 0.8.0) | Yes | Yes | Companion: capability-dependent | one active session |
-| SenseCAP T1000-E | 0.8.0 target, limited scope | BLE Companion | No | No | Yes | Yes | No direct client |
-| Seeed Wio Tracker L1 | 0.8.0 target, limited scope | No | RF repeater (nRF52) | No | Yes (console) | No | No (managed over RF and USB) |
+| Hardware | Builds on `main` | Hardware evidence | IP/Wi-Fi | USB | BLE |
+|---|---|---|---|---|---|
+| Heltec V3 | Companion (USB, BLE, Wi-Fi, standalone), Repeater, Room server | Real rows | Yes | Yes | Companion: NimBLE; the standalone Companion runs BLE or Wi-Fi mode, one at a time |
+| Heltec V4 | Companion (USB, BLE, Wi-Fi, standalone), Repeater, Room server | Real rows | Yes | Yes | Companion: NimBLE; the standalone Companion runs BLE or Wi-Fi mode, one at a time |
+| Seeed Wio Tracker L1 | Companion (USB, BLE), Repeater | One Companion row (contacts capacity) | No | Yes | Companion: Bluefruit |
+| SenseCAP T1000-E | Companion (USB, BLE), Repeater | Compiled only ([#1](https://github.com/hoejriis/mecon-firmware/issues/1)) | No | Yes | Companion: Bluefruit |
 
-V3 and V4 are first-class targets from initial bring-up. The T1000-E and the Wio Tracker L1 are the non-ESP (nRF52) targets: both are built in every private beta release and bench-tested in limited scope, and they prove the Core architecture beyond ESP32. They are not Wi-Fi/MQTT devices. The Heltec V4 Repeater Observer has no build in the private beta; 0.8.0 adds it.
+V3 and V4 are first-class targets and build on Arduino-ESP32 3.1.3 / ESP-IDF 5.3 with NimBLE today ([PLATFORM](PLATFORM.md)); this is current, not a future target. The T1000-E and the Wio Tracker L1 are the non-ESP (nRF52) targets. They are not Wi-Fi/MQTT devices. The Heltec V4 Repeater builds as a stock-derived Repeater; it has no MQTT Observer role, and the device interface is not compiled into it. The device interface is compiled into the V3 Repeater, Room server and standalone Companion and the V4 standalone Companion only, and not into any nRF52 build ([DEVICE_INTERFACE](contract/DEVICE_INTERFACE.md)).
+
+Only the four boards above are in scope for hardware verification. Every other board environment is software-verified only, and a board being available is not evidence that a check passed.
+
+**Updates.** No managed update path is built in this repository. Signed updates over IP, USB and BLE are planned (Issue #110, with the T1000-E in #1); update over IP applies only to IP-capable hardware, and USB and BLE delivery are separate work, not a button or an undocumented fallback. LoRa image delivery is later, MECON-specific work (Issue #123). Real bootloader limits per board are documented when that work lands.
 
 ## Capability layers
 
 A board may advertise any applicable combination of:
 
-- **MECON Core:** identity/capabilities, common configuration, health/status, messaging semantics, applicable inventory, resilience and common management operations;
-- **MECON USB:** direct Reader/configuration/recovery;
-- **MECON BLE:** direct Reader/configuration/messaging;
-- **MECON IP:** IP networking, broker discovery and MQTT/backend connectivity;
+- **Core:** identity/capabilities, common configuration and health/status. Built as device interface v1; messaging semantics, inventory and resilience are not part of it;
+- **USB:** direct Reader/configuration/recovery;
+- **BLE:** direct Reader/configuration/messaging;
+- **IP:** IP networking, broker discovery and MQTT/backend connectivity;
 - **display/attention:** screen/framebuffer or target-specific LED/buzzer/haptic notification behaviour;
-- **managed update:** target-specific supported OTA/DFU mechanism.
+- **managed update:** target-specific supported OTA/DFU mechanism (planned, Issue #110).
 
 A client must discover capabilities rather than infer them from board name or firmware version.
 
 ## Heltec Companion
 
-The Companion image preserves MeshCore 1.18 behaviour, adds ordered Wi-Fi profiles (three in the original target; the standalone firmware implements up to ten), local-first/cloud-fallback MQTT, MECON management/observations, and direct USB/BLE where advertised. BLE uses NimBLE (the private 0.9x gateways already do, on the older Arduino-ESP32 2.x / ESP-IDF 4.4 platform; the pioarduino / IDF 5 migration is still a target). On the V3, connectivity mode `both` is not available: a measured 9 KB of heap remains in that mode, so the V3 runs `mqtt` or `ble`.
+The Companion image preserves MeshCore 1.18 behaviour and adds ordered Wi-Fi profiles (up to ten), MQTT with failover, the unified CLI and, in the standalone build, the device interface over USB, BLE and MQTT. BLE uses NimBLE on Arduino-ESP32 3.1.3 / ESP-IDF 5.3. The standalone Companion runs BLE or Wi-Fi at a time ([CONNECTIVITY_MODE](CONNECTIVITY_MODE.md)).
 
-Companion contact capacity is **not fixed by this target contract**, and not at the private MVP's historical 32/64 values. It is set from the measured memory budget after the pioarduino/Arduino-ESP32 3.x/IDF5 migration and published in status/manifests. For reference, the 0.9x gateways enforce 50 contacts on V3 and V4, and the T1000-E 350.
+Companion contact capacity is **not fixed by the contract**. It follows free file-system space and heap, is measured after the pioarduino/Arduino-ESP32 3.x/IDF5 migration, and is reported by the running build ([CONTACTS](CONTACTS.md)).
 
 ## Heltec Repeater
 
-The Repeater image preserves MeshCore 1.18 repeating behaviour and adds the same shared MECON runtime where hardware/role capabilities permit. USB remains the recovery/configuration path. BLE support is explicitly advertised rather than assumed. On the V3 and V4 the repeater build is the ESP32 Repeater Observer: MQTT plus RF administration, with Deployment-signed RF lines for password and reboot and security posture. The private beta builds it for the V3 only; 0.8.0 adds the V4.
+The Repeater image preserves MeshCore 1.18 repeating behaviour, adds the unified CLI with postures, and on the V3 the device interface on the USB console. USB remains the recovery/configuration path. BLE support is explicitly advertised rather than assumed.
 
-## SenseCAP T1000-E BLE Companion
+## SenseCAP T1000-E Companion
 
-The T1000-E proves that MECON Core is portable beyond ESP32. It is built in every private beta release as a normal MeshCore Companion and hardware-proven in limited scope: BLE Companion, USB Reader bridge, no over-the-air update. It adds only functionality justified by the hardware/native target:
+The T1000-E builds a Companion (USB and BLE) and a Repeater. On `main` it is compiled only; hardware evidence is tracked in Issue #1. The device interface is not compiled into it. It has no IP requirement: no Wi-Fi profiles, MQTT client, mDNS broker discovery or local/cloud broker failover. ESP32-specific IDF5/pioarduino/NimBLE requirements do not apply to this target.
 
-- MECON identity/version/capability discovery;
-- direct BLE Reader/management using the native target BLE stack and MeshCore Companion semantics;
-- direct USB configuration/recovery/diagnostics where supported by the upstream target;
-- common MECON configuration semantics for settings the target can expose;
-- health/status including applicable battery, RF, runtime and GNSS/location state;
-- contacts/channels inventory and normal Companion messaging;
-- favourites/attention semantics where useful, without inventing a display;
-- private-channel resilience/daily-status behaviour where resource and upstream APIs permit;
-- update through the USB bootloader after a Deployment-signed offer, attested on boot and acknowledged (BLE DFU is compiled out); there is no over-the-air update.
+## Seeed Wio Tracker L1
 
-The private beta also ships Deployment-signed management, security posture, identity rotation/export, BLE bonds and an opaque continuity slot on this target.
+The Wio Tracker L1 (nRF52840) builds a Companion (USB and BLE) and a Repeater. The one hardware row is the Companion's contacts capacity of 1000 on its QSPI flash. It has no Wi-Fi or MQTT client. The device interface is not compiled into it.
 
-The T1000-E has no direct MECON IP requirement: no Wi-Fi profiles, MQTT client, mDNS broker discovery or local/cloud broker failover. A MeshContinuum Reader connected over BLE/USB can bridge the device to backend/MQTT services. ESP32-specific IDF5/pioarduino/NimBLE requirements do not apply to this target.
+## Reference firmware (private)
 
-The T1000-E prioritizes **Core + BLE + USB interoperability with the existing Reader contracts** rather than feature parity with an IP-capable Heltec.
-
-## Seeed Wio Tracker L1 repeater
-
-The Wio Tracker L1 (nRF52840) runs the MECON RF repeater. It has no Wi-Fi, BLE or MQTT client; it is managed over MeshCore RF and the USB console. Shipped in the private beta: RF management (reads, and Deployment-signed writes through a compact signed RF line), a per-device signed-writes switch, two-phase admin and guest passwords, security posture with a recovery-only image, a signed status beacon, USB DFU, and a LoRa-staged update that is stored but never activated by the radio. Hardware-proven in limited scope; the build is held back from remote update.
+This note describes the private 0.9x reference firmware, not this repository's builds, and is not evidence for them. The private beta ships, among other things: Deployment-signed management, security posture, identity rotation/export, BLE bonds and an opaque continuity slot; on the T1000-E an update through the USB bootloader after a Deployment-signed offer (BLE DFU compiled out, no over-the-air update); on the Wio repeater RF management with Deployment-signed writes, a signed status beacon, USB DFU and a LoRa-staged update that is stored but not activated by the radio; the ESP32 Repeater Observer on the V3 only; and, on the V3 and V4 gateways, a fixed contact limit of 50 (350 on the T1000-E). Its hardware evidence is limited-scope bench testing in the private line. Its behaviour is summarised in [CONTRACT_MIGRATION_NOTES](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
 
 ## Other boards
 
@@ -76,12 +68,12 @@ All other board environments are software-verification targets under the policy 
 
 ## Device UI / attention
 
-Supported display targets retain the stock 1.18 front screen/button model with only the documented MECON 1.0 additions: MECON version at boot, Wi-Fi/MQTT/BLE status, BLE PIN while unconnected, and DM/favourite wake filtering.
+Supported display targets retain the stock 1.18 front screen/button model with only the documented additions: the firmware version at boot, a connectivity page (mode, posture, PIN state, Wi-Fi and MQTT state), BLE PIN while unconnected, and DM/favourite wake filtering. See [UI](UI.md) and [CONNECTIVITY_MODE](CONNECTIVITY_MODE.md) for what is built.
 
 Non-display targets omit display/framebuffer requirements. If a target exposes LEDs, buzzer or haptics, notification mappings are target-specific but should follow the same attention principle: DMs/favourited messages may alert; ordinary observed/public traffic should not generate attention merely because it was received.
 
 ## Hardware gate
 
-Each supported Heltec V3/V4 Companion/Repeater target must verify stock-derived role behaviour, USB, advertised BLE/NimBLE, all three Wi-Fi slots, local broker discovery and cloud fallback, packet observations, configuration/recovery, reconnect behaviour, memory headroom, UI additions and managed OTA. Compilation alone is not a hardware gate.
+For each of the four boards above, the capabilities that exist on that board are verified on the hardware: stock-derived role behaviour, USB, BLE/NimBLE where the board has it, Wi-Fi profiles, broker discovery and failover, the device interface where compiled in, configuration/recovery, reconnect behaviour, memory headroom and UI. The gate covers a capability once it is implemented, not before; managed update is added when Issue #110 lands. Compilation alone is not a hardware gate. [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) records what has passed; it does not show mDNS broker discovery or the device interface over MQTT on a V3.
 
-Experimental targets have their own issue-defined MVP gate and are not added to the supported release matrix until that gate passes on real hardware.
+Experimental targets have their own issue-defined MVP gate and are not added to the supported matrix until that gate passes on real hardware.

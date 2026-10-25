@@ -1,10 +1,12 @@
 # Architecture
 
-> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards (hardware testing has started on a Heltec V3; no target has passed acceptance yet), and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../README.md) and the [documentation index](README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (planned and MECON-specific work; not implemented here unless a section says so).** The tagged releases v0.1.0 to v0.1.2 are source-only pre-releases without the device interface. Current `main` implements the generic [device interface v1](contract/DEVICE_INTERFACE.md) and the standalone features in the [README](../README.md), with real-board evidence in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). The generic work still planned (Issues #95, #96, #109, #110, #114 to #117) and the MECON-specific work (Issues #118 to #123) described here are not implemented. Release timing is a separate decision. This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+
+> **Generic authority and the MECON profile.** The generic authority layer (device identity, authorization, replay protection and recovery) is Issue #95, and any conforming manager can use it. MECON's Deployment mapping, membership and ownership workflow is Issue #118. Where this page describes Deployment-specific workflow, it describes the MECON profile. Unsettled security design is decided in #95's review, not on this page.
 
 ## Upstream foundation
 
-The public firmware is an extension of **released MeshCore 1.18 from upstream `main`**, not an independent RF stack. MeshCore 1.18.0 was released on 2026-10-15; a specific 1.18.0 revision is pinned before implementation proceeds (none is pinned yet).
+The public firmware is an extension of **released MeshCore 1.18 from upstream `main`**, not an independent RF stack. MeshCore 1.18.0 was released on 2026-10-15 and the repository is pinned at upstream v1.18.0 (commit `81dbae5`).
 
 MECON is intentionally **not defined as MeshCore + Wi-Fi/MQTT**. Portable Core behaviour is separated from optional transports/platform services.
 
@@ -35,7 +37,7 @@ A target advertises capabilities. Reader/backend must not infer Wi-Fi, MQTT, dis
 
 **MeshCore CLI/configuration semantics are the canonical device-management semantics.** MECON does not define separate configuration products for USB, BLE, MQTT and LoRa.
 
-Where released MeshCore 1.18 already exposes a suitable CLI/configuration operation, MECON reuses it and its authoritative persistence/validation. MECON-specific behaviour extends the same logical plane under a `mecon` namespace. The reference firmware's shipped plane is `get_config` / `apply_config` plus the native CLI and a set of `cmd` verbs, with settings under `mesh.*` (native keys) and `mecon.*` (and `deimos.*` accepted permanently as an alias); on repeaters the same operations are available as `mecon info|get|list|status|set|reboot|sync|pw|dep|ota|writes|posture|clock|radiotemp` lines, compact (replies of at most 159 characters) and, when written over RF, Deployment-signed. USB, BLE, MQTT and MeshCore RF/LoRa are transports to that plane; they do not redefine setting names or side effects.
+Where released MeshCore 1.18 already exposes a suitable CLI/configuration operation, MECON reuses it and its authoritative persistence/validation. MECON-specific behaviour extends the same logical plane under a `mecon` namespace. The reference firmware's shipped plane is `get_config` / `apply_config` plus the native CLI and a set of `cmd` verbs, with settings under `mesh.*` (native keys) and `mecon.*` (and `deimos.*` accepted permanently as an alias); on repeaters the same operations are available as `mecon info|get|list|status|set|reboot|sync|pw|dep|ota|writes|posture|clock|radiotemp` lines, compact (replies of at most 159 characters) and, when written over RF, Deployment-signed. USB, BLE, MQTT and MeshCore RF/LoRa are transports to that plane; they do not redefine setting names or side effects. On `main`, the built plane is the device interface: `config.schema`, `config.get` and `config.apply` over USB, BLE and MQTT, plus the unified CLI ([DEVICE_INTERFACE](contract/DEVICE_INTERFACE.md)); the reference-firmware names above are legacy wire.
 
 This does **not** mean exposing an unrestricted raw shell. MECON transports carry an allowlisted, versioned operation envelope with request/job correlation, authorization, results/errors and replay/idempotency protection. A transport may use a compact binary encoding, especially over LoRa, while mapping to the same canonical operation.
 
@@ -115,7 +117,7 @@ Recovery storage must be implemented as a bounded persistent blob rather than pe
 
 ## ESP32 runtime baseline
 
-For Heltec V3/V4, after pinning/proving stock MeshCore 1.18, migrate to **pioarduino / Arduino-ESP32 3.x / ESP-IDF 5.x** and establish **NimBLE**. These are ESP32 implementation choices, not universal MECON requirements. Network work must be non-blocking with respect to radio servicing.
+Heltec V3/V4 build on **pioarduino / Arduino-ESP32 3.1.3 / ESP-IDF 5.3** with **NimBLE** on `main` ([PLATFORM](PLATFORM.md); real-board rows in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md)). These are ESP32 implementation choices, not universal MECON requirements. Network work must be non-blocking with respect to radio servicing.
 
 ## Native role is authoritative
 
@@ -127,7 +129,7 @@ MQTT, USB, BLE and applicable MeshCore RF/LoRa are transports for one logical ca
 
 ### MECON IP
 
-Initial Heltec targets store up to three ordered Wi-Fi profiles (the standalone firmware stores up to ten) and use one MQTT session at a time. Broker selection is compatible authenticated local broker first, then configured primary cloud broker, then secondary cloud broker, with backoff/anti-flapping; the private 0.9x reference firmware already behaves this way (see [Connectivity](CONNECTIVITY.md#mqtt-and-broker-selection)). Boards without IP omit MECON IP and may use Reader BLE/USB bridging.
+The standalone firmware on `main` stores up to ten ordered Wi-Fi profiles and uses one MQTT session at a time, with up to six broker profiles and failover by priority ([MQTT](MQTT.md)). The target broker selection is compatible authenticated local broker first, then configured primary cloud broker, then secondary cloud broker, with backoff/anti-flapping; the private 0.9x reference firmware behaves this way (see [Connectivity](CONNECTIVITY.md#mqtt-and-broker-selection)). Boards without IP omit MECON IP and may use Reader BLE/USB bridging.
 
 ### MECON BLE
 
@@ -139,7 +141,17 @@ USB/direct management provides configuration, recovery and Reader access accordi
 
 ### MeshCore RF/LoRa
 
-Where released MeshCore provides remote CLI/command delivery, MECON uses it as the remote transport for the same canonical operations. Remote management remains bounded, authenticated and airtime-aware; LoRa does not acquire a separate MECON settings protocol.
+Where released MeshCore provides remote CLI/command delivery, MECON uses it as the remote transport for the same canonical operations. Remote management remains bounded, authenticated and airtime-aware; LoRa does not acquire a separate MECON settings protocol. Today, RF management on `main` is the stock remote-admin CLI under the unified privilege table ([CLI](CLI.md)). The planned generic additions are in the next section.
+
+### Management over LoRa (planned)
+
+Nothing in this section is built. Three planned, generic capabilities, usable by any conforming manager, are owned by their own Issues:
+
+- [#114](https://github.com/hoejriis/mecon-firmware/issues/114): a private management channel. Channel membership never grants command authority.
+- [#115](https://github.com/hoejriis/mecon-firmware/issues/115): authorized operations over direct (peer-to-peer) and channel LoRa, with results. The request carries its own signature.
+- [#116](https://github.com/hoejriis/mecon-firmware/issues/116): compact telemetry, a smaller and less frequent selection of the same telemetry catalogue ([#96](https://github.com/hoejriis/mecon-firmware/issues/96), not yet merged).
+
+Encodings are not yet designed, so this page gives none. MECON's forwarding, backfill and reporting policy, and LoRa image delivery, are later MECON-specific work ([#121](https://github.com/hoejriis/mecon-firmware/issues/121), [#122](https://github.com/hoejriis/mecon-firmware/issues/122), [#123](https://github.com/hoejriis/mecon-firmware/issues/123)).
 
 ## Non-display targets
 
@@ -151,11 +163,11 @@ OTA is a logical management capability with target-specific implementation. Clie
 
 ## Device UI
 
-MECON 1.0 Heltec builds preserve MeshCore 1.18 Companion/Repeater UI/button semantics where possible. Deliberate additions are MECON version at boot, compact Wi-Fi/MQTT/BLE status, BLE PIN while unconnected and DM/favourite wake filtering. No secondary MECON screen in 1.0. Recovery mode has no normal on-device UI requirement because initiation is USB/browser driven.
+MECON target Heltec builds preserve MeshCore 1.18 Companion/Repeater UI/button semantics where possible. Deliberate additions in the original target were the version at boot, compact Wi-Fi/MQTT/BLE status, BLE PIN while unconnected and DM/favourite wake filtering. *Built differently:* the standalone Companion builds add a connectivity page ([CONNECTIVITY_MODE](CONNECTIVITY_MODE.md)). Recovery mode has no normal on-device UI requirement because initiation is USB/browser driven.
 
 ## Contract ownership
 
-`docs/contract/` is canonical for MECON-specific device-facing behaviour. `TARGET_FIRMWARE_CONTRACT_0.9.md` is the consolidated pre-1.0 target contract and architecture freeze candidate. Contracts distinguish Core semantics from optional capability profiles, including recovery capability. MeshContinuum is the reference backend/Reader, not a prerequisite.
+`docs/contract/` holds the device-facing contracts. [`DEVICE_INTERFACE.md`](contract/DEVICE_INTERFACE.md) is the current, implemented wire contract and wins where other pages disagree; `TARGET_FIRMWARE_CONTRACT_0.9.md` is a target document (see the [contract index](contract/README.md)). Contracts distinguish Core semantics from optional capability profiles, including recovery capability. MeshContinuum is the reference backend/Reader, not a prerequisite.
 
 ## Upstream boundary
 
