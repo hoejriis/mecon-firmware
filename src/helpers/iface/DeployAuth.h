@@ -125,6 +125,7 @@ private:
   void load();
   void loadInner();
   void syncCaller();
+  bool viaCable() const;
   bool persistMarks();
   bool readCurrent(DepWork* w);
   bool commit(DepWork* w);

@@ -544,6 +544,10 @@ bool noProfiles(void*, uint8_t) { return false; }   // a role with no MQTT profi
 
 }  // namespace
 
+// Whether the request being handled arrived over the USB cable (signed or not): the local unlock secret is accepted from
+// nowhere else.
+bool DeployAuth::viaCable() const { return _ctx.transport == Cli::T_USB && !_ctx.remote; }
+
 Status DeployAuth::opProvision(OpContext& c) {
   JsonWriter& w = *c.out;
   if (_dep_ls == Dep::LS_CORRUPT) {   // never reopen a first provisioning over something that cannot be read
@@ -568,6 +572,7 @@ Status DeployAuth::opProvision(OpContext& c) {
                                        sizeof(k->set_text), &k->set_len, k->set_sig);
   if (pp.malformed) { c.error = "bad-args"; st = ST_INVALID; goto done; }
   if (pp.err) { c.error = pp.err; goto done; }
+  if (k->p.has_unlock && !viaCable()) { c.error = "usb_only"; goto done; }   // the secret is in the clear in the body
   if (!readCurrent(k)) { c.error = "storage"; st = ST_FAILED; goto done; }
   {
     Dep::ProvisionContext pc = { &k->cur, _env.node_key, _env.profile_exists ? _env.profile_exists : noProfiles, _env.user };
@@ -797,6 +802,8 @@ Status DeployAuth::opSetUnlock(OpContext& c) {
     return ST_REFUSED;
   }
   if (_dep_ls != Dep::LS_OK || !_dep) { c.error = "deployment_record_corrupt"; return ST_REFUSED; }
+  // The secret travels in the clear inside the request body: only over the cable, never a broker, BLE, TCP or LoRa.
+  if (!viaCable()) { c.error = "usb_only"; return ST_REFUSED; }
   uint8_t secret[Dep::UNLOCK_LEN];
   bool zero = true;
   if (!isObject(*c.doc, c.req->args) || !getHex(*c.doc, c.req->args, "unlock_secret", secret, sizeof(secret))) {

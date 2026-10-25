@@ -1011,6 +1011,39 @@ def test_an_unlocked_cable_may_enter_hardened_because_the_record_holds_the_secre
     assert nosecret.c.cli("get posture") == "> normal", "no secret in the record: never Hardened by an unsigned caller"
 
 
+def test_the_unlock_secret_is_accepted_only_over_the_usb_cable_even_in_a_signed_request(nodes):
+    n = nodes("companion_standalone", "us4", seed=37, rtc=RTC).start()
+    u = CompanionClient(n)
+    u.device_query()
+    u.app_start()
+    assert u.cli("set pin %d" % PIN).startswith("> pin is now")
+    u.close()
+    n.restart()
+    d = Dev(n)
+    assert d.provision()["status"] == "ok"
+    b = n.connect_ble(PIN)
+    b.app_start()
+    bi = mecon_iface.IfaceClient(b._send, b._read_frame)
+
+    def over_ble(wire):
+        bi.send_raw(json.dumps(wire, separators=(",", ":")).encode())
+        return bi.wait_result(json.loads(wire["body"])["id"], 5.0)
+
+    nonce = bi.request("hello")["result"]["channel_nonce"]
+    r = over_ble(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET}, job=1, nonce=nonce))
+    assert r["status"] == "refused" and r["error"] == "usb_only", r
+    r = over_ble(wrap(d.node_key, "deployment.provision", with_secret(provision_args(d.node_key, 2)), job=2))
+    assert r["status"] == "refused" and r["error"] == "usb_only", r
+    assert d.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret", "nothing was stored"
+    # controls: a signed provisioning that carries no secret is fine over BLE, and the cable may set the secret
+    r = over_ble(wrap(d.node_key, "deployment.provision", provision_args(d.node_key, 2), job=3))
+    assert r["status"] == "ok", r
+    r = d.send(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET}, job=4, nonce=d.nonce()))
+    assert r["status"] == "ok", r
+    assert try_unlock(d.i.request)["status"] == "ok"
+    b.close()
+
+
 def test_in_hardened_the_unlock_opens_reads_and_the_reset_of_a_corrupt_record_and_nothing_else(nodes):
     d = boot_with_secret(nodes, "us2", posture="hardened")
     assert try_unlock(d.i.request)["status"] == "ok", "the handshake is open in Hardened"
