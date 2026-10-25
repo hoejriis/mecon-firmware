@@ -1,5 +1,5 @@
 {
-  "description": "Device interface v1 request fixtures. Each case is one request (as JSON, or as raw text when the case is about malformed input) and what a v1.0 device must answer. A client may send them over any transport. 'schema' names the result schema an ok result must satisfy. The value PAD600 stands for a string of 600 'x' characters, to make the request span several frames. A request that is not valid JSON, or breaks the envelope's id rules, cannot be tied to its id: its invalid result carries \"id\":\"\".",
+  "description": "Device interface v1 request fixtures. Each case is one request (as JSON, or as raw text when the case is about malformed input) and what a v1.0 device must answer. A client may send them over any transport. 'schema' names the result schema an ok result must satisfy. The value PAD600 stands for a string of 600 'x' characters, to make the request span several frames. A request that is not valid JSON, or breaks the envelope's id rules, cannot be tied to its id: its invalid result carries \"id\":\"\". 'roles', when present, lists the roles a case applies to (as hello reports them); absent means every role.",
   "cases": [
     {
       "name": "hello",
@@ -201,13 +201,13 @@
         "op": "config.apply",
         "args": {
           "set": {
-            "lat": 55.5
+            "no.such.key": 55.5
           }
         }
       },
       "expect": {
         "status": "invalid",
-        "error": "unknown-key:lat"
+        "error": "unknown-key:no.such.key"
       }
     },
     {
@@ -242,7 +242,31 @@
       "expect": {
         "status": "ok",
         "schema": "config.apply.result.json"
-      }
+      },
+      "roles": [
+        "companion"
+      ]
+    },
+    {
+      "name": "config apply (Repeater and Room server)",
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-apply-srv",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "flood.max": 8
+          }
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "config.apply.result.json"
+      },
+      "roles": [
+        "repeater",
+        "room"
+      ]
     },
     {
       "name": "config apply, radio without its four fields",

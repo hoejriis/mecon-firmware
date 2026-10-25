@@ -26,7 +26,7 @@ const KeyDef KEYS[] = {
    "set mqtt.profile %u host %s"},
   {"mqtt.profile.{n}.port", K_INT, 0, 65535, nullptr, KF_WRITABLE, 5, "get mqtt.profile %u", F_MQTT_PORT,
    "set mqtt.profile %u port %s"},
-  {"mqtt.profile.{n}.tls", K_BOOL, 0, 1, nullptr, KF_WRITABLE, 5, "get mqtt.profile %u", F_MQTT_TLS,
+  {"mqtt.profile.{n}.tls", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 5, "get mqtt.profile %u", F_MQTT_TLS,
    "set mqtt.profile %u tls %s"},
   {"mqtt.profile.{n}.site", K_STRING, 1, 23, nullptr, KF_WRITABLE, 5, "get mqtt.profile %u", F_MQTT_SITE,
    "set mqtt.profile %u site %s"},
@@ -38,6 +38,28 @@ const KeyDef KEYS[] = {
    "set mqtt.profile %u priority %s"},
 };
 const size_t NKEYS = sizeof(KEYS) / sizeof(KEYS[0]);
+
+// The Repeater and Room server share their settings CLI (CommonCLI, CommonRadioPrefs), so they share this table.
+// advert.interval is kept in 2-minute steps: an odd value reads back one lower.
+const KeyDef SERVER_KEYS[] = {
+  {"name", K_STRING, 1, 31, nullptr, KF_WRITABLE, 0, "get name", F_WHOLE, "set name %s"},
+  {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE, 0, "get tx", F_WHOLE, "set tx %s"},
+  {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
+  {"lat", K_STRING, 1, 12, nullptr, KF_WRITABLE, 0, "get lat", F_WHOLE, "set lat %s", "latitude"},
+  {"lon", K_STRING, 1, 12, nullptr, KF_WRITABLE, 0, "get lon", F_WHOLE, "set lon %s", "longitude"},
+  {"repeat", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get repeat", F_WHOLE, "set repeat %s"},
+  {"advert.interval", K_INT, 0, 240, nullptr, KF_WRITABLE, 0, "get advert.interval", F_WHOLE,
+   "set advert.interval %s"},
+  {"flood.advert.interval", K_INT, 0, 168, nullptr, KF_WRITABLE, 0, "get flood.advert.interval", F_WHOLE,
+   "set flood.advert.interval %s"},
+  {"flood.max", K_INT, 0, 64, nullptr, KF_WRITABLE, 0, "get flood.max", F_WHOLE, "set flood.max %s"},
+  {"loop.detect", K_ENUM, 0, 0, "off|minimal|moderate|strict", KF_WRITABLE, 0, "get loop.detect", F_WHOLE,
+   "set loop.detect %s"},
+  {"allow.read.only", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get allow.read.only", F_WHOLE,
+   "set allow.read.only %s"},
+  {"owner.info", K_STRING, 0, 119, nullptr, KF_WRITABLE, 0, "get owner.info", F_WHOLE, "set owner.info %s"},
+};
+const size_t N_SERVER_KEYS = sizeof(SERVER_KEYS) / sizeof(SERVER_KEYS[0]);
 
 namespace {
 // A plain decimal ("869.618", "125", "250.0") within [lo, hi]; *end gets the first character after it.
@@ -58,6 +80,13 @@ bool decimal(const char* s, const char** end, double lo, double hi) {
 }  // namespace
 
 bool checkFormat(const char* format, const char* value) {
+  const bool lat = strcmp(format, "latitude") == 0, lon = strcmp(format, "longitude") == 0;
+  if (lat || lon) {
+    const char* p = value;
+    if (*p == '-') p++;
+    const double lim = lat ? 90 : 180;
+    return decimal(p, &p, 0, lim) && *p == 0;
+  }
   if (strcmp(format, "freq,bw,sf,cr") != 0) return false;
   const char* p = value;
   const double lo[] = {100, 7, 5, 5}, hi[] = {1000, 500, 12, 8};
@@ -74,6 +103,10 @@ const size_t LINE_MAX = 160;
 const size_t VALUE_MAX = 64;
 
 ConfigHost* hostOf(OpContext& c) { return static_cast<ConfigHost*>(c.user); }
+const KeyDef* tableOf(const ConfigHost* h, size_t* n) {
+  *n = h->keys ? h->nkeys : NKEYS;
+  return h->keys ? h->keys : KEYS;
+}
 
 // "<reason>:<key>" for the result's error; the dispatcher copies it out before the next request.
 char g_error[80];
@@ -173,7 +206,7 @@ bool cliValue(const JsonDoc& d, int t, const KeyDef& k, char* out, size_t cap, c
     case K_BOOL: {
       bool b;
       if (!jsonGetBool(d, t, &b)) { *why = "not-a-boolean"; return false; }
-      const bool onoff = strstr(k.set_line, " tls ") != nullptr;   // the CLI's word for this key
+      const bool onoff = (k.flags & KF_ONOFF) != 0;   // the CLI's word for this key
       snprintf(out, cap, "%s", onoff ? (b ? "on" : "off") : (b ? "1" : "0"));
       return true;
     }
@@ -212,11 +245,13 @@ bool cliOk(const char* reply) { return strncmp(reply, "OK", 2) == 0 || strncmp(r
 
 }  // namespace
 
-const KeyDef* findKey(const char* key, size_t len, unsigned* index) {
-  for (size_t i = 0; i < NKEYS; i++)
-    if (matches(KEYS[i].key, key, len, index) && *index <= KEYS[i].idx_max) return &KEYS[i];
+const KeyDef* findKey(const KeyDef* table, size_t n, const char* key, size_t len, unsigned* index) {
+  for (size_t i = 0; i < n; i++)
+    if (matches(table[i].key, key, len, index) && *index <= table[i].idx_max) return &table[i];
   return nullptr;
 }
+
+const KeyDef* findKey(const char* key, size_t len, unsigned* index) { return findKey(KEYS, NKEYS, key, len, index); }
 
 bool parseField(uint8_t field, const char* reply, char* out, size_t cap, bool* is_null) {
   *is_null = false;
@@ -272,14 +307,16 @@ bool parseField(uint8_t field, const char* reply, char* out, size_t cap, bool* i
 Status opConfigSchema(OpContext& c) {
   int64_t cursor = 0;
   const int ct = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "cursor") : -1;
-  if (ct >= 0 && !jsonGetInt(*c.doc, ct, 0, (int64_t)NKEYS, &cursor)) return ST_INVALID;
+  size_t nk;
+  const KeyDef* tk = tableOf(hostOf(c), &nk);
+  if (ct >= 0 && !jsonGetInt(*c.doc, ct, 0, (int64_t)nk, &cursor)) return ST_INVALID;
   JsonWriter& w = *c.out;
   w.key("profile"); w.str("config/1.0");
   w.key("keys"); w.beginArray();
   size_t i = (size_t)cursor;
-  for (unsigned n = 0; i < NKEYS && n < SCHEMA_PAGE; i++, n++) writeDef(w, KEYS[i]);
+  for (unsigned n = 0; i < nk && n < SCHEMA_PAGE; i++, n++) writeDef(w, tk[i]);
   w.endArray();
-  w.key("next"); if (i < NKEYS) w.num((int64_t)i); else w.null();
+  w.key("next"); if (i < nk) w.num((int64_t)i); else w.null();
   return ST_OK;
 }
 
@@ -298,7 +335,9 @@ Status opConfigGet(OpContext& c) {
     if (!jsonGetString(d, jsonElem(d, keys, i), key, sizeof(key), CS_NAME, 1)) return ST_INVALID;
     unsigned idx;
     bool is_null;
-    const KeyDef* k = findKey(key, strlen(key), &idx);
+    size_t nk;
+    const KeyDef* tk = tableOf(h, &nk);
+    const KeyDef* k = findKey(tk, nk, key, strlen(key), &idx);
     if (k) lineFor(line, sizeof(line), k->get_line, idx, nullptr);
     if (!k) why[i] = 1;
     else if (!h->allow(h->user, line)) why[i] = 2;
@@ -331,7 +370,9 @@ Status opConfigApply(OpContext& c) {
   for (int i = 0, t = set + 1; i < d.tok[set].size; i++, t = jsonSkip(d, t + 1)) {
     if (!jsonGetString(d, t, key, sizeof(key), CS_NAME, 1)) return ST_INVALID;
     unsigned idx;
-    const KeyDef* k = findKey(key, strlen(key), &idx);
+    size_t nk;
+    const KeyDef* tk = tableOf(h, &nk);
+    const KeyDef* k = findKey(tk, nk, key, strlen(key), &idx);
     const char* why = nullptr;
     if (!k) { c.error = keyError("unknown-key", key); return ST_INVALID; }
     if (!(k->flags & KF_WRITABLE)) { c.error = keyError("read-only", key); return ST_INVALID; }
@@ -348,7 +389,9 @@ Status opConfigApply(OpContext& c) {
   for (int i = 0, t = set + 1; i < d.tok[set].size; i++, t = jsonSkip(d, t + 1)) {
     jsonGetString(d, t, key, sizeof(key), CS_NAME, 1);
     unsigned idx;
-    const KeyDef* k = findKey(key, strlen(key), &idx);
+    size_t nk;
+    const KeyDef* tk = tableOf(h, &nk);
+    const KeyDef* k = findKey(tk, nk, key, strlen(key), &idx);
     const char* why = nullptr;
     cliValue(d, t + 1, *k, val, sizeof(val), &why);
     lineFor(line, sizeof(line), k->set_line, idx, val);

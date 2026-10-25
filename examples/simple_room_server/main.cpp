@@ -28,6 +28,23 @@ void halt() {
 }
 
 static char command[MAX_POST_TEXT_LEN+1];
+#ifdef ENABLE_MECON_IFACE
+  // The device interface on the console (docs/contract/DEVICE_INTERFACE.md section 7): "mecon> " lines.
+  #include <helpers/iface/ConsoleIface.h>
+  #include <helpers/iface/DeviceMeta.h>
+  static Iface::ConsoleIface the_iface;
+  static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
+    char cmd[160], out[160];
+    snprintf(cmd, sizeof(cmd), "%s", line);
+    out[0] = 0;
+    the_mesh.handleCommand(0, cmd, out);   // the local console: the CLI gate decides it as the cable
+    snprintf(reply, cap, "%s", out);
+    memset(out, 0, sizeof(out));
+    return strncmp(reply, "??", 2) != 0 && strcmp(reply, "Unknown command") != 0;
+  }
+  static uint8_t ifacePosture(void*) { return the_mesh.getNodePrefs()->posture; }
+  static uint16_t ifaceBattery(void*) { return board.getBattMilliVolts(); }
+#endif
 #ifdef ETHERNET_ENABLED
 static char ethernet_command[MAX_POST_TEXT_LEN+1];
 #endif
@@ -93,6 +110,16 @@ void setup() {
   sensors.begin();
 
   the_mesh.begin(fs);
+#ifdef ENABLE_MECON_IFACE
+  {
+    uint8_t device_id[16];
+    uint32_t epoch = 0;
+    Iface::bootDeviceMeta(fs, &fast_rng, device_id, &epoch);   // a failed save still leaves this boot's values
+    Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "room", board.getManufacturerName(),
+                                       the_mesh.self_id.pub_key, nullptr };
+    the_iface.begin(host, device_id, epoch);
+  }
+#endif
   BootPresence::end();
 
   mecon::boot::mark(mecon::boot::MESH, millis());
@@ -123,6 +150,11 @@ void loop() {
     command[0] = 0;
     len = 0;
   }
+#ifdef ENABLE_MECON_IFACE
+  // A "mecon> " line: past its prefix the interface takes the characters, unechoed, up to its own longer bound.
+  while (the_iface.collecting() && Serial.available()) the_iface.feed(Serial.read(), Serial);
+  if (the_iface.collecting()) len = 0;
+#endif
   while (Serial.available() && len < sizeof(command)-1) {
     char c = Serial.read();
     if (c != '\n') {
@@ -130,6 +162,15 @@ void loop() {
       command[len] = 0;
     }
     Serial.print(c);
+#ifdef ENABLE_MECON_IFACE
+    if (len == (int)Iface::ConsoleIface::PREFIX_LEN && memcmp(command, Iface::ConsoleIface::PREFIX, len) == 0) {
+      command[0] = 0;
+      len = 0;
+      the_iface.startLine();
+      while (the_iface.collecting() && Serial.available()) the_iface.feed(Serial.read(), Serial);
+      break;
+    }
+#endif
   }
   if (len == sizeof(command)-1) {  // buffer full: treat as a completed line
     command[sizeof(command)-2] = '\r';  // place end-of-line marker inside the buffer
@@ -173,6 +214,9 @@ void loop() {
   ui_task.loop();
 #endif
   rtc_clock.tick();
+#ifdef ENABLE_MECON_IFACE
+  the_iface.loop(millis(), Serial);
+#endif
   board.loop();
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();

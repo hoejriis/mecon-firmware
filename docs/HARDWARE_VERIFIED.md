@@ -39,6 +39,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | ESP-IDF 5.3: battery reading | 4,226 mV (4,244 mV on 2.0.17 the same hour) | 2026-10-24, 114feab6 |
 | ESP-IDF 5.3: loop task stack (standalone) | least free since boot (`loop_stack_free`): BLE idle 5,472 B, after a PIN pairing and CLI over BLE 5,424 B, Wi-Fi + TLS MQTT 5,496 B (2.0.17 with the same reporting: 5,492 / 5,476 / 5,540 B) | 2026-10-24, 8c192a4a |
 | Device interface (standalone) | every request fixture of `docs/contract/fixtures/requests.json` plus the health stream, through `tools/mecon_iface_hw.py`: 24 of 24 over USB, 24 of 24 over BLE in three runs with no reset between them (so the retried `config.apply` got its stored result) | 2026-10-24, 9f7b2bb7 |
+| Device interface (Repeater build, USB console) | every request fixture for the Repeater role plus the health stream, `mecon> ` lines through `tools/mecon_iface_hw.py console`: 24 of 24 | 2026-10-25, 6b3f33fc |
 
 ## Heltec V4 (v4test)
 
