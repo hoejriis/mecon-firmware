@@ -184,11 +184,10 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).
-  if (self->_dep_ls != Dep::LS_ABSENT && !self->_signed && op.priv != PRIV_READ &&
-      strcmp(op.name, "deployment.provision") != 0 && strcmp(op.name, "deployment.reset") != 0) {
-    self->_deny = self->_dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";
-    if (self->_dep) self->_dep->auth_rejections++;
-    return false;
+  switch (self->_auth.preAuthorize(op, &self->_deny)) {
+    case Iface::DeployAuth::PRE_ALLOW: return true;
+    case Iface::DeployAuth::PRE_DENY: return false;
+    case Iface::DeployAuth::PRE_TABLE: break;
   }
   const uint8_t cls = op.priv == PRIV_READ ? Cli::C_READ : op.priv == PRIV_WRITE ? Cli::C_WRITE : Cli::C_POSTURE;
   return Cli::decide(self->_ctx, cls).allow;
@@ -199,6 +198,7 @@ const char* MeconIface::denyReason(void* user) { return static_cast<MeconIface*>
 int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                             size_t cap, ResultCache* cache) {
   _ctx = ctx;
+  _auth.setContext(ctx);
   _caller = caller;
   _cur_link = link;
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
@@ -209,15 +209,15 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                          size_t cap) {
   _ctx = ctx;
+  _auth.setContext(ctx);
   _caller = caller;
   _cur_link = link;
   if (!_env_checked) refreshEnvironment(millis());
   if (!_cache) _cache = new (std::nothrow) ResultCache();   // 3.1 KB, only once the interface is used
   if (!_cache) return writeResult(out, cap, "", ST_BUSY, nullptr, "no-memory");
   char* nonce = nonceOf(link);
-  if (!nonce[0]) issueNonce(nonce);   // issued when the link's first request arrives
-  if (isWrapper(msg, len)) return dispatchSigned(ctx, caller, link, msg, len, out, cap);
-  _signed = false;
+  if (!nonce[0]) Iface::DeployAuth::issueNonce(nonce);   // issued when the link's first request arrives
+  if (Iface::DeployAuth::isWrapper(msg, len)) return dispatchSigned(ctx, caller, link, msg, len, out, cap);
   return runDispatch(ctx, caller, link, msg, len, out, cap, _cache);
 }
 

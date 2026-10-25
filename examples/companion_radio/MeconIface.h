@@ -9,11 +9,22 @@
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
-#include <helpers/deployment/DepState.h>
-#include <helpers/deployment/DepWrapper.h>
+#include <helpers/iface/DeployAuth.h>
 
 class MyMesh;
 class BaseSerialInterface;
+class DataStore;
+
+// The Companion's DataStore as the Deployment record's file store (the shared layer in helpers/iface/DeployAuth).
+class DataStoreCopies : public Dep::CopyStore {
+public:
+  void set(DataStore* s) { _s = s; }
+  bool read(int slot, uint8_t* buf, size_t cap, size_t* len, bool* exists, Dep::StoreFile which) override;
+  bool write(int slot, const uint8_t* frame, size_t len, Dep::StoreFile which) override;
+  bool removeBoth(int newer_slot, Dep::StoreFile which) override;
+private:
+  DataStore* _s = nullptr;
+};
 
 #define CMD_MECON 0x7F   // the one Companion code the interface uses, both directions
 
@@ -71,17 +82,17 @@ public:
   static Iface::Status opDeployReset(Iface::OpContext& c);
   // Whether the device holds a Deployment record, healthy or corrupt: an unsigned caller then changes nothing
   // (AUTHORITY.md section 9). The CLI privilege table takes it as Context.enrolled.
-  bool enrolled() const { return _dep_ls != Dep::LS_ABSENT; }
+  bool enrolled() const { return _auth.enrolled(); }
   // After a factory reset has formatted the storage: the provisioned marker goes with the record, and the state in
   // memory follows what is now stored.
-  void onFactoryReset();
+  void onFactoryReset() { _auth.onFactoryReset(); }
   // The rescue console's rebuild must not unenrol (section 9, 11): the record's two copies, the marks' two copies and
   // the provisioned marker are read before it, and written back after. A null snapshot means something exists that
   // cannot be read; the rebuild is then refused.
-  struct RecordSnapshot;
-  RecordSnapshot* snapshotRecord();
-  bool restoreRecord(RecordSnapshot* s);
-  static void freeSnapshot(RecordSnapshot* s);
+  typedef Iface::DeployAuth::RecordSnapshot RecordSnapshot;
+  RecordSnapshot* snapshotRecord() { return _auth.snapshotRecord(); }
+  bool restoreRecord(RecordSnapshot* s) { return _auth.restoreRecord(s); }
+  static void freeSnapshot(RecordSnapshot* s) { Iface::DeployAuth::freeSnapshot(s); }
 
   static const size_t QUEUE_BYTES = 2048;   // per transport, allocated on its first message
   static const size_t RESULT_MAX = 1536;    // largest result an operation writes in one piece (pages above that)
@@ -107,15 +118,10 @@ private:
                   Iface::ResultCache* cache);
   int dispatchSigned(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                      size_t cap);
-  static bool isWrapper(const char* msg, size_t len);
+  struct SignedRun;
+  static int runSigned(void* user, const Cli::Context& ctx, const char* body, size_t len, char* out, size_t cap);
   static const char* denyReason(void* self);
   char* nonceOf(Link* link) { return link ? link->nonce : _mqtt_nonce; }
-  void issueNonce(char slot[33]);
-  bool persistMarks();
-  struct DepWork;
-  bool readCurrent(DepWork* w);
-  bool commit(DepWork* w);
-  bool saveMarksFor(const Dep::AuthoritySet& set);
   bool queueResult(Link& l, const char* msg, size_t len);
   bool ensureQueue(Link& l);
 
@@ -141,13 +147,10 @@ private:
   uint32_t _env_at = 0;
   bool writeStream(int stream, Iface::JsonWriter& w);
   uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
-  Dep::DepState* _dep = nullptr;            // the loaded record; null with no record (a standalone device) or a corrupt one
-  Dep::LoadState _dep_ls = Dep::LS_ABSENT;  // LS_ABSENT: no Deployment; LS_CORRUPT: something exists, nothing usable
-  bool _signed = false;                     // the request being dispatched passed AUTHORITY.md section 7
+  Iface::DeployAuth _auth;                  // the record, its marks and the signed-request checks (shared with the servers)
+  DataStoreCopies _copies;
   const char* _deny = nullptr;              // why authorize() refused, when it has a contract code for it
   char _mqtt_nonce[33] = {0};               // the MQTT session is one link
-  uint32_t _last_update_ms = 0;             // rate limit of deployment.authority_update (flash wear)
-  bool _have_update = false;
   char _id_hex[33] = {0};
   uint32_t _epoch = 0;
 };

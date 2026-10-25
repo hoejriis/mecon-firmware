@@ -3,6 +3,7 @@
 #include <helpers/iface/DeviceMeta.h>
 #include <helpers/AtomicFile.h>
 #include <helpers/deployment/DepRecord.h>
+#include <helpers/deployment/DepFsStore.h>
 
 #if defined(EXTRAFS) || defined(QSPIFLASH)
   #define MAX_BLOBRECS 100
@@ -254,39 +255,19 @@ bool DataStore::bootDeviceMeta(mesh::RNG* rng, uint8_t device_id[16], uint32_t* 
   return Iface::bootDeviceMeta(_fs, rng, device_id, epoch);
 }
 
-static const char* depPath(int slot, DataStore::DepFile which) {
-  if (which == DataStore::DEP_MARKS) return slot == 0 ? "/mecon_depm_a" : "/mecon_depm_b";
-  return slot == 0 ? "/mecon_dep_a" : "/mecon_dep_b";
-}
-
 bool DataStore::readDeploymentCopy(int slot, uint8_t* buf, size_t cap, size_t* len, bool* exists, DepFile which) {
-  const char* path = depPath(slot, which);
-  *len = 0;
-  AtomicFile::recover(_fs, path);
-  *exists = AtomicFile::exists(_fs, path);
-  if (!*exists) return false;
-  File file = openRead(_fs, path);
-  if (!file) return false;
-  size_t size = file.size();
-  bool ok = size <= cap && file.read(buf, size) == (int)size;
-  file.close();
-  if (ok) *len = size;
-  return ok;
+  Dep::FsStore fs(_fs);
+  return fs.read(slot, buf, cap, len, exists, which == DEP_MARKS ? Dep::SF_MARKS : Dep::SF_RECORD);
 }
 
 bool DataStore::writeDeploymentCopy(int slot, const uint8_t* frame, size_t len, DepFile which) {
-  return AtomicFile::save(_fs, depPath(slot, which), [frame, len](Stream& s) { return s.write(frame, len) == len; });
+  Dep::FsStore fs(_fs);
+  return fs.write(slot, frame, len, which == DEP_MARKS ? Dep::SF_MARKS : Dep::SF_RECORD);
 }
 
 bool DataStore::removeDeploymentCopies(int newer_slot, DepFile which) {
-  // With any .tmp / .new beside them: a leftover verified .new would otherwise be swapped back in at the next boot by
-  // AtomicFile::recover and resurrect the record a reset removed. The older copy goes first, so a power cut between the
-  // two deletions leaves the newer one rather than bringing the older back.
-  int order[2];
-  Dep::removalOrder(newer_slot, order);
-  AtomicFile::discard(_fs, depPath(order[0], which));
-  AtomicFile::discard(_fs, depPath(order[1], which));
-  return !AtomicFile::exists(_fs, depPath(0, which)) && !AtomicFile::exists(_fs, depPath(1, which));
+  Dep::FsStore fs(_fs);
+  return fs.removeBoth(newer_slot, which == DEP_MARKS ? Dep::SF_MARKS : Dep::SF_RECORD);
 }
 
 bool DataStore::savePrefs(NodePrefs& _prefs) {
