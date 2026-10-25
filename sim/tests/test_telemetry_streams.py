@@ -80,28 +80,28 @@ def test_each_stream_sends_its_first_event_at_once(nodes, make, stream):
 
 def test_radio_counts_a_transmission_companion(nodes):
     n, c, i = companion(nodes, "radc")
-    before = check(first_event(i, "radio"), "radio")["tx"]["flood"]
+    before = check(first_event(i, "radio"), "radio")["tx"]
     c.request(bytes([7, 1]))   # CMD_SEND_SELF_ADVERT, flood
     after = before
     end = time.time() + 30
     while time.time() < end and after == before:
         m = i.read_message(1.0)
         if m and m.get("ev") == "radio":
-            after = check(m, "radio")["tx"]["flood"]
-    assert after == before + 1, (before, after)
+            after = check(m, "radio")["tx"]
+    assert after["flood"] == before["flood"] + 1 and after["direct"] == before["direct"], (before, after)
 
 
 def test_radio_counts_a_transmission_repeater(nodes):
     n, cli, i = repeater(nodes, "radr")
-    before = check(first_event(i, "radio"), "radio")["tx"]["flood"]
-    assert cli.command("advert").startswith("OK"), "a flood advert"
+    before = check(first_event(i, "radio"), "radio")["tx"]
+    cli.command("advert.zerohop")   # zero-hop adverts go out direct (the sim counts two packets)
     after = before
     end = time.time() + 30
     while time.time() < end and after == before:
         m = i.read_message(1.0)
         if m and m.get("ev") == "radio":
-            after = check(m, "radio")["tx"]["flood"]
-    assert after == before + 1, (before, after)
+            after = check(m, "radio")["tx"]
+    assert after["direct"] > before["direct"] and after["flood"] == before["flood"], (before, after)
 
 
 @pytest.mark.parametrize("make", [companion, repeater], ids=["companion", "repeater"])
@@ -113,3 +113,11 @@ def test_the_stream_table_bounds_requests(nodes, make):
     assert r["status"] == "invalid", r
     r = i.request("sub.stop", {"stream": "radio"})
     assert r["status"] == "ok" and r["result"] == {"stream": "radio", "active": False}, r
+
+
+def test_a_new_subscription_after_a_stop_gets_an_event_at_once(nodes):
+    """The first event of a stream that has run before is not held back to its old schedule."""
+    n, c, i = companion(nodes, "resub")
+    check(first_event(i, "power"), "power")          # period 3600 s: the next one is an hour away
+    assert i.request("sub.stop", {"stream": "power"})["status"] == "ok"
+    check(first_event(i, "power", timeout=10), "power")
