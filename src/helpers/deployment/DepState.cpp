@@ -54,6 +54,7 @@ void depFree(DepState* s) { delete s; }
 void depLoadMarks(DepState* s, const Copy& a, const Copy& b) {
   if (!s || s->state != LS_OK) return;
   LoadedMarks lm;
+  memset(&lm, 0, sizeof(lm));   // loadMarks leaves marks unset when they are absent or corrupt
   loadMarks(a, b, &lm);
   s->marks_lost = lm.state != LS_OK;
   s->marks_slot = lm.state == LS_OK ? lm.slot : -1;
