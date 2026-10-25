@@ -940,12 +940,12 @@ mutate deploy_reset_in_hardened examples/companion_radio/MeconDeploy.cpp '  if (
     if (m->_dep) m->_dep->auth_rejections++;
     c.error = corrupt' $DA::test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_waits_for_local_unlock
 mutate deploy_factory_reset_keeps_the_marker examples/companion_radio/MeconDeploy.cpp '  Dep::markerClear();   // the format does not touch it; only a reset and the factory reset do' '' $DA::test_a_factory_reset_over_the_cable_clears_the_marker_and_the_record
-mutate deploy_ble_factory_reset_when_enrolled examples/companion_radio/MyMesh.cpp '    if (frame == Cli::FR_FACTORY_RESET) fctx.enrolled = _iface.enrolled();' '' $DA::test_a_ble_factory_reset_is_refused_once_enrolled_and_audited
+mutate deploy_ble_factory_reset_when_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '' $DA::test_a_ble_factory_reset_is_refused_once_enrolled_and_audited
 mutate deploy_rebuild_without_reading_the_record examples/companion_radio/MyMesh.cpp '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
       if (!snap) {' '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
       if (false) {' $DA::test_a_rescue_rebuild_that_cannot_read_the_record_refuses_and_changes_nothing
 mutate deploy_cli_gate_not_told_the_device_is_enrolled examples/companion_radio/MyMesh.cpp '    ctx.enrolled = _iface.enrolled();   // the one place that gates a command line: every adapter and the rescue console' '    ctx.enrolled = false;' $DA::test_an_unsigned_cli_write_over_the_usb_frame_is_refused_once_enrolled_but_a_read_works
-mutate deploy_enrolled_rule_dropped_from_the_table src/helpers/cli/CliPolicy.h '  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && cls != C_REBOOT &&' '  if (false && c.enrolled && p != P_SIGNED && cls != C_READ && cls != C_REBOOT &&' unit:test_cli_engine
+mutate deploy_enrolled_rule_dropped_from_the_table src/helpers/cli/CliPolicy.h '  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&' '  if (false && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&' unit:test_cli_engine
 mutate deploy_enrolled_rule_takes_the_cables_destructive_class src/helpers/cli/CliPolicy.h '      !(p == P_CABLE && cls == C_DESTRUCTIVE))' '      false)' unit:test_cli_engine
 mutate deploy_marker_alone_reads_as_absent src/helpers/deployment/DepMarker.h 'return (ls == LS_ABSENT && m == MK_PRESENT) ? LS_CORRUPT : ls;' 'return ls;' unit:test_dep_state
 mutate deploy_remote_reboot_unsigned_when_enrolled src/helpers/cli/CliPolicy.h ' && !(cls == C_REBOOT && !c.remote) &&' ' && !(cls == C_REBOOT) &&' unit:test_cli_engine
