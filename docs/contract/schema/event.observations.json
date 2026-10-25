@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.observations.json",
+  "title": "Data of an observations event (TELEMETRY.md section 3)",
+  "description": "One received packet as the radio heard it, before parsing. raw is the packet's bytes in hex (the mesh's own ciphertext: nothing is decrypted). dropped counts the packets not sent since the previous event (over the stream's rate, or while the transport could not take one).",
+  "type": "object",
+  "required": [
+    "raw",
+    "len",
+    "rssi_dbm",
+    "snr_db",
+    "dropped"
+  ],
+  "properties": {
+    "raw": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{2})*$"
+    },
+    "len": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "rssi_dbm": {
+      "type": "integer"
+    },
+    "snr_db": {
+      "type": "number"
+    },
+    "dropped": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

@@ -181,6 +181,8 @@ def assert_case(i, case, answer):
 def test_every_request_fixture_against_the_device(nodes):
     n, (c, i) = start(nodes, "fx")
     for case in fixture("requests.json")["cases"]:
+        if "companion" not in case.get("roles", ["companion"]):
+            continue
         if "raw" in case:
             i.send_raw(case["raw"].encode())
             answer = i.wait_result(case["expect"].get("id", ""))
@@ -484,3 +486,66 @@ def test_health_events_over_mqtt(nodes, tmp_path, broker):
     assert len(got) == 2, got
     assert got[1]["seq"] == got[0]["seq"] + 1
     assert not mecon_schema.check(got[0]["data"], mecon_schema.load("event.health.json"))
+
+
+# ------------------------------------------------------------------ get device.id: how a Backend learns device_id
+# for a device upgraded in place, over the CLI paths it already has
+
+
+def test_get_device_id_on_the_cli_matches_hello(nodes):
+    n, (c, i) = start(nodes, "did")
+    h = i.request("hello")["result"]
+    assert c.cli("get device.id") == "> " + h["device_id"]
+
+
+@pytest.mark.timescale(10)
+def test_get_device_id_over_the_legacy_cli_topic(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "didm", b)
+    r = b.cli_request(c.pub_key[:4].hex(), "get device.id")
+    assert r is not None and r["status"] == "ok" and r["reply"] == "> " + dev, r
+
+
+
+# ------------------------------------------------------------------ the connectivity stream (TELEMETRY.md)
+
+def next_event(i, stream, timeout):
+    end = time.time() + timeout
+    while time.time() < end:
+        m = i.read_message(1.0)
+        if m and m.get("ev") == stream:
+            return m
+    return None
+
+
+@pytest.mark.timescale(10)
+def test_connectivity_reports_the_links_and_each_change_at_once(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "conn", b)
+    assert "stream.connectivity" in i.request("hello")["result"]["capabilities"]
+    r = i.request("sub.start", {"stream": "connectivity", "period_s": 3600, "lifetime_s": 600})
+    assert r["status"] == "ok", r
+    e = next_event(i, "connectivity", 20)
+    assert e is not None, "no first event"
+    d = e["data"]
+    assert not mecon_schema.check(d, mecon_schema.load("event.connectivity.json")), d
+    assert d["mode"] == "wifi"
+    assert d["wifi"]["state"] == "connected" and d["wifi"]["ssid"] == "sim" and d["wifi"]["ip"], d
+    assert d["mqtt"]["state"] == "connected" and d["mqtt"]["tls"] == "verified", d
+    assert d["mqtt"]["broker"] == "%s:%d" % (b.ip, b.port) and d["mqtt"]["reconnects"] == 0, d
+    assert "pwd" not in json.dumps(d), "no password, ever"
+    # The broker goes away: the next event comes with the change, not an hour later.
+    b.stop()
+    e = next_event(i, "connectivity", 30)
+    assert e is not None, "no event on the change"
+    assert e["data"]["mqtt"]["state"] != "connected", e
+    # It comes back: one reconnect, reported with the change.
+    b.start()
+    back = None
+    end = time.time() + 90
+    while time.time() < end and back is None:
+        e = next_event(i, "connectivity", 5)
+        if e and e["data"]["mqtt"]["state"] == "connected":
+            back = e
+    assert back is not None, "the session never came back"
+    assert back["data"]["mqtt"]["reconnects"] == 1, back

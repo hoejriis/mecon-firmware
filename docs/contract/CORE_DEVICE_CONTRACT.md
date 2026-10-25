@@ -1,5 +1,7 @@
 # Core device and health contract
 
+> **Precedence.** Target document. The implemented `hello`, `status.get` and `health` stream, and their field names (for example `node_key`, `uptime_s`), are in [DEVICE_INTERFACE](DEVICE_INTERFACE.md) and its [schemas](schema). Where field names or groupings here differ, DEVICE_INTERFACE.md wins. Telemetry beyond `health` is planned (Issue #96).
+
 ## Next-stage telemetry scope — agreed 24 October 2026
 
 The [P3 full-telemetry issue (#96)](https://github.com/hoejriis/mecon-firmware/issues/96) expands this target into one capability-dependent catalogue covering observations, runtime/resources, radio/connectivity, inventories, battery/power, environmental sensors/location, logs/events and screen/framebuffer data. Missing hardware capabilities are omitted explicitly; unknown, zero, stale and failed readings remain distinguishable.
@@ -8,7 +10,7 @@ Screen write-back is **device-to-Backend diagnostic/logging telemetry**: snapsho
 
 The same logical catalogue is available over MQTT and over USB/BLE through a **Backend-dependent Reader bridge**. Transport adapters may impose different supported sizes/rates, not different meanings. Sequence/epoch/provenance, subscriptions, bounded buffering, drop/gap reporting and non-blocking RF behavior are part of the contract work in [#94](https://github.com/hoejriis/mecon-firmware/issues/94). This section defines the next implementation scope; it does not claim the full catalogue is already implemented.
 
-> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../../README.md) and the [documentation index](../README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (planned and MECON-specific work; not implemented here unless a section says so).** The tagged releases v0.1.0 to v0.1.2 are source-only pre-releases without the device interface. Current `main` implements the generic [device interface v1](DEVICE_INTERFACE.md) and the standalone features in the [README](../../README.md), with real-board evidence in [HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md). The generic work still planned (Issues #95, #96, #109, #110, #114 to #117) and the MECON-specific work (Issues #118 to #123) described here are not implemented. Release timing is a separate decision. This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 ## Identity
 
@@ -23,7 +25,7 @@ A device reports:
 - exact `meshcore_base_version`;
 - MECON contract/profile versions.
 
-For MECON 1.0, supported release builds identify a pinned **MeshCore 1.18** base from upstream `main`.
+For MECON target, supported release builds identify a pinned **MeshCore 1.18** base from upstream `main`.
 
 Backend enrollment/database identifiers are not firmware identity and must not replace `device_id` or the native node key.
 
@@ -54,7 +56,7 @@ These are normative consumer rules:
 
 ## Health fields
 
-MECON 1.0 health/status preserves the diagnostic coverage proven useful in the private MVP. Exact field grouping may evolve only with the health profile version; the following logical values are required where measurable/applicable:
+MECON target health/status preserves the diagnostic coverage proven useful in the private MVP. Exact field grouping may evolve only with the health profile version; the following logical values are required where measurable/applicable:
 
 ### Runtime
 
@@ -86,7 +88,7 @@ Configured SSID and actual associated SSID are separate facts.
 - connection/reconnect/error counters sufficient to diagnose flapping;
 - publish counters for consequential/observation traffic.
 
-MECON 1.0 does not report an array of simultaneously connected broker sessions because only one session is active. (The reference firmware's status still has `brokers[]` entries holding per-profile state and counters, of which only one is connected, and a `connection_path` object `{role, broker_profile_id, state}`.)
+MECON target does not report an array of simultaneously connected broker sessions because only one session is active. (The reference firmware's status still has `brokers[]` entries holding per-profile state and counters, of which only one is connected, and a `connection_path` object `{role, broker_profile_id, state}`.)
 
 ### BLE
 
@@ -131,7 +133,7 @@ Companion status reports:
 - protected/managed contact count where supported;
 - contacts evicted since boot where eviction exists.
 
-Roles with no contact table omit these fields rather than report `0/0`. Capacity is measured after the IDF5/NimBLE migration and reported by the running build; MECON 1.0 does **not** normatively fix it to historical private-MVP limits.
+Roles with no contact table omit these fields rather than report `0/0`. Capacity is measured after the IDF5/NimBLE migration and reported by the running build; MECON target does **not** normatively fix it to historical private-MVP limits.
 
 ### Status coalescing
 
@@ -147,7 +149,7 @@ Where ESP-IDF/platform support permits, preserve a bounded record of the previou
 
 ## UI contract
 
-MECON 1.0 preserves the released MeshCore 1.18 Companion/Repeater screen/button model and adds only:
+MECON target preserves the released MeshCore 1.18 Companion/Repeater screen/button model and adds only:
 
 - `MECON <version>` at boot;
 - Wi-Fi, MQTT and BLE connection status on the existing front screen;

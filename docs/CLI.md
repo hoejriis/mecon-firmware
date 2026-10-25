@@ -35,7 +35,14 @@ A remote caller never inherits a local caller's privileges: a LoRa or MQTT calle
 | `destructive` | `erase`, `poweroff`, `shutdown`; the Companion frame `CMD_FACTORY_RESET` (a powered-off device needs someone on site, so no remote caller, a managing broker included, may) |
 | `reboot` | `reboot` (exactly; `reboot now` is a `write`) |
 
-The Companion frames that are not command lines are gated by the same table: `CMD_RUN_CLI_COMMAND` counts as `read` (may this caller reach the CLI at all), `CMD_SET_DEVICE_PIN` as `write`. Wi-Fi and MQTT passwords are `write` commands whose *read* is answered `> wifi.pwd is write-only` by the engine, or shows only `set` / `unset`: no reply on any transport carries a secret of this kind.
+The Companion frames that are not command lines are gated by the same table: `CMD_RUN_CLI_COMMAND` counts as `read` (may this caller reach the CLI at all), `CMD_SET_DEVICE_PIN` as `write`. So does every other frame that manages the device:
+
+- `write`: the frames that change settings (`CMD_SET_ADVERT_NAME`, `CMD_SET_ADVERT_LATLON`, `CMD_SET_RADIO_PARAMS`, `CMD_SET_RADIO_TX_POWER`, `CMD_SET_TUNING_PARAMS`, `CMD_SET_OTHER_PARAMS`, `CMD_SET_CHANNEL`, `CMD_SET_CUSTOM_VAR`, `CMD_SET_AUTOADD_CONFIG`, `CMD_SET_PATH_HASH_MODE`, `CMD_SET_DEFAULT_FLOOD_SCOPE`);
+- `write`: raw transmission (`CMD_SEND_RAW_DATA`, `CMD_SEND_RAW_PACKET`, `CMD_SEND_CONTROL_DATA`) and signing with the node key (`CMD_SIGN_START`, `CMD_SIGN_DATA`, `CMD_SIGN_FINISH`);
+- `write`: the administration of another node under this node's identity: `CMD_SEND_BINARY_REQ`, `CMD_SEND_TXT_MSG` with a CLI text type, and `CMD_SEND_TXT_MSG` of any type to a repeater, which runs every text from an admin as a command line;
+- `reboot`: `CMD_REBOOT`.
+
+Messaging, contact handling and reads are not gated, so the TCP port and a default-PIN BLE link keep serving the app's messaging. Two reads they are served carry no secret: the device info answers the BLE PIN as 0, and `CMD_GET_CHANNEL` answers a channel's secret as zeros (the name is enough to send and receive on it). A refused frame is audited as `app-frame` unless it has its own entry above. Wi-Fi and MQTT passwords are `write` commands whose *read* is answered `> wifi.pwd is write-only` by the engine, or shows only `set` / `unset`: no reply on any transport carries a secret of this kind.
 
 Lowering protection (`set posture normal`, and any `set posture` argument that is not `hardened`) carries a *cable only* flag: whatever the class cell says, no caller but the cable gets through.
 

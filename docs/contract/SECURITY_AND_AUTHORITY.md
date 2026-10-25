@@ -6,7 +6,7 @@
 
 Reachability is not authority. Discovering a broker, connecting to MQTT, being on the same Wi-Fi, holding a resilience-channel key or having physical proximity MUST NOT silently grant broader device administration.
 
-MECON device authority is rooted in the **Deployment** trust model frozen by the MeshContinuum Deployment authority contract (`DEPLOYMENT_AUTHORITY_CONTRACT.md`). This document defines firmware-side invariants; the cross-repository Deployment authority contract defines the exact authority objects/signatures/generations.
+MECON device authority is rooted in the **Deployment** trust model of the public [Management authority contract](AUTHORITY.md) in this repository. This document defines firmware-side invariants; that contract defines the exact authority objects, signatures, revisions and checks. *(Corrected 2026-10-25: this sentence earlier named a contract maintained in MeshContinuum. By owner decision the generic contract is now public here, and conformance with any Backend's own contract is checked under #118.)*
 
 Authority is explicit, versioned and enforced by the device. Security posture determines which local surfaces exist; it does not replace Deployment authority.
 

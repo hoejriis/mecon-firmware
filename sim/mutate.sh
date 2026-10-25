@@ -479,6 +479,16 @@ CLI_M=src/helpers/cli/CliMqtt.h
 CLI_UNIT=unit:test_cli_engine
 # table rows: a cell or a whole row loosened
 mutate table_untrusted_row_open src/helpers/cli/CliPolicy.h "/* untrusted      N */ { CLI_ROW(UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED)," "/* untrusted      N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW)," sim/tests/test_companion_transport.py sim/tests/test_postures_companion.py::test_untrusted_transport_refusals_are_audited
+# the native management frames on the TCP port and default-PIN BLE (docs/CLI.md), and the secrets their reads withhold
+FG=sim/tests/test_companion_frame_gate.py
+mutate frame_gate_radio_params_ungated examples/companion_radio/MyMesh.cpp 'case CMD_SET_ADVERT_LATLON: case CMD_SET_RADIO_PARAMS:' 'case CMD_SET_ADVERT_LATLON:' "$FG::test_management_frame_refused_over_tcp[set-radio-params]"
+mutate frame_gate_reboot_ungated examples/companion_radio/MyMesh.cpp '    case CMD_REBOOT: return Cli::FR_APP_REBOOT;' '' "$FG::test_management_frame_refused_over_tcp[reboot]"
+mutate frame_gate_cli_text_ungated examples/companion_radio/MyMesh.cpp 'if (txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND) return Cli::FR_APP_WRITE;' '(void)txt_type;' "$FG::test_management_frame_refused_over_tcp[send-cli-text]"
+mutate frame_gate_repeater_text_ungated examples/companion_radio/MyMesh.cpp 'if (to && to->type == ADV_TYPE_REPEATER) return Cli::FR_APP_WRITE;' '(void)to;' $FG::test_text_to_a_repeater_is_remote_administration
+mutate frame_gate_pin_to_untrusted examples/companion_radio/MyMesh.cpp 'const uint32_t pin = serialTrusted() ? _prefs.ble_pin : 0;' 'const uint32_t pin = _prefs.ble_pin;' $FG::test_untrusted_reads_carry_no_secrets
+mutate frame_gate_channel_secret_to_untrusted examples/companion_radio/MyMesh.cpp '      if (serialTrusted()) memcpy(&out_frame[i], channel.channel.secret, 16);
+      else memset(&out_frame[i], 0, 16);' '      memcpy(&out_frame[i], channel.channel.secret, 16);' $FG::test_untrusted_reads_carry_no_secrets
+mutate frame_gate_cable_untrusted examples/companion_radio/MyMesh.cpp '  return Cli::decide(serialContext(), Cli::C_READ).allow;' '  return false;' $FG::test_untrusted_reads_carry_no_secrets
 mutate table_untrusted_row_open_unit src/helpers/cli/CliPolicy.h "/* untrusted      N */ { CLI_ROW(UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED)," "/* untrusted      N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW)," unit:test_cli_engine
 mutate table_cable_key_in_hardened src/helpers/cli/CliPolicy.h "/* cable          H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           ALLOW,           ALLOW) }," "/* cable          H */   CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW) }," sim/tests/test_postures_companion.py::test_hardened_refuses_key_export_and_import_on_usb sim/tests/test_postures_admin.py::test_key_export_and_import_are_refused_in_hardened_even_on_the_console
 mutate table_cable_key_in_hardened_unit src/helpers/cli/CliPolicy.h "/* cable          H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           ALLOW,           ALLOW) }," "/* cable          H */   CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW) }," unit:test_cli_engine
@@ -816,16 +826,16 @@ mutate iface_auth_ignores_the_caller examples/companion_radio/MeconIface.cpp '  
 mutate iface_reply_not_bound_to_its_transport examples/companion_radio/MyMesh.h '    _serial->bindReply(src);
     _serial->writeFrame(frame, len);' '    _serial->bindReply(nullptr);
     _serial->writeFrame(frame, len);' sim/tests/test_device_interface.py::test_a_result_goes_only_to_the_transport_that_asked
-mutate iface_epoch_not_counted examples/companion_radio/DataStore.cpp '  e++;' '' sim/tests/test_device_interface.py::test_device_id_is_kept_and_epoch_counts_boots
+mutate iface_epoch_not_counted src/helpers/iface/DeviceMeta.h '  e++;' '' sim/tests/test_device_interface.py::test_device_id_is_kept_and_epoch_counts_boots
 mutate iface_hello_without_node_key examples/companion_radio/MeconIface.cpp '  w.key("node_key"); w.str(key);' '' sim/tests/test_device_interface.py::test_every_request_fixture_against_the_device
 mutate iface_config_line_check_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(static_cast<MeconIface*>(user)->_ctx, r.cls, r.flags).allow;' '  return true;' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
 mutate iface_cli_line_never_remote examples/companion_radio/MeconIface.cpp '  const bool known = mesh->handleCommand(line, self->_ctx.remote ? 1 : 0, buf);' '  const bool known = mesh->handleCommand(line, 0, buf);' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
 mutate iface_mqtt_request_topic_not_subscribed src/helpers/mqtt/MqttController.cpp '  if (_iface_fn) _psc.subscribe(_iface_req);' '' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
-mutate iface_subscription_never_lapses examples/companion_radio/MeconIface.cpp '    if (l.health.active && (int32_t)(now - l.health.until) >= 0) l.health.active = false;' '' sim/tests/test_device_interface.py::test_a_subscription_lapses_at_its_lifetime
-mutate iface_sub_stop_does_not_stop examples/companion_radio/MeconIface.cpp '  if (sub) sub->active = false;' '' sim/tests/test_device_interface.py::test_health_events_follow_a_subscription_and_stop_with_it
-mutate iface_mqtt_events_not_published examples/companion_radio/MeconIface.cpp '  if (_mqtt_health.active && _ev_publish) _ev_publish("health", ev, (size_t)n);' '' sim/tests/test_device_interface.py::test_health_events_over_mqtt
+mutate iface_subscription_never_lapses src/helpers/iface/Streams.cpp '      if (sub.active && (int32_t)(now - sub.until) >= 0) sub.active = false;' '' sim/tests/test_device_interface.py::test_a_subscription_lapses_at_its_lifetime
+mutate iface_sub_stop_does_not_stop src/helpers/iface/Streams.cpp '  if (set) set->s[s].active = false;' '' sim/tests/test_device_interface.py::test_health_events_follow_a_subscription_and_stop_with_it
+mutate iface_mqtt_events_not_published examples/companion_radio/MeconIface.cpp '    if (_mqtt_subs.s[s].active && _ev_publish) _ev_publish(STREAMS[s].name, ev, (size_t)n);' '' sim/tests/test_device_interface.py::test_health_events_over_mqtt
 mutate config_apply_skips_the_authority_check src/helpers/iface/IfaceConfig.cpp '    if (!allowed) { c.error = keyError("refused", key); return ST_REFUSED; }' '' unit:test_iface_config
-mutate config_index_unbounded src/helpers/iface/IfaceConfig.cpp 'if (matches(KEYS[i].key, key, len, index) && *index <= KEYS[i].idx_max) return &KEYS[i];' 'if (matches(KEYS[i].key, key, len, index)) return &KEYS[i];' unit:test_iface_config
+mutate config_index_unbounded src/helpers/iface/IfaceConfig.cpp 'if (matches(table[i].key, key, len, index) && *index <= table[i].idx_max) return &table[i];' 'if (matches(table[i].key, key, len, index)) return &table[i];' unit:test_iface_config
 mutate config_leading_zero_accepted src/helpers/iface/IfaceConfig.cpp '  if (dn > 3 || (dn > 1 && d[0] == ' '  if (dn > 3 || (false && d[0] == ' unit:test_iface_config
 mutate config_empty_profile_not_null src/helpers/iface/IfaceConfig.cpp '    *is_null = !(field == F_WIFI_SSID' '    *is_null = false && !(field == F_WIFI_SSID' unit:test_iface_config
 mutate config_radio_format_unchecked src/helpers/iface/IfaceConfig.cpp '      if (k.format && !checkFormat(k.format, out)) {' '      if (false) {' unit:test_iface_config
@@ -864,6 +874,42 @@ mutate dep_unknown_op_plain src/helpers/deployment/DepWrapper.cpp '  return OPC_
 mutate dep_issuer_unbound src/helpers/deployment/DepWrapper.cpp '    if (memcmp(bound_issuer, issuer, ID_LEN) != 0) { e = WR_BAD_SIGNATURE; goto done; }' '' unit:test_dep_wrapper
 mutate dep_nonce_unchecked src/helpers/deployment/DepWrapper.cpp '    if (out->cls == OPC_SENSITIVE) {' '    if (false) {' unit:test_dep_wrapper
 mutate dep_private_stream_plain src/helpers/deployment/DepWrapper.cpp '    if (strcmp(name, p) == 0) return true;' '    if (strcmp(name, p) == 0) return false;' unit:test_dep_wrapper
+# the Repeater and Room server console interface, and the per-role key table
+mutate config_onoff_word_dropped src/helpers/iface/IfaceConfig.cpp '      const bool onoff = (k.flags & KF_ONOFF) != 0;' '      const bool onoff = false;' unit:test_iface_config
+mutate config_server_table_ignored src/helpers/iface/IfaceConfig.cpp '  *n = h->keys ? h->nkeys : NKEYS;
+  return h->keys ? h->keys : KEYS;' '  *n = NKEYS; (void)h;
+  return KEYS;' unit:test_iface_config
+mutate config_latitude_unbounded src/helpers/iface/IfaceConfig.cpp '    const double lim = lat ? 90 : 180;' '    const double lim = 180;' unit:test_iface_config
+mutate console_prefix_not_handed_over examples/simple_repeater/main.cpp '      the_iface.startLine();' '      (void)0;' sim/tests/test_device_interface_server.py::test_hello_names_the_role
+mutate console_line_unbounded src/helpers/iface/ConsoleIface.cpp '  if (_len >= MAX_LINE) { _overflow = true; return; }' '  if (_len >= MAX_LINE + 4000) { _overflow = true; return; }' sim/tests/test_device_interface_server.py::test_a_line_too_long_is_refused_not_truncated
+mutate console_echo_line_not_ended src/helpers/iface/ConsoleIface.cpp '  out.print("\r\n");   // ends the console' '  // ends the console' sim/tests/test_device_interface_server.py::test_status_has_no_contact_list
+mutate console_sub_stop_ignored src/helpers/iface/ConsoleIface.cpp 'Status opSubStop(OpContext& c) { return subStop(c, &self(c)->subs(), self(c)->produced()); }' 'Status opSubStop(OpContext& c) { return subStop(c, nullptr, self(c)->produced()); }' sim/tests/test_device_interface_server.py::test_health_events_come_back_as_console_lines
+mutate console_room_reports_repeater examples/simple_room_server/main.cpp 'ifaceBattery, "room",' 'ifaceBattery, "repeater",' sim/tests/test_device_interface_server.py::test_hello_names_the_role
+# telemetry streams (docs/contract/TELEMETRY.md)
+mutate stream_first_event_not_immediate src/helpers/iface/Streams.cpp '  if (!sub.active && !def.events()) *started = s;' '  if (false) *started = s;' sim/tests/test_telemetry_streams.py::test_a_new_subscription_after_a_stop_gets_an_event_at_once
+mutate stream_power_claims_to_tell src/helpers/iface/Streams.cpp '  const bool can_tell = b.isPwrMgtInitialised();' '  const bool can_tell = true;' sim/tests/test_telemetry_streams.py::test_each_stream_sends_its_first_event_at_once
+mutate stream_unknown_reset_reason_reported src/helpers/iface/Streams.cpp '  const bool known = why && strcmp(why, "Not available") != 0;' '  const bool known = why != nullptr;' sim/tests/test_telemetry_streams.py::test_each_stream_sends_its_first_event_at_once
+mutate stream_tx_flood_direct_swapped src/helpers/iface/Streams.cpp '  w.key("flood"); w.unum(d.getNumSentFlood());' '  w.key("flood"); w.unum(d.getNumSentDirect());' sim/tests/test_telemetry_streams.py::test_radio_counts_a_transmission_repeater
+mutate stream_period_unbounded src/helpers/iface/Streams.cpp '  if (pt >= 0 && !jsonGetInt(*c.doc, pt, def.min_s, def.max_s, &period)) return ST_INVALID;' '  if (pt >= 0 && !jsonGetInt(*c.doc, pt, 1, 100000, &period)) return ST_INVALID;' sim/tests/test_telemetry_streams.py::test_the_stream_table_bounds_requests
+mutate obs_companion_sink_not_registered examples/companion_radio/MeconIface.cpp '  observeSink().fn = onObserve;' '  (void)0;' sim/tests/test_telemetry_streams.py::test_observations_carry_each_received_packet_as_heard
+mutate obs_hex_nibbles_swapped src/helpers/iface/Streams.cpp '  for (int i = 0; i < len; i++) { data[n++] = H[raw[i] >> 4]; data[n++] = H[raw[i] & 15]; }' '  for (int i = 0; i < len; i++) { data[n++] = H[raw[i] & 15]; data[n++] = H[raw[i] >> 4]; }' sim/tests/test_telemetry_streams.py::test_observations_carry_each_received_packet_as_heard
+mutate obs_limiter_refuses_all src/helpers/iface/Streams.h '    if (!tokens) { dropped++; return false; }' '    dropped++; return false;' sim/tests/test_telemetry_streams.py::test_observations_carry_each_received_packet_as_heard
+mutate obs_event_stream_takes_a_period src/helpers/iface/Streams.cpp '  if (pt >= 0 && def.events()) { c.error = "no-period"; return ST_INVALID; }' '' sim/tests/test_telemetry_streams.py::test_an_event_stream_takes_no_period
+mutate conn_change_not_detected examples/companion_radio/MeconIface.cpp '    if (sig != _conn_last) {' '    if (false) {' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
+mutate conn_stream_not_registered examples/companion_radio/main.cpp '  the_mesh.iface().setConnectivity(ifaceConnWrite, ifaceConnSignature);' '  (void)0;' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
+mutate conn_tls_names_swapped examples/companion_radio/main.cpp '  static const char* const TLS[] = {"plain", "verified", "unverified"};' '  static const char* const TLS[] = {"plain", "unverified", "verified"};' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
+mutate conn_reconnects_not_counted src/helpers/mqtt/MqttController.cpp '  _sessions++;' '' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
+mutate loopgap_never_raised src/helpers/iface/Streams.h '    if (last && now - last > max) max = now - last;' '' unit:test_streams
+mutate loopgap_read_not_reset src/helpers/iface/Streams.h '  uint32_t take() { uint32_t m = max; max = 0; return m; }' '  uint32_t take() { return max; }' unit:test_streams
+mutate obs_limiter_refills_to_full src/helpers/iface/Streams.h '      tokens = tokens + refill > OBS_RATE ? OBS_RATE : tokens + refill;' '      tokens = OBS_RATE;' unit:test_streams
+mutate lpp_sign_ignored src/helpers/iface/Lpp.cpp '    if (t->is_signed && (raw & (1u << (8 * t->size - 1)))) v -= (int64_t)1 << (8 * t->size);' '' unit:test_lpp
+mutate lpp_everything_signed src/helpers/iface/Lpp.cpp '    if (t->is_signed && (raw & (1u << (8 * t->size - 1))))' '    if ((raw & (1u << (8 * t->size - 1))))' unit:test_lpp
+mutate lpp_gps_not_skipped src/helpers/iface/Lpp.cpp '    if (code == LPP_GPS) {' '    if (false) {' unit:test_lpp
+mutate env_offered_without_sensors src/helpers/iface/ConsoleIface.h '  uint32_t streamsProduced() const { return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0); }' '  uint32_t streamsProduced() const { return STREAMS_PRODUCED | (1u << SID_ENVIRONMENT); }' sim/tests/test_telemetry_streams.py::test_environment_is_absent_without_sensors
+mutate env_not_checked_before_first_answer src/helpers/iface/ConsoleIface.cpp '  if (!_env_checked) refreshEnvironment(millis());' '' sim/tests/test_telemetry_streams.py::test_environment_carries_the_attached_sensors
+mutate inv_empty_neighbour_slots_counted examples/simple_repeater/MyMesh.h '    for (int i = 0; i < MAX_NEIGHBOURS; i++) if (neighbours[i].heard_timestamp) n++;' '    for (int i = 0; i < MAX_NEIGHBOURS; i++) n++;' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
+mutate inv_contacts_swapped examples/companion_radio/MeconIface.cpp '      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());' '      writeCount(w, "contacts", _mesh->getContactCapacity(), _mesh->getNumContacts());' sim/tests/test_telemetry_streams.py::test_inventory_counts_on_the_companion
+mutate inv_repeater_callback_missing examples/simple_repeater/main.cpp 'ifaceRadioCounts, &sensors, ifaceInventory };' 'ifaceRadioCounts, &sensors, nullptr };' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

@@ -1,4 +1,6 @@
 #include "MyMesh.h"
+#include <helpers/iface/Observe.h>
+#include <helpers/iface/DeviceId.h>
 #include <helpers/AuditStore.h>
 #include <helpers/CryptoRNG.h>
 
@@ -296,6 +298,7 @@ uint8_t MyMesh::getExtraAckTransmitCount() const {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
+  Iface::observe(snr, rssi, raw, len);   // the observations stream, when the device interface is built in
   if (_serial->isConnected() && len + 3 <= MAX_FRAME_SIZE) {
     int i = 0;
     out_frame[i++] = PUSH_CODE_LOG_RX_DATA;
@@ -1073,17 +1076,44 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   serial.enable();
 }
 
-// The Companion frames the engine gates (src/helpers/cli/): the ones that run the CLI, move the private key, set the
-// BLE PIN or factory-reset the device. The table decides who may send them; see docs/CLI.md.
-static uint8_t gatedFrame(uint8_t cmd) {
-  switch (cmd) {
+// Which native frames the engine gates (src/helpers/cli/), and as what. Messaging, contact handling and reads are
+// not gated: the TCP port and BLE with a default PIN serve them, as the posture doc promises ("messaging only").
+// Everything that manages the device is: settings, the radio, raw transmission, signing with the node key, reboot,
+// and the remote administration of another node under this node's identity (a CLI text, any text to a repeater,
+// which runs every text from an admin as a command, and binary requests). docs/CLI.md lists the frames.
+uint8_t MyMesh::frameGate(size_t len) {
+  switch (cmd_frame[0]) {
     case CMD_RUN_CLI_COMMAND: return Cli::FR_CLI;
     case CMD_EXPORT_PRIVATE_KEY: return Cli::FR_KEY_EXPORT;
     case CMD_IMPORT_PRIVATE_KEY: return Cli::FR_KEY_IMPORT;
     case CMD_SET_DEVICE_PIN: return Cli::FR_SET_PIN;
     case CMD_FACTORY_RESET: return Cli::FR_FACTORY_RESET;
+    case CMD_REBOOT: return Cli::FR_APP_REBOOT;
+    case CMD_SET_ADVERT_NAME: case CMD_SET_ADVERT_LATLON: case CMD_SET_RADIO_PARAMS: case CMD_SET_RADIO_TX_POWER:
+    case CMD_SET_TUNING_PARAMS: case CMD_SET_OTHER_PARAMS: case CMD_SET_CHANNEL: case CMD_SET_CUSTOM_VAR:
+    case CMD_SET_AUTOADD_CONFIG: case CMD_SET_PATH_HASH_MODE: case CMD_SET_DEFAULT_FLOOD_SCOPE:
+    case CMD_SEND_RAW_DATA: case CMD_SEND_RAW_PACKET: case CMD_SEND_CONTROL_DATA:
+    case CMD_SIGN_START: case CMD_SIGN_DATA: case CMD_SIGN_FINISH:
+    case CMD_SEND_BINARY_REQ:
+      return Cli::FR_APP_WRITE;
+    case CMD_SEND_TXT_MSG: {
+      if (len < 2) return Cli::FR_NONE;   // too short to send anything: the handler answers it
+      const uint8_t txt_type = cmd_frame[1];
+      if (txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND) return Cli::FR_APP_WRITE;
+      if (len >= 13) {
+        const ContactInfo* to = lookupContactByPubKey(&cmd_frame[7], 6);
+        if (to && to->type == ADV_TYPE_REPEATER) return Cli::FR_APP_WRITE;
+      }
+      return Cli::FR_NONE;
+    }
   }
   return Cli::FR_NONE;
+}
+
+// Whether the frame's caller may see this device's secrets inside a read it is otherwise allowed (the BLE PIN in the
+// device info, a channel's secret): a cable or BLE paired with the device's own PIN, as for any read of the CLI.
+bool MyMesh::serialTrusted() const {
+  return Cli::decide(serialContext(), Cli::C_READ).allow;
 }
 
 // The caller context of a frame that arrived over the serial interface: a cable is trusted by possession, BLE paired
@@ -1105,7 +1135,7 @@ void MyMesh::setCliCaller(const Cli::Context& ctx, uint8_t caller) {
 void MyMesh::handleCmdFrame(size_t len) {
   const uint32_t now = getRTCClock()->getCurrentTime();
   {
-    const uint8_t frame = gatedFrame(cmd_frame[0]);
+    const uint8_t frame = frameGate(len);
     if (frame != Cli::FR_NONE && !Cli::allowFrame(serialContext(), frame, now)) {
       MESH_DEBUG_PRINTLN("command %d refused for this caller", (int)cmd_frame[0]);
       writeErrFrame(ERR_CODE_NOT_PERMITTED);
@@ -1123,7 +1153,10 @@ void MyMesh::handleCmdFrame(size_t len) {
       out_frame[i++] = half > 255 ? 255 : half;   // v3+
     }
     out_frame[i++] = MAX_GROUP_CHANNELS; // v3+
-    memcpy(&out_frame[i], &_prefs.ble_pin, 4);
+    {
+      const uint32_t pin = serialTrusted() ? _prefs.ble_pin : 0;   // an untrusted caller could pair with it
+      memcpy(&out_frame[i], &pin, 4);
+    }
     i += 4;
     memset(&out_frame[i], 0, 12);
     strcpy((char *)&out_frame[i], FIRMWARE_BUILD_DATE);
@@ -1829,7 +1862,8 @@ void MyMesh::handleCmdFrame(size_t len) {
       out_frame[i++] = channel_idx;
       strcpy((char *)&out_frame[i], channel.name);
       i += 32;
-      memcpy(&out_frame[i], channel.channel.secret, 16);
+      if (serialTrusted()) memcpy(&out_frame[i], channel.channel.secret, 16);
+      else memset(&out_frame[i], 0, 16);   // the name serves messaging; the secret is not an untrusted caller's
       i += 16; // NOTE: only 128-bit supported
       _serial->writeFrame(out_frame, i);
     } else {
@@ -2318,6 +2352,11 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
   if (strcmp(command, "get name") == 0) {
     sprintf(reply, "> %s", _prefs.node_name);
+    return true;
+  }
+  if (strcmp(command, "get device.id") == 0) {   // the device interface's device_id (DEVICE_INTERFACE.md section 1)
+    if (*Iface::deviceIdHex()) sprintf(reply, "> %s", Iface::deviceIdHex());
+    else strcpy(reply, "Error: unsupported");
     return true;
   }
 

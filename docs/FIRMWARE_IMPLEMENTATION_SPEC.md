@@ -1,14 +1,16 @@
-# MECON 1.0 firmware implementation specification
+# Firmware implementation specification (target contract)
 
-> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards (hardware testing has started on a Heltec V3; no target has passed acceptance yet), and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../README.md) and the [documentation index](README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (planned and MECON-specific work; not implemented here unless a section says so).** The tagged releases v0.1.0 to v0.1.2 are source-only pre-releases without the device interface. Current `main` implements the generic [device interface v1](contract/DEVICE_INTERFACE.md) and the standalone features in the [README](../README.md), with real-board evidence in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). The generic work still planned (Issues #95, #96, #109, #110, #114 to #117) and the MECON-specific work (Issues #118 to #123) described here are not implemented. Release timing is a separate decision. This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
 This document is the **functional implementation checklist** for rebuilding mecon-firmware from the released MeshCore 1.18 baseline. Together with `docs/contract/`, it must be sufficient to determine what the firmware is expected to do without reading the private MVP source. The private MVP is evidence and a test oracle only.
 
 The five historical private firmware contracts have been audited field-by-field/function-by-function at product-contract level in [`LEGACY_CONTRACT_AUDIT.md`](LEGACY_CONTRACT_AUDIT.md). Any implementation ambiguity should be resolved from the public contracts plus that classification, not by silently copying private source.
 
-## Settled architecture baseline — 2026-09-28
+## Architecture baseline — 2026-09-28 (target; partly superseded)
 
-The following decisions supersede older wording in migration/audit material and are normative for the target firmware:
+> **Note.** This baseline predates the approved programme. Where it disagrees with [DEVICE_INTERFACE](contract/DEVICE_INTERFACE.md), that document wins. In particular, item 3 below names a `MQTT | BLE | Both` connectivity mode; the built mode is `ble | wifi` ([CONNECTIVITY_MODE](CONNECTIVITY_MODE.md)). Generic authority is Issue #95 and MECON's Deployment mapping is Issue #118; unsettled security design is decided in #95's review, not here.
+
+The following decisions were recorded as the target for the firmware:
 
 1. **Deployment authority is transport-independent.** Firmware consumes the frozen MeshContinuum Deployment authority contract. Broker discovery, network location and TLS transport do not grant device authority.
 2. **Normal and Hardened are persistent security postures.** Normal preserves stock interoperability. Hardened is a managed-infrastructure appliance posture where physical access/proximity does not imply administrative trust.
@@ -23,7 +25,7 @@ The following decisions supersede older wording in migration/audit material and 
 
 ## Release dependency and foundation
 
-The public line (public releases from 0.1.0; the first planned to serve a MECON fleet is mecon-firmware 0.8.0) is based on MeshCore 1.18.0, released 2026-10-15, pinned at upstream commit `81dbae5`. Prove stock Companion and Repeater behaviour on supported hardware, then layer MECON functionality through upstream extension points rather than recreating native capabilities.
+The public line (public releases from 0.1.0; release timing is a separate decision) is based on MeshCore 1.18.0, released 2026-10-15, pinned at upstream commit `81dbae5`. Prove stock Companion and Repeater behaviour on supported hardware, then layer MECON functionality through upstream extension points rather than recreating native capabilities.
 
 MECON extends upstream facilities for Wi-Fi/runtime configuration, native Companion/Repeater commands, radio settings, board preferences, UI and remote CLI/message primitives wherever they already solve the requirement.
 

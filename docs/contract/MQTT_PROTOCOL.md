@@ -1,12 +1,14 @@
 # MQTT protocol
 
-> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../../README.md) and the [documentation index](../README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> **Target documentation (planned and MECON-specific work; not implemented here unless a section says so).** The tagged releases v0.1.0 to v0.1.2 are source-only pre-releases without the device interface. Current `main` implements the generic [device interface v1](DEVICE_INTERFACE.md) and the standalone features in the [README](../../README.md), with real-board evidence in [HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md). The generic work still planned (Issues #95, #96, #109, #110, #114 to #117) and the MECON-specific work (Issues #118 to #123) described here are not implemented. Release timing is a separate decision. This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
 
-This document defines the **target** MECON 1.0 network contract for the public line. It is normative for MECON-specific network behaviour of that line. The private 0.9x reference firmware speaks the legacy wire described in [Reference firmware today](#reference-firmware-today-legacy-wire) below. Released MeshCore 1.18 operations are reused where suitable rather than reimplemented as private MQTT-only device logic.
+> **Precedence.** Target document. The implemented MQTT wire is `mecon/<device_id>/req|resp|ev/<stream>|status` in [DEVICE_INTERFACE](DEVICE_INTERFACE.md), published at QoS 0, with the envelope and operation names defined there. Where this page names other topics, fields, QoS or operations, DEVICE_INTERFACE.md wins. The legacy wire named here is the private reference firmware's, not the current contract.
+
+This document defines the **target** MECON target network contract for the public line. It is normative for MECON-specific network behaviour of that line. The private 0.9x reference firmware speaks the legacy wire described in [Reference firmware today](#reference-firmware-today-legacy-wire) below. Released MeshCore 1.18 operations are reused where suitable rather than reimplemented as private MQTT-only device logic.
 
 ## Connection model
 
-MECON 1.0 uses **one active MQTT client/session**. The device has a provisioned cloud endpoint. When an eligible compatible broker is discovered on the current LAN, that local endpoint is preferred; otherwise the device uses cloud. Discovery is non-blocking and proves reachability only: it grants no authority and cannot replace provisioned credentials/trust.
+MECON target uses **one active MQTT client/session**. The device has a provisioned cloud endpoint. When an eligible compatible broker is discovered on the current LAN, that local endpoint is preferred; otherwise the device uses cloud. Discovery is non-blocking and proves reachability only: it grants no authority and cannot replace provisioned credentials/trust.
 
 Local and cloud are alternate paths to the **same logical authority and device identity**. Job/replay state survives path changes. The private MVP's simultaneous multi-broker model is retired.
 
@@ -77,7 +79,7 @@ Unknown measurements are `null`, not zero. Unsupported/older fields may be absen
 
 ## Inventory
 
-Inventory exposes the device's current native MeshCore contacts and channels where the role supports them. MECON 1.0 should source these from MeshCore 1.18 state/operations rather than maintain a second database.
+Inventory exposes the device's current native MeshCore contacts and channels where the role supports them. MECON target should source these from MeshCore 1.18 state/operations rather than maintain a second database.
 
 Contact inventory and status expose actual runtime capacity. No backend may assume a fixed limit (the 0.9x reference firmware enforces 50 on Heltec V3 and V4 and 350 on the T1000-E; earlier private builds used 32/64/100). Protected/managed contacts, where supported, are not candidates for ordinary eviction.
 
@@ -132,7 +134,7 @@ A configured Companion may forward received DMs through a configured private Mes
 - attribution hints are not cryptographic proof of the original sender;
 - every member of the private channel can read forwarded content, and the UI/backend must make that privacy consequence clear.
 
-The legacy envelope used `PAYLOAD_TYPE_GRP_DATA`, data type `0x4401`, a version byte, 8-byte origin hash, kind, original timestamp/source/destination hints, forwarder hint, sequence, UTF-8 text and an 8-byte truncated HMAC derived from the channel key. MECON 1.0 retains these semantics. The reference firmware's layout is frozen (a 19-byte header and an 8-byte MAC); for the public line it is validated against released MeshCore 1.18 and then becomes part of this v1 contract. The data types `0x4401` and `0x4402` (the status beacon) are not registered upstream.
+The legacy envelope used `PAYLOAD_TYPE_GRP_DATA`, data type `0x4401`, a version byte, 8-byte origin hash, kind, original timestamp/source/destination hints, forwarder hint, sequence, UTF-8 text and an 8-byte truncated HMAC derived from the channel key. MECON target retains these semantics. The reference firmware's layout is frozen (a 19-byte header and an 8-byte MAC); for the public line it is validated against released MeshCore 1.18 and then becomes part of this v1 contract. The data types `0x4401` and `0x4402` (the status beacon) are not registered upstream.
 
 ### Stock-readable copy
 
@@ -140,7 +142,7 @@ An optional capability may send a second ordinary channel-text representation af
 
 ### Daily private-channel status
 
-MECON 1.0 additionally sends a bounded periodic health/status report to the configured private resilience channel. It is operational evidence, not a user chat message. The final compact payload/format is part of the resilience profile and must fit normal MeshCore limits without fragmentation. The reference firmware's report is a signed status beacon (group-data type `0x4402`, schema 4, Ed25519-signed with the node key) sent at a random time every 20 to 23 hours, plus one at boot if the last automatic one is 12 hours old.
+MECON target additionally sends a bounded periodic health/status report to the configured private resilience channel. It is operational evidence, not a user chat message. The final compact payload/format is part of the resilience profile and must fit normal MeshCore limits without fragmentation. The reference firmware's report is a signed status beacon (group-data type `0x4402`, schema 4, Ed25519-signed with the node key) sent at a random time every 20 to 23 hours, plus one at boot if the last automatic one is 12 hours old.
 
 ## MQTT as alternate message path
 
@@ -160,7 +162,7 @@ Logs are bounded diagnostic events/streams, not a remote shell. MQTT may expose 
 
 ## Compatibility
 
-The target MECON 1.0 firmware emits canonical MECON vocabulary only. The backend migration layer accepts deployed legacy `deimos.*`, `deimos/gw/...`, `gateway_id`, historical topic names and historical broker/profile shapes. See `../BACKEND_MIGRATION.md` and `../LEGACY_CONTRACT_AUDIT.md`.
+The MECON target firmware emits canonical MECON vocabulary only. The backend migration layer accepts deployed legacy `deimos.*`, `deimos/gw/...`, `gateway_id`, historical topic names and historical broker/profile shapes. See `../BACKEND_MIGRATION.md` and `../LEGACY_CONTRACT_AUDIT.md`.
 
 ## Reference firmware today (legacy wire)
 

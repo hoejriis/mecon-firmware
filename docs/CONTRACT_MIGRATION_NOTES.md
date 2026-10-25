@@ -1,12 +1,14 @@
 # Current-to-target contract adjustments
 
-This file is **non-normative engineering history**. It explains lessons from the private MVP and why MECON 1.0 differs. It is not the backend implementation checklist: all actionable changes required in MeshContinuum because of these differences belong in [`BACKEND_MIGRATION.md`](BACKEND_MIGRATION.md).
+This file is **non-normative engineering history**. It explains lessons from the private MVP and why MECON target differs. It is not the backend implementation checklist: all actionable changes required in MeshContinuum because of these differences belong in [`BACKEND_MIGRATION.md`](BACKEND_MIGRATION.md).
 
-The public line is rebuilt from **MeshCore 1.18.0**, released on upstream `main` on 2026-10-15; its releases start at 0.1.0 (a standalone enhanced MeshCore), and the first fleet-serving version is planned as 0.8.0. The private implementation (the 0.9x reference firmware, described [below](#reference-firmware-today-09x-line)) is inspiration/evidence and a behavioural test oracle, not a code migration baseline.
+The public line is rebuilt from **MeshCore 1.18.0**, released on upstream `main` on 2026-10-15; its releases start at 0.1.0 (a standalone enhanced MeshCore). Release timing for anything beyond that is a separate decision. The private implementation (the 0.9x reference firmware, described [below](#reference-firmware-today-09x-line)) is inspiration/evidence and a behavioural test oracle, not a code migration baseline.
 
-## Foundational reset
+## Foundational reset (history)
 
-Before porting MECON features:
+These steps were the original plan before porting MECON features. Steps 1 to 5 are done on `main` for the Heltec V3 and V4 ([PLATFORM](PLATFORM.md), [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md)); the resource limits of step 6 are reported by the running build.
+
+The original steps:
 
 1. pin released MeshCore 1.18;
 2. prove stock V3/V4 Companion/Repeater behaviour;
@@ -58,9 +60,9 @@ Signed managed OTA remains a requirement of the target, implemented after the cl
 
 ## Historical-contract audit
 
-The private firmware has substantial historical contracts for device health, device settings, MQTT gateway behaviour, outage synchronization and serial provisioning. Before MECON 1.0 implementation is considered specification-complete, each operation/field/lifecycle in those documents and the deployed backend must be classified as:
+The private firmware has substantial historical contracts for device health, device settings, MQTT gateway behaviour, outage synchronization and serial provisioning. Before MECON target implementation is considered specification-complete, each operation/field/lifecycle in those documents and the deployed backend must be classified as:
 
-- still required and represented in the public MECON 1.0 contract;
+- still required and represented in the public MECON target contract;
 - supplied by a named native MeshCore 1.18 operation; or
 - intentionally legacy/backend-only and covered by `BACKEND_MIGRATION.md`.
 
@@ -108,7 +110,7 @@ This audit is necessary because the public documentation must be sufficient to i
 
 A review of the public documents against the private 0.9x reference firmware corrected these substantive points. Everything else in this change is added context.
 
-- **Versions and plan.** The old milestone names (0.8.1, 0.9.1, 1.0.1) are replaced: public releases start at 0.1.0 on MeshCore 1.18.0 (released 2026-10-15), the first fleet-serving version is planned as 0.8.0, and the public and private 0.9x lines are separate, so numbers do not order across them. The "wait for 1.18" gate is open.
+- **Versions and plan.** There is no fixed-version migration plan. Public releases start at 0.1.0 on MeshCore 1.18.0 (released 2026-10-15), release timing is a separate decision, and the public and private 0.9x lines are separate, so numbers do not order across them. The "wait for 1.18" gate is open.
 - **Hardware.** The T1000-E is built and hardware-proven in limited scope, not "planned"; the Wio Tracker L1 RF repeater and the ESP32 Repeater Observer are part of the set; no Heltec V4 repeater build exists; contact capacity is 50 on Heltec V3/V4 and 350 on the T1000-E; Beta boards now cites 0.90.5 and the Wio's tested state.
 - **Over-the-air update.** LoRa-relayed update is shipped, not absent; BLE DFU is compiled out of the nRF52 builds, not a supported mechanism.
 - **Connectivity.** Single-session broker selection (local, primary, secondary) has shipped since 0.51.0, not "post-P3"; `Both` mode is not available on the Heltec V3; the multi-broker audit row is already retired in firmware; security posture ships on the repeater roles since 0.90.0.

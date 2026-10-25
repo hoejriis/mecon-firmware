@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.inventory.json",
+  "title": "Data of an inventory event (TELEMETRY.md section 3)",
+  "description": "Counts of the role's own tables. Companion: contacts and channels. Repeater: neighbours and clients. Room server: clients. Entries are not included (their access rule comes with the Deployment authority stage).",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "contacts": {
+      "type": "object",
+      "required": [
+        "count",
+        "capacity"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "capacity": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "required": [
+        "count",
+        "capacity"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "capacity": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "neighbours": {
+      "type": "object",
+      "required": [
+        "count",
+        "capacity"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "capacity": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "clients": {
+      "type": "object",
+      "required": [
+        "count",
+        "capacity"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "capacity": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

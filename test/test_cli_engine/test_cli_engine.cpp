@@ -254,6 +254,10 @@ TEST(Registry, FramesCarryTheClassesOfWhatTheyDo) {
   EXPECT_EQ(resolveFrame(FR_KEY_IMPORT).cls, C_SECRET);
   EXPECT_EQ(resolveFrame(FR_SET_PIN).cls, C_WRITE);
   EXPECT_EQ(resolveFrame(FR_FACTORY_RESET).cls, C_DESTRUCTIVE);
+  EXPECT_EQ(resolveFrame(FR_APP_WRITE).cls, C_WRITE);
+  EXPECT_EQ(resolveFrame(FR_APP_WRITE).what, Posture::W_APP_FRAME);
+  EXPECT_EQ(resolveFrame(FR_APP_REBOOT).cls, C_REBOOT);
+  EXPECT_EQ(resolveFrame(FR_APP_REBOOT).what, Posture::W_APP_FRAME);
   EXPECT_EQ(resolveFrame(99).cls, C_DESTRUCTIVE);   // an id nobody registered is gated as the strictest class
 }
 
@@ -488,6 +492,13 @@ TEST_F(Gate, FramesAreGatedByTheSameTable) {
   EXPECT_FALSE(allowFrame(Context(T_BLE, A_PAIRED_PIN, 1), FR_FACTORY_RESET, 5));               // Hardened: a cable only
   EXPECT_EQ(count(Posture::CALLER_BLE, Posture::W_FACTORY_RESET), 1);
   EXPECT_TRUE(allowFrame(Context(T_USB, A_CABLE, 1), FR_FACTORY_RESET, 5));
+  // a management frame: the TCP port and a default-PIN phone are refused in Normal; a cable and a paired phone are not
+  EXPECT_FALSE(allowFrame(Context(T_TCP, A_NONE, 0), FR_APP_WRITE, 5));
+  EXPECT_FALSE(allowFrame(Context(T_BLE, A_PAIRED_DEFAULT_PIN, 0), FR_APP_WRITE, 5));
+  EXPECT_FALSE(allowFrame(Context(T_TCP, A_NONE, 0), FR_APP_REBOOT, 5));
+  EXPECT_TRUE(allowFrame(Context(T_USB, A_CABLE, 0), FR_APP_WRITE, 5));
+  EXPECT_TRUE(allowFrame(Context(T_BLE, A_PAIRED_PIN, 1), FR_APP_WRITE, 5));
+  EXPECT_TRUE(allowFrame(Context(T_BLE, A_PAIRED_PIN, 1), FR_APP_REBOOT, 5));
   EXPECT_FALSE(allowFrame(Context(T_BLE, A_PAIRED_DEFAULT_PIN, 0), FR_CLI, 5));                 // a default PIN authenticates nobody
 }
 

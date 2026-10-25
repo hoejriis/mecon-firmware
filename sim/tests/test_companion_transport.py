@@ -67,14 +67,18 @@ def test_refused_commands_leave_state_untouched_on_tcp(nodes):
 
 @pytest.mark.timescale(10)   # the first transmission after boot waits on the duty-cycle seed
 def test_messaging_still_works_over_tcp_class(ether, nodes):
+    # setting a channel is management, refused over TCP: it is set over the cable of the same device first
+    wu, u = _node(nodes, "companion_wifi_usb", "wa", seed=11, ether_path=ether.path)
+    assert u.set_channel(1, "simchan", SECRET)[0] == 0
+    wu.stop()
     wa, a = _node(nodes, "companion_wifi", "wa", seed=11, ether_path=ether.path)
     ub, b = _node(nodes, "companion", "ub", seed=22, ether_path=ether.path)
     assert ether.wait_for_nodes(["wa", "ub"])
     ether.set_link("wa", "ub")
     assert a.add_contact(b.pub_key, "bob")[0] == 0
     assert b.add_contact(a.pub_key, "alice")[0] == 0
-    for c in (a, b):
-        assert c.set_channel(1, "simchan", SECRET)[0] == 0
+    assert b.set_channel(1, "simchan", SECRET)[0] == 0
+    assert _is_refusal(a.set_channel(2, "other", SECRET))
     assert a.send_direct(b.pub_key, "hello over tcp class", RTC + 10)[0] == harness.RESP_SENT
     assert a.send_channel(1, "chan from tcp class", RTC + 11)[0] == harness.RESP_OK
     got = b.sync_messages(timeout=60, want=2)

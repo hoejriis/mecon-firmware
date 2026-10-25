@@ -188,6 +188,23 @@ public:
 
   void begin(FILESYSTEM* fs);
   void sendNodeDiscoverReq();
+  // Inventory counts for the device interface's telemetry (docs/contract/TELEMETRY.md).
+  int neighbourCount() const {
+    int n = 0;
+#if MAX_NEIGHBOURS
+    for (int i = 0; i < MAX_NEIGHBOURS; i++) if (neighbours[i].heard_timestamp) n++;
+#endif
+    return n;
+  }
+  int neighbourCapacity() const {
+#if MAX_NEIGHBOURS
+    return MAX_NEIGHBOURS;
+#else
+    return 0;
+#endif
+  }
+  int clientCount() const { return acl.getNumClients(); }
+  int clientCapacity() const { return MAX_CLIENTS; }
   const char* getFirmwareVer() override { return mecon::versionFull(); }
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
   const char* getRole() override { return FIRMWARE_ROLE; }

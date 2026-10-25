@@ -3,6 +3,7 @@
 
     mecon_iface_hw.py serial /dev/ttyUSB0          the Companion's USB frames ('<' len16 out, '>' len16 in)
     mecon_iface_hw.py ble AA:BB:CC:DD:EE:FF         the Nordic UART service over an existing bond (needs bleak)
+    mecon_iface_hw.py console /dev/ttyUSB0         a Repeater or Room server console ("mecon> " lines)
     mecon_iface_hw.py mqtt <device_id> <host> <port> <cafile> <user> <pwdfile>
                                                     the broker topics, through mosquitto_pub / mosquitto_sub
 
@@ -54,6 +55,36 @@ def serial_transport(port):
         return None
 
     return send, read, s.close
+
+
+def console_transport(port):
+    """A Repeater or Room server console: write bytes, read lines. port may be a device or a pyserial URL, such as
+    socket://127.0.0.1:<port> for the simulated console."""
+    import serial
+    s = serial.serial_for_url(port, 115200, timeout=0.05, do_not_open=True)
+    s.dtr = False
+    s.rts = False
+    s.open()
+    buf = bytearray()
+
+    def write(data):
+        s.write(data)
+        s.flush()
+
+    def read_line(timeout):
+        nonlocal buf
+        end = time.time() + timeout
+        while True:
+            nl = buf.find(b"\n")
+            if nl >= 0:
+                line = bytes(buf[:nl]).rstrip(b"\r")
+                del buf[:nl + 1]
+                return line.decode("utf-8", errors="replace")
+            if time.time() >= end:
+                return None
+            buf.extend(s.read(512))
+
+    return write, read_line, s.close
 
 
 def ble_transport(mac):
@@ -174,6 +205,19 @@ def main():
     if kind == "mqtt":
         link = MqttLink(*sys.argv[2:8])
         return run_cases(link, link.close)
+    if kind == "console":
+        write, read_line, close = console_transport(where)
+        c = mecon_iface.ConsoleClient(write, read_line)
+        end = time.time() + 90   # opening the port resets an ESP32: wait until the console answers
+        while time.time() < end:
+            try:
+                c.request("hello", timeout=3)
+                break
+            except TimeoutError:
+                pass
+        else:
+            sys.exit("the console never answered hello")
+        return run_cases(c, close)
     send, read, close = serial_transport(where) if kind == "serial" else ble_transport(where)
     # Wait until the board answers CMD_APP_START (as a client does): opening the serial port resets an ESP32, and the
     # first boot after an erase formats the file system, so a fixed delay is not enough.
@@ -191,7 +235,15 @@ def main():
 
 
 def run_cases(i, close):
-    cases = json.load(open(os.path.join(FIXTURES, "requests.json")))["cases"]
+    role = i.request("hello")["result"]["role"]
+    console = isinstance(i, mecon_iface.ConsoleClient)
+    # A line break inside a raw case cannot be one console line, so a console run leaves such a case out.
+    def fits(c):
+        raw = c.get("raw", "")
+        return not (console and ("\n" in raw or "\r" in raw))
+    cases = [c for c in json.load(open(os.path.join(FIXTURES, "requests.json")))["cases"]
+             if role in c.get("roles", [role]) and fits(c)]
+    print("role %s: %d cases" % (role, len(cases)), flush=True)
     fails = 0
     for case in cases:
         if "raw" in case:

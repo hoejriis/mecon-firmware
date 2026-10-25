@@ -145,8 +145,10 @@ inline Resolved resolve(const char* cmd, uint8_t role) {
 inline uint8_t classify(const char* cmd, uint8_t role) { return resolve(cmd, role).cls; }
 
 // Companion frames that are not command lines but carry the same classes: the app's commands that run the CLI,
-// move the private key, set the BLE PIN or factory-reset the device.
-enum Frame : uint8_t { FR_NONE = 0, FR_CLI, FR_KEY_EXPORT, FR_KEY_IMPORT, FR_SET_PIN, FR_FACTORY_RESET };
+// move the private key, set the BLE PIN or factory-reset the device, and every other frame that manages the device
+// (FR_APP_WRITE: settings, raw transmission, signing with the node key, remote administration; FR_APP_REBOOT).
+// Messaging and reads are FR_NONE: not gated. Which native frame is which is the Companion's (MyMesh::frameGate).
+enum Frame : uint8_t { FR_NONE = 0, FR_CLI, FR_KEY_EXPORT, FR_KEY_IMPORT, FR_SET_PIN, FR_FACTORY_RESET, FR_APP_WRITE, FR_APP_REBOOT };
 
 inline Resolved resolveFrame(uint8_t f) {
   Resolved r;
@@ -156,6 +158,8 @@ inline Resolved resolveFrame(uint8_t f) {
     case FR_KEY_IMPORT: r.cls = C_SECRET; r.what = Posture::W_KEY_IMPORT; break;
     case FR_SET_PIN: r.cls = C_WRITE; r.what = Posture::W_SET_PIN; break;
     case FR_FACTORY_RESET: r.cls = C_DESTRUCTIVE; r.what = Posture::W_FACTORY_RESET; break;
+    case FR_APP_WRITE: r.cls = C_WRITE; r.what = Posture::W_APP_FRAME; break;
+    case FR_APP_REBOOT: r.cls = C_REBOOT; r.what = Posture::W_APP_FRAME; break;
     default: r.cls = C_DESTRUCTIVE; break;   // unknown frame ids are not gated here; refuse if asked
   }
   return r;

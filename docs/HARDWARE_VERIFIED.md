@@ -1,4 +1,12 @@
-# Hardware-verified matrix (standalone 0.1.x line)
+# Hardware-verified matrix (`main` commits)
+
+## Verification policy — owner decision, 25 October 2026
+
+Only four test boards are available: **Heltec V3, Heltec V4, Seeed Wio Tracker L1 and SenseCAP T1000-E**. Public firmware must be hardware-verified on these boards for their applicable roles, transports and advertised capabilities. Availability does not mean a check has passed; the evidence matrix records actual board, role, commit, test and result. T1000-E remains compile-only until #1 supplies hardware evidence.
+
+All other repository board environments receive **software verification only**: compilation, size checks where configured, and applicable unit/simulation/conformance tests. Publish the checks actually run and their results, including exclusions and known upstream failures. A build pass proves compilation, not runtime behaviour; a shared-stack test on another board is not hardware evidence for this board. No additional board purchase or unavailable-board UAT is required to close software-only work.
+
+Public documentation must distinguish **hardware verified**, **software verified (with checks specified)**, **failed**, and **not verified**, at board/role/feature level. Never silently promote a board or all its features from partial evidence. The four-board hardware gate applies to applicable capabilities as they are implemented, not unsupported features. This policy supersedes older requests to wait for hardware on other boards. Release timing remains separate.
 
 What has been checked on real boards, on which board and build, and what is only compiled. A row says *verified* only
 for a check made on hardware with the stated build; everything else is *compiled* (CI builds it) or *simulated* (the
@@ -39,6 +47,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | ESP-IDF 5.3: battery reading | 4,226 mV (4,244 mV on 2.0.17 the same hour) | 2026-10-24, 114feab6 |
 | ESP-IDF 5.3: loop task stack (standalone) | least free since boot (`loop_stack_free`): BLE idle 5,472 B, after a PIN pairing and CLI over BLE 5,424 B, Wi-Fi + TLS MQTT 5,496 B (2.0.17 with the same reporting: 5,492 / 5,476 / 5,540 B) | 2026-10-24, 8c192a4a |
 | Device interface (standalone) | every request fixture of `docs/contract/fixtures/requests.json` plus the health stream, through `tools/mecon_iface_hw.py`: 24 of 24 over USB, 24 of 24 over BLE in three runs with no reset between them (so the retried `config.apply` got its stored result) | 2026-10-24, 9f7b2bb7 |
+| Device interface (Repeater build, USB console) | every request fixture for the Repeater role plus the health stream, `mecon> ` lines through `tools/mecon_iface_hw.py console`: 24 of 24 | 2026-10-25, 6b3f33fc |
 
 ## Heltec V4 (v4test)
 
