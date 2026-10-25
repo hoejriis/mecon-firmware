@@ -37,9 +37,10 @@ public:
     mesh::MainBoard* board;
     void (*radio_counts)(void* user, RadioCounts* out);
     SensorManager* sensors;
+    void (*inventory)(void* user, JsonWriter& w);   // the role's counts (TELEMETRY.md, inventory)
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
-                                           (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS);
+                                           (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY);
 
   void begin(const Host& host, const uint8_t device_id[16], uint32_t epoch);
 

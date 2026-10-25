@@ -34,7 +34,7 @@ public:
   // Subscriptions (Streams.h, TELEMETRY.md): one set per transport, and one for the MQTT session.
   static const uint32_t STREAMS_PRODUCED = (1u << Iface::SID_HEALTH) | (1u << Iface::SID_RADIO) |
                                            (1u << Iface::SID_POWER) | (1u << Iface::SID_RUNTIME) |
-                                           (1u << Iface::SID_OBSERVATIONS);
+                                           (1u << Iface::SID_OBSERVATIONS) | (1u << Iface::SID_INVENTORY);
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
   // stream's data; signature changes whenever a link changes state, which sends an event at once.

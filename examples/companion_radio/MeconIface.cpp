@@ -305,6 +305,18 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
     case SID_ENVIRONMENT:
       if (writeEnvironment(w, sensors, board) == 0) return false;   // nothing to report this time
       break;
+    case SID_INVENTORY: {
+      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());
+      int channels = 0, capacity = 0;
+#ifdef MAX_GROUP_CHANNELS
+      capacity = MAX_GROUP_CHANNELS;
+      ChannelDetails ch;
+      for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
+        if (_mesh->getChannel(i, ch) && ch.name[0]) channels++;
+#endif
+      writeCount(w, "channels", channels, capacity);
+      break;
+    }
     case SID_CONNECTIVITY:
       if (!_conn_write) return false;
       _conn_write(w);

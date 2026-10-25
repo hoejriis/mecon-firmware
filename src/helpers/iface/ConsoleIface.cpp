@@ -243,6 +243,10 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
     case SID_ENVIRONMENT:
       if (!_host.sensors || writeEnvironment(w, *_host.sensors, *_host.board) == 0) return false;
       break;
+    case SID_INVENTORY:
+      if (!_host.inventory) return false;
+      _host.inventory(_host.user, w);
+      break;
     default: return false;
   }
   w.endObject();

@@ -1,6 +1,6 @@
 # Telemetry catalogue
 
-> **Status: catalogue recorded before the code. Built: `health`, `radio`, `power`, `runtime`, `observations`, `environment` (every role with the device interface) and `connectivity` (Companion builds with a network). The rest is being built.** Each family below says what is implemented today. This page is the one telemetry model: the device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server), with the same meaning on every transport. Where [CORE_DEVICE_CONTRACT](CORE_DEVICE_CONTRACT.md) or [MQTT_PROTOCOL](MQTT_PROTOCOL.md) describe telemetry differently, this page is the newer decision.
+> **Status: catalogue recorded before the code. Built: `health`, `radio`, `power`, `runtime`, `observations`, `environment`, `inventory` counts (every role with the device interface) and `connectivity` (Companion builds with a network). The rest is being built.** Each family below says what is implemented today. This page is the one telemetry model: the device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server), with the same meaning on every transport. Where [CORE_DEVICE_CONTRACT](CORE_DEVICE_CONTRACT.md) or [MQTT_PROTOCOL](MQTT_PROTOCOL.md) describe telemetry differently, this page is the newer decision.
 
 ## 1. Model
 
@@ -27,7 +27,7 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | `location` | GNSS position, fix, satellites and age | location (private) | 300 s / 30 s | after trust |
 | `observations` | each received packet: raw bytes, RSSI, SNR | read | event per packet, at most 10/s (no period) | built |
 | `logs` | audit events and bounded diagnostics, with severity and category | posture | events | after trust |
-| `inventory` | contacts, neighbours, channels: counts and entries | read for counts; private for entries | 3600 s / 300 s | counts next; entries after trust |
+| `inventory` | contacts, channels, neighbours, clients: counts (entries later) | read for counts; private for entries | 3600 s / 300 s | counts built; entries after trust |
 | `screen` | framebuffer snapshots of the device's own display | private | on request, at most 1 per 5 s | after trust |
 
 ## 3. Fields
@@ -97,6 +97,9 @@ No state of charge is reported: no board here measures it, and a percentage comp
 
 ### `observations` (built)
 Each received packet: `{"raw": <hex>, "len", "rssi_dbm", "snr_db", "dropped"}`, before parsing, as the radio heard it. The payload is the mesh's own ciphertext; nothing is decrypted for it. At most 10 events per second per device; `dropped` counts the packets not sent since the previous event. `sub.start` takes no `period_s` for it (refused with `no-period`, reported as `null`). On the console, a packet that arrives while a request line is being typed counts as dropped.
+
+### `inventory` counts (built)
+Each count is `{"count", "capacity"}`. Companion: `contacts`, `channels` (a channel with a name). Repeater: `neighbours` (those heard since boot), `clients` (the ACL). Room server: `clients`.
 
 ### `location`, `logs`, `inventory` entries, `screen` (after trust)
 - `location`: latitude, longitude (degrees), altitude (m), satellites, fix, `age_s`. Location is private: its class is decided with the Deployment authority stage.

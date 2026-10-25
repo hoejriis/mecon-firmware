@@ -21,6 +21,7 @@ const StreamDef STREAMS[STREAM_COUNT] = {
   {"observations", 0, 0, 0},
   {"connectivity", 10, 3600, 60},
   {"environment", 30, 3600, 300},
+  {"inventory", 300, 3600, 3600},
 };
 
 int streamIndex(const char* name, size_t len) {
@@ -202,6 +203,15 @@ int countEnvironment(SensorManager& s, mesh::MainBoard& b) {
   JsonWriter w(scratch, sizeof(scratch));
   w.beginObject();
   return writeEnvironment(w, s, b);
+}
+
+// ---- inventory
+
+void writeCount(JsonWriter& w, const char* key, int count, int capacity) {
+  w.key(key); w.beginObject();
+  w.key("count"); w.num(count);
+  w.key("capacity"); w.num(capacity);
+  w.endObject();
 }
 
 // ---- runtime

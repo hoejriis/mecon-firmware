@@ -14,7 +14,7 @@ import mecon_iface  # noqa: E402
 import mecon_schema  # noqa: E402
 
 RTC = 1792800000
-STREAMS = ["health", "radio", "power", "runtime"]
+STREAMS = ["health", "radio", "power", "runtime", "inventory"]
 EVENT_STREAMS = ["observations"]
 
 
@@ -199,3 +199,27 @@ def test_environment_is_absent_without_sensors(nodes, make):
     assert "stream.environment" not in i.request("hello")["result"]["capabilities"]
     r = i.request("sub.start", {"stream": "environment"})
     assert r["status"] == "invalid" and r["error"] == "unknown-stream", r
+
+
+
+def test_inventory_counts_on_the_companion(nodes):
+    n, c, i = companion(nodes, "invc")
+    d = check(first_event(i, "inventory"), "inventory")
+    h = i.request("status.get")["result"]["contacts"]
+    assert d["contacts"] == h, (d, h)
+    assert d["channels"]["capacity"] > 0 and 0 <= d["channels"]["count"] <= d["channels"]["capacity"], d
+
+
+def test_inventory_counts_a_heard_neighbour_on_the_repeater(ether, nodes):
+    ether.set_link("invr", "invn")
+    r = nodes("repeater", "invr", ether_path=ether.path, rtc=RTC).start()
+    nb = nodes("repeater", "invn", ether_path=ether.path, seed=6, rtc=RTC).start()
+    assert ether.wait_tx("invr", timeout=120) and ether.wait_tx("invn", timeout=120), "no boot adverts"
+    assert ether.wait_quiet(3.0, timeout=120)
+    CliClient(nb).command("advert.zerohop")
+    assert ether.wait_quiet(3.0, timeout=120)
+    cli = CliClient(r)
+    i = mecon_iface.ConsoleClient(cli.sock.sendall, mecon_iface.socket_lines(cli.sock))
+    d = check(first_event(i, "inventory"), "inventory")
+    assert d["neighbours"]["count"] == 1 and d["neighbours"]["capacity"] > 0, d
+    assert d["clients"]["count"] == 0 and d["clients"]["capacity"] > 0, d

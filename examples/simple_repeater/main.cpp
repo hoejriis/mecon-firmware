@@ -46,6 +46,10 @@ static char command[160];
   }
   static uint8_t ifacePosture(void*) { return the_mesh.getNodePrefs()->posture; }
   static uint16_t ifaceBattery(void*) { return board.getBattMilliVolts(); }
+  static void ifaceInventory(void*, Iface::JsonWriter& w) {
+    Iface::writeCount(w, "neighbours", the_mesh.neighbourCount(), the_mesh.neighbourCapacity());
+    Iface::writeCount(w, "clients", the_mesh.clientCount(), the_mesh.clientCapacity());
+  }
   static void ifaceRadioCounts(void*, Iface::RadioCounts* c) {
     c->known = true;
     c->rx_total = radio_driver.getPacketsRecv();
@@ -146,7 +150,7 @@ void setup() {
     Iface::bootDeviceMeta(fs, &fast_rng, device_id, &epoch);   // a failed save still leaves this boot's values
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "repeater", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
-                                       &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors };
+                                       &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory };
     the_iface.begin(host, device_id, epoch);
   }
 #endif

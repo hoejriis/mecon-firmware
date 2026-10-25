@@ -12,7 +12,7 @@ class SensorManager;
 
 namespace Iface {
 
-enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, SID_CONNECTIVITY, SID_ENVIRONMENT, STREAM_COUNT };
+enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, SID_CONNECTIVITY, SID_ENVIRONMENT, SID_INVENTORY, STREAM_COUNT };
 
 struct StreamDef {
   const char* name;
@@ -104,6 +104,9 @@ struct LoopGap {
 // wrote; countEnvironment answers the same without writing, for the stream's discovery.
 int writeEnvironment(JsonWriter& w, SensorManager& s, mesh::MainBoard& b);
 int countEnvironment(SensorManager& s, mesh::MainBoard& b);
+
+// One inventory count: {"count", "capacity"} under key.
+void writeCount(JsonWriter& w, const char* key, int count, int capacity);
 
 // Reset reason, boot times, and the loop's longest gap since the previous runtime event.
 void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap);

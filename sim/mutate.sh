@@ -861,6 +861,9 @@ mutate lpp_everything_signed src/helpers/iface/Lpp.cpp '    if (t->is_signed && 
 mutate lpp_gps_not_skipped src/helpers/iface/Lpp.cpp '    if (code == LPP_GPS) {' '    if (false) {' unit:test_lpp
 mutate env_offered_without_sensors src/helpers/iface/ConsoleIface.h '  uint32_t streamsProduced() const { return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0); }' '  uint32_t streamsProduced() const { return STREAMS_PRODUCED | (1u << SID_ENVIRONMENT); }' sim/tests/test_telemetry_streams.py::test_environment_is_absent_without_sensors
 mutate env_not_checked_before_first_answer src/helpers/iface/ConsoleIface.cpp '  if (!_env_checked) refreshEnvironment(millis());' '' sim/tests/test_telemetry_streams.py::test_environment_carries_the_attached_sensors
+mutate inv_empty_neighbour_slots_counted examples/simple_repeater/MyMesh.h '    for (int i = 0; i < MAX_NEIGHBOURS; i++) if (neighbours[i].heard_timestamp) n++;' '    for (int i = 0; i < MAX_NEIGHBOURS; i++) n++;' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
+mutate inv_contacts_swapped examples/companion_radio/MeconIface.cpp '      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());' '      writeCount(w, "contacts", _mesh->getContactCapacity(), _mesh->getNumContacts());' sim/tests/test_telemetry_streams.py::test_inventory_counts_on_the_companion
+mutate inv_repeater_callback_missing examples/simple_repeater/main.cpp 'ifaceRadioCounts, &sensors, ifaceInventory };' 'ifaceRadioCounts, &sensors, nullptr };' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
