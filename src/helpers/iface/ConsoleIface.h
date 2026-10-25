@@ -42,6 +42,8 @@ public:
     // Where the Deployment record's files live (docs/contract/AUTHORITY.md section 4): the role's own file system. Null
     // leaves the device a standalone one that cannot be enrolled.
     Dep::CopyStore* dep_store;
+    // Wall-clock seconds for the audit entries of the unlock handshake; null: seconds since boot.
+    uint32_t (*clock_s)(void* user);
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY);
@@ -90,6 +92,9 @@ private:
   Cli::Context _ctx;           // the caller of the request being handled: the cable, or the signed principal on it
   const char* _deny = nullptr; // why authorize() refused, when it has a contract code for it
   char _nonce[33] = {0};       // the console's channel nonce (AUTHORITY.md section 7.1)
+  LinkUnlock _unlock;          // the console's local unlock challenge and state (section 10). The console is the cable and
+                               // has no link-drop signal: an unlock ends after 10 minutes or at a reboot.
+  static bool consoleUnlocked(void* self);
   SubSet _subs;
   StreamClock _clock;
   bool writeStream(int stream, JsonWriter& w);

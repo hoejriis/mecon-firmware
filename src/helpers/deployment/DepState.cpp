@@ -40,6 +40,19 @@ LoadState depLoad(const Copy& a, const Copy& b, DepState** out) {
       s->set = tmp->set;
     }
   }
+  if (s->state != LS_OK) {   // corrupt: the unlock secret of the newest copy that still passes its frame check
+    uint32_t best = 0;
+    for (int i = 0; i < 2; i++) {
+      const char* text;
+      uint32_t gen;
+      if (!c[i]->data || !decodeRecord(c[i]->data, c[i]->len, &tmp->rec, &text, &gen) || !tmp->rec.has_unlock) continue;
+      if (s->has_salvage && gen <= best) continue;
+      s->has_salvage = true;
+      best = gen;
+      memcpy(s->salvage, tmp->rec.unlock_secret, UNLOCK_LEN);
+    }
+  }
+  memset(tmp, 0, sizeof(*tmp));
   delete tmp;
   if (s->state == LS_OK) {
     const int other = 1 - s->slot;
@@ -49,7 +62,10 @@ LoadState depLoad(const Copy& a, const Copy& b, DepState** out) {
   return s->state;
 }
 
-void depFree(DepState* s) { delete s; }
+void depFree(DepState* s) {
+  if (s) memset(s, 0, sizeof(*s));   // the record holds the unlock secret
+  delete s;
+}
 
 void depLoadMarks(DepState* s, const Copy& a, const Copy& b) {
   if (!s || s->state != LS_OK) return;

@@ -105,6 +105,11 @@ struct Context {
   // The device holds a Deployment record (healthy or corrupt). Set by the one place that gates a command line
   // (MyMesh::handleCommand) and for the factory-reset frame; a context built anywhere else leaves it false.
   bool enrolled = false;
+  // The cable link this request arrived on holds a valid local unlock (AUTHORITY.md section 10): the HMAC challenge was
+  // answered, and neither its 10 minutes nor the link have run out. Set by the owner of the Deployment record
+  // (Iface::DeployAuth) for the cable link only; honoured by decide() and unlockManagement() for the cable principal and
+  // by no other.
+  bool unlocked = false;
 
   Context() { }
   Context(uint8_t t, uint8_t a, uint8_t posture_, bool mgmt_ = false)
@@ -195,6 +200,10 @@ inline Reason tableCell(Principal p, bool hardened, uint8_t cls) {
 }
 #undef CLI_ROW
 
+// Whether the request comes from a cable link that holds a local unlock (AUTHORITY.md sections 9 and 10). The flag counts
+// only for the cable principal: a context that is inconsistent, remote, signed or on another transport never has it.
+inline bool unlockManagement(const Context& c) { return c.unlocked && principalOf(c) == P_CABLE; }
+
 struct Verdict {
   bool allow;
   uint8_t reason;   // Reason; R_ALLOW when allowed
@@ -211,8 +220,12 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   // BLE) also reboot, and every other class is refused whatever the table says for this transport; a remote caller (MQTT,
   // LoRa) keeps reads only. Only the cable keeps the destructive class (erase, factory reset). Fails closed: anything that
   // is not a read or a local reboot counts, so a new class is refused until decided.
+  // A local unlock opens one more thing in Normal: the posture (section 9, "local unlock"). In Hardened it opens the
+  // management surface (reads and deployment.reset, decided by that operation), never a configuration write, a key export
+  // or a posture change: the posture stays as the signed callers and the factory reset leave it.
+  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0;
   if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&
-      !(p == P_CABLE && cls == C_DESTRUCTIVE))
+      !(p == P_CABLE && cls == C_DESTRUCTIVE) && !unlock_posture)
     r = R_ENROLLED;
   Verdict v;
   v.allow = r == R_ALLOW;

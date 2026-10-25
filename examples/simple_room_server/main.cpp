@@ -47,6 +47,7 @@ static char command[MAX_POST_TEXT_LEN+1];
   }
   static uint8_t ifacePosture(void*) { return the_mesh.getNodePrefs()->posture; }
   static uint16_t ifaceBattery(void*) { return board.getBattMilliVolts(); }
+  static uint32_t ifaceClock(void*) { return the_mesh.getRTCClock()->getCurrentTime(); }
   static void ifaceInventory(void*, Iface::JsonWriter& w) {
     Iface::writeCount(w, "clients", the_mesh.clientCount(), the_mesh.clientCapacity());
   }
@@ -136,7 +137,7 @@ void setup() {
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "room", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
                                        &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
-                                       &dep_store };
+                                       &dep_store, ifaceClock };
     dep_store.setFs(fs);
     the_iface.begin(host, device_id, epoch);
   }

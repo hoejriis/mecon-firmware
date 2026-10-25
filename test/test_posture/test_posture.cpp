@@ -350,6 +350,18 @@ TEST_F(Ring, PagesNewestFirstTwoAtATime) {
   EXPECT_STREQ(out, "");
 }
 
+TEST_F(Ring, UnlockAttemptsHaveTheirOwnWhatAndNameTheirOutcome) {
+  r.add(10, EV_UNLOCK, CALLER_CABLE, W_UNLOCK);
+  r.add(11, EV_LOGIN_FAILED, CALLER_CABLE, W_UNLOCK);
+  r.add(12, EV_REFUSED, CALLER_MQTT, W_UNLOCK);
+  char out[160];
+  r.formatPage(0, out, 150);
+  EXPECT_NE(strstr(out, "12 refused mqtt unlock"), nullptr);
+  EXPECT_NE(strstr(out, "11 login-fail cable unlock"), nullptr);
+  r.formatPage(2, out, 150);
+  EXPECT_NE(strstr(out, "10 unlock cable unlock"), nullptr);
+}
+
 TEST_F(Ring, LongestPageFitsTheReplyBuffer) {
   r.add(4294967295u, EV_LOGIN_FAILED, CALLER_REMOTE_ADMIN, W_DEFAULT_PASSWORD);
   for (int i = 0; i < 255; i++) r.add(4294967295u, EV_LOGIN_FAILED, CALLER_REMOTE_ADMIN, W_DEFAULT_PASSWORD);

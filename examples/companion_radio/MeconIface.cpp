@@ -30,7 +30,8 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
-                                    "deployment.authority_update", "deployment.reset"};
+                                    "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
+                                    "deployment.unlock_challenge", "deployment.unlock"};
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -53,6 +54,10 @@ const OpEntry OPS[] = {
   {"deployment.provision", MeconIface::opDeployProvision, PRIV_WRITE, true},
   {"deployment.authority_update", MeconIface::opDeployUpdate, PRIV_WRITE, true},
   {"deployment.reset", MeconIface::opDeployReset, PRIV_WRITE, true},
+  {"deployment.set_unlock", MeconIface::opDeploySetUnlock, PRIV_WRITE, true},
+  // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
+  {"deployment.unlock_challenge", MeconIface::opDeployUnlockChallenge, PRIV_WRITE, false},
+  {"deployment.unlock", MeconIface::opDeployUnlock, PRIV_WRITE, false},
 };
 
 }  // namespace
@@ -198,7 +203,9 @@ const char* MeconIface::denyReason(void* user) { return static_cast<MeconIface*>
 int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                             size_t cap, ResultCache* cache) {
   _ctx = ctx;
-  _auth.setContext(ctx);
+  _auth.setLink(link ? &link->unlock : &_mqtt_unlock);
+  _auth.stampContext(_ctx, link ? &link->unlock : nullptr);   // the cable link's unlock reaches the table as a flag
+  _auth.setContext(_ctx);
   _caller = caller;
   _cur_link = link;
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
@@ -410,7 +417,10 @@ void MeconIface::loop(uint32_t now) {
   streamTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
-    if (l.nonce[0] && !l.src->isConnected()) l.nonce[0] = 0;   // the link dropped: its nonce goes with it
+    if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it
+      l.nonce[0] = 0;
+      l.unlock.clear();
+    }
     if (l.rx.tick(now)) {
       uint8_t xid;
       l.rx.takeDiscard(&xid);

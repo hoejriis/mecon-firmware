@@ -24,6 +24,10 @@ struct ServerCaller {
   // owner clears the provisioned marker and its state in memory (AUTHORITY.md section 11).
   void (*on_format)(void* user) = nullptr;
   void* on_format_user = nullptr;
+  // Whether the console link holds a valid local unlock right now (AUTHORITY.md section 10). Asked each time a context is
+  // built, so the 10 minutes lapse on their own; null: never.
+  bool (*unlocked)(void* user) = nullptr;
+  void* unlocked_user = nullptr;
 };
 
 inline ServerCaller& serverCaller() {
@@ -36,6 +40,7 @@ inline ServerCaller& serverCaller() {
 inline Context withServerCaller(Context c) {
   const ServerCaller& s = serverCaller();
   c.enrolled = s.enrolled;
+  c.unlocked = s.unlocked && !s.signed_line && !c.remote && c.transport == T_USB && c.auth == A_CABLE && s.unlocked(s.unlocked_user);
   if (s.signed_line && !c.remote && c.transport == T_USB && c.auth == A_CABLE) c.auth = A_SIGNED;
   return c;
 }

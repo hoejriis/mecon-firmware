@@ -154,6 +154,46 @@ TEST_F(Fx, AStoredSetThatNoLongerVerifiesIsCorrupt) {
   depFree(s);
 }
 
+// The local unlock secret of a record that is corrupt only because its set no longer verifies stays usable, so the cable's
+// unlock can still recover the device in Hardened (AUTHORITY.md sections 10 and 11); one that fails its frame check
+// yields nothing, and a healthy record keeps no salvage.
+TEST_F(Fx, ACorruptRecordKeepsTheUnlockSecretOfItsNewestIntactFrameOnly) {
+  Record older = rec(1), newer = rec(2);
+  older.has_unlock = newer.has_unlock = true;
+  memset(older.unlock_secret, 0x11, UNLOCK_LEN);
+  memset(newer.unlock_secret, 0x22, UNLOCK_LEN);
+  older.set_sig[3] ^= 1;
+  newer.set_sig[3] ^= 1;
+  auto a = frame(older, 1), b = frame(newer, 2);
+  DepState* s = nullptr;
+  depLoad(of(a), of(b), &s);
+  ASSERT_NE(nullptr, s);
+  ASSERT_EQ(LS_CORRUPT, s->state);
+  ASSERT_TRUE(s->has_salvage);
+  for (int i = 0; i < UNLOCK_LEN; i++) ASSERT_EQ(0x22, s->salvage[i]) << i;
+  depFree(s);
+  std::vector<uint8_t> junk(a.begin(), a.end());
+  junk[20] ^= 0xff;   // fails its CRC: nothing in it is trusted
+  depLoad(of(junk), Copy{ nullptr, 0 }, &s);
+  ASSERT_EQ(LS_CORRUPT, s->state);
+  EXPECT_FALSE(s->has_salvage);
+  depFree(s);
+  Record none = rec();
+  none.set_sig[3] ^= 1;   // corrupt, but it never had a secret
+  auto c = frame(none, 1);
+  depLoad(of(c), Copy{ nullptr, 0 }, &s);
+  EXPECT_FALSE(s->has_salvage);
+  depFree(s);
+  Record ok = rec();
+  ok.has_unlock = true;
+  memset(ok.unlock_secret, 0x33, UNLOCK_LEN);
+  auto d = frame(ok, 1);
+  depLoad(of(d), Copy{ nullptr, 0 }, &s);
+  ASSERT_EQ(LS_OK, s->state);
+  EXPECT_FALSE(s->has_salvage) << "a healthy record's secret is the record's own";
+  depFree(s);
+}
+
 // A newer copy whose stored set does not verify must lose to the older intact one, even when it is checked right
 // after a good copy (whose parsed set must not stand in for its own).
 TEST_F(Fx, NewerCopyWithABadSetLosesToTheOlderIntactOne) {

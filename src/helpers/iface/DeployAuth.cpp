@@ -8,6 +8,7 @@
 #include <helpers/CryptoRNG.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliCaller.h>
+#include <helpers/deployment/DepHmac.h>
 #include <helpers/deployment/DepMarker.h>
 #include <helpers/deployment/DepProvision.h>
 #include <helpers/deployment/DepReplay.h>
@@ -180,7 +181,12 @@ bool DeployAuth::commit(DepWork* w) {
     if (first) delete d;
     return false;
   }
+  // A secret that changed, appeared or went invalidates every challenge and unlock issued against the old one.
+  if (first || d->state != Dep::LS_OK || d->rec.has_unlock != w->out.has_unlock ||
+      memcmp(d->rec.unlock_secret, w->out.unlock_secret, Dep::UNLOCK_LEN) != 0)
+    _secret_epoch++;
   d->state = Dep::LS_OK;
+  d->has_salvage = false;
   d->slot = slot;
   d->generation = gen;
   d->other_damaged = false;
@@ -210,6 +216,7 @@ void DeployAuth::syncCaller() {
 }
 
 void DeployAuth::load() {
+  _secret_epoch++;   // whatever was unlocked or challenged belongs to the state that was just replaced
   loadInner();
   syncCaller();
 }
@@ -273,6 +280,8 @@ DeployAuth::Pre DeployAuth::preAuthorize(const OpEntry& op, const char** deny) {
   // Open to any caller that can reach the interface: the read of the stored set (it reveals nothing secret), and the
   // DAK-signed authority update (it carries its own proof; sections 6.2 and 6.3).
   if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return PRE_ALLOW;
+  // The unlock handshake is for the unsigned cable, and its handlers decide the transport, the secret and the lockout.
+  if (strcmp(op.name, "deployment.unlock_challenge") == 0 || strcmp(op.name, "deployment.unlock") == 0) return PRE_ALLOW;
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).
@@ -673,6 +682,145 @@ done:
   return st;
 }
 
+// ---- local unlock (AUTHORITY.md section 10)
+
+// The secret the cable's challenge is answered with: the record's, or for a record that is corrupt only because its stored
+// set no longer verifies, the one its CRC-intact frame still carries. Null when there is none: fail closed.
+const uint8_t* DeployAuth::unlockSecret() const {
+  if (!_dep) return nullptr;
+  if (_dep_ls == Dep::LS_OK) return _dep->rec.has_unlock ? _dep->rec.unlock_secret : nullptr;
+  if (_dep_ls == Dep::LS_CORRUPT && _dep->state == Dep::LS_CORRUPT && _dep->has_salvage) return _dep->salvage;
+  return nullptr;
+}
+
+bool DeployAuth::unlocked(const LinkUnlock* l) const {
+  if (!l || !l->unlocked || _dep_ls == Dep::LS_ABSENT || l->unlocked_epoch != _secret_epoch) return false;
+  return (uint32_t)(millis() - l->unlocked_ms) < UNLOCK_MS;
+}
+
+void DeployAuth::stampContext(Cli::Context& c, const LinkUnlock* l) const {
+  c.unlocked = c.transport == Cli::T_USB && c.auth == Cli::A_CABLE && !c.remote && unlocked(l);
+}
+
+bool DeployAuth::lockedOut() {
+  if (_locked && (uint32_t)(millis() - _locked_ms) >= LOCKOUT_MS) { _locked = false; _fails = 0; }
+  return _locked;
+}
+
+// One audit entry per attempt, whatever its outcome; never the response, the challenge or the secret.
+void DeployAuth::auditUnlock(uint8_t event) {
+  const uint32_t now = _env.now_s ? _env.now_s(_env.user) : millis() / 1000;
+  Posture::audit().add(now, event, Cli::auditCaller(Cli::principalOf(_ctx)), Posture::W_UNLOCK);
+}
+
+// What stops the handshake before it starts, as an error code; null when it may go on. Only the unsigned cable link may
+// try (a signed request, a paired phone, the broker and the radio never), and only while a secret exists and the device
+// is not in its lockout.
+const char* DeployAuth::unlockGate() {
+  const bool cable = !_signed && _link && _ctx.transport == Cli::T_USB && _ctx.auth == Cli::A_CABLE && !_ctx.remote &&
+                     Cli::principalOf(_ctx) == Cli::P_CABLE;
+  if (!cable) return "usb_only";
+  if (!unlockSecret()) return "no_unlock_secret";
+  if (lockedOut()) return "locked_out";
+  return nullptr;
+}
+
+Status DeployAuth::opUnlockChallenge(OpContext& c) {
+  const char* why = unlockGate();
+  if (why) { auditUnlock(Posture::EV_REFUSED); c.error = why; return ST_REFUSED; }
+  LinkUnlock& l = *_link;
+  uint8_t b[32];
+  memset(b, 0, sizeof(b));
+  CryptoRNG rng;   // no fallback: a predictable challenge would be worse than none
+  rng.random(b, sizeof(b));
+  bool nonzero = false;
+  for (uint8_t x : b) nonzero = nonzero || x != 0;
+  if (!nonzero) { auditUnlock(Posture::EV_REFUSED); c.error = "rng"; return ST_BUSY; }
+  memcpy(l.challenge, b, sizeof(b));   // one outstanding challenge per link: a new one replaces the old
+  memset(b, 0, sizeof(b));
+  l.have_challenge = true;
+  l.challenge_ms = millis();
+  l.challenge_epoch = _secret_epoch;
+  char hex[2 * 32 + 1];
+  hexTo(hex, l.challenge, sizeof(l.challenge));
+  JsonWriter& w = *c.out;
+  w.key("challenge"); w.str(hex);
+  w.key("expires_in_s"); w.unum(CHALLENGE_MS / 1000);
+  return ST_OK;
+}
+
+Status DeployAuth::opUnlock(OpContext& c) {
+  const char* why = unlockGate();
+  if (why) { auditUnlock(Posture::EV_REFUSED); c.error = why; return ST_REFUSED; }
+  LinkUnlock& l = *_link;
+  const uint8_t* secret = unlockSecret();   // non-null: the gate checked
+  uint8_t resp[Dep::HMAC_LEN];
+  memset(resp, 0, sizeof(resp));
+  const bool parsed = isObject(*c.doc, c.req->args) && getHex(*c.doc, c.req->args, "response", resp, sizeof(resp));
+  const bool fresh = l.have_challenge && l.challenge_epoch == _secret_epoch &&
+                     (uint32_t)(millis() - l.challenge_ms) < CHALLENGE_MS;
+  uint8_t expect[Dep::HMAC_LEN];
+  Dep::hmacSha256(secret, Dep::UNLOCK_LEN, l.challenge, sizeof(l.challenge), expect);   // always computed: no early out
+  const bool match = Dep::constTimeEqual(expect, resp, sizeof(expect));
+  memset(expect, 0, sizeof(expect));
+  memset(resp, 0, sizeof(resp));
+  // A challenge answers one attempt, right or wrong: it is gone before the verdict.
+  memset(l.challenge, 0, sizeof(l.challenge)); l.have_challenge = false;
+  if (parsed && fresh && match) {
+    l.unlocked = true;
+    l.unlocked_ms = millis();
+    l.unlocked_epoch = _secret_epoch;
+    _fails = 0;
+    auditUnlock(Posture::EV_UNLOCK);
+    JsonWriter& w = *c.out;
+    w.key("unlocked"); w.boolean(true);
+    w.key("expires_in_s"); w.unum(UNLOCK_MS / 1000);
+    return ST_OK;
+  }
+  l.unlocked = false;   // a failed attempt does not leave an older unlock standing
+  if (++_fails >= MAX_FAILURES) { _locked = true; _locked_ms = millis(); }
+  auditUnlock(Posture::EV_LOGIN_FAILED);
+  c.error = !parsed ? "bad-args" : !fresh ? "no_challenge" : "bad_response";
+  return ST_REFUSED;
+}
+
+// deployment.set_unlock {"unlock_secret": <64 hex>}: signed only (sensitive, so it also carries the link's nonce). The
+// record is rewritten with the new secret and everything else as it was; the reply says that it is set, never what.
+Status DeployAuth::opSetUnlock(OpContext& c) {
+  if (_dep_ls == Dep::LS_ABSENT) { c.error = "not_enrolled"; return ST_REFUSED; }
+  if (!_signed) {
+    if (_dep) _dep->auth_rejections++;
+    c.error = _dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";
+    return ST_REFUSED;
+  }
+  if (_dep_ls != Dep::LS_OK || !_dep) { c.error = "deployment_record_corrupt"; return ST_REFUSED; }
+  uint8_t secret[Dep::UNLOCK_LEN];
+  bool zero = true;
+  if (!isObject(*c.doc, c.req->args) || !getHex(*c.doc, c.req->args, "unlock_secret", secret, sizeof(secret))) {
+    c.error = "bad-args";
+    return ST_INVALID;
+  }
+  for (uint8_t x : secret) zero = zero && x == 0;
+  if (zero) { memset(secret, 0, sizeof(secret)); c.error = "bad-args"; return ST_INVALID; }   // not a secret
+  DepWork* k = new (std::nothrow) DepWork();
+  if (!k) { memset(secret, 0, sizeof(secret)); c.error = "no-memory"; return ST_BUSY; }
+  Status st = ST_FAILED;
+  if (!readCurrent(k)) { c.error = "storage"; goto done; }
+  k->out = k->cur.rec;
+  k->out.has_unlock = true;
+  memcpy(k->out.unlock_secret, secret, sizeof(secret));
+  memcpy(k->set_text, k->cur.set_text, k->out.set_len);   // commit() reuses the frame the text points into
+  k->set_text[k->out.set_len] = 0;
+  k->set = _dep->set;
+  if (!commit(k)) { c.error = "storage"; st = ST_BUSY; goto done; }
+  c.out->key("unlock"); c.out->str("set");
+  st = ST_OK;
+done:
+  memset(secret, 0, sizeof(secret));
+  delete k;
+  return st;
+}
+
 // ---- unenrolment: reset, factory reset, and the rescue console's rebuild
 
 namespace {
@@ -693,8 +841,9 @@ bool anyCopy(Dep::CopyStore* st, Dep::StoreFile which) {
 
 // deployment.reset (AUTHORITY.md section 11): removes the record (older copy first), the marks, the local unlock secret and
 // the provisioned marker; keeps the node key, device_id, configuration, contacts and channels. A healthy record: only
-// signed, only over the USB cable, only in Normal. A corrupt record: the unsigned USB cable in Normal. Local unlock, the
-// way for a corrupt record in Hardened, is not built yet.
+// signed, only over the USB cable, only in Normal. A corrupt record: the unsigned USB cable in Normal, and in Hardened the
+// cable link that holds a local unlock (section 10). A healthy record in Hardened is not reset by an unlock alone: section
+// 11 names a signature for it, and the stricter reading stands.
 Status DeployAuth::opReset(OpContext& c) {
   JsonWriter& w = *c.out;
   const Cli::Context& cx = _ctx;
@@ -709,9 +858,9 @@ Status DeployAuth::opReset(OpContext& c) {
     c.error = "deployment_record_corrupt";
     return ST_REFUSED;
   }
-  if (Posture::isHardened(cx.posture)) {
+  if (Posture::isHardened(cx.posture) && !(corrupt && Cli::unlockManagement(cx))) {
     if (_dep) _dep->auth_rejections++;
-    c.error = corrupt ? "not_supported_yet" : "hardened";
+    c.error = corrupt ? "unlock_required" : "hardened";
     return ST_REFUSED;
   }
   Dep::CopyStore* st = _env.store;
@@ -743,6 +892,7 @@ Status DeployAuth::opReset(OpContext& c) {
 
 void DeployAuth::onFactoryReset() {
   Dep::markerClear();   // the format does not touch it; only a reset and the factory reset do
+  _secret_epoch++;
   if (_dep) Dep::depFree(_dep);
   _dep = nullptr;
   _dep_ls = Dep::withMarker(Dep::LS_ABSENT, Dep::markerRead());   // a marker that would not clear reads as corrupt

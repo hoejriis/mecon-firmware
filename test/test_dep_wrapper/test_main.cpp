@@ -205,6 +205,18 @@ TEST_F(Fx, SensitiveOperationsNeedThisLinksNonce) {
             checkOp("ble.pin.get", "{}", ",\"job_id\":8,\"channel_nonce\":\"n0nce-for-this-link\""));
 }
 
+// The secret travels in deployment.set_unlock: sensitive, so a request captured on another link cannot be replayed here.
+TEST_F(Fx, SetUnlockIsSensitiveAndNeedsAJobAndThisLinksNonce) {
+  const char* args = "{\"unlock_secret\":\"00\"}";
+  EXPECT_EQ(WR_MALFORMED, checkOp("deployment.set_unlock", args, ""));
+  EXPECT_EQ(WR_BAD_CHANNEL_NONCE, checkOp("deployment.set_unlock", args, ",\"job_id\":9"));
+  EXPECT_EQ(WR_OK, checkOp("deployment.set_unlock", args, ",\"job_id\":9,\"channel_nonce\":\"n0nce-for-this-link\""));
+  EXPECT_EQ(OPC_SENSITIVE, v.cls);
+  // The handshake operations are never signed reads: unknown to the allowlist, so a job like any other.
+  EXPECT_EQ(WR_MALFORMED, checkOp("deployment.unlock", "{}", ""));
+  EXPECT_EQ(WR_MALFORMED, checkOp("deployment.unlock_challenge", "{}", ""));
+}
+
 TEST_F(Fx, Oversize) {
   std::string big(MAX_WRAPPED + 1, ' ');
   EXPECT_EQ(WR_PAYLOAD_TOO_LARGE, check(big));

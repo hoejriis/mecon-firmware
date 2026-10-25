@@ -80,6 +80,15 @@ public:
   static Iface::Status opDeployProvision(Iface::OpContext& c);
   static Iface::Status opDeployUpdate(Iface::OpContext& c);
   static Iface::Status opDeployReset(Iface::OpContext& c);
+  static Iface::Status opDeploySetUnlock(Iface::OpContext& c);
+  static Iface::Status opDeployUnlockChallenge(Iface::OpContext& c);
+  static Iface::Status opDeployUnlock(Iface::OpContext& c);
+  // Whether the link of this serial interface holds a valid local unlock (AUTHORITY.md section 10); the CLI privilege
+  // table takes it as Context.unlocked, for the cable link only.
+  bool unlockedFor(const BaseSerialInterface* src);
+  // An app has started a session on this serial interface. A USB serial link cannot say when it drops, so a new session is
+  // the drop: the link's challenge and unlock are gone (section 10).
+  void onNewSession(const BaseSerialInterface* src);
   // Whether the device holds a Deployment record, healthy or corrupt: an unsigned caller then changes nothing
   // (AUTHORITY.md section 9). The CLI privilege table takes it as Context.enrolled.
   bool enrolled() const { return _auth.enrolled(); }
@@ -104,6 +113,7 @@ private:
     Iface::OutQueue* q = nullptr;
     Iface::SubSet subs;
     char nonce[33] = {0};                   // the channel nonce issued for this link (AUTHORITY.md section 7.1)
+    Iface::LinkUnlock unlock;               // its local unlock challenge and state (section 10); cleared when the link drops
   };
   static const int LINKS = 4;               // USB, BLE, TCP and one spare
 
@@ -131,6 +141,7 @@ private:
   Cli::Context _ctx;                        // the caller of the request being handled (a transport, or the broker)
   Link* _cur_link = nullptr;                // its transport, or nullptr for the broker
   Iface::SubSet _mqtt_subs;
+  Iface::LinkUnlock _mqtt_unlock;           // the broker has no cable: its unlock state never leaves cleared (the handshake refuses)
   EventPublishFn _ev_publish = nullptr;
   SessionUpFn _ev_up = nullptr;
   Iface::StreamClock _clock;                // per stream per device: seq (design section 3) and pacing

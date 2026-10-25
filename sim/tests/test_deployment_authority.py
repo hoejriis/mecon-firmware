@@ -4,11 +4,15 @@ are the public test vectors of test/fixtures/deployment_authority_public_v1.json
 with sim/ed25519_ref.py (RFC 8032 in plain Python; the container has no `cryptography` package), independently of the
 firmware's own verifier. The reference signer is itself checked against the vectors' keys and signed request."""
 import base64
+import hashlib
+import hmac as hmaclib
 import json
 import os
 import socket
+import struct
 import sys
 import time
+import zlib
 
 import pytest
 from sim import ed25519_ref, mqtt_broker
@@ -567,7 +571,7 @@ def test_an_unsigned_reset_over_the_cable_recovers_a_corrupt_record(nodes):
     assert d.i.request("deployment.reset")["error"] == "not_enrolled"
 
 
-def test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_waits_for_local_unlock(nodes):
+def test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_needs_the_local_unlock(nodes):
     d = boot(nodes, "rh")
     assert d.c.cli("set posture hardened") == "OK - posture hardened"
     d.provision()
@@ -578,7 +582,7 @@ def test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_waits_for_l
     wreck_record(d)
     revive(d)
     r = d.i.request("deployment.reset")
-    assert r["status"] == "refused" and r["error"] == "not_supported_yet", r
+    assert r["status"] == "refused" and r["error"] == "unlock_required", r
     assert d.i.request("deployment.get")["result"] == {"state": "corrupt"}
     assert os.path.exists(marker_path(d))
 
@@ -772,3 +776,358 @@ def test_reset_and_unsigned_cli_writes_are_refused_over_mqtt(nodes, tmp_path, br
     assert r["status"] == "refused" and r["error"] == "usb_only", r
     assert d.i.request("deployment.get")["result"]["state"] == "provisioned"
     assert os.path.exists(marker_path(d))
+
+
+# ------------------------------------------------------------------ local unlock (contract sections 9, 10 and 11)
+
+SECRET = bytes(range(1, 33)).hex()
+SECRET2 = bytes(range(101, 133)).hex()
+AUD_UNLOCK, AUD_LOGIN_FAILED, AUD_REFUSED, WHAT_UNLOCK = 7, 3, 2, 19
+CABLE_CALLER, MQTT_CALLER = 1, 7
+NOT_ENROLLED_REFUSAL = "ERR: this device belongs to a Deployment; the change must be signed"
+
+
+def with_secret(args, secret=SECRET):
+    args["deployment"]["unlock_secret"] = secret
+    return args
+
+
+def unlock_answer(secret_hex, challenge_hex):
+    return hmaclib.new(bytes.fromhex(secret_hex), bytes.fromhex(challenge_hex), hashlib.sha256).hexdigest()
+
+
+def challenge(request):
+    r = request("deployment.unlock_challenge")
+    assert r["status"] == "ok", r
+    return r["result"]["challenge"]
+
+
+def try_unlock(request, secret=SECRET):
+    """One whole handshake: a challenge, then the answer made with `secret`. The unlock's result, or the refusal of the challenge."""
+    ch = request("deployment.unlock_challenge")
+    if ch["status"] != "ok":
+        return ch
+    return request("deployment.unlock", {"response": unlock_answer(secret, ch["result"]["challenge"])})
+
+
+def audit_text(d):
+    """The audit ring as `get audit` prints it, every page; the cable must hold an unlock for this to be allowed."""
+    out, start = [], 0
+    while True:
+        page = d.c.cli("get audit %d" % start)
+        assert page.startswith(">") or start, page
+        out.append(page)
+        if "... next:" not in page:
+            return "\n".join(out)
+        start = int(page.rsplit("... next:", 1)[1])
+
+
+def boot_with_secret(nodes, name, posture=None):
+    d = boot(nodes, name)
+    if posture:
+        assert d.c.cli("set posture %s" % posture).startswith("OK")
+    assert d.i.request("deployment.provision", with_secret(provision_args(d.node_key)))["status"] == "ok"
+    return d
+
+
+def damage_set_keep_crc(d):
+    """Both copies of the record altered so the stored set no longer verifies, with the frame CRC redone: corrupt by the
+    record's own checks, but the frame still reads. The node is down."""
+    dak = bytes.fromhex(V["keys"]["dak epoch 1"]["public_key"])
+    done = 0
+    for f in ("mecon_dep_a", "mecon_dep_b"):
+        path = os.path.join(d.n.dir, f)
+        if not os.path.exists(path):
+            continue
+        b = bytearray(open(path, "rb").read())
+        b[b.index(dak)] ^= 1
+        b[-4:] = struct.pack("<I", zlib.crc32(bytes(b[:-4])))
+        open(path, "wb").write(bytes(b))
+        done += 1
+    assert done
+
+
+def test_the_secret_comes_with_the_provisioning_and_without_one_there_is_nothing_to_unlock(nodes):
+    d = boot(nodes, "us0")
+    assert d.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret", "no record, no secret"
+    assert d.provision()["status"] == "ok"
+    r = d.i.request("deployment.unlock_challenge")
+    assert r["status"] == "refused" and r["error"] == "no_unlock_secret", r
+    assert d.i.request("deployment.unlock", {"response": "00" * 32})["error"] == "no_unlock_secret"
+    # a cable can never set it: the only unsigned way in is the signed one
+    for args in ({"unlock_secret": SECRET}, None):
+        r = d.i.request("deployment.set_unlock", args)
+        assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    d2 = boot(nodes, "us0b")
+    d2.provision()
+    r = d2.i.request("deployment.provision", with_secret(provision_args(d2.node_key, 2)))
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", "holding a record, even the cable cannot add one: %s" % r
+    assert d2.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret"
+
+
+def test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_opens_only_the_posture(nodes):
+    d = boot_with_secret(nodes, "us1")
+    assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL, "control: enrolled and locked"
+    ch = challenge(d.i.request)
+    assert len(ch) == 64 and ch != "00" * 32
+    r = d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch)})
+    assert r["status"] == "ok" and r["result"] == {"unlocked": True, "expires_in_s": 600}, r
+    assert d.c.cli("set posture normal confirm") == "OK - already normal", "the posture is open to the unlocked cable"
+    assert d.c.cli("set name Nope") == NOT_ENROLLED_REFUSAL, "never a configuration write"
+    assert d.c.cli("get prv.key").startswith("ERR"), "never key export"
+    r = d.i.request("config.apply", apply_name("Nope"))
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", "nor over the interface: %s" % r
+    assert d.i.request("deployment.reset")["error"] == "unauthenticated", "a healthy record is reset by a signature"
+    assert d.name() != "> Nope"
+    # the unlock is the link's: an app starting over on it is a new session
+    d.c.app_start()
+    assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL
+    # and a reboot forgets it
+    assert try_unlock(d.i.request)["status"] == "ok"
+    d.reboot()
+    assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL
+
+
+def test_in_hardened_the_unlock_opens_reads_and_the_reset_of_a_corrupt_record_and_nothing_else(nodes):
+    d = boot_with_secret(nodes, "us2", posture="hardened")
+    assert try_unlock(d.i.request)["status"] == "ok", "the handshake is open in Hardened"
+    assert d.c.cli("set posture normal confirm").startswith("ERR"), "the posture stays as the signed callers left it"
+    assert d.c.cli("get posture") == "> hardened"
+    r = d.i.request("deployment.reset")
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", "a healthy record still needs the signature: %s" % r
+    assert d.i.request("deployment.get")["result"]["state"] == "provisioned"
+    d.n.stop()
+    damage_set_keep_crc(d)
+    revive(d)
+    assert d.i.request("deployment.get")["result"] == {"state": "corrupt"}
+    r = d.i.request("deployment.reset")
+    assert r["status"] == "refused" and r["error"] == "unlock_required", "locked: %s" % r
+    r = try_unlock(d.i.request, SECRET2)
+    assert r["status"] == "refused" and r["error"] == "bad_response", "the wrong secret opens nothing: %s" % r
+    assert d.i.request("deployment.reset")["error"] == "unlock_required"
+    assert try_unlock(d.i.request)["status"] == "ok", "the secret the damaged frame still carries"
+    assert d.c.cli("set name Nope").startswith("ERR"), "configuration stays closed while corrupt"
+    r = d.i.request("deployment.reset")
+    assert r["status"] == "ok" and "record" in r["result"]["removed"] and "marker" in r["result"]["removed"], r
+    assert "unlock_secret" not in r["result"]["removed"], "a record that could not be read had no secret to report"
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}
+    assert record_files(d) == [] and not os.path.exists(marker_path(d))
+    assert d.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret", "the secret went with the record"
+    assert d.c.cli("get posture") == "> hardened", "the posture is kept"
+
+
+def test_a_corrupt_record_that_cannot_be_read_has_no_secret_to_unlock_with(nodes):
+    d = boot_with_secret(nodes, "us3", posture="hardened")
+    d.n.stop()
+    wreck_record(d)
+    revive(d)
+    assert d.i.request("deployment.get")["result"] == {"state": "corrupt"}
+    r = d.i.request("deployment.unlock_challenge")
+    assert r["status"] == "refused" and r["error"] == "no_unlock_secret", r
+    assert d.i.request("deployment.reset")["error"] == "unlock_required"
+    assert d.i.request("deployment.get")["result"] == {"state": "corrupt"}
+
+
+def test_a_wrong_answer_is_refused_and_counted_and_the_sixth_attempt_meets_the_lockout(nodes):
+    d = boot_with_secret(nodes, "us4")
+    for i in range(5):
+        r = try_unlock(d.i.request, SECRET2)
+        assert r["status"] == "refused" and r["error"] == "bad_response", (i, r)
+    r = d.i.request("deployment.unlock_challenge")
+    assert r["status"] == "refused" and r["error"] == "locked_out", r
+    # an answer, however it was made, meets the lockout first
+    r = d.i.request("deployment.unlock", {"response": "00" * 32})
+    assert r["error"] == "locked_out", r
+    assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL
+    seen = wait_audit(d.n, (AUD_LOGIN_FAILED, CABLE_CALLER, WHAT_UNLOCK))
+    assert any((e[1], e[2], e[3]) == (AUD_LOGIN_FAILED, CABLE_CALLER, WHAT_UNLOCK) for e in seen), "wrong answers are audited: %s" % seen
+
+
+@pytest.mark.timescale(10)
+def test_the_lockout_ends_after_a_minute_and_a_right_answer_resets_the_count(nodes):
+    d = boot_with_secret(nodes, "us5")
+    for _ in range(5):
+        assert try_unlock(d.i.request, SECRET2)["error"] == "bad_response"
+    assert d.i.request("deployment.unlock_challenge")["error"] == "locked_out"
+    time.sleep(7.5)   # 75 s of device time
+    assert try_unlock(d.i.request)["status"] == "ok"
+    for _ in range(4):   # the count started again at the success: four more wrong answers do not lock
+        assert try_unlock(d.i.request, SECRET2)["error"] == "bad_response"
+    assert try_unlock(d.i.request)["status"] == "ok"
+    # every attempt is in the ring, folded by kind: nine wrong answers, two successes, one refusal in the lockout
+    text = audit_text(d)
+    assert "login-fail cable unlock x9" in text, text
+    assert "unlock cable unlock x2" in text, text
+    assert "refused cable unlock x1" in text, text
+    assert "unlock" in text and SECRET not in text
+
+
+def test_a_challenge_answers_one_attempt_only(nodes):
+    d = boot_with_secret(nodes, "us6")
+    ch = challenge(d.i.request)
+    good = unlock_answer(SECRET, ch)
+    r = d.i.request("deployment.unlock", {"response": "11" * 32})
+    assert r["error"] == "bad_response", r
+    r = d.i.request("deployment.unlock", {"response": good})
+    assert r["status"] == "refused" and r["error"] == "no_challenge", "spent by the wrong answer: %s" % r
+    ch2 = challenge(d.i.request)
+    assert ch2 != ch, "a fresh random challenge each time"
+    assert d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch2)})["status"] == "ok"
+    r = d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch2)})
+    assert r["status"] == "refused" and r["error"] == "no_challenge", "spent by the right one: %s" % r
+    ch3 = challenge(d.i.request)
+    assert d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch)})["error"] == "bad_response", "an older challenge's answer"
+    # a malformed answer is an attempt too
+    challenge(d.i.request)
+    assert d.i.request("deployment.unlock", {"response": "zz"})["status"] in ("refused", "invalid")
+    assert d.i.request("deployment.unlock")["error"] in ("bad-args", "no_challenge")
+
+
+@pytest.mark.timescale(10)
+def test_an_expired_challenge_is_refused(nodes):
+    d = boot_with_secret(nodes, "us7")
+    ch = challenge(d.i.request)
+    time.sleep(7.0)   # 70 s of device time
+    r = d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch)})
+    assert r["status"] == "refused" and r["error"] == "no_challenge", r
+    assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL
+
+
+@pytest.mark.timescale(50)
+def test_an_unlock_lapses_after_ten_minutes(nodes):
+    d = boot_with_secret(nodes, "us8")
+    assert try_unlock(d.i.request)["status"] == "ok"
+    assert d.c.cli("set posture normal confirm") == "OK - already normal"
+    time.sleep(13.0)   # 650 s of device time
+    assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL
+
+
+@pytest.mark.timescale(10)
+def test_the_handshake_is_refused_over_mqtt_and_to_a_signed_request(nodes, tmp_path, broker):
+    b = broker()
+    d, dev = mqtt_boot(nodes, tmp_path, "um", b)
+    assert d.i.request("deployment.provision", with_secret(provision_args(d.node_key)))["status"] == "ok"
+    r = b.iface_request(dev, {"v": 1, "id": "c1", "op": "deployment.unlock_challenge"})
+    assert r == {"v": 1, "id": "c1", "status": "refused", "error": "usb_only"}, r
+    r = b.iface_request(dev, {"v": 1, "id": "c2", "op": "deployment.unlock", "args": {"response": "00" * 32}})
+    assert r == {"v": 1, "id": "c2", "status": "refused", "error": "usb_only"}, r
+    ch = challenge(d.i.request)   # control: the cable has a challenge outstanding; the broker cannot answer it
+    r = b.iface_request(dev, {"v": 1, "id": "c3", "op": "deployment.unlock", "args": {"response": unlock_answer(SECRET, ch)}})
+    assert r["status"] == "refused" and r["error"] == "usb_only", r
+    # signed does not mean present: a member's signature is not a cable
+    for i, (op, args) in enumerate([("deployment.unlock_challenge", None), ("deployment.unlock", {"response": "00" * 32})]):
+        r = b.iface_request(dev, wrap(d.node_key, op, args, job=1 + i))
+        assert r["status"] == "refused" and r["error"] == "usb_only", r
+    r = d.send(wrap(d.node_key, "deployment.unlock_challenge", job=3))
+    assert r["status"] == "refused" and r["error"] == "usb_only", "signed, over the cable"
+    assert d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch)})["status"] == "ok", "the cable's own challenge stood"
+    assert d.c.cli("set posture normal confirm") == "OK - already normal"
+    seen = wait_audit(d.n, (AUD_REFUSED, MQTT_CALLER, WHAT_UNLOCK))
+    assert any((e[1], e[2], e[3]) == (AUD_REFUSED, MQTT_CALLER, WHAT_UNLOCK) for e in seen), seen
+    # the broker holds no unlock afterwards either
+    r = b.iface_request(dev, {"v": 1, "id": "c4", "op": "deployment.reset"})
+    assert r["status"] == "refused", r
+
+
+def test_a_signed_set_unlock_replaces_the_secret_and_ends_every_older_unlock(nodes):
+    d = boot(nodes, "us9")
+    d.provision()
+    assert d.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret"
+    # sensitive: it needs the nonce this link was issued, and a job id
+    r = d.send(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET}, job=1))
+    assert r["status"] == "refused" and r["error"] == "bad_channel_nonce", r
+    r = d.send(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET}, job=2, nonce=d.nonce()))
+    assert r["status"] == "ok" and r["result"] == {"unlock": "set"}, r
+    assert SECRET not in json.dumps(r)
+    assert try_unlock(d.i.request)["status"] == "ok"
+    assert d.c.cli("set posture normal confirm") == "OK - already normal"
+    r = d.send(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET2}, job=3, nonce=d.nonce()))
+    assert r["status"] == "ok", r
+    assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL, "replacing the secret ends the unlock it issued"
+    ch = challenge(d.i.request)
+    assert try_unlock(d.i.request, SECRET)["error"] == "bad_response", "the old secret is dead"
+    assert try_unlock(d.i.request, SECRET2)["status"] == "ok"
+    # a pending challenge dies with the secret too
+    ch = challenge(d.i.request)
+    d.send(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET}, job=4, nonce=d.nonce()))
+    assert d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch)})["error"] == "no_challenge"
+    assert try_unlock(d.i.request, SECRET)["status"] == "ok"
+    # it persists, and nothing else about the record moved
+    g = d.i.request("deployment.get")["result"]
+    assert g["authority_revision"] == 1 and g["provision_revision"] == 1 and g["members"][0]["mark"] == 4, g
+    d.reboot()
+    assert try_unlock(d.i.request, SECRET)["status"] == "ok"
+    # refusals: not a secret
+    for job, bad in enumerate(({"unlock_secret": "00" * 32}, {"unlock_secret": "ab" * 31}, {"unlock_secret": "zz" * 32}, {}), 20):
+        r = d.send(wrap(d.node_key, "deployment.set_unlock", bad, job=job, nonce=d.nonce()))
+        assert r["status"] == "invalid" and r["error"] == "bad-args", r
+    assert try_unlock(d.i.request, SECRET)["status"] == "ok", "a refused change leaves the secret as it was"
+
+
+def test_set_unlock_needs_a_healthy_record_and_a_signature(nodes):
+    d = boot(nodes, "us10")
+    r = d.i.request("deployment.set_unlock", {"unlock_secret": SECRET})
+    assert r["status"] == "refused" and r["error"] == "not_enrolled", r
+    d.provision()
+    d.n.stop()
+    wreck_record(d)
+    revive(d)
+    r = d.i.request("deployment.set_unlock", {"unlock_secret": SECRET})
+    assert r["status"] == "refused" and r["error"] == "deployment_record_corrupt", r
+
+
+def test_a_reset_removes_the_secret_with_the_record(nodes):
+    d = boot_with_secret(nodes, "us11")
+    assert try_unlock(d.i.request)["status"] == "ok"
+    r = d.send(wrap(d.node_key, "deployment.reset", job=1))
+    assert r["status"] == "ok" and r["result"]["removed"] == ["record", "marks", "unlock_secret", "marker"], r
+    for f in ("mecon_dep_a", "mecon_dep_b"):
+        assert not os.path.exists(os.path.join(d.n.dir, f))
+    assert d.c.cli("set name Free") == "OK", "unenrolled: the unlock means nothing and nothing is locked"
+    assert d.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret"
+    assert d.provision()["status"] == "ok"
+    assert d.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret", "the new record has none"
+    d.n.stop()
+    for f in os.listdir(d.n.dir):
+        p = os.path.join(d.n.dir, f)
+        assert not os.path.isfile(p) or bytes.fromhex(SECRET) not in open(p, "rb").read(), f
+
+
+def test_a_factory_reset_removes_the_secret_with_the_record(nodes):
+    d = boot_with_secret(nodes, "us12")
+    assert any(bytes.fromhex(SECRET) in open(os.path.join(d.n.dir, f), "rb").read() for f in record_files(d)), "control"
+    d.c._send(bytes([harness.CMD_FACTORY_RESET]) + b"reset")
+    assert d.n.wait_exit(10) == 75
+    revive(d)
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}
+    assert d.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret"
+    for f in os.listdir(d.n.dir):
+        p = os.path.join(d.n.dir, f)
+        assert not os.path.isfile(p) or bytes.fromhex(SECRET) not in open(p, "rb").read(), f
+
+
+def test_the_secret_appears_in_no_reply_status_log_or_file_as_text(nodes):
+    d = boot_with_secret(nodes, "us13")
+    seen = []
+    prov = d.i.request("deployment.provision", with_secret(provision_args(d.node_key)))   # the duplicate read-back
+    seen.append(prov)
+    seen.append(d.i.request("deployment.get"))
+    seen.append(d.i.request("status.get"))
+    seen.append(d.i.request("hello"))
+    seen.append(d.i.request("config.get", {"keys": ["name"]}))
+    ch = d.i.request("deployment.unlock_challenge")
+    seen.append(ch)
+    seen.append(d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch["result"]["challenge"])}))
+    seen.append(d.i.request("deployment.unlock", {"response": "11" * 32}))
+    seen.append(d.send(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET2}, job=1, nonce=d.nonce())))
+    for line in ("get posture", "get audit", "get mecon.cli", "ver"):
+        seen.append(d.c.cli(line))
+    blob = json.dumps(seen)
+    for secret in (SECRET, SECRET2):
+        assert secret not in blob
+        assert secret.upper() not in blob.upper()
+    time.sleep(0.5)
+    d.n.stop()
+    for secret in (SECRET, SECRET2):
+        assert harness.files_containing(d.n, secret) == [], harness.files_containing(d.n, secret)
+        assert harness.files_containing(d.n, secret.upper()) == []

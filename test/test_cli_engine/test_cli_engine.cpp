@@ -677,6 +677,85 @@ TEST(Enrolled, MeconCanReportsTheVerdict) {
   EXPECT_STREQ(r, "> class=read allowed");
 }
 
+// ---- the local unlock (AUTHORITY.md sections 9 and 10): Context.unlocked
+
+static Context unlockedCtx(uint8_t t, uint8_t a, uint8_t posture) {
+  Context c = enrolledCtx(t, a, posture);
+  c.unlocked = true;
+  return c;
+}
+
+TEST(Unlocked, AnUnlockedCableOpensOnlyThePostureAndOnlyInNormal) {
+  EXPECT_FALSE(decide(enrolledCtx(T_USB, A_CABLE, 0), C_POSTURE).allow) << "control: enrolled, locked";
+  EXPECT_TRUE(decide(unlockedCtx(T_USB, A_CABLE, 0), C_POSTURE).allow);
+  EXPECT_FALSE(decide(unlockedCtx(T_USB, A_CABLE, 1), C_POSTURE).allow) << "Hardened: the management surface, not the posture";
+  EXPECT_EQ(decide(unlockedCtx(T_USB, A_CABLE, 1), C_POSTURE).reason, R_ENROLLED);
+  for (uint8_t posture : {(uint8_t)0, (uint8_t)1}) {
+    EXPECT_FALSE(decide(unlockedCtx(T_USB, A_CABLE, posture), C_WRITE).allow) << "no configuration write";
+    EXPECT_EQ(decide(unlockedCtx(T_USB, A_CABLE, posture), C_WRITE).reason, R_ENROLLED);
+    EXPECT_FALSE(decide(unlockedCtx(T_USB, A_CABLE, posture), C_SECRET).allow) << "no key export";
+    EXPECT_TRUE(decide(unlockedCtx(T_USB, A_CABLE, posture), C_READ).allow);
+  }
+}
+
+TEST(Unlocked, TheFlagCountsForTheCablePrincipalAndNoOther) {
+  for (uint8_t t = T_NONE; t <= T_NETCON; t++)
+    for (uint8_t a = A_NONE; a <= A_SIGNED; a++)
+      for (uint8_t posture : {(uint8_t)0, (uint8_t)1})
+        for (uint8_t cls = 0; cls < C_COUNT; cls++) {
+          Context locked(t, a, posture);
+          locked.enrolled = true;
+          Context open = locked;
+          open.unlocked = true;
+          const Verdict v0 = decide(locked, cls), v1 = decide(open, cls);
+          if (principalOf(locked) != P_CABLE) {
+            EXPECT_EQ(v1.reason, v0.reason) << (int)t << "/" << (int)a << "/" << (int)cls;
+            EXPECT_FALSE(unlockManagement(open));
+          }
+          if (!v0.allow && !(principalOf(locked) == P_CABLE && cls == C_POSTURE && posture == 0)) EXPECT_FALSE(v1.allow);
+        }
+  Context bad(T_USB, A_CABLE, 0);   // a remote flag that does not match the transport is the untrusted row
+  bad.remote = true;
+  bad.unlocked = true;
+  EXPECT_FALSE(unlockManagement(bad));
+  EXPECT_TRUE(unlockManagement(unlockedCtx(T_USB, A_CABLE, 1)));
+  EXPECT_FALSE(unlockManagement(enrolledCtx(T_USB, A_CABLE, 1)));
+}
+
+TEST(Unlocked, TheServerCallerAsksTheLinkEachTimeAndOnlyTheConsoleCableGetsIt) {
+  ServerCaller& sc = serverCaller();
+  struct Reset { ~Reset() { serverCaller() = ServerCaller(); } } reset;
+  static bool live = true;
+  sc.enrolled = true;
+  sc.unlocked = [](void*) { return live; };
+  EXPECT_TRUE(withServerCaller(Context(T_USB, A_CABLE, 1)).unlocked);
+  live = false;
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 1)).unlocked) << "asked each time: a lapsed unlock is gone";
+  live = true;
+  EXPECT_FALSE(withServerCaller(Context(T_NETCON, A_NETCON_ADMIN, 1)).unlocked);
+  EXPECT_FALSE(withServerCaller(Context(T_LORA, A_ADMIN, 1)).unlocked);
+  sc.signed_line = true;
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 1)).unlocked) << "a signed line runs as the signed principal";
+  sc.signed_line = false;
+  sc.unlocked = nullptr;
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 1)).unlocked);
+}
+
+TEST(Unlocked, ACommandLineFromAnUnlockedCableMayChangeThePostureInNormalOnly) {
+  char r[160];
+  Outcome o;
+  EXPECT_TRUE(gate("set posture hardened", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+  EXPECT_FALSE(gate("set posture hardened", unlockedCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_TRUE(o.allowed);
+  EXPECT_TRUE(gate("set posture normal confirm", unlockedCtx(T_USB, A_CABLE, 1), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+  EXPECT_TRUE(gate("set name x", unlockedCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed) << "no configuration write";
+  EXPECT_TRUE(gate("set prv.key 00", unlockedCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed) << "no key import";
+}
+
 // ---- the servers' caller state (cli/CliCaller.h): enrolled, and a verified signed console line
 
 struct ServerCallerReset {

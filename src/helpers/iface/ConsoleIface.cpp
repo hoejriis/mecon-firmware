@@ -27,7 +27,8 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
-                                    "deployment.authority_update", "deployment.reset"};
+                                    "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
+                                    "deployment.unlock_challenge", "deployment.unlock"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -108,6 +109,9 @@ Status opDeployGet(OpContext& c) { return self(c)->auth().opGet(c); }
 Status opDeployProvision(OpContext& c) { return self(c)->auth().opProvision(c); }
 Status opDeployUpdate(OpContext& c) { return self(c)->auth().opUpdate(c); }
 Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
+Status opDeploySetUnlock(OpContext& c) { return self(c)->auth().opSetUnlock(c); }
+Status opDeployUnlockChallenge(OpContext& c) { return self(c)->auth().opUnlockChallenge(c); }
+Status opDeployUnlock(OpContext& c) { return self(c)->auth().opUnlock(c); }
 
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
@@ -121,6 +125,10 @@ const OpEntry OPS[] = {
   {"deployment.provision", opDeployProvision, PRIV_WRITE, true},
   {"deployment.authority_update", opDeployUpdate, PRIV_WRITE, true},
   {"deployment.reset", opDeployReset, PRIV_WRITE, true},
+  {"deployment.set_unlock", opDeploySetUnlock, PRIV_WRITE, true},
+  // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
+  {"deployment.unlock_challenge", opDeployUnlockChallenge, PRIV_WRITE, false},
+  {"deployment.unlock", opDeployUnlock, PRIV_WRITE, false},
 };
 
 }  // namespace
@@ -135,7 +143,11 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
     env.store = _host.dep_store;
     env.node_key = _host.node_key;
     env.publish_caller = true;   // the front door, CommonCLI and the Ethernet console read it (Cli::serverCaller)
+    env.now_s = _host.clock_s ? _host.clock_s : nullptr;
+    env.user = _host.user;
     _auth.begin(env);
+    Cli::serverCaller().unlocked = consoleUnlocked;   // the console lines of the stock CLI see the unlock too
+    Cli::serverCaller().unlocked_user = this;
   }
   observeSink().fn = onObserve;
   observeSink().user = this;
@@ -157,6 +169,11 @@ void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* r
     s->printLine(*s->_out, ev, (size_t)n);
   }
   free(ev);
+}
+
+bool ConsoleIface::consoleUnlocked(void* self) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(self);
+  return s->_auth.unlocked(&s->_unlock);
 }
 
 ConfigHost ConsoleIface::configHost() { return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS}; }
@@ -191,6 +208,8 @@ const char* ConsoleIface::denyReason(void* user) { return static_cast<ConsoleIfa
 int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char* out, size_t cap, ResultCache* cache) {
   _ctx = ctx;
   _ctx.posture = _host.posture(_host.user);
+  _auth.setLink(&_unlock);
+  _auth.stampContext(_ctx, &_unlock);   // the cable's unlock reaches the table as a flag
   _auth.setContext(_ctx);
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);

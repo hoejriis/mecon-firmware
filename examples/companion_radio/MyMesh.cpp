@@ -1150,6 +1150,9 @@ void MyMesh::handleCmdFrame(size_t len) {
   }
   if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2) { // sent when app establishes connection
     app_target_ver = cmd_frame[1];                    // which version of protocol does app understand
+#ifdef ENABLE_MECON_IFACE
+    _iface.onNewSession(_cmd_src);
+#endif
 
     int i = 0;
     out_frame[i++] = RESP_CODE_DEVICE_INFO;
@@ -1182,6 +1185,9 @@ void MyMesh::handleCmdFrame(size_t len) {
     MESH_DEBUG_PRINTLN("App %s connected", app_name);
 
     _iter_started = false; // stop any left-over ContactsIterator
+#ifdef ENABLE_MECON_IFACE
+    _iface.onNewSession(_cmd_src);   // a USB link has no drop signal: an app starting over is a new session, locked again
+#endif
     int i = 0;
     out_frame[i++] = RESP_CODE_SELF_INFO;
     out_frame[i++] = ADV_TYPE_CHAT; // what this node Advert identifies as (maybe node's pronouns too?? :-)
@@ -1228,7 +1234,10 @@ void MyMesh::handleCmdFrame(size_t len) {
 
     reply_buf[0] = 0;
     {
-      const Cli::Context ctx = serialContext();
+      Cli::Context ctx = serialContext();
+#ifdef ENABLE_MECON_IFACE
+      ctx.unlocked = ctx.transport == Cli::T_USB && ctx.auth == Cli::A_CABLE && _iface.unlockedFor(_cmd_src);   // section 10
+#endif
       setCliCaller(ctx, ctx.transport == Cli::T_USB ? Posture::CALLER_CABLE : Posture::CALLER_BLE);
     }
     if (!handleCommand(text, 0, reply_buf)) {

@@ -24,6 +24,11 @@ struct DepState {
   bool marks_lost;          // absent or corrupt while the record exists: every member blocked until re-admitted
   bool marks_dirty;         // the reconciled marks differ from the stored ones and must be written back
   int blocked;              // members whose mark is MARK_BLOCKED
+  // A record that is LS_CORRUPT only because its stored set no longer verifies still has a frame that passes its CRC; its
+  // local unlock secret is kept here so the cable's unlock can still recover the device in Hardened (AUTHORITY.md
+  // sections 10 and 11). Never set for a frame that fails the CRC: nothing in it is trusted. Valid only when LS_CORRUPT.
+  bool has_salvage;
+  uint8_t salvage[UNLOCK_LEN];
 };
 
 // From the two copies as read from storage. Returns LS_ABSENT when neither exists (a device with no Deployment;

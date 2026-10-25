@@ -79,7 +79,9 @@ OpClass contractOpClass(const char* op, const JsonDoc& body) {
     if (strcmp(op, p) == 0) return OPC_PLAIN;
   if (strcmp(op, "sub.start") == 0 || strcmp(op, "sub.stop") == 0)
     return streamIsPrivate(body) ? (strcmp(op, "sub.start") == 0 ? OPC_SENSITIVE : OPC_JOB) : OPC_PLAIN;
-  if (strcmp(op, "identity.key.export") == 0 || strcmp(op, "ble.pin.get") == 0) return OPC_SENSITIVE;
+  // deployment.set_unlock carries the local unlock secret: sensitive, so it also needs the link's channel nonce.
+  if (strcmp(op, "identity.key.export") == 0 || strcmp(op, "ble.pin.get") == 0 || strcmp(op, "deployment.set_unlock") == 0)
+    return OPC_SENSITIVE;
   return OPC_JOB;
 }
 

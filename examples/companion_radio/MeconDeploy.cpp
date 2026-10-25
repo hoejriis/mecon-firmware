@@ -46,6 +46,7 @@ void MeconIface::deployLoad() {
   env.node_key = _mesh->self_id.pub_key;
   env.profile_exists = profileExists;
   env.user = _mesh;
+  env.now_s = [](void* u) -> uint32_t { return static_cast<MyMesh*>(u)->getRTCClock()->getCurrentTime(); };
   _auth.begin(env);
 }
 
@@ -76,5 +77,18 @@ Status MeconIface::opDeployGet(OpContext& c) { return self(c)->_auth.opGet(c); }
 Status MeconIface::opDeployProvision(OpContext& c) { return self(c)->_auth.opProvision(c); }
 Status MeconIface::opDeployUpdate(OpContext& c) { return self(c)->_auth.opUpdate(c); }
 Status MeconIface::opDeployReset(OpContext& c) { return self(c)->_auth.opReset(c); }
+Status MeconIface::opDeploySetUnlock(OpContext& c) { return self(c)->_auth.opSetUnlock(c); }
+Status MeconIface::opDeployUnlockChallenge(OpContext& c) { return self(c)->_auth.opUnlockChallenge(c); }
+Status MeconIface::opDeployUnlock(OpContext& c) { return self(c)->_auth.opUnlock(c); }
+
+void MeconIface::onNewSession(const BaseSerialInterface* src) {
+  Link* l = linkFor(src, false);
+  if (l) l->unlock.clear();
+}
+
+bool MeconIface::unlockedFor(const BaseSerialInterface* src) {
+  Link* l = linkFor(src, false);
+  return l && _auth.unlocked(&l->unlock);
+}
 
 #endif  // ENABLE_MECON_IFACE
