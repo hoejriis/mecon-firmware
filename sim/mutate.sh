@@ -838,8 +838,7 @@ mutate dep_update_skips_membership src/helpers/deployment/DepProvision.cpp '  if
 mutate dep_provision_skips_membership src/helpers/deployment/DepProvision.cpp '  if (se == OK && has && checkMembership(*cur, *set) != OK) return P_BAD_AUTHORITY_SET;' '' unit:test_dep_provision
 mutate dep_duplicate_text_not_compared src/helpers/deployment/DepProvision.cpp '  if (se == DUPLICATE && (p.set_len != cur->set_len' '  if (false && (p.set_len != cur->set_len' unit:test_dep_provision
 mutate dep_update_duplicate_not_compared src/helpers/deployment/DepProvision.cpp '    if (set_len != cur.set_len || memcmp(set_text, current.set_text, set_len) != 0 ||' '    if (false &&' unit:test_dep_provision
-mutate dep_weak_dak_pinned src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0 || weakKey(p.dak) || p.authority_epoch == 0 || p.authority_epoch > MAX_EPOCH)' '    if (p.n_rotations > 0 || p.authority_epoch == 0 || p.authority_epoch > MAX_EPOCH)' unit:test_dep_provision
-mutate dep_first_epoch_unbounded src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0 || weakKey(p.dak) || p.authority_epoch == 0 || p.authority_epoch > MAX_EPOCH)' '    if (p.n_rotations > 0 || weakKey(p.dak))' unit:test_dep_provision
+mutate dep_weak_dak_pinned src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0 || weakKey(p.dak)) return P_UNTRUSTED_AUTHORITY_KEY;' '    if (p.n_rotations > 0) return P_UNTRUSTED_AUTHORITY_KEY;' unit:test_dep_provision
 mutate dep_provision_rotation_applied src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0) return P_UNTRUSTED_AUTHORITY_KEY;' '' unit:test_dep_provision
 mutate dep_duplicate_member_key_ok src/helpers/deployment/DepAuthority.cpp '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0 ||
           memcmp(s->members[j].public_key, mb.public_key, KEY_LEN) == 0)' '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0)' unit:test_dep_authority

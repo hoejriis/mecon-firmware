@@ -65,9 +65,9 @@ ProvErr checkProvision(const ProvisionPayload& p, const ProvisionContext& ctx, R
     if (memcmp(root.dak, p.dak, KEY_LEN) != 0 || root.authority_epoch != p.authority_epoch)
       return P_UNTRUSTED_AUTHORITY_KEY;
   } else {
-    // Nothing to chain from: the payload's key is the one being pinned (trust on first use).
-    if (p.n_rotations > 0 || weakKey(p.dak) || p.authority_epoch == 0 || p.authority_epoch > MAX_EPOCH)
-      return P_UNTRUSTED_AUTHORITY_KEY;
+    // Nothing to chain from: the payload's key is the one being pinned (trust on first use). Its epoch must be the
+    // set's, which the set check bounds (an epoch that could never rotate is refused there).
+    if (p.n_rotations > 0 || weakKey(p.dak)) return P_UNTRUSTED_AUTHORITY_KEY;
     memcpy(root.dak, p.dak, KEY_LEN);
     root.authority_epoch = p.authority_epoch;
   }
