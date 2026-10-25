@@ -31,7 +31,8 @@ enum Caller : uint8_t { CALLER_CABLE = 1, CALLER_BLE = 2, CALLER_NET = 3, CALLER
 enum What : uint8_t {
   W_NONE = 0, W_CLI = 1, W_KEY_EXPORT = 2, W_KEY_IMPORT = 3, W_SET_PIN = 4, W_FACTORY_RESET = 5, W_POSTURE = 6,
   W_AUDIT = 7, W_REMOTE_WRITE = 8, W_REMOTE_CLI = 9, W_DEFAULT_PASSWORD = 10, W_BAD_PASSWORD = 11,
-  W_BLE_START = 12, W_NET_START = 13, W_CONNMODE = 14, W_MQTT_SESSION = 15, W_MGMT_FLAG = 16, W_HEAP_FLOOR = 17
+  W_BLE_START = 12, W_NET_START = 13, W_CONNMODE = 14, W_MQTT_SESSION = 15, W_MGMT_FLAG = 16, W_HEAP_FLOOR = 17,
+  W_APP_FRAME = 18
 };
 
 struct AuditEntry {
@@ -190,6 +191,7 @@ public:
       case W_MQTT_SESSION: return "mqtt-session";
       case W_MGMT_FLAG: return "mgmt-flag";
       case W_HEAP_FLOOR: return "heap-floor";
+      case W_APP_FRAME: return "app-frame";
     }
     return "?";
   }
