@@ -267,14 +267,17 @@ void loadMarks(const Copy& a, const Copy& b, LoadedMarks* out) {
   out->state = LS_ABSENT;
   out->slot = -1;
   out->generation = 0;
+  out->other_damaged = false;
   const Copy* c[2] = { &a, &b };
   bool present = false;
+  bool intact[2] = { false, false };
   for (int i = 0; i < 2; i++) {
     if (!c[i]->data) continue;
     present = true;
     Marks mk;
     uint32_t g;
     if (!decodeMarks(c[i]->data, c[i]->len, &mk, &g)) continue;
+    intact[i] = true;
     if (out->state != LS_OK || g > out->generation) {
       out->state = LS_OK;
       out->slot = i;
@@ -283,6 +286,7 @@ void loadMarks(const Copy& a, const Copy& b, LoadedMarks* out) {
     }
   }
   if (out->state != LS_OK && present) out->state = LS_CORRUPT;
+  if (out->state == LS_OK) out->other_damaged = c[1 - out->slot]->data && !intact[1 - out->slot];
 }
 
 void nextMarksWrite(const LoadedMarks& cur, int* slot, uint32_t* generation) {

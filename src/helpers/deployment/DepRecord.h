@@ -145,6 +145,7 @@ struct LoadedMarks {
   int slot;
   uint32_t generation;
   Marks marks;
+  bool other_damaged;   // LS_OK, and the other copy exists but is not intact: the newer one may be the damaged one
 };
 void loadMarks(const Copy& a, const Copy& b, LoadedMarks* out);
 void nextMarksWrite(const LoadedMarks& cur, int* slot, uint32_t* generation);

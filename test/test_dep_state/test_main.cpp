@@ -116,6 +116,37 @@ TEST_F(Fx, MarksLoadAndReconcileWithTheRecord) {
   depFree(s);
 }
 
+// The other marks copy exists but is damaged: the intact one may be the older, so its mark may have rolled back. Every
+// member is blocked until re-admitted, the blocked state is written back, and the status says so.
+TEST_F(Fx, ADamagedOtherMarksCopyBlocksEveryMemberAndIsReported) {
+  auto a = frame(rec(1), 1);
+  DepState* s = nullptr;
+  ASSERT_EQ(LS_OK, depLoad(of(a), Copy{ nullptr, 0 }, &s));
+  auto m = marksFrame(1, 1, 33, 4);
+  std::vector<uint8_t> junk(40, 0xAB);
+  depLoadMarks(s, of(m), of(junk));
+  EXPECT_TRUE(s->marks_fallback);
+  EXPECT_FALSE(s->marks_lost);
+  EXPECT_TRUE(s->marks_dirty);
+  EXPECT_EQ(1, s->blocked);
+  EXPECT_EQ(MARK_BLOCKED, s->marks.m[0].wm.mark);
+  EXPECT_NE(std::string::npos, status(s).find("\"marks_fallback\":true"));
+  // damage in the other slot counts the same
+  depLoadMarks(s, of(junk), of(m));
+  EXPECT_TRUE(s->marks_fallback);
+  EXPECT_EQ(MARK_BLOCKED, s->marks.m[0].wm.mark);
+  // controls: both intact, and the other copy simply absent, are not a fallback
+  auto m2 = marksFrame(1, 1, 40, 5);
+  depLoadMarks(s, of(m), of(m2));
+  EXPECT_FALSE(s->marks_fallback);
+  EXPECT_EQ(40u, s->marks.m[0].wm.mark);
+  EXPECT_NE(std::string::npos, status(s).find("\"marks_fallback\":false"));
+  depLoadMarks(s, of(m), Copy{ nullptr, 0 });
+  EXPECT_FALSE(s->marks_fallback);
+  EXPECT_EQ(33u, s->marks.m[0].wm.mark);
+  depFree(s);
+}
+
 // Marks lost while the record exists: fail closed, every member blocked, and the blocked state written back.
 TEST_F(Fx, LostMarksBlockEveryMember) {
   auto a = frame(rec(1), 1);

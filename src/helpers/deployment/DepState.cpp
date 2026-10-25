@@ -73,10 +73,14 @@ void depLoadMarks(DepState* s, const Copy& a, const Copy& b) {
   memset(&lm, 0, sizeof(lm));   // loadMarks leaves marks unset when they are absent or corrupt
   loadMarks(a, b, &lm);
   s->marks_lost = lm.state != LS_OK;
+  // The other copy exists but is damaged: the intact one may be the older, so the mark may have rolled back and a request
+  // already run could be replayed. Nobody is trusted until re-admitted, as when the marks are lost.
+  s->marks_fallback = lm.state == LS_OK && lm.other_damaged;
+  const bool distrust = s->marks_lost || s->marks_fallback;
   s->marks_slot = lm.state == LS_OK ? lm.slot : -1;
   s->marks_generation = lm.state == LS_OK ? lm.generation : 0;
-  s->blocked = reconcileMarks(s->marks_lost ? nullptr : &lm.marks, s->set, &s->marks);
-  s->marks_dirty = s->marks_lost || memcmp(&s->marks, &lm.marks, sizeof(Marks)) != 0;
+  s->blocked = reconcileMarks(distrust ? nullptr : &lm.marks, s->set, &s->marks);
+  s->marks_dirty = distrust || memcmp(&s->marks, &lm.marks, sizeof(Marks)) != 0;
 }
 
 static void hexOut(char* out, const uint8_t* b, size_t n) {
@@ -106,6 +110,7 @@ void depWriteStatus(Iface::JsonWriter& w, LoadState state, const DepState* s, bo
     w.key("sync_key_generation"); w.unum(s->rec.sync_key_generation);
     w.key("posture"); w.str(hardened ? "hardened" : "normal");
     w.key("fallback"); w.boolean(s->other_damaged);
+    w.key("marks_fallback"); w.boolean(s->marks_fallback);
     w.key("blocked_members"); w.unum((uint32_t)s->blocked);
   }
   w.key("auth_rejections"); w.unum(s ? s->auth_rejections : 0);

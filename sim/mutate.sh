@@ -859,7 +859,7 @@ mutate dep_set_epoch_unbounded src/helpers/deployment/DepAuthority.cpp ' || s->a
 mutate dep_wrong_deployment_code src/helpers/deployment/DepAuthority.cpp '  if (memcmp(out->deployment_id, ctx.deployment_id, ID_LEN) != 0) return WRONG_DEPLOYMENT;' '  if (memcmp(out->deployment_id, ctx.deployment_id, ID_LEN) != 0) return BAD_AUTHORITY_SET;' unit:test_dep_authority
 mutate dep_fallback_not_flagged src/helpers/deployment/DepState.cpp '    s->other_damaged = c[other]->data && !ok[other];' '    s->other_damaged = false;' unit:test_dep_state
 mutate dep_fallback_not_reported src/helpers/deployment/DepState.cpp '    w.key("fallback"); w.boolean(s->other_damaged);' '' unit:test_dep_state
-mutate dep_lost_marks_fresh src/helpers/deployment/DepState.cpp '  s->blocked = reconcileMarks(s->marks_lost ? nullptr : &lm.marks, s->set, &s->marks);' '  s->blocked = reconcileMarks(&lm.marks, s->set, &s->marks);' unit:test_dep_state
+mutate dep_lost_marks_fresh src/helpers/deployment/DepState.cpp '  s->blocked = reconcileMarks(distrust ? nullptr : &lm.marks, s->set, &s->marks);' '  s->blocked = reconcileMarks(&lm.marks, s->set, &s->marks);' unit:test_dep_state
 mutate dep_replay_window_reopened src/helpers/deployment/DepReplay.cpp '  return job_id == w.mark ? RV_DUPLICATE : RV_TOO_OLD;' '  return job_id == w.mark ? RV_DUPLICATE : (w.mark - job_id < 24 ? RV_NEW : RV_TOO_OLD);' unit:test_dep_replay
 mutate dep_replay_mark_reruns src/helpers/deployment/DepReplay.cpp '  if (job_id > w.mark) return RV_NEW;' '  if (job_id >= w.mark) return RV_NEW;' unit:test_dep_replay
 mutate dep_marks_readmission_kept src/helpers/deployment/DepRecord.cpp '    } else if (mem.admitted_revision > stored->m[j].admitted_revision) {' '    } else if (false) {' unit:test_dep_record
@@ -1006,6 +1006,11 @@ mutate posture_raise_not_flagged src/helpers/cli/CliRegistry.h 'r.flags = strcmp
 mutate posture_companion_secret_not_told examples/companion_radio/MyMesh.cpp 'the rescue console
     ctx.has_unlock_secret = _iface.hasUnlockSecret();' 'the rescue console' sim/tests/test_deployment_authority.py::test_an_unlocked_cable_may_enter_hardened_because_the_record_holds_the_secret_and_without_one_nobody_unsigned_may
 mutate posture_server_secret_not_told src/helpers/cli/CliCaller.h '  c.has_unlock_secret = s.has_secret && s.has_secret(s.has_secret_user);' '  c.has_unlock_secret = false;' sim/tests/test_deployment_authority_server.py::test_an_unlocked_console_may_enter_hardened_because_the_record_holds_the_secret
+
+# --- second review (L1): a damaged marks copy blocks every member
+mutate marks_fallback_not_detected src/helpers/deployment/DepRecord.cpp '  if (out->state == LS_OK) out->other_damaged = c[1 - out->slot]->data && !intact[1 - out->slot];' '' unit:test_dep_state
+mutate marks_fallback_trusted src/helpers/deployment/DepState.cpp 'reconcileMarks(distrust ? nullptr : &lm.marks, s->set, &s->marks);' 'reconcileMarks(s->marks_lost ? nullptr : &lm.marks, s->set, &s->marks);' sim/tests/test_deployment_authority.py::test_a_damaged_marks_copy_blocks_every_member_so_a_captured_request_cannot_run_again
+mutate marks_fallback_not_reported src/helpers/iface/DeployAuth.cpp '  w.key("marks_fallback"); w.boolean(s.marks_fallback);' '  w.key("marks_fallback"); w.boolean(false);' sim/tests/test_deployment_authority.py::test_a_damaged_marks_copy_blocks_every_member_so_a_captured_request_cannot_run_again
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi

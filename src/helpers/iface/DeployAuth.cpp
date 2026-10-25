@@ -443,6 +443,7 @@ static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record
   w.key("authority_revision"); w.unum(rec.authority_revision);
   w.key("provision_revision"); w.unum(rec.provision_revision);
   w.key("fallback"); w.boolean(s.other_damaged);
+  w.key("marks_fallback"); w.boolean(s.marks_fallback);
   if (full) {
     // A set can be longer than one result carries (the pages come later): then only its length is reported.
     size_t esc = rec.set_len;

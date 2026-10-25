@@ -695,6 +695,27 @@ def snapshot_files(d):
     return out
 
 
+def test_a_damaged_marks_copy_blocks_every_member_so_a_captured_request_cannot_run_again(nodes):
+    d = boot(nodes, "mf")
+    d.provision()
+    old = wrap(d.node_key, "config.apply", apply_name("Mf"), job=3)
+    assert d.send(old)["status"] == "ok"
+    assert d.i.request("deployment.get")["result"]["marks_fallback"] is False
+    d.n.stop()
+    # provisioning wrote the marks to copy a (generation 1) and the request to copy b (generation 2): damage the newer
+    open(os.path.join(d.n.dir, "mecon_depm_b"), "wb").write(b"\x00garbage")
+    revive(d)
+    g = d.i.request("deployment.get")["result"]
+    assert g["marks_fallback"] is True and g["members"][0]["mark"] == 4294967295, g
+    assert d.i.request("status.get")["result"]["deployment"]["marks_fallback"] is True
+    assert d.i.request("status.get")["result"]["deployment"]["blocked_members"] == 1
+    r = d.send(old)
+    assert r["status"] == "refused" and r["error"] == "replay", "the older mark did not bring the captured request back: %s" % r
+    r = d.send(wrap(d.node_key, "config.apply", apply_name("Mf2"), job=4))
+    assert r["status"] == "refused" and r["error"] == "replay", "nobody runs until re-admitted: %s" % r
+    assert d.name() == "> Mf"
+
+
 def test_the_rescue_rebuild_keeps_the_record_its_marks_and_the_marker(nodes):
     d = boot(nodes, "rb")
     d.provision()

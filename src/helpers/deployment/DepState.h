@@ -22,6 +22,7 @@ struct DepState {
   int marks_slot;           // the copy they came from (-1: none intact), for the next write
   uint32_t marks_generation;
   bool marks_lost;          // absent or corrupt while the record exists: every member blocked until re-admitted
+  bool marks_fallback;      // the other marks copy exists but is damaged: every member blocked until re-admitted
   bool marks_dirty;         // the reconciled marks differ from the stored ones and must be written back
   int blocked;              // members whose mark is MARK_BLOCKED
   // A record that is LS_CORRUPT only because its stored set no longer verifies still has a frame that passes its CRC; its
