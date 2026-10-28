@@ -125,6 +125,9 @@ def build():
     dev_id = "00112233445566778899aabbccddeeff"
     dv_bytes = DOMAIN_DEVID + b"\x00" + bytes.fromhex(dev_id) + node.public
     dvn_bytes = dv_bytes + b"r-7.nonce_A"
+    # A foreign claim: another device's key ("instance a", standing in for device A) signing this device's id. It verifies
+    # under A's key, and only the Backend's one-id-one-key rule refuses it (section 3.5, rule 1).
+    dvf_bytes = DOMAIN_DEVID + b"\x00" + bytes.fromhex(dev_id) + inst_a.public
 
     keys = {k.label: {"seed_hex": k.seed.hex(), "public_key": k.pub_hex}
             for k in (dak1, dak2, inst_a, inst_b, node, node2)}
@@ -153,6 +156,10 @@ def build():
         "device_id_binding_nonce": {"status": "stable", "device_id": dev_id, "nonce": "r-7.nonce_A",
                                     "sig": b64(node.sign(dvn_bytes)), "signed_bytes_hex": dvn_bytes.hex(),
                                     "signer": "device node"},
+        "device_id_binding_foreign": {"status": "stable", "device_id": dev_id, "sig": b64(inst_a.sign(dvf_bytes)),
+                                      "signed_bytes_hex": dvf_bytes.hex(), "signer": "instance a",
+                                      "note": "a valid signature by another key over this device_id: a Backend "
+                                              "that has bound device_id to 'device node' must refuse it"},
         "uplink_result": {"status": "stable", "stream": "result", "wire": res_wire,
                           "signed_bytes_hex": res_bytes.hex(), "signer": "device node"},
     }
@@ -170,7 +177,7 @@ def header(v):
         lines.append("static const char* PUB_%s = %s;" % (name, c_str(k["public_key"])))
         lines.append("static const char* SEED_%s = %s;" % (name, c_str(k["seed_hex"])))
     for obj in ("authority_set_rev1", "rotation_1_to_2", "authority_set_rev2", "iface_request", "uplink_health", "uplink_result",
-                "node_rotation", "device_id_binding", "device_id_binding_nonce"):
+                "node_rotation", "device_id_binding", "device_id_binding_nonce", "device_id_binding_foreign"):
         o = v[obj]
         name = obj.upper()
         lines.append("static const char* %s_SIGNED_HEX = %s;" % (name, c_str(o["signed_bytes_hex"])))

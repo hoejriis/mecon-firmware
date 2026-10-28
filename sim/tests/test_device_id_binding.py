@@ -43,6 +43,11 @@ def test_the_reference_verifier_agrees_with_the_public_vectors():
     assert not binds(b["sig"], b["device_id"], node, bn["nonce"]), "the nonce form is a different message"
     other = V["keys"]["instance a"]["public_key"]
     assert not binds(b["sig"], b["device_id"], other), "the signature binds the node key"
+    # A foreign claim verifies under its own signer's key, for the same device_id: the signature alone cannot refuse it,
+    # which is why the Backend binds one device_id to one key (AUTHORITY.md section 3.5, rule 1).
+    f = V["device_id_binding_foreign"]
+    assert f["device_id"] == b["device_id"] and binds(f["sig"], f["device_id"], other)
+    assert not binds(f["sig"], f["device_id"], node)
 
 
 def check_hello(i, node_key):
@@ -57,6 +62,11 @@ def check_hello(i, node_key):
         r = hn["result"]
         assert r["nonce"] == nonce and binds(r["device_id_sig_nonce"], dev, node_key, nonce), nonce
         assert binds(r["device_id_sig"], dev, node_key)
+    # a signature for one nonce is no answer to another: an old (nonce, sig) pair replayed against a fresh nonce fails
+    old = i.request("hello", {"nonce": "n-old"})["result"]["device_id_sig_nonce"]
+    fresh = i.request("hello", {"nonce": "n-fresh"})["result"]
+    assert binds(fresh["device_id_sig_nonce"], dev, node_key, "n-fresh")
+    assert not binds(old, dev, node_key, "n-fresh") and binds(old, dev, node_key, "n-old")
     for nonce in NONCE_BAD + [""]:
         bad = i.request("hello", {"nonce": nonce})
         assert bad["status"] == "invalid", (nonce, bad)
