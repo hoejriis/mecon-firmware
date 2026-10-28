@@ -1,4 +1,5 @@
 #include "SerialBLEInterface.h"
+#include <helpers/BleDfuPolicy.h>   // Issue #143
 #include <stdio.h>
 #include <string.h>
 #include "ble_gap.h"
@@ -188,10 +189,19 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
 
 
 
-  // Register DFU on the main BLE stack so paired clients can discover it
-  // without switching the device into a separate OTA-only BLE mode first.
-  bledfu.setPermission(SECMODE_ENC_WITH_MITM, SECMODE_ENC_WITH_MITM);
-  bledfu.begin();
+  // Issue #143: the bootloader checks no signature, so BLE DFU is registered only where BleDfuPolicy allows it: never
+  // on a device-interface build, and elsewhere only with a PIN the user chose (BleDfuPolicy.h).
+#ifdef ENABLE_MECON_IFACE
+  const bool device_interface_build = true;
+#else
+  const bool device_interface_build = false;
+#endif
+  if (BleDfuPolicy::mayRegister(device_interface_build, pin_code)) {
+    // Register DFU on the main BLE stack so paired clients can discover it
+    // without switching the device into a separate OTA-only BLE mode first.
+    bledfu.setPermission(SECMODE_ENC_WITH_MITM, SECMODE_ENC_WITH_MITM);
+    bledfu.begin();
+  }
 
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();

@@ -1091,6 +1091,10 @@ mutate gnss_age_never_null src/helpers/iface/Streams.h '  w.key("fix_age_s"); if
 mutate power_detect_ignored src/helpers/iface/Streams.h '  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();' '  const bool can_tell = b.isPwrMgtInitialised();' unit:test_streams
 mutate gnss_written_without_a_receiver src/helpers/iface/Streams.cpp '  if (b.getGnssHealth(g)) writeGnss(w, g);' '  b.getGnssHealth(g); writeGnss(w, g);' sim/tests/test_telemetry_streams.py::test_runtime_has_no_gnss_object_without_a_receiver
 
+# --- issue #143: BLE DFU only off the device interface, and only with a chosen PIN
+mutate ble_dfu_on_interface_builds src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin != 0 && pin != 123456;' '  return pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
+mutate ble_dfu_with_the_default_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin != 0 && pin != 123456;' '  return !device_interface_build && pin != 0;' unit:test_ble_dfu_policy
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
