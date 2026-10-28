@@ -67,7 +67,12 @@ Status MeconIface::opIdentityRotate(OpContext& c) {
   mesh::LocalIdentity* old = new (std::nothrow) mesh::LocalIdentity(m->_mesh->self_id);
   if (!old) { c.error = "no-memory"; return ST_BUSY; }
   const char* err = "failed";
-  const int r = m->_mesh->rotateIdentity(&err);
+  uint32_t job = 0;
+  {
+    int64_t j;
+    if (c.doc && jsonGetInt(*c.doc, jsonFind(*c.doc, 0, "job_id"), 0, 0xFFFFFFFFLL, &j)) job = (uint32_t)j;
+  }
+  const int r = m->_mesh->rotateIdentity(&err, m->deviceIdHex(), job);
   if (r == 0) { memset(old, 0, sizeof(*old)); delete old; c.error = err; return ST_FAILED; }
   m->_old_id = old;   // signs this result; dispatch() wipes it
   if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }
@@ -82,6 +87,31 @@ Status MeconIface::opIdentityRotate(OpContext& c) {
   w.str("configuration"); w.str("record"); w.str("channels"); w.str("posture"); w.str("device_id");
   w.endArray();
   return ST_OK;
+}
+
+// The statement the old key signed before the swap (AUTHORITY.md section 11): {"statement":"<signed text>","sig":"<base64>"}.
+// Written as members of the current object; false when there is none.
+static bool writeRotationMember(JsonWriter& w, MyMesh* mesh, const char* key) {
+  char text[256], sig[89];
+  if (!mesh->readRotation(text, sizeof(text), sig, sizeof(sig))) return false;
+  w.key(key);
+  w.beginObject();
+  w.key("statement"); w.str(text);
+  w.key("sig"); w.str(sig);
+  w.endObject();
+  return true;
+}
+
+// identity.rotation: a plain read. The stored statement, or an empty result when the key was never rotated.
+Status MeconIface::opIdentityRotation(OpContext& c) {
+  writeRotationMember(*c.out, self(c)->_mesh, "rotation");
+  return ST_OK;
+}
+
+Status MeconIface::opDeployGet(OpContext& c) {
+  const Status st = self(c)->_auth.opGet(c);
+  if (st == ST_OK) writeRotationMember(*c.out, self(c)->_mesh, "rotation");
+  return st;
 }
 
 const char* MeconIface::helloNonce() { return _auth.helloNonce(nonceOf(_cur_link)); }
@@ -105,7 +135,6 @@ int MeconIface::dispatchSigned(const Cli::Context& uctx, uint8_t caller, Link* l
   return _auth.dispatchSigned(uctx, nonceOf(link), msg, len, _cache, runSigned, &run, out, cap);
 }
 
-Status MeconIface::opDeployGet(OpContext& c) { return self(c)->_auth.opGet(c); }
 Status MeconIface::opDeployProvision(OpContext& c) { return self(c)->_auth.opProvision(c); }
 Status MeconIface::opDeployUpdate(OpContext& c) { return self(c)->_auth.opUpdate(c); }
 Status MeconIface::opDeployReset(OpContext& c) { return self(c)->_auth.opReset(c); }

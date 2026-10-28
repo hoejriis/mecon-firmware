@@ -74,7 +74,7 @@ static bool streamIsPrivate(const JsonDoc& d) {
 
 OpClass contractOpClass(const char* op, const JsonDoc& body) {
   static const char* const PLAIN[] = { "hello", "status.get", "config.schema", "config.get", "deployment.get",
-                                       "job.get", "job.list" };
+                                       "identity.rotation", "job.get", "job.list" };
   for (const char* p : PLAIN)
     if (strcmp(op, p) == 0) return OPC_PLAIN;
   if (strcmp(op, "sub.start") == 0 || strcmp(op, "sub.stop") == 0)

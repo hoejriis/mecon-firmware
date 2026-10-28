@@ -87,6 +87,8 @@ public:
   static Iface::Status opDeployUnlock(Iface::OpContext& c);
   // identity.rotate (AUTHORITY.md section 11): signed, sensitive, only with a readable record.
   static Iface::Status opIdentityRotate(Iface::OpContext& c);
+  // identity.rotation: a plain read of the rotation statement the old key signed.
+  static Iface::Status opIdentityRotation(Iface::OpContext& c);
   // Whether the link of this serial interface holds a valid local unlock (AUTHORITY.md section 10); the CLI privilege
   // table takes it as Context.unlocked, for the cable link only.
   bool unlockedFor(const BaseSerialInterface* src);

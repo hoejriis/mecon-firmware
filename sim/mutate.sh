@@ -1033,15 +1033,22 @@ mutate rotate_without_a_record src/helpers/iface/DeployAuth.cpp '  if (_dep_ls =
   if (_dep_ls != Dep::LS_OK || !_dep) { if (_dep) _dep->auth_rejections++; c.error = "deployment_record_corrupt"; return ST_REFUSED; }' '' $IR::test_rotation_needs_a_signature_and_a_readable_record
 mutate rotate_keeps_contacts examples/companion_radio/MyMesh.cpp '    dropped = cs.clearAll();' '    dropped = true;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
 mutate rotate_drops_configuration examples/companion_radio/MyMesh.cpp '  if (_listener) _listener->onQueueSizeChanged(0);
-  // 5.' '  if (_listener) _listener->onQueueSizeChanged(0);
+  return dropped;' '  if (_listener) _listener->onQueueSizeChanged(0);
   strcpy(_prefs.node_name, "NONAME"); savePrefs();
-  // 5.' $IR::test_rotation_changes_the_key_and_keeps_everything_else
+  return dropped;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
 mutate rotate_not_swapped examples/companion_radio/MyMesh.cpp '  self_id = fresh;' '  (void)fresh;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
 mutate rotate_unenrols examples/companion_radio/MyMesh.cpp '  self_id = fresh;' '  self_id = fresh;
   _store->removeDeploymentCopies(-1, DataStore::DEP_RECORD);' $IR::test_rotation_changes_the_key_and_keeps_everything_else
 mutate rotate_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0 ||
       strcmp(op, "identity.rotate") == 0)' ' || strcmp(op, "deployment.set_unlock") == 0)' $IR::test_rotation_needs_a_signature_and_a_readable_record
 mutate revoked_issuer_reported_unknown src/helpers/deployment/DepWrapper.cpp 'e = set.isRevoked(issuer) ? WR_ISSUER_REVOKED : WR_UNKNOWN_ISSUER; goto done; }' 'e = WR_UNKNOWN_ISSUER; goto done; }' $IR::test_a_revoked_member_is_refused_and_cannot_rotate_the_key
+
+# --- review 3 of PR 132 (AUTHORITY_REVIEW_2.md): one group of mutants per finding
+mutate rot_statement_signed_by_new_key examples/companion_radio/MyMesh.cpp '    self_id.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));' '    fresh.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate rot_statement_domain examples/companion_radio/MyMesh.cpp 'const char ROT_DOMAIN[] = "MECON-NODEROT-v1";' 'const char ROT_DOMAIN[] = "MECON-NODEROT-v2";' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate rotation_not_a_plain_read src/helpers/deployment/DepWrapper.cpp '"identity.rotation", "job.get", "job.list" };' '"job.get", "job.list" };' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate rot_stale_statement_kept examples/companion_radio/MyMesh.cpp '  if (!strstr(text, want)) _store->removeRotation();   // the key change never took effect' '  if (false) _store->removeRotation();   // the key change never took effect' $IR::test_a_cut_after_the_statement_and_before_the_key_save_leaves_the_key
+mutate rotate_result_signed_with_new_key examples/companion_radio/MeconDeploy.cpp '  m->_old_id = old;   // signs this result; dispatch() wipes it' '  memset(old, 0, sizeof(*old)); delete old;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi

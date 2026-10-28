@@ -43,6 +43,8 @@ def test_the_reference_verifier_agrees_with_the_public_vectors():
     assert verifies(V["uplink_result"]["wire"], node, "result")
     assert not verifies(V["uplink_health"]["wire"], node, "result"), "the stream is part of what is signed"
     assert not verifies(V["uplink_result"]["wire"], node, "health")
+    nr = V["node_rotation"]
+    assert ed25519_ref.verify(bytes.fromhex(node), b"MECON-NODEROT-v1\x00" + nr["statement"].encode(), base64.b64decode(nr["sig"]))
     assert not verifies(V["uplink_health"]["wire"].replace('"uptime_s":60', '"uptime_s":61'), node, "health")
 
 
@@ -151,3 +153,4 @@ def test_provenance_survives_a_broker(nodes, tmp_path, broker):
     assert got, "no health event over MQTT"
     assert verifies(got[0], d.node_key, "health"), got[0]
     assert json.loads(got[0])["ev"] == "health"
+

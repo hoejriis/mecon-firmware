@@ -10,7 +10,9 @@ namespace {
 
 const char DOMAIN[] = "MECON-UPLINK-v1";
 
-void b64(char* out, const uint8_t* in, size_t n) {
+}  // namespace
+
+void base64Encode(char* out, const uint8_t* in, size_t n) {
   static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   size_t o = 0;
   for (size_t i = 0; i < n; i += 3) {
@@ -23,7 +25,6 @@ void b64(char* out, const uint8_t* in, size_t n) {
   out[o] = 0;
 }
 
-}  // namespace
 
 int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer) {
   if (!_auth || !_auth->enrolled()) return (int)len;   // a standalone device signs nothing
@@ -59,7 +60,7 @@ int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, cons
   size_t n = text_len - 1;
   memcpy(buf + n, ",\"usig\":\"", 9);
   n += 9;
-  b64(buf + n, sig, 64);
+  base64Encode(buf + n, sig, 64);
   n += 88;
   buf[n++] = '"';
   buf[n++] = '}';

@@ -31,7 +31,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate"};
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation"};
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -59,6 +59,7 @@ const OpEntry OPS[] = {
   {"deployment.unlock_challenge", MeconIface::opDeployUnlockChallenge, PRIV_WRITE, false},
   {"deployment.unlock", MeconIface::opDeployUnlock, PRIV_WRITE, false},
   {"identity.rotate", MeconIface::opIdentityRotate, PRIV_WRITE, false},   // never answered from the cache: it must run once
+  {"identity.rotation", MeconIface::opIdentityRotation, PRIV_READ, false},
 };
 
 }  // namespace
@@ -186,7 +187,8 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   self->_deny = nullptr;
   // Open to any caller that can reach the interface: the read of the stored set (it reveals nothing secret), and the
   // DAK-signed authority update (it carries its own proof; AUTHORITY.md sections 6.2 and 6.3).
-  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;
+  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "identity.rotation") == 0 ||
+      strcmp(op.name, "deployment.authority_update") == 0) return true;
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).

@@ -6,7 +6,9 @@ vectors signs the set that revokes a member."""
 import base64
 import json
 import os
+import re
 import sys
+import time
 
 import pytest
 from sim import ed25519_ref
@@ -77,6 +79,7 @@ def test_rotation_changes_the_key_and_keeps_everything_else(nodes):
 
     # the authority state is untouched (the issuer's mark moved by the rotation request itself)
     g1 = d.i.request("deployment.get")["result"]
+    assert g1.pop("rotation")["statement"].startswith('{"v":1,"old":"%s"' % old_key), "deployment.get carries the statement"
     assert members_of(g1)[INST_A]["mark"] == 2
     for g in (g0, g1):
         members_of(g)[INST_A]["mark"] = 0
@@ -101,6 +104,7 @@ def test_rotation_changes_the_key_and_keeps_everything_else(nodes):
     d.reboot()
     assert d.node_key == new_key
     g2 = d.i.request("deployment.get")["result"]
+    g2.pop("rotation")
     assert members_of(g2)[INST_A]["mark"] == 3
     members_of(g2)[INST_A]["mark"] = 0
     assert g2 == g0
@@ -161,3 +165,87 @@ def test_the_server_roles_do_not_rotate_their_key(nodes, kind):
     r = d.send(wrap(key, "identity.rotate", job=1, nonce=d.nonce()))
     assert r["status"] == "unknown-op", r
     assert d.i.request("hello")["result"]["node_key"] == key
+
+
+# ------------------------------------------------------------------ the rotation statement (AUTHORITY.md section 11)
+
+def rotation_file(d):
+    return os.path.join(d.n.dir, "rotation")
+
+
+def statement_checks(rot, old_key, new_key, device_id, job):
+    """The stored statement: the exact text the old key signed, and that signature, checked here with the reference verifier."""
+    stmt = json.loads(rot["statement"])
+    assert stmt == {"v": 1, "old": old_key, "new": new_key, "device_id": device_id, "job_id": job}, stmt
+    msg = b"MECON-NODEROT-v1\x00" + rot["statement"].encode()
+    assert ed25519_ref.verify(bytes.fromhex(old_key), msg, base64.b64decode(rot["sig"])), "signed by the old key"
+    assert not ed25519_ref.verify(bytes.fromhex(new_key), msg, base64.b64decode(rot["sig"])), "and not by the new one"
+
+
+def test_a_lost_rotate_result_is_recovered_from_the_stored_statement(nodes):
+    d = enrolled_companion(nodes, "rl", 51)
+    old_key = d.node_key
+    assert "rotation" not in d.i.request("identity.rotation")["result"] and \
+        "rotation" not in d.i.request("deployment.get")["result"], "a key never rotated has no statement"
+    w = wrap(old_key, "identity.rotate", job=2, nonce=d.nonce())
+    d.i.send_raw(json.dumps(w, separators=(",", ":")).encode())
+    lost = d.i.wait_result("s-2-identity.rotate")   # the bridge drops it: from here on the manager never has this result
+    new_key = lost["result"]["new_public_key"]
+    # the resend is another device's request now, so the result cannot be fetched again by repeating the request
+    again = d.send(w)
+    assert again["status"] == "refused" and again["error"] == "wrong_device", again
+    # the manager reads hello (signed by the new key, which it cannot yet trust) and the statement (signed by the old key)
+    h = d.i.request("hello")
+    assert h["result"]["node_key"] == new_key and "identity.rotation" in h["result"]["capabilities"]
+    rot = d.i.request("identity.rotation")["result"]["rotation"]
+    statement_checks(rot, old_key, new_key, h["result"]["device_id"], 2)
+    # the same through a signed plain read (no job id, no nonce) and through deployment.get
+    sr = d.send(wrap(new_key, "identity.rotation", job=None, target=new_key, rid="rr"))
+    assert sr["status"] == "ok" and sr["result"]["rotation"] == rot, sr
+    assert d.i.request("deployment.get")["result"]["rotation"] == rot
+    d.reboot()
+    assert d.i.request("identity.rotation")["result"]["rotation"] == rot, "kept across a reboot"
+    # a second rotation replaces it
+    r2 = d.send(wrap(new_key, "identity.rotate", job=3, nonce=d.nonce(), target=new_key))
+    assert r2["status"] == "ok", r2
+    rot2 = d.i.request("identity.rotation")["result"]["rotation"]
+    statement_checks(rot2, new_key, r2["result"]["new_public_key"], h["result"]["device_id"], 3)
+
+
+def contacts_on_flash(d):
+    """The contact store writes lazily (five seconds after a change): wait until its bucket file exists."""
+    end = time.time() + 20
+    while time.time() < end:
+        found = [f for f in os.listdir(d.n.dir) if re.fullmatch(r"ct\d+", f)]
+        if found:
+            return found
+        time.sleep(0.5)
+    raise AssertionError("the contact was never written")
+
+
+def start_with_fault(d, fault_before):
+    d.n.stop()
+    d.n.fault_before = fault_before
+    d.n.start()
+    d.attach()
+
+
+def rotate_into_a_cut(d, job):
+    d.i.send_raw(json.dumps(wrap(d.node_key, "identity.rotate", job=job, nonce=d.nonce()), separators=(",", ":")).encode())
+    assert d.n.wait_exit(10) == 99, "the rotation never reached the injected power cut"
+    d.n.fault_before = None
+
+
+def test_a_cut_after_the_statement_and_before_the_key_save_leaves_the_key(nodes):
+    d = enrolled_companion(nodes, "rc", 53)
+    key = d.node_key
+    contacts_on_flash(d)
+    start_with_fault(d, "rename:/identity/_main.id.tmp")   # the key's atomic save, just before it is swapped in
+    rotate_into_a_cut(d, 2)
+    assert os.path.exists(rotation_file(d)), "the statement was stored before the key save"
+    d.n.start()
+    d.attach()
+    assert d.node_key == key, "the key change never took effect"
+    assert "rotation" not in d.i.request("identity.rotation")["result"], "so its statement is deleted at boot"
+    assert not os.path.exists(rotation_file(d))
+    assert d.c.get_contacts()[0] == 1, "and nothing was dropped"

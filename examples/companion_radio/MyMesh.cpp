@@ -1,6 +1,7 @@
 #include "MyMesh.h"
 #include <helpers/iface/Observe.h>
 #include <helpers/iface/DeviceId.h>
+#include <helpers/iface/Provenance.h>
 #include <helpers/AuditStore.h>
 #include <helpers/CryptoRNG.h>
 
@@ -1025,6 +1026,9 @@ void MyMesh::begin() {
   loadContactsAtBoot();
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure public channel
   _store->loadChannels(this);
+#ifdef ENABLE_MECON_IFACE
+  recoverRotation();   // a rotation cut by a power loss: delete a statement that never took effect
+#endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
   _radio_freq = _prefs.freq; _radio_bw = _prefs.bw;
@@ -2258,30 +2262,50 @@ private:
 };
 }  // namespace
 
-int MyMesh::rotateIdentity(const char** err) {
-  // 1. Generate. The cryptographic RNG (AUTHORITY.md section 12); a source that delivers nothing is a refusal, never a
-  // fixed key. The reserved id hashes and the current key are redrawn.
-  CryptoRNG crng;
-  mesh::LocalIdentity fresh;
-  bool ok = false;
-  for (int tries = 0; tries < 10 && !ok; tries++) {
-    uint8_t seed[32];
-    memset(seed, 0, sizeof(seed));
-    crng.random(seed, sizeof(seed));
-    bool nonzero = false;
-    for (uint8_t b : seed) nonzero = nonzero || b != 0;
-    if (!nonzero) { *err = "rng"; return 0; }
-    SeedRng r(seed);
-    memset(seed, 0, sizeof(seed));
-    fresh = mesh::LocalIdentity(&r);
-    ok = fresh.pub_key[0] != 0x00 && fresh.pub_key[0] != 0xFF && !fresh.matches(self_id);
-  }
-  if (!ok) { *err = "rng"; return 0; }
-  // 2. Save, atomically. A failed save leaves the old key in place and the device exactly as it was.
-  if (!_store->saveMainIdentity(fresh)) { *err = "storage"; return 0; }
-  // 3. Swap.
-  self_id = fresh;
-  // 4. Drop what belonged to the old key: contacts (their shared secrets), the message queue and what was cached from them.
+namespace {
+const char ROT_DOMAIN[] = "MECON-NODEROT-v1";   // + 0x00 + the statement text, signed with the key being retired
+// The stored file: the statement text, '\n', the base64 signature and '\n'.
+const size_t ROT_FILE_MAX = 512;
+
+void hex32(char* out, const uint8_t* k) {
+  static const char H[] = "0123456789abcdef";
+  for (int i = 0; i < PUB_KEY_SIZE; i++) { out[2 * i] = H[k[i] >> 4]; out[2 * i + 1] = H[k[i] & 15]; }
+  out[2 * PUB_KEY_SIZE] = 0;
+}
+
+size_t rotFile(char* out, size_t cap, const char* text, const char* sig_b64) {
+  const int n = snprintf(out, cap, "%s\n%s\n", text, sig_b64);
+  return n > 0 && (size_t)n < cap ? (size_t)n : 0;
+}
+
+// Splits a stored file: false when it is not whole. text and sig_b64 are copied out NUL terminated.
+bool rotSplit(char* file, size_t n, const char** text, const char** sig_b64) {
+  file[n] = 0;
+  char* nl = strchr(file, '\n');
+  if (!nl) return false;
+  *nl = 0;
+  char* sig = nl + 1;
+  char* nl2 = strchr(sig, '\n');
+  if (!nl2 || nl2 - sig != 88) return false;
+  *nl2 = 0;
+  *text = file;
+  *sig_b64 = sig;
+  return true;
+}
+}  // namespace
+
+bool MyMesh::readRotation(char* text, size_t tcap, char* sig_b64, size_t scap) {
+  char file[ROT_FILE_MAX + 1];
+  const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
+  const char *t, *s;
+  if (!n || !rotSplit(file, n, &t, &s) || strlen(t) >= tcap || strlen(s) >= scap) return false;
+  strcpy(text, t);
+  strcpy(sig_b64, s);
+  return true;
+}
+
+// Drops what belonged to the old key: contacts (their shared secrets), the message queue and what was cached from them.
+bool MyMesh::dropOldKeyState() {
   bool dropped = true;
   {
     ContactStore& cs = contactStore();
@@ -2299,7 +2323,78 @@ int MyMesh::rotateIdentity(const char** err) {
   clearPendingReqs();
   dirty_contacts_expiry = 0;
   if (_listener) _listener->onQueueSizeChanged(0);
-  // 5. One self-advert, zero hop like the app's default.
+  return dropped;
+}
+
+void MyMesh::recoverRotation() {
+  char file[ROT_FILE_MAX + 1];
+  const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
+  if (!n) return;
+  const char *text, *sig;
+  if (!rotSplit(file, n, &text, &sig)) { _store->removeRotation(); return; }
+  char cur[2 * PUB_KEY_SIZE + 1];
+  hex32(cur, self_id.pub_key);
+  char want[2 * PUB_KEY_SIZE + 16];
+  snprintf(want, sizeof(want), "\"new\":\"%s\"", cur);
+  if (!strstr(text, want)) _store->removeRotation();   // the key change never took effect
+}
+
+int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t job_id) {
+  // 1. Generate. The cryptographic RNG (AUTHORITY.md section 12); a source that delivers nothing is a refusal, never a
+  // fixed key. The reserved id hashes and the current key are redrawn.
+  CryptoRNG crng;
+  mesh::LocalIdentity fresh;
+  bool ok = false;
+  for (int tries = 0; tries < 10 && !ok; tries++) {
+    uint8_t seed[32];
+    memset(seed, 0, sizeof(seed));
+    crng.random(seed, sizeof(seed));
+    bool nonzero = false;
+    for (uint8_t b : seed) nonzero = nonzero || b != 0;
+    if (!nonzero) { memset(seed, 0, sizeof(seed)); memset(&fresh, 0, sizeof(fresh)); *err = "rng"; return 0; }
+    SeedRng r(seed);
+    memset(seed, 0, sizeof(seed));
+    fresh = mesh::LocalIdentity(&r);
+    ok = fresh.pub_key[0] != 0x00 && fresh.pub_key[0] != 0xFF && !fresh.matches(self_id);
+  }
+  if (!ok) { *err = "rng"; memset(&fresh, 0, sizeof(fresh)); return 0; }
+  // 2. The rotation statement: the old key signs "old key is replaced by new key" before anything changes, and it is
+  // stored before the key is. A manager that lost the result reads it back (identity.rotation).
+  {
+    char oldhex[2 * PUB_KEY_SIZE + 1], newhex[2 * PUB_KEY_SIZE + 1];
+    hex32(oldhex, self_id.pub_key);
+    hex32(newhex, fresh.pub_key);
+    char msg[sizeof(ROT_DOMAIN) + 256];
+    memcpy(msg, ROT_DOMAIN, sizeof(ROT_DOMAIN));   // with its NUL
+    char* text = msg + sizeof(ROT_DOMAIN);
+    const int tl = snprintf(text, 256, "{\"v\":1,\"old\":\"%s\",\"new\":\"%s\",\"device_id\":\"%s\",\"job_id\":%lu}", oldhex,
+                            newhex, device_id_hex, (unsigned long)job_id);
+    if (tl <= 0 || tl >= 256) { *err = "failed"; memset(&fresh, 0, sizeof(fresh)); return 0; }
+    uint8_t sig[64];
+    self_id.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));
+    char sig_b64[89];
+    Iface::base64Encode(sig_b64, sig, 64);
+    char file[ROT_FILE_MAX + 1];
+    const size_t fl = rotFile(file, sizeof(file), text, sig_b64);
+    if (!fl || !_store->saveRotation(reinterpret_cast<uint8_t*>(file), fl)) {
+      _store->removeRotation();
+      *err = "storage";
+      memset(&fresh, 0, sizeof(fresh));
+      return 0;
+    }
+  }
+  // 3. Save the key, atomically. A failed save leaves the old key in place and the device exactly as it was.
+  if (!_store->saveMainIdentity(fresh)) {
+    _store->removeRotation();
+    memset(&fresh, 0, sizeof(fresh));
+    *err = "storage";
+    return 0;
+  }
+  // 4. Swap.
+  self_id = fresh;
+  // 5. Drop what belonged to the old key.
+  const bool dropped = dropOldKeyState();
+  // 6. One self-advert, zero hop like the app's default.
   mesh::Packet* pkt = _prefs.advert_loc_policy == ADVERT_LOC_NONE ? createSelfAdvert(_prefs.node_name)
                                                                    : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
   if (pkt) sendZeroHop(pkt);

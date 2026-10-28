@@ -259,13 +259,20 @@ public:
   // then swapped in; contacts, the message queue and everything cached from the old key are dropped; one self-advert.
   // Configuration, channels, the Deployment record, posture and device_id stay. 0: nothing changed (*err says why);
   // 1: done; 2: the key is swapped but the contacts could not all be dropped.
-  int rotateIdentity(const char** err);
+  // device_id_hex and job_id go into the rotation statement (the old key's signed statement of the change, stored before the
+  // swap and served by identity.rotation, so a manager that lost the result can still learn the new key).
+  int rotateIdentity(const char** err, const char* device_id_hex, uint32_t job_id);
+  // The stored statement: its signed text and the base64 signature. False when there is none.
+  bool readRotation(char* text, size_t tcap, char* sig_b64, size_t scap);
 
   // One command line from the broker (docs/CLI.md). `ctx` says how the session was authenticated; the engine's table
   // decides whether the line may run. Returns a Cli::Mqtt::Status.
   uint8_t runMqttCli(const Cli::Context& ctx, const char* cmd, char* reply, size_t cap);
 
 private:
+  // Boot: a statement whose new key is not the current key never took effect and is deleted.
+  void recoverRotation();
+  bool dropOldKeyState();
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);
   void writeDisabledFrame();

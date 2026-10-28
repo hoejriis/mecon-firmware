@@ -16,6 +16,9 @@
 
 namespace Iface {
 
+// Standard base64 with padding; out holds 4*ceil(n/3)+1 bytes.
+void base64Encode(char* out, const uint8_t* in, size_t n);
+
 class Provenance {
 public:
   // id: the node identity (read at signing time, so a rotation takes effect at once). auth: whether a record exists.
