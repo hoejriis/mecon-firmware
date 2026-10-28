@@ -241,6 +241,8 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
 
 ## Mutation check
 
+In CI the mutation workflow runs on pushes to `main` and on pull requests that are not drafts: marking a draft ready starts it, and every later push re-runs it.
+
 `sim/mutate.sh` breaks one thing per test group (a time-on-air constant, SimRadio dropping
 every packet, SimFS discarding writes, the fault hook disabled), rebuilds, expects that
 group to go red, restores the file with `git checkout` and finishes with a clean full run.

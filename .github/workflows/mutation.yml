@@ -5,6 +5,7 @@ name: Mutation check
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', '.github/workflows/mutation.yml']
   push:
     branches: [main]
@@ -20,6 +21,8 @@ permissions:
 
 jobs:
   list:
+    # Draft PRs skip this; it runs once the PR is marked ready, and on every later push to it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     outputs:
       mutants: ${{ steps.list.outputs.mutants }}
