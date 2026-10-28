@@ -105,6 +105,9 @@ public:
   Status opSetUnlock(OpContext& c);
   Status opUnlockChallenge(OpContext& c);
   Status opUnlock(OpContext& c);
+  // The gate of identity.rotate (AUTHORITY.md section 11): ST_OK only for a verified signed request on a device whose record
+  // reads back healthy. Anything else is a refusal with a contract code and nothing changes.
+  Status rotateGate(OpContext& c);
 
   // After the file system has been formatted (the factory reset): the provisioned marker goes with the record, and the
   // state in memory follows what is now stored.

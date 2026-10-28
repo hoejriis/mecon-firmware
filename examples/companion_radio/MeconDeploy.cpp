@@ -5,6 +5,7 @@
 #include "MeconIface.h"
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
+#include <new>
 
 using namespace Iface;
 
@@ -51,6 +52,37 @@ void MeconIface::deployLoad() {
 }
 
 void MeconIface::writeDeploymentStatus(JsonWriter& w, bool hardened) { _auth.writeStatus(w, hardened); }
+
+// identity.rotate (AUTHORITY.md section 11). The result is signed with the key being retired (dispatch() does it from
+// _old_id), so the manager that enrolled that key can verify the answer and learn the new one from it.
+Status MeconIface::opIdentityRotate(OpContext& c) {
+  MeconIface* m = self(c);
+  Status st = m->_auth.rotateGate(c);
+  if (st != ST_OK) return st;
+  char oldhex[2 * PUB_KEY_SIZE + 1], newhex[2 * PUB_KEY_SIZE + 1];
+  static const char H[] = "0123456789abcdef";
+  const uint8_t* ok = m->_mesh->self_id.pub_key;
+  for (int i = 0; i < PUB_KEY_SIZE; i++) { oldhex[2 * i] = H[ok[i] >> 4]; oldhex[2 * i + 1] = H[ok[i] & 15]; }
+  oldhex[2 * PUB_KEY_SIZE] = 0;
+  mesh::LocalIdentity* old = new (std::nothrow) mesh::LocalIdentity(m->_mesh->self_id);
+  if (!old) { c.error = "no-memory"; return ST_BUSY; }
+  const char* err = "failed";
+  const int r = m->_mesh->rotateIdentity(&err);
+  if (r == 0) { memset(old, 0, sizeof(*old)); delete old; c.error = err; return ST_FAILED; }
+  m->_old_id = old;   // signs this result; dispatch() wipes it
+  if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }
+  const uint8_t* nk = m->_mesh->self_id.pub_key;
+  for (int i = 0; i < PUB_KEY_SIZE; i++) { newhex[2 * i] = H[nk[i] >> 4]; newhex[2 * i + 1] = H[nk[i] & 15]; }
+  newhex[2 * PUB_KEY_SIZE] = 0;
+  JsonWriter& w = *c.out;
+  w.key("old_public_key"); w.str(oldhex);
+  w.key("new_public_key"); w.str(newhex);
+  w.key("removed"); w.beginArray(); w.str("node_key"); w.str("contacts"); w.str("message_queue"); w.endArray();
+  w.key("kept"); w.beginArray();
+  w.str("configuration"); w.str("record"); w.str("channels"); w.str("posture"); w.str("device_id");
+  w.endArray();
+  return ST_OK;
+}
 
 const char* MeconIface::helloNonce() { return _auth.helloNonce(nonceOf(_cur_link)); }
 
