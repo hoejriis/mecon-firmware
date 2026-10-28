@@ -54,6 +54,12 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | `firmware`, `upstream`, `hardware`, `role` | text | as `hello` | the boot event only |
 | `loop_gap_ms.max` | ms | the device interface's loop tick | the longest main-loop pass since the previous runtime event; reading it resets it. 0 before two passes |
 | `heap_low` | bool | `HeapFloor` | Companion; the low-memory state the display shows. Absent where the build does not check the floor (it is enforced on ESP32 only) |
+| `gnss.powered` | bool | board (`getGnssHealth`) | T1000-E; the whole `gnss` object is absent on a board without a GNSS receiver |
+| `gnss.fix` | bool | GNSS receiver | `null` while the receiver is powered off |
+| `gnss.sats` | count | GNSS receiver | satellites used in the last fix; 0 while powered off |
+| `gnss.fix_age_s` | s | GNSS receiver | since the last GGA/RMC sentence with a valid fix; `null` when there has been none this boot. It keeps counting after the receiver is powered off |
+
+**`gnss` is the receiver's state, never a position.** It carries no latitude, longitude, altitude, speed or heading, rounded or not: those are the private `location` stream. Fix and satellite count also appear there, with the position.
 
 **Boot event.** The first time a runtime subscription starts in an epoch, a second runtime event follows the first snapshot at once: `{"boot": true, "firmware", "upstream", "hardware", "role", "reset_reason"}`. It is sent once per epoch and per device (a later subscription in the same epoch, on any transport, gets snapshots only; `hello` carries the same identity), with the next `seq`, to every transport subscribed at that moment. It has none of the snapshot members.
 
@@ -90,8 +96,8 @@ Events: one on every state change of Wi-Fi, MQTT, BLE or USB, carrying the new s
 | Field | Unit | Source | Notes |
 |---|---|---|---|
 | `battery_mv` | mV | board | `null` when not measurable |
-| `external` | bool | board | `null` where the board cannot tell |
-| `charging` | bool | board | `null` where the board cannot tell |
+| `external` | bool | board | the nRF52 power manager, or the board's own detect pin (`hasPowerDetect`: the T1000-E); `null` where the board cannot tell |
+| `charging` | bool | board | the same; on the T1000-E the charger's status pin. `null` where the board cannot tell |
 | `usb_power`, `solar` | bool | board detection | absent where the board has no detection |
 | `boot_mv` | mV | nRF52 | battery at boot |
 

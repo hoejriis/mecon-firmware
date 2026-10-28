@@ -8,6 +8,7 @@
 #include "IfaceDispatch.h"
 #include "../AuditRing.h"
 #include "IfaceJson.h"
+#include "../GnssHealth.h"
 
 namespace mesh { class Dispatcher; class Radio; class MainBoard; }
 class SensorManager;
@@ -168,6 +169,17 @@ void writeCount(JsonWriter& w, const char* key, int count, int capacity);
 // Reset reason, boot times, and the loop's longest gap since the previous runtime event.
 // heap_low: 1 or 0 where the build checks the heap floor (the Companion), -1 to leave the field out.
 void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low = -1);
+
+// Issue #1: the runtime stream's `gnss` object. Called only for a board that has a receiver, so it is absent
+// otherwise. `fix` is null while the receiver is off; `fix_age_s` is null before the first fix of the boot.
+inline void writeGnss(JsonWriter& w, const GnssHealth& g) {
+  w.key("gnss"); w.beginObject();
+  w.key("powered"); w.boolean(g.powered);
+  w.key("fix"); if (g.fix < 0) w.null(); else w.boolean(g.fix != 0);
+  w.key("sats"); w.unum(g.sats);
+  w.key("fix_age_s"); if (g.fix_age_s < 0) w.null(); else w.unum((uint32_t)g.fix_age_s);
+  w.endObject();
+}
 
 // The boot event of a runtime subscription: sent once per epoch, right after the first snapshot, so a consumer learns
 // what is running without a hello. The members are the ones hello carries, plus the reset reason.

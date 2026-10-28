@@ -29,6 +29,7 @@ public:
   const char* getSettingValue(int i) const override;
   bool setSettingValue(const char* name, const char* value) override;
   LocationProvider* getLocationProvider() { return _nmea; }
+  bool gpsActive() const { return gps_active; }   // issue #1: the receiver is powered (start_gps / stop_gps)
 };
 
 #ifdef DISPLAY_CLASS

@@ -1,5 +1,6 @@
 // The stream layer's pure parts (src/helpers/iface/Streams.h): the loop-gap meter and the observation rate limit.
 #include <gtest/gtest.h>
+#include <string>
 #include "helpers/iface/Streams.h"
 
 using namespace Iface;
@@ -103,6 +104,39 @@ TEST(LogData, NamesNotCodesAndNullTimeWhileTheClockWasUnset) {
   ASSERT_GT(formatLogData(buf, sizeof(buf), p, 0), 0);
   EXPECT_STREQ("{\"ts\":null,\"event\":\"posture\",\"caller\":\"cable\",\"what\":\"hardened\",\"count\":1,\"dropped\":0}", buf);
   EXPECT_EQ(-1, formatLogData(buf, 20, e, 0));   // too small: never truncated
+}
+
+// Issue #1: the runtime stream's gnss object (receiver state, never a position).
+static std::string gnssJson(const GnssHealth& g) {
+  char buf[160];
+  Iface::JsonWriter w(buf, sizeof(buf));
+  w.beginObject();
+  Iface::writeGnss(w, g);
+  w.endObject();
+  EXPECT_TRUE(w.ok());
+  return buf;
+}
+
+TEST(Gnss, PoweredOffHasANullFixAndNoAgeBeforeAnyFix) {
+  GnssHealth g;   // defaults: off, fix unknown, no fix this boot
+  EXPECT_EQ("{\"gnss\":{\"powered\":false,\"fix\":null,\"sats\":0,\"fix_age_s\":null}}", gnssJson(g));
+}
+
+TEST(Gnss, PoweredWithoutAFixYet) {
+  GnssHealth g; g.powered = true; g.fix = 0; g.sats = 2;
+  EXPECT_EQ("{\"gnss\":{\"powered\":true,\"fix\":false,\"sats\":2,\"fix_age_s\":null}}", gnssJson(g));
+}
+
+TEST(Gnss, AFixWithItsAge) {
+  GnssHealth g; g.powered = true; g.fix = 1; g.sats = 9; g.fix_age_s = 4;
+  EXPECT_EQ("{\"gnss\":{\"powered\":true,\"fix\":true,\"sats\":9,\"fix_age_s\":4}}", gnssJson(g));
+  g.fix_age_s = 0;   // a fix this second is 0, not null
+  EXPECT_EQ("{\"gnss\":{\"powered\":true,\"fix\":true,\"sats\":9,\"fix_age_s\":0}}", gnssJson(g));
+}
+
+TEST(Gnss, AnOldFixKeepsItsAgeAfterThePowerGoesOff) {
+  GnssHealth g; g.powered = false; g.fix = -1; g.sats = 0; g.fix_age_s = 3600;
+  EXPECT_EQ("{\"gnss\":{\"powered\":false,\"fix\":null,\"sats\":0,\"fix_age_s\":3600}}", gnssJson(g));
 }
 
 int main(int argc, char** argv) {
