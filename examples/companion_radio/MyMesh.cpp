@@ -2579,12 +2579,14 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   if (strcmp(command, "get device.id") == 0 || memcmp(command, "get device.id ", 14) == 0) {
     // The device interface's device_id (DEVICE_INTERFACE.md section 1) and the node key's signature binding it
     // (AUTHORITY.md section 3.5): "> <device_id> <sig>", or "> <device_id> <sig> <nonce>" for `get device.id <nonce>`.
-    const char* nonce = command[13] == ' ' ? &command[14] : "";
+    const bool has_arg = command[13] == ' ';
+    const char* nonce = has_arg ? &command[14] : "";
     char sig[89];
     if (!*Iface::deviceIdHex()) strcpy(reply, "Error: unsupported");
+    else if (has_arg && !*nonce) strcpy(reply, "Error: bad nonce");   // a space and no nonce is not the fixed form
     else if (!Iface::signDeviceId(sig, self_id, Iface::deviceIdHex(), nonce)) strcpy(reply, "Error: bad nonce");
-    else if (*nonce) sprintf(reply, "> %s %s %s", Iface::deviceIdHex(), sig, nonce);
-    else sprintf(reply, "> %s %s", Iface::deviceIdHex(), sig);
+    else if (*nonce) snprintf(reply, Iface::DEVID_REPLY_CAP, "> %s %s %s", Iface::deviceIdHex(), sig, nonce);
+    else snprintf(reply, Iface::DEVID_REPLY_CAP, "> %s %s", Iface::deviceIdHex(), sig);
     return true;
   }
 

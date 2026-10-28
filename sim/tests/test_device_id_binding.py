@@ -3,13 +3,21 @@ MQTT CLI topic) and the Repeater and Room console: `get device.id [nonce]` and `
 MECON-DEVID-v1 0x00 || device_id || node_key [|| nonce], verified here with sim/ed25519_ref.py independently of the
 firmware's signer; a bad nonce is refused; the provisioning read-back carries device_id and node_key."""
 import base64
+import os
+import sys
 
 import pytest
 from sim import ed25519_ref
+from sim import harness
+from sim.harness import CompanionClient
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
+import mecon_iface  # noqa: E402
 
 from test_deployment_authority import V, boot as boot_companion
 from test_deployment_authority_server import boot as boot_server
 from test_device_interface import broker, mqtt_boot  # noqa: F401  (broker is a fixture)
+from test_identity_rotate import rotate
 
 NONCE_OK = ["a", "Az09._-", "x" * 32]
 NONCE_BAD = ["x" * 33, "a b", "a:b", "a/b", "å"]
@@ -78,8 +86,12 @@ def check_cli(cli, dev, node_key):
     assert cli_answer(cli("get device.id"), dev, node_key)
     for nonce in NONCE_OK:
         assert cli_answer(cli("get device.id " + nonce), dev, node_key, nonce), nonce
-    for nonce in NONCE_BAD:
-        assert cli("get device.id " + nonce) == "Error: bad nonce", nonce
+    for nonce in NONCE_BAD + [""]:   # "" leaves a space with nothing after it: not the fixed form
+        assert cli("get device.id " + nonce) == "Error: bad nonce", repr(nonce)
+    # the longest answer, behind the "XX|" prefix the CLI echoes, arrives whole
+    longest = "n" * 32
+    r = cli("07|get device.id " + longest)
+    assert r.startswith("07|") and cli_answer(r[3:], dev, node_key, longest), r
     # a longer word is not the command
     assert not cli("get device.idx").startswith("> " + dev)
 
@@ -113,6 +125,10 @@ def test_the_legacy_cli_topic_answers_a_signed_device_id(nodes, tmp_path, broker
     assert r is not None and r["status"] == "ok" and cli_answer(r["reply"], dev, key), r
     r = b.cli_request(c.pub_key[:4].hex(), "get device.id m-1")
     assert r is not None and r["status"] == "ok" and cli_answer(r["reply"], dev, key, "m-1"), r
+    longest = "n" * 32
+    r = b.cli_request(c.pub_key[:4].hex(), "07|get device.id " + longest)
+    assert r is not None and r["status"] == "ok" and r["reply"].startswith("07|"), r
+    assert cli_answer(r["reply"][3:], dev, key, longest), r
 
 
 def test_companion_provisioning_read_back_carries_the_pair(nodes):
@@ -135,3 +151,39 @@ def test_console_provisioning_read_back_carries_the_pair(nodes, kind):
     assert r["status"] == "ok" and r["result"]["device_id"] == dev and r["result"]["node_key"] == d.node_key, r
     again = d.provision()
     assert again["result"]["duplicate"] is True and again["result"]["device_id"] == dev, again
+
+
+def test_after_a_rotation_hello_signs_with_the_new_key_and_untrusted_links_never_see_the_id(nodes):
+    """The rotation statement names device_id: identity.rotation is table-gated and deployment.get carries the statement
+    only for a caller that may read. BLE on the published default PIN is untrusted, as is the open TCP port."""
+    d = boot_companion(nodes, "dvr", 51)
+    assert d.c.cli("set pin 123456").startswith("> pin is now")
+    dev = d.i.request("hello")["result"]["device_id"]
+    assert d.provision()["status"] == "ok"
+    old_key = d.node_key
+    r = rotate(d, 1, old_key)
+    assert r["status"] == "ok", r
+    d.reboot()
+    assert d.node_key != old_key
+    assert check_hello(d.i, d.node_key) == dev, "the binding is signed with the new key"
+    assert not binds(d.i.request("hello")["result"]["device_id_sig"], dev, old_key)
+    # the trusted cable sees the statement in both reads (the positive control for the checks below)
+    assert dev in d.i.request("identity.rotation")["result"]["rotation"]["statement"]
+    assert dev in d.i.request("deployment.get")["result"]["rotation"]["statement"]
+    d.c.close()
+    d.n.restart()
+    b = CompanionClient(d.n, sock=d.n.connect_ble(123456).sock)
+    b.device_query()
+    b.app_start()
+    bi = mecon_iface.IfaceClient(b._send, b._read_frame)
+    for op in ("hello", "identity.rotation", "status.get"):
+        m = bi.request(op)
+        assert m["status"] == "refused", (op, m)
+        assert dev.encode() not in m.raw, op
+    g = bi.request("deployment.get")
+    assert g["status"] == "ok" and "rotation" not in g["result"], g
+    assert dev.encode() not in g.raw
+    # the CLI frame itself is refused on this link, so the answer cannot carry the id
+    f = b.request(bytes([harness.CMD_RUN_CLI_COMMAND]) + b"get device.id")
+    assert f is not None and f[0] == harness.RESP_ERR and f[1] == harness.ERR_NOT_PERMITTED, f
+    assert dev.encode() not in f

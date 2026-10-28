@@ -18,6 +18,10 @@ const char DEVID_DOMAIN[] = "MECON-DEVID-v1";
 const size_t DEVID_NONCE_MAX = 32;
 // The signed bytes for the longest nonce: domain and its NUL, id, key, nonce.
 const size_t DEVID_MSG_MAX = sizeof(DEVID_DOMAIN) + 16 + 32 + DEVID_NONCE_MAX;
+// The longest `get device.id` reply, "> <id> <sig> <nonce>" and its NUL. CLI replies are 160 bytes, of which a "XX|"
+// prefix echoed by the CLI takes 3: the reply must fit in the rest.
+const size_t DEVID_REPLY_CAP = 160 - 3;
+static_assert(2 + 32 + 1 + 88 + 1 + DEVID_NONCE_MAX + 1 <= DEVID_REPLY_CAP, "get device.id reply exceeds the CLI reply");
 
 // True for 1 to DEVID_NONCE_MAX characters of [0-9A-Za-z._-]; len excludes any terminator.
 inline bool devIdNonceValid(const char* nonce, size_t len) {
