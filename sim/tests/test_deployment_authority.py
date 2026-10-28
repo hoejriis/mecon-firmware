@@ -41,6 +41,11 @@ def test_the_reference_signer_reproduces_the_vectors():
     assert base64.b64encode(sig).decode() == wire["sig"]
 
 
+def bare(r):
+    """A result without its provenance members (contract 3.4: usig_boot, usig_seq, usig), for comparing what ran."""
+    return {k: v for k, v in r.items() if not k.startswith("usig")}
+
+
 def wrap(node_key, op, args=None, job=1, issuer=INST_A, rev=1, rid=None, nonce=None, target=None, deployment=DEP):
     """A signed request (contract 3.3): the body is signed as bytes, and travels as the wrapper's `body` string."""
     body = {"v": 1, "id": rid or "s-%s-%s" % (job, op), "op": op}
@@ -165,7 +170,7 @@ def test_a_signed_config_apply_runs_and_a_resend_runs_nothing(nodes):
     assert r["status"] == "ok" and r["result"]["complete"], r
     assert d.name() == "> Signed1"
     again = d.send(w)
-    assert again == r, "the same bytes get the stored result"
+    assert bare(again) == bare(r), "the same bytes get the stored result"
     # an unsigned change is refused once enrolled (contract section 9), the app's settings frame included: the change in
     # between is a second signed request, and the first one's bytes then run nothing
     assert d.c.request(bytes([8]) + b"Unsigned")[1] == 7, "an unsigned settings frame is refused once enrolled"
@@ -415,7 +420,7 @@ def test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after(nodes, t
     assert d.i.request("deployment.get")["result"] == {"state": "none"}, "nothing was written"
     assert d.provision()["status"] == "ok", "the cable may"
     r = b.iface_request(dev, {"v": 1, "id": "w1", "op": "config.apply", "args": apply_name("ViaMqtt")})
-    assert r == {"v": 1, "id": "w1", "status": "refused", "error": "unauthenticated"}, r
+    assert bare(r) == {"v": 1, "id": "w1", "status": "refused", "error": "unauthenticated"}, r
     assert d.name() != "> ViaMqtt"
     # a signed one is the authority, over the same verified broker session; its nonce is the session's own
     w = wrap(d.node_key, "config.apply", apply_name("ViaMqtt"), job=1)
@@ -881,7 +886,7 @@ def test_reset_and_unsigned_cli_writes_are_refused_over_mqtt(nodes, tmp_path, br
     assert r is not None and r["status"] == "ok" and r["reply"] == "> PreEnrol", "a read works: %s" % r
     # the reset: unsigned and signed, both refused over a broker
     r = b.iface_request(dev, {"v": 1, "id": "u1", "op": "deployment.reset"})
-    assert r == {"v": 1, "id": "u1", "status": "refused", "error": "unauthenticated"}, r
+    assert bare(r) == {"v": 1, "id": "u1", "status": "refused", "error": "unauthenticated"}, r
     r = b.iface_request(dev, wrap(d.node_key, "deployment.reset", job=1))
     assert r["status"] == "refused" and r["error"] == "usb_only", r
     assert d.i.request("deployment.get")["result"]["state"] == "provisioned"
@@ -1164,7 +1169,7 @@ def test_the_handshake_is_refused_over_mqtt_and_to_a_signed_request(nodes, tmp_p
     d, dev = mqtt_boot(nodes, tmp_path, "um", b)
     assert d.i.request("deployment.provision", with_secret(provision_args(d.node_key)))["status"] == "ok"
     r = b.iface_request(dev, {"v": 1, "id": "c1", "op": "deployment.unlock_challenge"})
-    assert r == {"v": 1, "id": "c1", "status": "refused", "error": "usb_only"}, r
+    assert bare(r) == {"v": 1, "id": "c1", "status": "refused", "error": "usb_only"}, r
     r = b.iface_request(dev, {"v": 1, "id": "c2", "op": "deployment.unlock", "args": {"response": "00" * 32}})
     assert r == {"v": 1, "id": "c2", "status": "refused", "error": "usb_only"}, r
     ch = challenge(d.i.request)   # control: the cable has a challenge outstanding; the broker cannot answer it

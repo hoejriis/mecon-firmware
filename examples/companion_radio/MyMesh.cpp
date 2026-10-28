@@ -974,8 +974,9 @@ void MyMesh::begin() {
     uint8_t device_id[16];
     uint32_t epoch = 0;
     CryptoRNG crng(getRNG());   // device_id must not follow from a small seed (docs/contract/AUTHORITY.md section 12)
-    _store->bootDeviceMeta(&crng, device_id, &epoch);   // a failed save still leaves this boot's values
-    _iface.begin(this, device_id, epoch);
+    // A failed save still leaves this boot's values, but the epoch may repeat: nothing is signed then (section 3.4).
+    const bool saved = _store->bootDeviceMeta(&crng, device_id, &epoch);
+    _iface.begin(this, device_id, epoch, saved);
   }
 #endif
 
@@ -2241,6 +2242,71 @@ void MyMesh::reloadContactSecrets() {
   invalidateContactSecrets();
 #endif
 }
+
+#ifdef ENABLE_MECON_IFACE
+namespace {
+// Replays 32 bytes already drawn and checked, so the key is built from exactly the seed that was tested for zeros.
+class SeedRng : public mesh::RNG {
+public:
+  explicit SeedRng(const uint8_t* s) { memcpy(_s, s, sizeof(_s)); }
+  ~SeedRng() { memset(_s, 0, sizeof(_s)); }
+  void random(uint8_t* dest, size_t sz) override {
+    for (size_t i = 0; i < sz; i++) dest[i] = i < sizeof(_s) ? _s[i] : 0;
+  }
+private:
+  uint8_t _s[32];
+};
+}  // namespace
+
+int MyMesh::rotateIdentity(const char** err) {
+  // 1. Generate. The cryptographic RNG (AUTHORITY.md section 12); a source that delivers nothing is a refusal, never a
+  // fixed key. The reserved id hashes and the current key are redrawn.
+  CryptoRNG crng;
+  mesh::LocalIdentity fresh;
+  bool ok = false;
+  for (int tries = 0; tries < 10 && !ok; tries++) {
+    uint8_t seed[32];
+    memset(seed, 0, sizeof(seed));
+    crng.random(seed, sizeof(seed));
+    bool nonzero = false;
+    for (uint8_t b : seed) nonzero = nonzero || b != 0;
+    if (!nonzero) { *err = "rng"; return 0; }
+    SeedRng r(seed);
+    memset(seed, 0, sizeof(seed));
+    fresh = mesh::LocalIdentity(&r);
+    ok = fresh.pub_key[0] != 0x00 && fresh.pub_key[0] != 0xFF && !fresh.matches(self_id);
+  }
+  if (!ok) { *err = "rng"; return 0; }
+  // 2. Save, atomically. A failed save leaves the old key in place and the device exactly as it was.
+  if (!_store->saveMainIdentity(fresh)) { *err = "storage"; return 0; }
+  // 3. Swap.
+  self_id = fresh;
+  // 4. Drop what belonged to the old key: contacts (their shared secrets), the message queue and what was cached from them.
+  bool dropped = true;
+  {
+    ContactStore& cs = contactStore();
+    int cursor = 0;
+    ContactInfo ci;
+    while (cs.next(cursor, ci)) _store->deleteBlobByKey(ci.id.pub_key, PUB_KEY_SIZE);
+    dropped = cs.clearAll();
+    resetContacts();   // the transient anon slots
+#ifdef CONTACTS_STOCK_ARRAY
+    saveContacts();   // the stock array is a file: write the empty list
+#endif
+  }
+  offline_queue_len = 0;
+  memset(advert_paths, 0, sizeof(advert_paths));
+  clearPendingReqs();
+  dirty_contacts_expiry = 0;
+  if (_listener) _listener->onQueueSizeChanged(0);
+  // 5. One self-advert, zero hop like the app's default.
+  mesh::Packet* pkt = _prefs.advert_loc_policy == ADVERT_LOC_NONE ? createSelfAdvert(_prefs.node_name)
+                                                                   : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
+  if (pkt) sendZeroHop(pkt);
+  memset(&fresh, 0, sizeof(fresh));
+  return dropped ? 1 : 2;
+}
+#endif
 
 // The command line over MQTT: the controller built the context from the broker session, the gate inside
 // handleCommand() decides, and a refusal is a reply. A remote caller always has a non-zero timestamp.

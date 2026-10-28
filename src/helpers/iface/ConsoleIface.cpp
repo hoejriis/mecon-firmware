@@ -133,7 +133,7 @@ const OpEntry OPS[] = {
 
 }  // namespace
 
-void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t epoch) {
+void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t epoch, bool epoch_saved) {
   _host = host;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
@@ -146,6 +146,7 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
     env.now_s = _host.clock_s ? _host.clock_s : nullptr;
     env.user = _host.user;
     _auth.begin(env);
+    _prov.begin(_host.identity, &_auth, epoch, epoch_saved);
     Cli::serverCaller().unlocked = consoleUnlocked;   // the console lines of the stock CLI see the unlock too
     Cli::serverCaller().unlocked_user = this;
   }
@@ -163,7 +164,8 @@ void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* r
   static const size_t CAP = 1024;
   char* ev = static_cast<char*>(malloc(CAP));
   if (!ev) { s->_obs.dropped++; return; }
-  const int n = writeObservation(ev, CAP, s->_clock, s->_epoch, false, 0, snr, rssi, raw, len, s->_obs.dropped);
+  int n = writeObservation(ev, CAP, s->_clock, s->_epoch, false, 0, snr, rssi, raw, len, s->_obs.dropped);
+  if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);   // -1: not signable, so not sent
   if (n > 0) {
     s->_obs.dropped = 0;
     s->printLine(*s->_out, ev, (size_t)n);
@@ -262,8 +264,9 @@ void ConsoleIface::answer(Print& out) {
   char* res = static_cast<char*>(malloc(OUT_MAX));
   int n;
   if (!res) {
-    char small[96];
+    char small[320];
     n = writeResult(small, sizeof(small), "", ST_BUSY, nullptr, "no-memory");
+    if (n > 0) n = _prov.signResult(small, (size_t)n, sizeof(small));
     if (n > 0) printLine(out, small, (size_t)n);
   } else {
     if (_overflow) {
@@ -281,6 +284,7 @@ void ConsoleIface::answer(Print& out) {
           n = run(cable, _line, _len, res, OUT_MAX, _cache);
       }
     }
+    if (n > 0) n = _prov.signResult(res, (size_t)n, OUT_MAX);
     if (n > 0) printLine(out, res, (size_t)n);
     free(res);
   }
@@ -329,8 +333,9 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;
-    char ev[640];
-    const int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, false, 0, data);
+    char ev[800];   // an event of up to 640 bytes, and its signature
+    int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, false, 0, data);
+    if (n > 0) n = _prov.sign(STREAMS[s].name, ev, (size_t)n, sizeof(ev));   // -1: not signable, so not sent
     if (n > 0) printLine(out, ev, (size_t)n);
   }
 }

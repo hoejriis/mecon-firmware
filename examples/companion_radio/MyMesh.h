@@ -255,6 +255,12 @@ public:
   // To check if there is pending work
   bool hasPendingWork() const;
 
+  // identity.rotate (docs/contract/AUTHORITY.md section 11): a new node key from the cryptographic RNG, saved atomically,
+  // then swapped in; contacts, the message queue and everything cached from the old key are dropped; one self-advert.
+  // Configuration, channels, the Deployment record, posture and device_id stay. 0: nothing changed (*err says why);
+  // 1: done; 2: the key is swapped but the contacts could not all be dropped.
+  int rotateIdentity(const char** err);
+
   // One command line from the broker (docs/CLI.md). `ctx` says how the session was authenticated; the engine's table
   // decides whether the line may run. Returns a Cli::Mqtt::Status.
   uint8_t runMqttCli(const Cli::Context& ctx, const char* cmd, char* reply, size_t cap);

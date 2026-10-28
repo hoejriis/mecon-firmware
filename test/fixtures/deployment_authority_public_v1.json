@@ -56,10 +56,17 @@
     "signer": "instance b"
   },
   "uplink_health": {
-    "status": "provisional",
+    "status": "stable",
     "stream": "health",
     "wire": "{\"v\":1,\"ev\":\"health\",\"epoch\":7,\"seq\":3,\"ts\":null,\"data\":{\"uptime_s\":60},\"usig_boot\":7,\"usig_seq\":12,\"usig\":\"rvUU052Hin6a26/Vl5DfcFZtWtm8WUb7roXMARthUUuFrlYWbneC+azA7rDC3LeEX8zQEIcNJzyjWlKlkWqzCw==\"}",
     "signed_bytes_hex": "4d45434f4e2d55504c494e4b2d7631006865616c7468007b2276223a312c226576223a226865616c7468222c2265706f6368223a372c22736571223a332c227473223a6e756c6c2c2264617461223a7b22757074696d655f73223a36307d2c22757369675f626f6f74223a372c22757369675f736571223a31327d",
+    "signer": "device node"
+  },
+  "uplink_result": {
+    "status": "stable",
+    "stream": "result",
+    "wire": "{\"v\":1,\"id\":\"r-1\",\"status\":\"ok\",\"result\":{\"complete\":true},\"usig_boot\":7,\"usig_seq\":13,\"usig\":\"ofLr9bPBT/HVVu1tm11oTugaMclo86Vo7Il7s2XmzrwBlU6BCaDrSzgVkxq5bvCO5ehXfOa+Bsth48kSAssaDg==\"}",
+    "signed_bytes_hex": "4d45434f4e2d55504c494e4b2d763100726573756c74007b2276223a312c226964223a22722d31222c22737461747573223a226f6b222c22726573756c74223a7b22636f6d706c657465223a747275657d2c22757369675f626f6f74223a372c22757369675f736571223a31337d",
     "signer": "device node"
   }
 }

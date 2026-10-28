@@ -98,12 +98,18 @@ def build():
                     "issued_at": 1790001100, "target_public_key": node.pub_hex, "job_id": 1})
     req_bytes = signed(DOMAIN_DEVMSG, b"iface", body.encode())
 
-    # Provisional: a signed health event, suffix = the stream name.
+    # Signed event (AUTHORITY.md 3.4): the stream name sits between two NULs after the domain.
     payload = compact({"v": 1, "ev": "health", "epoch": 7, "seq": 3, "ts": None, "data": {"uptime_s": 60}})
     payload = payload[:-1] + ',"usig_boot":7,"usig_seq":12}'
     up_bytes = signed(DOMAIN_UPLINK, b"health", payload.encode())
     up_sig = node.sign(up_bytes)
     up_wire = payload[:-1] + ',"usig":"%s"}' % b64(up_sig)
+
+    # Signed result: the same, with the literal "result" in place of the stream.
+    res = compact({"v": 1, "id": "r-1", "status": "ok", "result": {"complete": True}})
+    res = res[:-1] + ',"usig_boot":7,"usig_seq":13}'
+    res_bytes = signed(DOMAIN_UPLINK, b"result", res.encode())
+    res_wire = res[:-1] + ',"usig":"%s"}' % b64(node.sign(res_bytes))
 
     keys = {k.label: {"seed_hex": k.seed.hex(), "public_key": k.pub_hex}
             for k in (dak1, dak2, inst_a, inst_b, node)}
@@ -123,8 +129,10 @@ def build():
                           "wire": compact({"mecon_auth": 1, "issuer": ib, "sig": b64(inst_b.sign(req_bytes)),
                                            "body": body}),
                           "signed_bytes_hex": req_bytes.hex(), "signer": "instance b"},
-        "uplink_health": {"status": "provisional", "stream": "health", "wire": up_wire,
+        "uplink_health": {"status": "stable", "stream": "health", "wire": up_wire,
                           "signed_bytes_hex": up_bytes.hex(), "signer": "device node"},
+        "uplink_result": {"status": "stable", "stream": "result", "wire": res_wire,
+                          "signed_bytes_hex": res_bytes.hex(), "signer": "device node"},
     }
 
 
@@ -139,7 +147,7 @@ def header(v):
         name = label.upper().replace(" ", "_")
         lines.append("static const char* PUB_%s = %s;" % (name, c_str(k["public_key"])))
         lines.append("static const char* SEED_%s = %s;" % (name, c_str(k["seed_hex"])))
-    for obj in ("authority_set_rev1", "rotation_1_to_2", "authority_set_rev2", "iface_request", "uplink_health"):
+    for obj in ("authority_set_rev1", "rotation_1_to_2", "authority_set_rev2", "iface_request", "uplink_health", "uplink_result"):
         o = v[obj]
         name = obj.upper()
         lines.append("static const char* %s_SIGNED_HEX = %s;" % (name, c_str(o["signed_bytes_hex"])))

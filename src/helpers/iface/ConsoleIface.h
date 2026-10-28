@@ -13,6 +13,7 @@
 #include "DeployAuth.h"
 #include "IfaceConfig.h"
 #include "IfaceDispatch.h"
+#include "Provenance.h"
 #include "Streams.h"
 
 namespace Iface {
@@ -44,11 +45,14 @@ public:
     Dep::CopyStore* dep_store;
     // Wall-clock seconds for the audit entries of the unlock handshake; null: seconds since boot.
     uint32_t (*clock_s)(void* user);
+    // The node identity, to sign results and events with (AUTHORITY.md section 3.4); null: nothing is signed.
+    const mesh::LocalIdentity* identity;
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY);
 
-  void begin(const Host& host, const uint8_t device_id[16], uint32_t epoch);
+  // epoch_saved: false when this boot's epoch could not be written, so it may repeat and nothing is signed.
+  void begin(const Host& host, const uint8_t device_id[16], uint32_t epoch, bool epoch_saved);
 
   // The console has just read the prefix: the rest of the line is this class's.
   void startLine();
@@ -88,6 +92,7 @@ private:
   bool _collecting = false;
   bool _overflow = false;
   ResultCache* _cache = nullptr;
+  Provenance _prov;            // signs every result and event while a record exists
   DeployAuth _auth;            // the Deployment record and the signed-request checks (shared with the Companion)
   Cli::Context _ctx;           // the caller of the request being handled: the cable, or the signed principal on it
   const char* _deny = nullptr; // why authorize() refused, when it has a contract code for it

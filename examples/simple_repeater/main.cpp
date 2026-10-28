@@ -157,13 +157,14 @@ void setup() {
     uint8_t device_id[16];
     uint32_t epoch = 0;
     CryptoRNG crng(&fast_rng);   // device_id must not follow from a small seed
-    Iface::bootDeviceMeta(fs, &crng, device_id, &epoch);   // a failed save still leaves this boot's values
+    // A failed save still leaves this boot's values, but the epoch may repeat: nothing is signed then (AUTHORITY.md 3.4).
+    const bool epoch_saved = Iface::bootDeviceMeta(fs, &crng, device_id, &epoch);
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "repeater", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
                                        &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
-                                       &dep_store, ifaceClock };
+                                       &dep_store, ifaceClock, &the_mesh.self_id };
     dep_store.setFs(fs);
-    the_iface.begin(host, device_id, epoch);
+    the_iface.begin(host, device_id, epoch, epoch_saved);
   }
 #endif
   BootPresence::end();
