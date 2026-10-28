@@ -1023,7 +1023,7 @@ mutate unlock_secret_provisioned_over_any_transport src/helpers/iface/DeployAuth
 # --- provenance (AUTHORITY.md 3.4) and identity.rotate (section 11)
 PV=sim/tests/test_provenance.py
 IR=sim/tests/test_identity_rotate.py
-mutate prov_result_signature_dropped src/helpers/iface/Provenance.cpp '  if (!_auth || !_auth->enrolled()) return (int)len;   // a standalone device signs nothing' '  return (int)len;' $PV::test_companion_results_and_events_are_signed_once_a_record_exists
+mutate prov_result_signature_dropped src/helpers/iface/Provenance.cpp '  if (!_auth || (!_auth->enrolled() && !_force)) return (int)len;   // a standalone device signs nothing' '  return (int)len;' $PV::test_companion_results_and_events_are_signed_once_a_record_exists
 mutate prov_console_event_signature_dropped src/helpers/iface/ConsoleIface.cpp '    if (n > 0) n = _prov.sign(STREAMS[s].name, ev, (size_t)n, sizeof(ev));   // -1: not signable, so not sent' '' $PV::test_console_results_and_events_are_signed_once_a_record_exists
 mutate prov_wrong_domain src/helpers/iface/Provenance.cpp 'const char DOMAIN[] = "MECON-UPLINK-v1";' 'const char DOMAIN[] = "MECON-UPLINK-v2";' $PV::test_companion_results_and_events_are_signed_once_a_record_exists
 mutate prov_unsigned_epoch_still_signs src/helpers/iface/Provenance.cpp '  if (!_epoch_saved || _seq == 0xFFFFFFFFu) {' '  if (_seq == 0xFFFFFFFFu) {' $PV::test_an_unsaved_boot_epoch_signs_nothing
@@ -1056,6 +1056,7 @@ mutate native_signer_signs_mecon_bytes examples/companion_radio/MyMesh.cpp '    
 mutate prov_result_names_no_op src/helpers/iface/Provenance.cpp '  if (a && a->op[0]) {' '  if (false) {' $PV::test_a_result_names_what_it_answers
 mutate prov_result_names_no_job src/helpers/iface/Provenance.cpp '    const int n = a->has_job ? snprintf(' '    const int n = false ? snprintf(' $PV::test_a_result_names_what_it_answers
 mutate prov_refusal_budget_unlimited src/helpers/iface/Provenance.cpp '  if (_tokens < 1000) return false;' '  if (_tokens < 1000) return true;' $PV::test_refusals_are_signed_within_a_budget_and_everything_else_always
+mutate prov_reset_result_unsigned src/helpers/iface/Provenance.cpp '  _force = was_enrolled;' '  _force = false;' $PV::test_the_result_of_the_reset_that_removes_the_record_is_still_signed
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi

@@ -207,3 +207,14 @@ def test_refusals_are_signed_within_a_budget_and_everything_else_always(nodes):
     time.sleep(1.2)
     d.i.send_raw(garbage)
     assert signed_text(d.i.wait_result("").raw), "a second later a refusal is signed again"
+
+
+def test_the_result_of_the_reset_that_removes_the_record_is_still_signed(nodes):
+    d = boot_companion(nodes, "pz", 41)
+    assert d.provision()["status"] == "ok"
+    r = d.send(wrap(d.node_key, "deployment.reset", job=2))
+    assert r["status"] == "ok" and r["result"]["state"] == "none", r
+    assert verifies(r.raw, d.node_key, "result"), "the manager can check that the device did unenrol"
+    assert r["op"] == "deployment.reset" and r["job_id"] == 2
+    h = d.i.request("hello")
+    assert not any(k.startswith("usig") for k in h), "and from then on the device signs nothing again"

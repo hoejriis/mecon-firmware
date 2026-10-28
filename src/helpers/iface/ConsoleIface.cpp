@@ -263,6 +263,7 @@ void ConsoleIface::answer(Print& out) {
   out.print("\r\n");   // ends the console's echo of the prefix, as the stock console ends an echoed line
   static const size_t OUT_MAX = 1600;
   char* res = static_cast<char*>(malloc(OUT_MAX));
+  bool was_enrolled = false;   // whether a record existed when the request began
   int n;
   if (!res) {
     char small[320];
@@ -278,6 +279,7 @@ void ConsoleIface::answer(Print& out) {
       if (!_cache) {
         n = writeResult(res, OUT_MAX, "", ST_BUSY, nullptr, "no-memory");
       } else {
+        was_enrolled = _auth.enrolled();
         if (!_nonce[0]) DeployAuth::issueNonce(_nonce);   // issued when the link's first request arrives
         const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
         if (DeployAuth::isWrapper(_line, _len))
@@ -286,7 +288,7 @@ void ConsoleIface::answer(Print& out) {
           n = run(cable, _line, _len, res, OUT_MAX, _cache);
       }
     }
-    if (n > 0) n = _prov.signResult(res, (size_t)n, OUT_MAX, nullptr, &_auth.answering());
+    if (n > 0) n = _prov.signResult(res, (size_t)n, OUT_MAX, nullptr, &_auth.answering(), was_enrolled);
     _auth.answering().clear();
     if (n > 0) printLine(out, res, (size_t)n);
     free(res);

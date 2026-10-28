@@ -29,7 +29,7 @@ void base64Encode(char* out, const uint8_t* in, size_t n) {
 
 int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer,
                      const char* extra) {
-  if (!_auth || !_auth->enrolled()) return (int)len;   // a standalone device signs nothing
+  if (!_auth || (!_auth->enrolled() && !_force)) return (int)len;   // a standalone device signs nothing
   if (!_id || len < 2 || buf[len - 1] != '}' || len >= cap) return -1;
   const mesh::LocalIdentity* key = signer ? signer : _id;
   char tail[160];
@@ -96,8 +96,16 @@ bool isRefusal(const char* buf, size_t len) {
 }
 }  // namespace
 
-int Provenance::signResult(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer, const Answering* a) {
-  if (!_auth || !_auth->enrolled()) return (int)len;   // a standalone device signs nothing
+int Provenance::signResult(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer, const Answering* a,
+                           bool was_enrolled) {
+  if (!_auth || (!_auth->enrolled() && !was_enrolled)) return (int)len;   // a standalone device signs nothing
+  _force = was_enrolled;
+  const int r = signResultInner(buf, len, cap, signer, a);
+  _force = false;
+  return r;
+}
+
+int Provenance::signResultInner(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer, const Answering* a) {
   if (len >= 2 && isRefusal(buf, len) && !allowRefusalSignature()) {
     static const char T[] = ",\"unsigned\":\"rate\"}";
     if (len - 1 + sizeof(T) - 1 >= cap) return -1;

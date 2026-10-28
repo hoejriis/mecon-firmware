@@ -221,8 +221,9 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                          size_t cap) {
   _auth.answering().clear();
+  const bool was_enrolled = _auth.enrolled();
   int n = dispatchInner(ctx, caller, link, msg, len, out, cap);
-  if (n > 0) n = _prov.signResult(out, (size_t)n, cap, _old_id, &_auth.answering());
+  if (n > 0) n = _prov.signResult(out, (size_t)n, cap, _old_id, &_auth.answering(), was_enrolled);
   _auth.answering().clear();
   if (_old_id) { memset(_old_id, 0, sizeof(*_old_id)); delete _old_id; _old_id = nullptr; }   // the retired key lives for one result
   return n;

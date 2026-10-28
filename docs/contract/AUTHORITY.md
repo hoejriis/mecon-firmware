@@ -81,7 +81,7 @@ One suffix (`iface`) for every operation, so the same signed bytes are valid ove
 
 ### 3.4 Signed events and results
 
-While the device holds a record (healthy or corrupt), it signs every interface event and every result with its node key, so the origin survives a Reader bridge or a broker, which forward the bytes unchanged. A device with no record signs nothing.
+While the device holds a record (healthy or corrupt), it signs every interface event and every result with its node key, so the origin survives a Reader bridge or a broker, which forward the bytes unchanged. A device with no record signs nothing; whether to sign is decided when a request begins, so the result of the `deployment.reset` that removes the record is still signed.
 
 - The message is one JSON object. The device adds `"usig_boot": <epoch>, "usig_seq": <n>` as its last two members, then signs, then appends `"usig":"<base64>"` as the last member.
   - `usig_boot` is the boot epoch of the device interface (the `epoch` of `hello`).
