@@ -41,3 +41,37 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 - Section 4: the marks fallback flag and its effect (L1).
 - Sections 6.1 and 10: `usb_only` for the unlock secret (L3).
 - Section 10: Hardened with a record needs the secret, reported as `no-unlock-secret` (M2).
+
+## Review 3: signed events and results, identity.rotate (2026-10-28)
+
+Outcome of the third review of the branch `feat/authority-95-provenance` (PR 132): 1 high, 4 medium, 6 low, 7 info. No exploit
+detail here. Each fix landed as its own commit with a test that fails without it and a named mutant (`sim/mutate.sh`)
+that the test kills.
+
+| Id | Summary | Decision |
+|---|---|---|
+| H1 | The new key's only proof was one result that could not be fetched again | Fixed: the old key signs a rotation statement before the swap, `identity.rotation` and `deployment.get` serve it, and AUTHORITY.md section 11 says how a manager that lost the result verifies it. Mutants `rot_statement_signed_by_new_key`, `rot_stale_statement_kept`, `rot_statement_domain`, `rotation_not_a_plain_read`, `rotate_result_signed_with_new_key` |
+| M1 | A power cut between the key save and the drop left the old owner's contacts with the new key | Fixed: the statement is drop-pending until the drop ends; the boot finishes it (power-cut sim tests at the key save and at the first drop step). Mutants `rot_pending_drop_not_finished`, `rot_pending_never_cleared` |
+| M2 | The native signing command signed `MECON-` bytes | Fixed: refused (`ILLEGAL_ARG`) when the data starts with `MECON-`, enrolled or not. Mutant `native_signer_signs_mecon_bytes` |
+| M3 | A signed result was not bound to its request | Fixed: results carry `op` and, for a signed request, `job_id`, inside the signed text; the manager's freshness rule is now written in 3.4. Mutants `prov_result_names_no_op`, `prov_result_names_no_job` |
+| M4 | Unauthenticated input drove signing with no limit, and its cost was unmeasured | Fixed for refusals: at most 8 signed refusals a second (burst 8), beyond it unsigned with `"unsigned":"rate"`. Other results and events are always signed. Cost measured on the sim host: 12.4 µs per signature (see below). Mutant `prov_refusal_budget_unlimited`. Not done: measuring on a target MCU, moving observation signing out of the receive callback, and avoiding the per-signature allocation (deferred, below) |
+| L1 | `usig_boot` can repeat after `/mecon_dev` is lost while the key and record persist | Deferred: needs `device_id` (or an epoch floor in a second place) in the signed prefix, a format change for managers; to be decided with the contract owner before the first release |
+| L2 | The reset result, and every message after an unenrolment, was unsigned | Fixed for the reset result: whether to sign is decided when the request begins. Messages after the unenrolment stay unsigned by design (no record). Mutant `prov_reset_result_unsigned` |
+| L3 | Key hygiene: elidable wipes, `fresh` not wiped on the storage path, the old key left in flash | Fixed: a volatile-loop wipe (`Wipe.h`) at every key wipe of the rotation and the retired-key holder, and `fresh` is wiped on every exit. Accepted: the temporary of `LocalIdentity(&r)` is not wiped (a stack temporary the type's constructor owns), and flash remanence (written in section 12) |
+| L4 | The RNG check caught only an all-zero source | Fixed: at least 16 distinct byte values and not equal to the previous draw. The sim's RNG cannot be made to fail, so this refusal is untested there (deferred with I7) |
+| L5 | A result in the last ~146 bytes below the buffer limit fails after the operation ran | Deferred: operations need a cap reduced by the signing overhead (now also `op` and `job_id`, about 30 bytes more); to be done per operation with the result-size work. Today the failure is a signed `busy` `too-large-to-sign` |
+| L6 | An event whose signing fails disappeared without trace | Fixed: counted in `dropped`, which the next observation reports |
+| I1 | Reconstruction: strip the trailing member | Fixed in 3.4 (wording) |
+| I2 | Reserve `result` as a stream name | Fixed in 3.4 |
+| I3 | Signing adds no secret | Accepted: nothing to do |
+| I4 | A corrupt-record device signing gives nothing | Accepted: nothing to do |
+| I5 | "Signed by the node key" is shown by code, not exercised | Accepted: the node key is never consulted as an issuer; no test can sign as the node key against the layer |
+| I6 | Memory safety of the signing buffers | Accepted: no overflow found. The tail buffer grew to 160 bytes for `op` and `job_id`, still bounded by `snprintf` and a length check |
+| I7 | Untested paths | Partly fixed: a power cut at each rotation step (key save, drop) is tested. Deferred: `r == 2` (contacts not dropped), the `rng` and `storage` refusals, a result near the size limit, the observations stream's signature, `seq_exhausted` |
+
+Signing time: 12.4 µs per Ed25519 signature of a 250-byte message (20,000 signatures, `lib/ed25519`, gcc -O2, aarch64
+container on the sim host, 2026-10-28). Not a target figure: the nRF52840 and ESP32 are expected to be in the millisecond
+range, which is why the refusal budget exists.
+
+Not established by this review: the signing time on a target MCU, and whether the ESP32 MQTT worker task ever calls `dispatch()`
+or `sign()` (it appears to handle connects only).
