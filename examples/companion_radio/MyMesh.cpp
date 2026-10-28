@@ -2361,18 +2361,27 @@ int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t
   CryptoRNG crng;
   mesh::LocalIdentity fresh;
   bool ok = false;
+  uint8_t prev[32] = {0};
   for (int tries = 0; tries < 10 && !ok; tries++) {
     uint8_t seed[32];
     memset(seed, 0, sizeof(seed));
     crng.random(seed, sizeof(seed));
     bool nonzero = false;
     for (uint8_t b : seed) nonzero = nonzero || b != 0;
-    if (!nonzero) { Iface::wipe(seed, sizeof(seed)); Iface::wipe(&fresh, sizeof(fresh)); *err = "rng"; return 0; }
+    // A source stuck at a constant or a short pattern passes the zero test: a draw with fewer than 16 distinct byte values, or
+    // one equal to the previous draw, is a failing source too (a random 32 bytes has about 28 distinct values).
+    bool seen[256];
+    memset(seen, 0, sizeof(seen));
+    int distinct = 0;
+    for (uint8_t b : seed) { if (!seen[b]) { seen[b] = true; distinct++; } }
+    if (!nonzero || distinct < 16 || (tries > 0 && memcmp(seed, prev, sizeof(seed)) == 0)) { Iface::wipe(seed, sizeof(seed)); Iface::wipe(prev, sizeof(prev)); Iface::wipe(&fresh, sizeof(fresh)); *err = "rng"; return 0; }
+    memcpy(prev, seed, sizeof(prev));
     SeedRng r(seed);
     Iface::wipe(seed, sizeof(seed));
     fresh = mesh::LocalIdentity(&r);
     ok = fresh.pub_key[0] != 0x00 && fresh.pub_key[0] != 0xFF && !fresh.matches(self_id);
   }
+  Iface::wipe(prev, sizeof(prev));
   if (!ok) { *err = "rng"; Iface::wipe(&fresh, sizeof(fresh)); return 0; }
   // 2. The rotation statement: the old key signs "old key is replaced by new key" before anything changes, and it is
   // stored (marked drop-pending) before the key is. A manager that lost the result reads it back (identity.rotation).
