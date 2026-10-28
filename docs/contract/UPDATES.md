@@ -23,7 +23,10 @@ It builds on three pages:
 | **release manifest** | a **release key**, held by whoever builds the firmware | "is this image a genuine build for this board, layout and role" | the build's **release anchors** (section 3) |
 | **install request** (`update.offer`) | a current **Deployment member**; on a device with no record, the cable instead (section 5) | "may this device install it now" | the authority set (AUTHORITY.md) |
 
-**The request binds the release.** The manifest text and its signature are arguments of `update.offer`, inside the request body a member signs (AUTHORITY.md section 3.3). So is `source`, and so is `confirm`. A bridge cannot attach a different manifest, an older one or a downgrade-allowing one to a member's signed offer.
+**The request binds the release, by hash.**
+- `update.offer` carries `manifest_sha256`, the SHA-256 of the manifest text exactly as signed, inside the request body a member signs (AUTHORITY.md section 3.3). `source` and `confirm` are there too.
+- The manifest itself arrives separately, staged with `update.manifest` (section 8). The release key's signature authenticates it, and the signed hash pins exactly which manifest the member authorised. A bridge cannot substitute a different manifest, an older one or a downgrade-allowing one.
+- The manifest is not carried inside the signed body because it would not fit. As a string inside a string inside the wrapper, its quotes are escaped twice, and a signed offer carrying a 512-byte manifest and a 160-byte URL measured 1,648 bytes, over the device's MQTT buffer.
 
 Neither signature stands in for the other. A URL, a paired link or a broker session is never authority by itself.
 
@@ -71,7 +74,7 @@ Neither signature stands in for the other. A URL, a paired link or a broker sess
 1. **Authority.** The request is authorised (section 5): `unauthenticated`, `refused`.
 2. **Rate.** An offer that would erase the update slot again within 60 s of the last one: `busy`, `rate`.
 3. **One job.** Another state-changing job is open: `busy`, `job-open:<job>` (OPERATIONS.md 3.3). The supersede case is section 7, step 7.
-4. **Size and syntax.** The offer within its bound (section 6), and the manifest syntax: `too-large`, `bad-manifest`.
+4. **The staged manifest.** A manifest is staged whose SHA-256 is the offer's `manifest_sha256`: `manifest-not-staged`. Its syntax is valid: `bad-manifest`. The offer is within its bound (section 6): `too-large`.
 5. **Key.** `key_id` is a compiled-in anchor, and allowed by the record if it narrows them: `untrusted-release-key`.
 6. **Signature.** `bad-release-signature`.
 7. **Target.** `line`, `hardware`, `hardware_rev`, `role`, `variant`, `layout`, `bootloader_min` and `kind` match the device and a path it supports: `wrong-target`.
@@ -99,10 +102,13 @@ BLE is refused even with the device's own PIN, for the reason AUTHORITY.md secti
 ## 6. Delivery and what each target verifies
 
 **Bounds:**
-- an `update.offer` is at most **1,400 bytes over MQTT** (the device's client buffer is 1,600 bytes with the topic), and at most 4,096 over USB and BLE;
+- an `update.offer` or an `update.manifest` is at most **1,400 bytes over MQTT** (the device's client buffer is 1,600 bytes with the topic), and at most 4,096 over USB and BLE;
 - `source.url` is at most 256 bytes;
-- a manifest is at most 600 bytes.
-A signed offer with a 600-byte manifest and a 256-byte URL is a published vector, measured to fit.
+- a manifest is at most 600 bytes. Every field filled in, with the longest variant name, measures 492 bytes.
+
+Measured worst cases, each a published vector:
+- a signed offer with a 256-byte URL is 977 bytes;
+- an unsigned `update.manifest` with a 600-byte manifest is 851 bytes.
 
 | Target | `kind` | IP | USB | BLE | Image check before activation | Rollback |
 |---|---|---|---|---|---|---|
@@ -144,6 +150,7 @@ A signed offer with a 600-byte manifest and a 256-byte URL is a published vector
 
 | Operation | Does |
 |---|---|
+| `update.manifest` | stages one manifest `{"manifest", "manifest_sig"}` in RAM, unsigned, for any caller with `read`. It changes nothing persistent. It verifies the release signature and the target at once, refusing as preflight steps 5 to 7 would. It answers the manifest's `sha256` and what preflight would say. One slot: a later stage replaces it, and an offer naming another hash gets `manifest-not-staged`, so a stage from someone else costs a retry, never a wrong install. A job consumes it |
 | `update.status` | the open update job: state, bytes received, the offset expected next, the manifest's `version` and `sha256`, and the security floor |
 | `job.cancel` | before activation: stops the transfer and erases the partial slot. After activation it is the revert rule |
 | `job.confirm`, `job.get`, `job.list`, `job.ack` | as in OPERATIONS.md, with the `update` class for update jobs |
@@ -173,7 +180,7 @@ A revert therefore always finds data the previous image can read. A forced rever
 - **Public vectors**, generated by a tool in this repository from public labels:
   - a valid manifest;
   - one manifest per preflight refusal of section 4;
-  - a signed offer at the MQTT bound;
+  - a signed offer and an unsigned manifest stage at their measured worst cases (section 6);
   - a signed chunk at the 4,096-byte bound.
 - **Sim tests** over every transport:
   - offer, chunks with and without the token, interruption and resume, the stall deadline;
