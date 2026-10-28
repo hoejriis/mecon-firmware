@@ -2,6 +2,7 @@
 #include <helpers/iface/Observe.h>
 #include <helpers/iface/DeviceId.h>
 #include <helpers/iface/Provenance.h>
+#include <helpers/iface/Wipe.h>
 #include <helpers/AuditStore.h>
 #include <helpers/CryptoRNG.h>
 
@@ -2259,7 +2260,7 @@ namespace {
 class SeedRng : public mesh::RNG {
 public:
   explicit SeedRng(const uint8_t* s) { memcpy(_s, s, sizeof(_s)); }
-  ~SeedRng() { memset(_s, 0, sizeof(_s)); }
+  ~SeedRng() { Iface::wipe(_s, sizeof(_s)); }
   void random(uint8_t* dest, size_t sz) override {
     for (size_t i = 0; i < sz; i++) dest[i] = i < sizeof(_s) ? _s[i] : 0;
   }
@@ -2366,13 +2367,13 @@ int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t
     crng.random(seed, sizeof(seed));
     bool nonzero = false;
     for (uint8_t b : seed) nonzero = nonzero || b != 0;
-    if (!nonzero) { memset(seed, 0, sizeof(seed)); memset(&fresh, 0, sizeof(fresh)); *err = "rng"; return 0; }
+    if (!nonzero) { Iface::wipe(seed, sizeof(seed)); Iface::wipe(&fresh, sizeof(fresh)); *err = "rng"; return 0; }
     SeedRng r(seed);
-    memset(seed, 0, sizeof(seed));
+    Iface::wipe(seed, sizeof(seed));
     fresh = mesh::LocalIdentity(&r);
     ok = fresh.pub_key[0] != 0x00 && fresh.pub_key[0] != 0xFF && !fresh.matches(self_id);
   }
-  if (!ok) { *err = "rng"; memset(&fresh, 0, sizeof(fresh)); return 0; }
+  if (!ok) { *err = "rng"; Iface::wipe(&fresh, sizeof(fresh)); return 0; }
   // 2. The rotation statement: the old key signs "old key is replaced by new key" before anything changes, and it is
   // stored (marked drop-pending) before the key is. A manager that lost the result reads it back (identity.rotation).
   {
@@ -2384,7 +2385,7 @@ int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t
     char* text = msg + sizeof(ROT_DOMAIN);
     const int tl = snprintf(text, 256, "{\"v\":1,\"old\":\"%s\",\"new\":\"%s\",\"device_id\":\"%s\",\"job_id\":%lu}", oldhex,
                             newhex, device_id_hex, (unsigned long)job_id);
-    if (tl <= 0 || tl >= 256) { *err = "failed"; memset(&fresh, 0, sizeof(fresh)); return 0; }
+    if (tl <= 0 || tl >= 256) { *err = "failed"; Iface::wipe(&fresh, sizeof(fresh)); return 0; }
     uint8_t sig[64];
     self_id.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));
     char sig_b64[89];
@@ -2394,14 +2395,14 @@ int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t
     if (!fl || !_store->saveRotation(reinterpret_cast<uint8_t*>(file), fl)) {
       _store->removeRotation();
       *err = "storage";
-      memset(&fresh, 0, sizeof(fresh));
+      Iface::wipe(&fresh, sizeof(fresh));
       return 0;
     }
   }
   // 3. Save the key, atomically. A failed save leaves the old key in place and the device exactly as it was.
   if (!_store->saveMainIdentity(fresh)) {
     _store->removeRotation();
-    memset(&fresh, 0, sizeof(fresh));
+    Iface::wipe(&fresh, sizeof(fresh));
     *err = "storage";
     return 0;
   }
@@ -2422,7 +2423,7 @@ int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t
   mesh::Packet* pkt = _prefs.advert_loc_policy == ADVERT_LOC_NONE ? createSelfAdvert(_prefs.node_name)
                                                                    : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
   if (pkt) sendZeroHop(pkt);
-  memset(&fresh, 0, sizeof(fresh));
+  Iface::wipe(&fresh, sizeof(fresh));
   return dropped ? 1 : 2;
 }
 #endif

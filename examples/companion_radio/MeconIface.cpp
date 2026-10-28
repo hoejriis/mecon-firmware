@@ -1,4 +1,5 @@
 #include "MeconIface.h"
+#include <helpers/iface/Wipe.h>
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
 #include <helpers/MeconVersion.h>
@@ -225,7 +226,7 @@ int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, co
   int n = dispatchInner(ctx, caller, link, msg, len, out, cap);
   if (n > 0) n = _prov.signResult(out, (size_t)n, cap, _old_id, &_auth.answering(), was_enrolled);
   _auth.answering().clear();
-  if (_old_id) { memset(_old_id, 0, sizeof(*_old_id)); delete _old_id; _old_id = nullptr; }   // the retired key lives for one result
+  if (_old_id) { Iface::wipe(_old_id, sizeof(*_old_id)); delete _old_id; _old_id = nullptr; }   // the retired key lives for one result
   return n;
 }
 

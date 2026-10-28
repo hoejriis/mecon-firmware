@@ -6,6 +6,7 @@
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
 #include <new>
+#include <helpers/iface/Wipe.h>
 
 using namespace Iface;
 
@@ -73,7 +74,7 @@ Status MeconIface::opIdentityRotate(OpContext& c) {
     if (c.doc && jsonGetInt(*c.doc, jsonFind(*c.doc, 0, "job_id"), 0, 0xFFFFFFFFLL, &j)) job = (uint32_t)j;
   }
   const int r = m->_mesh->rotateIdentity(&err, m->deviceIdHex(), job);
-  if (r == 0) { memset(old, 0, sizeof(*old)); delete old; c.error = err; return ST_FAILED; }
+  if (r == 0) { Iface::wipe(old, sizeof(*old)); delete old; c.error = err; return ST_FAILED; }
   m->_old_id = old;   // signs this result; dispatch() wipes it
   if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }
   const uint8_t* nk = m->_mesh->self_id.pub_key;
