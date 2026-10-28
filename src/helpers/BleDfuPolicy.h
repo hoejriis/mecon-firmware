@@ -20,4 +20,8 @@ inline bool mayRegister(bool device_interface_build, uint32_t pin) {
   return !device_interface_build && pin != 0 && pin != 123456;
 }
 
+// The Repeater / Room server CLI's `start ota` restarts BLE in an OTA-only mode with the DFU service up. A
+// device-interface build refuses it outright and starts nothing; other builds keep it, with the service protected.
+inline bool otaStartAllowed(bool device_interface_build) { return !device_interface_build; }
+
 }  // namespace BleDfuPolicy

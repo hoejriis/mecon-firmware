@@ -14,6 +14,11 @@ TEST(BleDfuPolicy, OtherBuildsOnlyWithAChosenPin) {
   EXPECT_TRUE(mayRegister(false, 100000));
 }
 
+TEST(BleDfuPolicy, StartOtaIsRefusedOnADeviceInterfaceBuild) {
+  EXPECT_FALSE(BleDfuPolicy::otaStartAllowed(true));
+  EXPECT_TRUE(BleDfuPolicy::otaStartAllowed(false));   // positive control: a stock-like build keeps it, protected
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
