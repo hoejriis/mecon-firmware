@@ -195,7 +195,15 @@ static void rmtree(const std::string& d, bool keep_root) {
   }
   if (!keep_root) rmdir(d.c_str());
 }
-bool SPIFFSFS::format() { rmtree(_root, true); return true; }
+// The ESP32 build formats SPIFFS and erases NVS, which is where the Deployment's provisioned marker lives (DepMarker.cpp):
+// the simulated format takes the marker (the file beside the data directory) with it, so a path that formats must put it back.
+bool SPIFFSFS::format() {
+  rmtree(_root, true);
+  std::string d = g_sim.dir;
+  while (d.size() > 1 && d.back() == '/') d.pop_back();
+  unlink((d + ".prov").c_str());
+  return true;
+}
 
 static size_t treesize(const std::string& d) {
   size_t total = 0;

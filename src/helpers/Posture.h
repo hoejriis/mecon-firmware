@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include "AuditLog.h"
 #include "cli/CliEngine.h"
+#include "cli/CliCaller.h"
 
 // Who may do what is decided by one table (cli/CliPolicy.h, docs/CLI.md). The functions below keep their names and
 // results for the code and the tests that call them, and each asks the table; none holds a rule of its own.
@@ -128,8 +129,11 @@ inline bool adminFrontDoor(const char* command, bool remote, uint8_t& posture, c
                            const char* build_default, uint32_t now, char* reply, size_t max, bool& changed) {
   uint8_t caller = remote ? CALLER_REMOTE_ADMIN : CALLER_CABLE;
   // a remote session that predates the rule, or none, is still "default password": the table refuses it
-  const Cli::Context ctx = remote ? Cli::Context(Cli::T_LORA, isDefaultAdminPassword(admin_pw, build_default) ? Cli::A_ADMIN_DEFAULT_PW : Cli::A_ADMIN, posture)
-                                  : Cli::Context(Cli::T_USB, Cli::A_CABLE, posture);
+  // withServerCaller: once the device holds a Deployment record the context says so, and a verified signed line on the
+  // console runs as the signed principal (cli/CliCaller.h).
+  const Cli::Context ctx = Cli::withServerCaller(
+      remote ? Cli::Context(Cli::T_LORA, isDefaultAdminPassword(admin_pw, build_default) ? Cli::A_ADMIN_DEFAULT_PW : Cli::A_ADMIN, posture)
+             : Cli::Context(Cli::T_USB, Cli::A_CABLE, posture));
   if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, now, reply, max)) return true;
   if (handleCommand(command, caller, posture, now, reply, max, changed)) return true;
   return false;

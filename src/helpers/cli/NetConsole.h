@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "CliEngine.h"
+#include "CliCaller.h"
 #include "../Posture.h"
 
 namespace Cli {
@@ -85,7 +86,7 @@ inline bool netConsoleLine(NetConsole& nc, const char* line, const char* admin_p
     return true;
   }
 
-  const Context ctx(T_NETCON, nc.authed ? A_NETCON_ADMIN : A_NONE, posture);
+  const Context ctx = withServerCaller(Context(T_NETCON, nc.authed ? A_NETCON_ADMIN : A_NONE, posture));
   return gate(line, ctx, role, now, reply, max);
 }
 

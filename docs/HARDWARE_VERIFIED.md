@@ -72,6 +72,8 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Device interface (standalone) | every request fixture plus the health stream, 24 of 24 over each transport: USB, BLE (two runs) and MQTT through a TLS broker with a CA anchor (`mecon/<device_id>/req`, `resp`, `ev/health`) | 2026-10-24, 6f82504c |
 | Device interface (Repeater build, USB console) | every request fixture for the Repeater role plus the health stream, `mecon> ` lines through `tools/mecon_iface_hw.py console`: 24 of 24, after the receive-buffer fix (before it, lines over about 160 bytes were lost over the native USB) | 2026-10-25, 866ece59 |
 | Device interface (Room server build, USB console) | the same suite for the Room server role: 24 of 24 | 2026-10-25, 866ece59 |
+| Authority layer (standalone, USB) | `tools/mecon_auth_hw.py` with the public test keys: unsigned first provisioning over USB; a signed `config.apply` runs, the same bytes return the stored result, a newer job runs, the older one is refused as replay; an unsigned write is refused once enrolled; after a reset of the board the mark is kept and the job at the mark is a duplicate; `channel_nonce` in `hello`; signed `set_unlock`, a wrong HMAC answer refused and the right one unlocks; the secret in no reply; signed `deployment.reset`. 17 of 17 | 2026-10-28, 30ef4e4d |
+| Authority layer: corrupt record over USB | flashed over the private firmware, the board read that firmware's Deployment files as a corrupt record and refused provisioning and signed requests (`deployment_record_corrupt`); an unsigned `deployment.reset` over the cable in Normal cleared it | 2026-10-28, 30ef4e4d |
 
 ## Seeed Wio Tracker L1 (wiotest)
 

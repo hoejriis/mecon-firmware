@@ -1029,16 +1029,23 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
 }
 
 bool MyMesh::formatFileSystem() {
+  bool ok;
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  return InternalFS.format();
+  ok = InternalFS.format();
 #elif defined(RP2040_PLATFORM)
-  return LittleFS.format();
+  ok = LittleFS.format();
 #elif defined(ESP32)
-  return SPIFFS.format();
+  ok = SPIFFS.format();
 #else
 #error "need to implement file system erase"
-  return false;
+  ok = false;
 #endif
+#ifdef ENABLE_MECON_IFACE
+  // The format does not touch the provisioned marker, and the record in memory is gone: both follow the file system
+  // (AUTHORITY.md section 11, the factory reset).
+  if (ok) Cli::serverFormatted();
+#endif
+  return ok;
 }
 
 void MyMesh::sendSelfAdvertisement(int delay_millis, bool flood) {

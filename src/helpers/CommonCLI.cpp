@@ -182,8 +182,8 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     // door; running it here as well covers every other role that hands commands to the common CLI, and a command
     // the front door let through passes again. A remote caller reaches this point as an admin whose password is set.
     {
-      const Cli::Context ctx = sender_timestamp != 0 ? Cli::Context(Cli::T_LORA, Cli::A_ADMIN, _prefs->posture)
-                                                     : Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs->posture);
+      const Cli::Context ctx = Cli::withServerCaller(sender_timestamp != 0 ? Cli::Context(Cli::T_LORA, Cli::A_ADMIN, _prefs->posture)
+                                                                           : Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs->posture));
       if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, getRTCClock()->getCurrentTime(), reply, CLI_REPLY_MAX)) return;
     }
     if (_prefs->getRadioPrefs()->handleCommand(command, sender_timestamp, reply)) {   // is a radio CLI command?
@@ -191,8 +191,8 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       return;
     }
     // MECON's own commands (`mecon.`), then the hook for variant-specific CLI processing
-    if (Cli::handleMecon(command, sender_timestamp != 0 ? Cli::Context(Cli::T_LORA, Cli::A_ADMIN, _prefs->posture)
-                                                        : Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs->posture),
+    if (Cli::handleMecon(command, Cli::withServerCaller(sender_timestamp != 0 ? Cli::Context(Cli::T_LORA, Cli::A_ADMIN, _prefs->posture)
+                                                                              : Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs->posture)),
                          Cli::ROLE_REPEATER, reply, CLI_REPLY_MAX)) return;
     if (_board->handleCommand(command, sender_timestamp, reply)) {
       if (_prefs->isDirty()) { savePrefs(); }

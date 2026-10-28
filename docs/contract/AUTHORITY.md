@@ -146,11 +146,8 @@ Product profiles (section 14) may add fields; a device ignores fields it does no
 
 A provisioning carries no rotations. A device whose DAK has rotated gets `deployment.authority_update` first, so a provisioning always fits the 4,096-byte message with its set text escaped, even inside a signed wrapper.
 
-- **First provisioning** (no record, no marker) is trust on first use: it pins the DAK. It is accepted unsigned from exactly two callers, both physically present:
-  - the USB cable;
-  - BLE paired with the device's own random PIN. A build with a static PIN, a default PIN (0 or 123456) or a PIN compiled into the image never counts.
-
-  Never from the TCP port, a broker of any kind (a broker would gain first-use trust over every reset or unenrolled device it can reach) or LoRa.
+- **First provisioning** (no record, no marker) is trust on first use: it pins the DAK. It is accepted unsigned from the USB cable only. Never over BLE (a device cannot tell its own random PIN from one a user or a build chose), the TCP port, a broker of any kind (a broker would gain first-use trust over every reset or unenrolled device it can reach) or LoRa. *(Narrowed 2026-10-28 by the second security review; this section earlier also allowed BLE with the device's own random PIN.)*
+- A platform with no store for the provisioned marker (section 4) refuses an unsigned first provisioning.
 - **A device that holds a record** accepts `deployment.provision` only when signed by a current member. An unsigned re-send of a byte-identical `deployment` object returns the stored read-back; anything else unsigned is `unauthenticated`.
 - **Order and commit.** Checks run in the order above, then section 5 on the set. One commit, and the answer is read back from storage. An equal `provision_revision` with identical content is `duplicate`; a lower one is `stale_revision`.
 
@@ -220,13 +217,14 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 
 Its point is that a transport never becomes authority: once a device belongs to a Deployment, changing it needs a member's signature or someone physically present.
 
+- Entering Hardened while a record exists is refused unless the record holds a local unlock secret. A signed request may lower the posture, as the cable may.
 - BLE loses the native factory reset once a record exists. Otherwise a BLE factory reset followed by a BLE first provisioning would let a paired phone take a device over without touching it.
 - Every path that formats or rebuilds storage keeps the record, or is gated as `deployment.reset` is. That includes the rescue console's `rebuild`, which reformats and saves back identity, settings, contacts and channels: it saves the record back too. A recovery path is never a silent unenrollment.
 
 ## 10. Local unlock
 
 A device entering Hardened while it holds a record must first hold a **local unlock secret**, so that a Reader can always unlock it over USB.
-- The secret is set only by an authority: in the `deployment` object of a provisioning (`unlock_secret`, 32 random bytes), or by a signed request. It is never set unsigned, so the first person with a cable cannot set it.
+- The secret is set only by an authority: in the `deployment` object of a provisioning (`unlock_secret`, 32 random bytes), or by a signed request (`deployment.set_unlock`, a sensitive operation). It is never set unsigned, so the first person with a cable cannot set it. Either request is accepted only over the USB cable, so the secret never crosses a broker or a radio link.
 - The device stores the secret itself, as a secret: an HMAC challenge needs the key, so a hash would not do. It lives in the record, is never readable over any surface, and is removed by `deployment.reset` and the factory reset.
 - The unlock is an HMAC-SHA-256 challenge over USB only. The device sends a fresh random challenge, and a Reader holding the secret answers it.
 

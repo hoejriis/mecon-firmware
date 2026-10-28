@@ -32,7 +32,10 @@ static char command[MAX_POST_TEXT_LEN+1];
   // The device interface on the console (docs/contract/DEVICE_INTERFACE.md section 7): "mecon> " lines.
   #include <helpers/iface/ConsoleIface.h>
   #include <helpers/iface/DeviceMeta.h>
+  #include <helpers/CryptoRNG.h>
+  #include <helpers/deployment/DepFsStore.h>
   static Iface::ConsoleIface the_iface;
+  static Dep::FsStore dep_store;   // the Deployment record's files, on the role's own file system
   static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
     char cmd[160], out[160];
     snprintf(cmd, sizeof(cmd), "%s", line);
@@ -44,6 +47,7 @@ static char command[MAX_POST_TEXT_LEN+1];
   }
   static uint8_t ifacePosture(void*) { return the_mesh.getNodePrefs()->posture; }
   static uint16_t ifaceBattery(void*) { return board.getBattMilliVolts(); }
+  static uint32_t ifaceClock(void*) { return the_mesh.getRTCClock()->getCurrentTime(); }
   static void ifaceInventory(void*, Iface::JsonWriter& w) {
     Iface::writeCount(w, "clients", the_mesh.clientCount(), the_mesh.clientCapacity());
   }
@@ -128,10 +132,13 @@ void setup() {
   {
     uint8_t device_id[16];
     uint32_t epoch = 0;
-    Iface::bootDeviceMeta(fs, &fast_rng, device_id, &epoch);   // a failed save still leaves this boot's values
+    CryptoRNG crng(&fast_rng);   // device_id must not follow from a small seed
+    Iface::bootDeviceMeta(fs, &crng, device_id, &epoch);   // a failed save still leaves this boot's values
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "room", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
-                                       &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory };
+                                       &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
+                                       &dep_store, ifaceClock };
+    dep_store.setFs(fs);
     the_iface.begin(host, device_id, epoch);
   }
 #endif

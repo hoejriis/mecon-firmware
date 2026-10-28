@@ -42,7 +42,9 @@ enum Auth : uint8_t {
   A_GUEST,                // guest login
   A_CONTACT_FLAG,         // a Companion contact flagged for remote CLI
   A_BUTTON,               // the device button
-  A_NETCON_ADMIN          // `login <admin password>` on one Ethernet console connection, password set, Normal posture
+  A_NETCON_ADMIN,         // `login <admin password>` on one Ethernet console connection, password set, Normal posture
+  A_SIGNED                // a request signed by a current member of the Deployment authority set (AUTHORITY.md section 7),
+                          // on any wire transport; the transport still decides Context.remote
 };
 
 enum Class : uint8_t {
@@ -57,7 +59,8 @@ enum Class : uint8_t {
 
 enum Flags : uint8_t {
   F_CABLE_ONLY = 1,   // lowers protection: only the cable may, whatever the class cell says for the other local callers
-  F_QUIET = 2         // registry only: a "local console only" refusal is explained but not audited
+  F_QUIET = 2,        // registry only: a "local console only" refusal is explained but not audited
+  F_RAISES = 4        // raises protection to Hardened: with a record, only once the record holds a local unlock secret
 };
 
 enum Reason : uint8_t {
@@ -73,7 +76,9 @@ enum Reason : uint8_t {
   R_MQTT_UNVERIFIED,    // the broker session is not TLS-verified
   R_MQTT_READONLY,      // Hardened and the broker profile is not flagged for management
   R_NEEDS_FLAG,         // table-internal: allowed when the broker profile is flagged for management
-  R_NETCON_OFF          // the Ethernet console is off in Hardened
+  R_NETCON_OFF,         // the Ethernet console is off in Hardened
+  R_ENROLLED,           // the device holds a Deployment record: an unsigned caller may not change it (AUTHORITY.md section 9)
+  R_NO_UNLOCK_SECRET    // entering Hardened with a record needs a local unlock secret in it first (AUTHORITY.md section 10)
 };
 
 // Who the context resolves to: one row of the table.
@@ -89,6 +94,7 @@ enum Principal : uint8_t {
   P_MQTT_UNVERIFIED,
   P_BUTTON,
   P_NETCON_ADMIN,     // Ethernet console, logged in with the admin password
+  P_SIGNED,           // a request that passed the signed-request checks (AUTHORITY.md section 9), on any wire transport
   P_COUNT
 };
 
@@ -98,6 +104,17 @@ struct Context {
   bool remote = false;     // over the air or over the broker
   uint8_t posture = 0;     // Posture::NORMAL (0) or anything else = Hardened
   bool mgmt = false;       // MQTT: the broker profile in use is flagged for management
+  // The device holds a Deployment record (healthy or corrupt). Set by the one place that gates a command line
+  // (MyMesh::handleCommand) and for the factory-reset frame; a context built anywhere else leaves it false.
+  bool enrolled = false;
+  // The cable link this request arrived on holds a valid local unlock (AUTHORITY.md section 10): the HMAC challenge was
+  // answered, and neither its 10 minutes nor the link have run out. Set by the owner of the Deployment record
+  // (Iface::DeployAuth) for the cable link only; honoured by decide() and unlockManagement() for the cable principal and
+  // by no other.
+  bool unlocked = false;
+  // The Deployment record holds a local unlock secret (AUTHORITY.md section 10), set wherever `enrolled` is. Without it the
+  // device may not enter Hardened while enrolled, so a Reader could never unlock it. False is the safe default.
+  bool has_unlock_secret = false;
 
   Context() { }
   Context(uint8_t t, uint8_t a, uint8_t posture_, bool mgmt_ = false)
@@ -107,6 +124,12 @@ struct Context {
 inline Principal principalOf(const Context& c) {
   const bool wire_remote = c.transport == T_LORA || c.transport == T_MQTT;
   if (c.remote != wire_remote) return P_UNTRUSTED;   // a local-looking remote caller, or the reverse: fail closed
+  if (c.auth == A_SIGNED) {   // valid on every wire transport; the button and an unset transport are not one
+    switch (c.transport) {
+      case T_USB: case T_BLE: case T_TCP: case T_MQTT: case T_LORA: case T_NETCON: return P_SIGNED;
+      default: return P_UNTRUSTED;
+    }
+  }
   switch (c.transport) {
     case T_USB: return c.auth == A_CABLE ? P_CABLE : P_UNTRUSTED;
     case T_BLE: return c.auth == A_PAIRED_PIN ? P_PAIRED : P_UNTRUSTED;
@@ -173,11 +196,18 @@ inline Reason tableCell(Principal p, bool hardened, uint8_t cls) {
     /* button         H */   CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED) },
     /* Ethernet admin N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW),
     /* Ethernet admin H */   CLI_ROW(NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF) },
+    // signed: custody (secret) comes with its own change; no remote erase, whatever the signature (AUTHORITY.md section 11)
+    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW),
+    /* signed         H */   CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW) },
   };
   if (p >= P_COUNT || cls >= C_COUNT) return R_NOT_PERMITTED;
   return (Reason)T[p][hardened ? 1 : 0][cls];
 }
 #undef CLI_ROW
+
+// Whether the request comes from a cable link that holds a local unlock (AUTHORITY.md sections 9 and 10). The flag counts
+// only for the cable principal: a context that is inconsistent, remote, signed or on another transport never has it.
+inline bool unlockManagement(const Context& c) { return c.unlocked && principalOf(c) == P_CABLE; }
 
 struct Verdict {
   bool allow;
@@ -189,10 +219,30 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   const Principal p = principalOf(c);
   Reason r = tableCell(p, c.posture != 0, cls);
   if (r == R_NEEDS_FLAG) r = c.mgmt ? R_ALLOW : R_MQTT_READONLY;
-  if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;   // lowering protection: a cable
+  // Lowering protection: a cable, or a member's signature ("signed, or the cable", section 11).
+  if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE && p != P_SIGNED) r = R_NOT_PERMITTED;
+  // Once the device holds a Deployment record, only a member's signature changes it, or someone with the cable for the
+  // recovery operations (AUTHORITY.md sections 9 and 11). So an unsigned caller keeps reads, a local one (cable, paired
+  // BLE) also reboot, and every other class is refused whatever the table says for this transport; a remote caller (MQTT,
+  // LoRa) keeps reads only. Only the cable keeps the destructive class (erase, factory reset). Fails closed: anything that
+  // is not a read or a local reboot counts, so a new class is refused until decided.
+  // A local unlock opens one more thing in Normal: the posture (section 9, "local unlock"). In Hardened it opens the
+  // management surface (reads and deployment.reset, decided by that operation), never a configuration write, a key export
+  // or a posture change: the posture stays as the signed callers and the factory reset leave it.
+  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0;
+  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&
+      !(p == P_CABLE && cls == C_DESTRUCTIVE) && !unlock_posture)
+    r = R_ENROLLED;
+  if (r == R_ALLOW && (flags & F_RAISES) && c.enrolled && !c.has_unlock_secret) r = R_NO_UNLOCK_SECRET;
   Verdict v;
   v.allow = r == R_ALLOW;
   v.reason = r;
+  if (p == P_SIGNED) {   // audited as the transport it arrived on
+    v.caller = c.transport == T_USB ? Posture::CALLER_CABLE : c.transport == T_BLE ? Posture::CALLER_BLE
+             : c.transport == T_MQTT ? Posture::CALLER_MQTT : c.transport == T_LORA ? Posture::CALLER_REMOTE_ADMIN
+             : Posture::CALLER_NET;
+    return v;
+  }
   // An untrusted BLE link (default PIN) is audited as the BLE it is, not as "net"; Wi-Fi / Ethernet TCP stay "net".
   v.caller = (p == P_UNTRUSTED && c.transport == T_BLE) ? Posture::CALLER_BLE : auditCaller(p);
   return v;

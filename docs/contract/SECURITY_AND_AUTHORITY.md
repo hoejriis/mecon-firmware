@@ -100,6 +100,8 @@ Remote state-changing jobs carry stable identifiers. The device prevents duplica
 
 A management line refused before execution (for example unsigned where signed is required) consumes no request identifier and does not move any signer's watermark.
 
+A Deployment-signed issuer's replay watermark never adopts a run of identifiers below its window: such a run can only be old signed requests replayed in order. An issuer whose sequence really restarted raises its sequence past the watermark the device reports, or is re-admitted to the authority set at a new revision, which empties its watermarks. A member's admitted_revision is the revision of its (re-)admission, never an older one; a device refuses a set in which a member it does not hold carries an admitted_revision at or below the device's stored revision, or a member it holds has its admitted_revision lowered. A state-changing request carries a job identifier, and the device records it as accepted before running the request, so a power cut loses a request rather than running it twice.
+
 ## Device identity and private-key custody
 
 On ownership reassignment a device rotates to a new mesh identity generated on the device, triggered by a Deployment-signed request (or an authenticated direct Reader in a restricted posture). Rotation keeps configuration, connectivity, enrolment, the Deployment record, channels and posture, and drops contacts and queued messages; the old and new public keys are reported. A device with no readable Deployment record refuses rotation. The order is: generate, save, swap, drop contacts and queue, then one self-advert.

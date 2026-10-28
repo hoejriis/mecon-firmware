@@ -26,13 +26,13 @@
 
 namespace Posture {
 
-enum Event : uint8_t { EV_POSTURE_SET = 1, EV_REFUSED = 2, EV_LOGIN_FAILED = 3, EV_FACTORY_RESET = 4, EV_MODE_SET = 5, EV_LOW_MEM = 6 };
+enum Event : uint8_t { EV_POSTURE_SET = 1, EV_REFUSED = 2, EV_LOGIN_FAILED = 3, EV_FACTORY_RESET = 4, EV_MODE_SET = 5, EV_LOW_MEM = 6, EV_UNLOCK = 7 };
 enum Caller : uint8_t { CALLER_CABLE = 1, CALLER_BLE = 2, CALLER_NET = 3, CALLER_REMOTE_ADMIN = 4, CALLER_REMOTE_CLI = 5, CALLER_BUTTON = 6, CALLER_MQTT = 7, CALLER_SYSTEM = 8 };
 enum What : uint8_t {
   W_NONE = 0, W_CLI = 1, W_KEY_EXPORT = 2, W_KEY_IMPORT = 3, W_SET_PIN = 4, W_FACTORY_RESET = 5, W_POSTURE = 6,
   W_AUDIT = 7, W_REMOTE_WRITE = 8, W_REMOTE_CLI = 9, W_DEFAULT_PASSWORD = 10, W_BAD_PASSWORD = 11,
   W_BLE_START = 12, W_NET_START = 13, W_CONNMODE = 14, W_MQTT_SESSION = 15, W_MGMT_FLAG = 16, W_HEAP_FLOOR = 17,
-  W_APP_FRAME = 18
+  W_APP_FRAME = 18, W_UNLOCK = 19
 };
 
 struct AuditEntry {
@@ -161,6 +161,7 @@ public:
       case EV_FACTORY_RESET: return "reset";
       case EV_MODE_SET: return "mode";
       case EV_LOW_MEM: return "low-mem";
+      case EV_UNLOCK: return "unlock";
     }
     return "?";
   }
@@ -200,6 +201,7 @@ public:
       case W_MGMT_FLAG: return "mgmt-flag";
       case W_HEAP_FLOOR: return "heap-floor";
       case W_APP_FRAME: return "app-frame";
+      case W_UNLOCK: return "unlock";
     }
     return "?";
   }

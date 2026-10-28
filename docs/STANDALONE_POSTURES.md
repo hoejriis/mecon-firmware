@@ -52,6 +52,7 @@ A persistent ring of 32 security events, readable with `get audit` on a trusted 
 - failed admin logins (wrong password, or the default password) and logins refused because the password is the default,
 - factory resets,
 - a transport that Hardened did not start (BLE, TCP server),
+- every attempt at the local unlock of an enrolled device ([Management authority contract](contract/AUTHORITY.md), section 10): `unlock` for an unlock, `login-fail` for a wrong answer, `refused` for an attempt over another transport, with no secret set, or during the lockout, all with the command class `unlock`; the response, the challenge and the secret are never recorded,
 - a low-heap episode (`low-mem`, caller `system`, class `heap-floor`; [Heap floor](CONNECTIVITY_MODE.md#heap-floor)).
 
 It records no secret, no password and no command arguments. Repeats of the same kind (event, caller, command class) fold into one entry with a count and the latest timestamp, so a caller over the air cannot push a posture change out of the ring: it would need 32 distinct kinds. The audit log survives a factory reset: the reset erases the files, and the log is written again with the reset on it. Timestamps are the node's clock, which may be unset on a device that has never been synchronised.
