@@ -40,7 +40,8 @@ public:
     void (*inventory)(void* user, JsonWriter& w);   // the role's counts (TELEMETRY.md, inventory)
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
-                                           (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY);
+                                           (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |
+                                           (1u << SID_LOGS);
 
   void begin(const Host& host, const uint8_t device_id[16], uint32_t epoch);
 
@@ -59,7 +60,11 @@ public:
   ConfigHost configHost();
   SubSet& subs() { return _subs; }
   uint32_t produced() const { return streamsProduced(); }
-  void scheduleStream(int stream, uint32_t now) { _clock.scheduleNow(stream, now); }
+  void scheduleStream(int stream, uint32_t now) {
+    _clock.scheduleNow(stream, now);
+    if (stream == SID_RUNTIME && !_boot_sent) _boot_pending = true;
+  }
+  static bool streamAllow(void* self, uint8_t cls);
 
 private:
   static bool authorize(void* self, const OpEntry& op, const Request& req);
@@ -86,6 +91,9 @@ private:
   uint32_t _env_at = 0;
   uint32_t streamsProduced() const { return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0); }
   LoopGap _gap;
+  bool _boot_sent = false, _boot_pending = false;   // the runtime boot event: once per epoch
+  LogFeed _logs;
+  static void onAudit(void* self, const Posture::AuditEntry& e);
   Print* _out = nullptr;   // the console, for events raised outside loop()
 };
 

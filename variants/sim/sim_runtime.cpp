@@ -102,6 +102,7 @@ size_t SimSerial::write(const uint8_t* buf, size_t n) {
   }
   return n;
 }
+SimSerial::operator bool() const { serial_pump(); return g_client >= 0; }
 int SimSerial::available() { serial_pump(); return (int)(g_rx_len - g_rx_pos); }
 int SimSerial::read() { serial_pump(); return g_rx_pos < g_rx_len ? g_rx[g_rx_pos++] : -1; }
 int SimSerial::peek() { serial_pump(); return g_rx_pos < g_rx_len ? g_rx[g_rx_pos] : -1; }

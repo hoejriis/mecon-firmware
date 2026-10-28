@@ -80,7 +80,8 @@ Status opStatus(OpContext& c) {
 Status opSubStart(OpContext& c) {
   int started;
   const uint32_t now = millis();
-  Status st = subStart(c, &self(c)->subs(), self(c)->produced(), now, &started);
+  Status st = subStart(c, &self(c)->subs(), self(c)->produced(), now, &started, ConsoleIface::streamAllow,
+                      self(c));
   self(c)->scheduleStream(started, now);
   return st;
 }
@@ -121,6 +122,18 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _epoch = epoch;
   observeSink().fn = onObserve;
   observeSink().user = this;
+  Posture::audit().setListener(onAudit, this);
+}
+
+// A new audit entry: queued for the logs stream when someone is subscribed to it (a stream nobody reads costs a test).
+void ConsoleIface::onAudit(void* user, const Posture::AuditEntry& e) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (s->_subs.s[SID_LOGS].active) s->_logs.push(millis(), e);
+}
+
+// Whether the console, as a caller, may use a stream of this class: the CLI privilege table, as for any console line.
+bool ConsoleIface::streamAllow(void* user, uint8_t cls) {
+  return Cli::decide(consoleContext(static_cast<ConsoleIface*>(user)->_host), cls).allow;
 }
 
 // One received packet, as a console line, within the stream's rate. Not while a request is being typed: a line never
@@ -267,6 +280,28 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
     if (!writeStream(s, w)) continue;
     char ev[640];
     const int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, false, 0, data);
+    if (n > 0) printLine(out, ev, (size_t)n);
+  }
+  if (_boot_pending) {   // once per epoch, right after the first runtime snapshot
+    _boot_pending = false;
+    if (_subs.s[SID_RUNTIME].active) {
+      _boot_sent = true;
+      char data[384];
+      JsonWriter w(data, sizeof(data));
+      w.beginObject();
+      writeBoot(w, *_host.board, _host.role, _host.hardware);
+      w.endObject();
+      char ev[512];
+      const int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, false, 0, data) : -1;
+      if (n > 0) printLine(out, ev, (size_t)n);
+    }
+  }
+  Posture::AuditEntry a;
+  uint32_t dropped;
+  while (_logs.pop(&a, &dropped)) {
+    if (!_subs.s[SID_LOGS].active) continue;   // unsubscribed since it was queued
+    char ev[320];
+    const int n = writeLog(ev, sizeof(ev), _clock, _epoch, false, 0, a, dropped);
     if (n > 0) printLine(out, ev, (size_t)n);
   }
 }

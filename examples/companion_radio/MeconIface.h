@@ -9,6 +9,7 @@
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
+#include <helpers/AuditLog.h>
 
 class MyMesh;
 class BaseSerialInterface;
@@ -34,12 +35,13 @@ public:
   // Subscriptions (Streams.h, TELEMETRY.md): one set per transport, and one for the MQTT session.
   static const uint32_t STREAMS_PRODUCED = (1u << Iface::SID_HEALTH) | (1u << Iface::SID_RADIO) |
                                            (1u << Iface::SID_POWER) | (1u << Iface::SID_RUNTIME) |
-                                           (1u << Iface::SID_OBSERVATIONS) | (1u << Iface::SID_INVENTORY);
+                                           (1u << Iface::SID_OBSERVATIONS) | (1u << Iface::SID_INVENTORY) |
+                                           (1u << Iface::SID_LOGS);
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
   // stream's data; signature changes whenever a link changes state, which sends an event at once.
   typedef void (*ConnWriteFn)(Iface::JsonWriter& w);
-  typedef uint32_t (*ConnSignatureFn)();
+  typedef uint64_t (*ConnSignatureFn)();
   void setConnectivity(ConnWriteFn write, ConnSignatureFn signature) {
     _conn_write = write;
     _conn_sig = signature;
@@ -48,8 +50,12 @@ public:
     return STREAMS_PRODUCED | (_conn_write ? (1u << Iface::SID_CONNECTIVITY) : 0) |
            (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0);
   }
-  void scheduleStream(int stream, uint32_t now) { _clock.scheduleNow(stream, now); }
+  void scheduleStream(int stream, uint32_t now) {
+    _clock.scheduleNow(stream, now);
+    if (stream == Iface::SID_RUNTIME && !_boot_sent) _boot_pending = true;
+  }
 
+  static bool streamAllow(void* self, uint8_t cls);   // may the caller of the request being handled use a stream of this class
   MyMesh* mesh() const { return _mesh; }
   Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this}; }
   const char* deviceIdHex() const { return _id_hex; }
@@ -90,9 +96,14 @@ private:
   static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
   Iface::ObsLimiter _obs;
   Iface::LoopGap _gap;
+  bool _boot_sent = false, _boot_pending = false;   // the runtime boot event: once per epoch
+  Iface::LogFeed _logs;
+  static void onAudit(void* self, const Posture::AuditEntry& e);
+  void sendEvent(int stream, const char* ev, size_t n);
+  void drainLogs();
   ConnWriteFn _conn_write = nullptr;
   ConnSignatureFn _conn_sig = nullptr;
-  uint32_t _conn_last = 0;
+  uint64_t _conn_last = 0;
   bool _env_ok = false;          // the environment stream has something to report (sensors start after the mesh)
   bool _env_checked = false;
   void refreshEnvironment(uint32_t now);

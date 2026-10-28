@@ -4,10 +4,7 @@
   "title": "Data of a runtime event (TELEMETRY.md section 3)",
   "type": "object",
   "required": [
-    "reset_reason",
-    "abnormal_reset",
-    "boot_ms",
-    "loop_gap_ms"
+    "reset_reason"
   ],
   "properties": {
     "reset_reason": {
@@ -62,6 +59,35 @@
           "description": "the longest main-loop pass since the previous runtime event, ms; 0 before two passes"
         }
       }
+    },
+    "boot": {
+      "const": true,
+      "description": "present, and true, only on the boot event"
+    },
+    "firmware": {
+      "type": "string",
+      "description": "boot event only: as hello"
+    },
+    "upstream": {
+      "type": "string",
+      "description": "boot event only: as hello"
+    },
+    "hardware": {
+      "type": "string",
+      "description": "boot event only: as hello"
+    },
+    "role": {
+      "enum": [
+        "companion",
+        "repeater",
+        "room"
+      ],
+      "description": "boot event only: as hello"
+    },
+    "heap_low": {
+      "type": "boolean",
+      "description": "the low-memory state the Companion's display shows (HeapFloor); absent where the build does not check the heap floor"
     }
-  }
+  },
+  "description": "Two shapes. A snapshot (periodic, and at once when a subscription starts) has reset_reason, abnormal_reset, boot_ms, loop_gap_ms and, on the Companion, heap_low. The boot event is sent once per epoch right after the first snapshot: boot is true and it carries firmware, upstream, hardware and role as hello does, and reset_reason; it has none of the snapshot-only members."
 }

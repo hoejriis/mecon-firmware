@@ -2,11 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.connectivity.json",
   "title": "Data of a connectivity event (TELEMETRY.md section 3)",
-  "description": "The device's network links. Sent at the stream's period and at once whenever a link changes state or profile. Fields of a link that is not up are null; a password is never included.",
+  "description": "The device's network and host links. Sent at the stream's period and at once whenever a link changes state or profile, and when BLE or USB connects or disconnects. Fields of a link that is not up are null; a password is never included. A link the build does not have is absent.",
   "type": "object",
-  "required": [
-    "wifi"
-  ],
+  "required": [],
   "properties": {
     "mode": {
       "enum": [
@@ -132,6 +130,33 @@
         "reconnects": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "ble": {
+      "type": "object",
+      "required": [
+        "connected"
+      ],
+      "properties": {
+        "connected": {
+          "type": "boolean",
+          "description": "a BLE central is connected; false while the BLE stack is not running"
+        }
+      }
+    },
+    "usb": {
+      "type": "object",
+      "required": [
+        "connected"
+      ],
+      "properties": {
+        "connected": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "a host has the USB serial port open; null where the board cannot tell"
         }
       }
     }

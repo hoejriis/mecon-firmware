@@ -3,6 +3,7 @@
 #include "MyMesh.h"
 #include <helpers/MeconVersion.h>
 #include <helpers/MemStats.h>
+#include <helpers/HeapFloor.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/cli/CliRegistry.h>
@@ -117,7 +118,7 @@ Status opSubStart(OpContext& c) {
   MeconIface* m = self(c);
   int started;
   const uint32_t now = millis();
-  Status st = subStart(c, m->currentSubs(), m->streamsProduced(), now, &started);
+  Status st = subStart(c, m->currentSubs(), m->streamsProduced(), now, &started, MeconIface::streamAllow, m);
   m->scheduleStream(started, now);
   return st;
 }
@@ -193,7 +194,20 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _epoch = epoch;
   observeSink().fn = onObserve;
   observeSink().user = this;
+  Posture::audit().setListener(onAudit, this);
 }
+
+// A new audit entry: queued for the logs stream when some transport is subscribed to it.
+void MeconIface::onAudit(void* user, const Posture::AuditEntry& e) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  bool any = m->_mqtt_subs.s[SID_LOGS].active;
+  for (Link& l : m->_links) any = any || l.subs.s[SID_LOGS].active;
+  if (any) m->_logs.push(millis(), e);
+}
+
+// Whether the caller of the request being handled may use a stream of this class: the CLI privilege table with its
+// real context, as for the CLI line the data would come from.
+bool MeconIface::streamAllow(void* user, uint8_t cls) { return Cli::decide(static_cast<MeconIface*>(user)->_ctx, cls).allow; }
 
 // One received packet: an observations event to every transport subscribed, within the stream's rate.
 void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
@@ -301,7 +315,9 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
       break;
     }
     case SID_POWER: writePower(w, board); break;
-    case SID_RUNTIME: writeRuntime(w, board, _gap); break;
+    case SID_RUNTIME:
+      writeRuntime(w, board, _gap, heapFloor().enabled() ? (heapFloor().low() ? 1 : 0) : -1);   // absent where the build does not check
+      break;
     case SID_ENVIRONMENT:
       if (writeEnvironment(w, sensors, board) == 0) return false;   // nothing to report this time
       break;
@@ -333,7 +349,7 @@ void MeconIface::streamTick(uint32_t now) {
   if (!_ev_up || !_ev_up()) _mqtt_subs.clear();   // a subscription made over MQTT lapses with the session
   refreshEnvironment(now);
   if (_conn_sig) {   // a link changed state: the connectivity stream sends an event now
-    const uint32_t sig = _conn_sig();
+    const uint64_t sig = _conn_sig();
     if (sig != _conn_last) {
       _conn_last = sig;
       _clock.scheduleNow(SID_CONNECTIVITY, now);
@@ -343,7 +359,8 @@ void MeconIface::streamTick(uint32_t now) {
   for (int i = 0; i < LINKS; i++) sets[i] = &_links[i].subs;
   sets[LINKS] = &_mqtt_subs;
   const uint32_t due = _clock.due(sets, LINKS + 1, now);
-  if (!due) return;
+  drainLogs();
+  if (!due && !_boot_pending) return;
   const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
   const bool ts_known = ts >= 1704067200;   // 2024-01-01: an RTC that has never been set reads far earlier
   for (int s = 0; s < STREAM_COUNT; s++) {
@@ -354,11 +371,48 @@ void MeconIface::streamTick(uint32_t now) {
     char ev[640];
     const int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, ts_known, ts, data);
     if (n <= 0) continue;
-    for (Link& l : _links) {
-      if (!l.subs.s[s].active || !ensureQueue(l)) continue;
-      l.q->push(OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
+    sendEvent(s, ev, (size_t)n);
+  }
+  if (_boot_pending) {   // once per epoch, right after the first runtime snapshot
+    _boot_pending = false;
+    bool any = _mqtt_subs.s[SID_RUNTIME].active;
+    for (Link& l : _links) any = any || l.subs.s[SID_RUNTIME].active;
+    if (any) {
+      _boot_sent = true;
+      char data[384];
+      JsonWriter w(data, sizeof(data));
+      w.beginObject();
+      writeBoot(w, board, "companion", _mesh->hardwareName());
+      w.endObject();
+      char ev[512];
+      const int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, ts_known, ts, data) : -1;
+      if (n > 0) sendEvent(SID_RUNTIME, ev, (size_t)n);
     }
-    if (_mqtt_subs.s[s].active && _ev_publish) _ev_publish(STREAMS[s].name, ev, (size_t)n);
+  }
+}
+
+// One built event to every transport subscribed to its stream. A full queue drops it on that transport only.
+void MeconIface::sendEvent(int s, const char* ev, size_t n) {
+  for (Link& l : _links) {
+    if (!l.subs.s[s].active || !ensureQueue(l)) continue;
+    l.q->push(OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), n);
+  }
+  if (_mqtt_subs.s[s].active && _ev_publish) _ev_publish(STREAMS[s].name, ev, n);
+}
+
+// The audit entries queued since the last pass, as logs events (their own early return in streamTick: there is no
+// periodic clock for them).
+void MeconIface::drainLogs() {
+  Posture::AuditEntry a;
+  uint32_t dropped;
+  bool any = _mqtt_subs.s[SID_LOGS].active;
+  for (Link& l : _links) any = any || l.subs.s[SID_LOGS].active;
+  while (_logs.pop(&a, &dropped)) {
+    if (!any) continue;   // unsubscribed since it was queued
+    const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
+    char ev[320];
+    const int n = writeLog(ev, sizeof(ev), _clock, _epoch, ts >= 1704067200, ts, a, dropped);
+    if (n > 0) sendEvent(SID_LOGS, ev, (size_t)n);
   }
 }
 
