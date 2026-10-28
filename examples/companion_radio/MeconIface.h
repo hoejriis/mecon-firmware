@@ -98,7 +98,6 @@ private:
   Iface::LoopGap _gap;
   bool _boot_sent = false, _boot_pending = false;   // the runtime boot event: once per epoch
   Iface::LogFeed _logs;
-  static void onAudit(void* self, const Posture::AuditEntry& e);
   void sendEvent(int stream, const char* ev, size_t n);
   void drainLogs();
   ConnWriteFn _conn_write = nullptr;

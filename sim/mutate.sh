@@ -888,23 +888,20 @@ mutate boot_event_resent_companion examples/companion_radio/MeconIface.cpp '    
 mutate boot_event_resent_console src/helpers/iface/ConsoleIface.cpp '      _boot_sent = true;' '      _boot_sent = false;' sim/tests/test_telemetry_streams.py::test_the_boot_event_comes_once_per_epoch
 mutate boot_event_never_sent src/helpers/iface/ConsoleIface.h '    if (stream == SID_RUNTIME && !_boot_sent) _boot_pending = true;' '' sim/tests/test_telemetry_streams.py::test_the_boot_event_comes_once_per_epoch
 mutate boot_event_hardware_is_role src/helpers/iface/Streams.cpp '  w.key("hardware"); w.str(hardware);' '  w.key("hardware"); w.str(role);' sim/tests/test_telemetry_streams.py::test_the_boot_event_comes_once_per_epoch
-mutate logs_companion_listener_missing examples/companion_radio/MeconIface.cpp '  Posture::audit().setListener(onAudit, this);' '  (void)0;' sim/tests/test_telemetry_streams.py::test_logs_send_a_posture_change_and_a_refusal_with_names
-mutate logs_console_listener_missing src/helpers/iface/ConsoleIface.cpp '  Posture::audit().setListener(onAudit, this);' '  (void)0;' sim/tests/test_telemetry_streams.py::test_logs_on_the_repeater_console
 mutate logs_class_not_checked src/helpers/iface/Streams.cpp '  if (!allow || !allow(allow_user, def.cls)) return ST_REFUSED;' '' sim/tests/test_device_interface.py::test_logs_are_refused_over_a_verified_mqtt_session_but_not_to_the_cable
 mutate logs_class_is_read src/helpers/iface/Streams.cpp '  {"logs", 0, 0, 0, Cli::C_POSTURE},' '  {"logs", 0, 0, 0, Cli::C_READ},' sim/tests/test_device_interface.py::test_logs_are_refused_over_a_verified_mqtt_session_but_not_to_the_cable
-mutate logs_rate_unlimited src/helpers/iface/Streams.h '    if (!limit.take(now)) return false;' '    limit.take(now);' sim/tests/test_telemetry_streams.py::test_logs_rate_is_limited_and_drops_are_counted
-mutate logs_drops_never_cleared src/helpers/iface/Streams.h '    limit.dropped = 0;
-' '' unit:test_streams
-mutate logs_full_queue_not_counted src/helpers/iface/Streams.h '    if (count == QUEUE) { limit.dropped++; return false; }' '    if (count == QUEUE) return false;' unit:test_streams
+mutate logs_rate_unlimited src/helpers/iface/Streams.h '      if (limit.take(now)) out[n++] = r.e[i];' '      limit.take(now); out[n++] = r.e[i];' sim/tests/test_telemetry_streams.py::test_logs_rate_is_limited_and_drops_are_counted
 mutate logs_unset_clock_reported_as_time src/helpers/iface/Streams.h '  if (a.ts >= 1704067200) snprintf' '  if (true) snprintf' unit:test_streams
 mutate logs_what_ignores_the_event src/helpers/iface/Streams.h 'Posture::AuditRing::whatName(a.event, a.what)' 'Posture::AuditRing::whatName(0, a.what)' unit:test_streams
-mutate audit_listener_never_called src/helpers/AuditRing.h '    if (_listener) _listener(_listener_user, rec);' '' unit:test_posture
-mutate audit_clear_drops_the_listener src/helpers/AuditRing.h '    _flushed_once = false;
-    _last_flush = 0;
-  }' '    _flushed_once = false;
-    _last_flush = 0;
-    _listener = nullptr;
-  }' unit:test_posture
+mutate logs_companion_never_polled examples/companion_radio/MeconIface.cpp '  const int k = _logs.poll(millis(), Posture::audit(), a, &dropped);' '  const int k = 0;' sim/tests/test_telemetry_streams.py::test_logs_send_a_posture_change_and_a_refusal_with_names
+mutate logs_console_never_polled src/helpers/iface/ConsoleIface.cpp '    const int k = _logs.poll(now, Posture::audit(), a, &dropped);' '    const int k = 0;' sim/tests/test_telemetry_streams.py::test_logs_on_the_repeater_console
+mutate logs_history_sent_on_subscribe examples/companion_radio/MeconIface.cpp '    _logs.skip(Posture::audit());   // what is recorded while nobody listens is history' '' sim/tests/test_telemetry_streams.py::test_logs_do_not_replay_history
+mutate logs_poll_ignores_serial src/helpers/iface/Streams.h '      if ((int32_t)(r.serial[i] - (r.recorded - fresh)) <= 0) continue;   // recorded before the last poll' '' unit:test_streams
+mutate logs_lost_records_not_counted src/helpers/iface/Streams.h '    limit.dropped += fresh - held;   // recorded since, but no longer shown' '' unit:test_streams
+mutate logs_drops_never_cleared src/helpers/iface/Streams.h '    limit.dropped = 0;
+    return n;' '    return n;' unit:test_streams
+mutate audit_record_not_counted src/helpers/AuditRing.h '    serial[n] = ++recorded;' '    serial[n] = recorded;' unit:test_posture
+mutate audit_serial_not_moved_with_a_fold src/helpers/AuditRing.h '      for (int i = at; i < n - 1; i++) { e[i] = e[i + 1]; serial[i] = serial[i + 1]; }' '      for (int i = at; i < n - 1; i++) { e[i] = e[i + 1]; }' unit:test_posture
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

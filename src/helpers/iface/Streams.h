@@ -79,31 +79,34 @@ struct RateLimiter {
 const uint32_t OBS_RATE = 10;
 typedef RateLimiter<OBS_RATE> ObsLimiter;
 
-// The logs stream (class posture): each new entry of the audit ring, at most LOGS_RATE a second. The ring's listener
-// pushes entries here and the glue's loop pops them, so an entry raised in the middle of a request is sent after it.
-// An entry over the rate, or that finds the queue full, is dropped and counted in `dropped` of the next event sent.
+// The logs stream (class posture): each entry the audit ring recorded since the last poll, at most LOGS_RATE a second.
+// The main loop polls the ring's `recorded` counter (nothing is pushed from the task that records). An entry the ring
+// no longer shows (evicted, or folded into a later repeat) and an entry over the rate are dropped and counted in
+// `dropped` of the next event sent. A folded repeat is sent again with its new count.
 const uint32_t LOGS_RATE = 5;
 struct LogFeed {
-  enum : uint8_t { QUEUE = 8 };
   RateLimiter<LOGS_RATE> limit;
-  Posture::AuditEntry q[QUEUE];
-  uint8_t head = 0, count = 0;
-  bool push(uint32_t now, const Posture::AuditEntry& e) {
-    if (!limit.take(now)) return false;
-    if (count == QUEUE) { limit.dropped++; return false; }
-    q[(head + count) % QUEUE] = e;
-    count++;
-    return true;
-  }
-  // The oldest queued entry, with the number dropped since the last one popped (and clears that number).
-  bool pop(Posture::AuditEntry* e, uint32_t* dropped) {
-    if (!count) return false;
-    *e = q[head];
-    head = (head + 1) % QUEUE;
-    count--;
+  uint32_t seen = 0;   // ring.recorded at the last poll
+  // Nobody is subscribed: what is recorded now is history.
+  void skip(const Posture::AuditRing& r) { seen = r.recorded; }
+  // The entries to send now, oldest first, into out (room for AuditRing::CAPACITY); *dropped is the count to report
+  // with the first. Entries not sent stay counted until an event goes out.
+  int poll(uint32_t now, const Posture::AuditRing& r, Posture::AuditEntry* out, uint32_t* dropped) {
+    const uint32_t fresh = r.recorded - seen;
+    if (!fresh) return 0;
+    seen = r.recorded;
+    uint32_t held = 0;
+    int n = 0;
+    for (int i = 0; i < r.n; i++) {
+      if ((int32_t)(r.serial[i] - (r.recorded - fresh)) <= 0) continue;   // recorded before the last poll
+      held++;
+      if (limit.take(now)) out[n++] = r.e[i];
+    }
+    limit.dropped += fresh - held;   // recorded since, but no longer shown
+    if (!n) return 0;
     *dropped = limit.dropped;
     limit.dropped = 0;
-    return true;
+    return n;
   }
 };
 // The data object of one logs event: names, never codes, and nothing but what the audit entry holds (it holds no

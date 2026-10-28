@@ -194,15 +194,6 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _epoch = epoch;
   observeSink().fn = onObserve;
   observeSink().user = this;
-  Posture::audit().setListener(onAudit, this);
-}
-
-// A new audit entry: queued for the logs stream when some transport is subscribed to it.
-void MeconIface::onAudit(void* user, const Posture::AuditEntry& e) {
-  MeconIface* m = static_cast<MeconIface*>(user);
-  bool any = m->_mqtt_subs.s[SID_LOGS].active;
-  for (Link& l : m->_links) any = any || l.subs.s[SID_LOGS].active;
-  if (any) m->_logs.push(millis(), e);
 }
 
 // Whether the caller of the request being handled may use a stream of this class: the CLI privilege table with its
@@ -403,15 +394,20 @@ void MeconIface::sendEvent(int s, const char* ev, size_t n) {
 // The audit entries queued since the last pass, as logs events (their own early return in streamTick: there is no
 // periodic clock for them).
 void MeconIface::drainLogs() {
-  Posture::AuditEntry a;
-  uint32_t dropped;
   bool any = _mqtt_subs.s[SID_LOGS].active;
   for (Link& l : _links) any = any || l.subs.s[SID_LOGS].active;
-  while (_logs.pop(&a, &dropped)) {
-    if (!any) continue;   // unsubscribed since it was queued
-    const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
+  if (!any) {
+    _logs.skip(Posture::audit());   // what is recorded while nobody listens is history
+    return;
+  }
+  Posture::AuditEntry a[Posture::AuditRing::CAPACITY];
+  uint32_t dropped = 0;
+  const int k = _logs.poll(millis(), Posture::audit(), a, &dropped);
+  if (!k) return;
+  const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
+  for (int j = 0; j < k; j++) {
     char ev[320];
-    const int n = writeLog(ev, sizeof(ev), _clock, _epoch, ts >= 1704067200, ts, a, dropped);
+    const int n = writeLog(ev, sizeof(ev), _clock, _epoch, ts >= 1704067200, ts, a[j], j == 0 ? dropped : 0);
     if (n > 0) sendEvent(SID_LOGS, ev, (size_t)n);
   }
 }

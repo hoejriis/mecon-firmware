@@ -32,44 +32,66 @@ TEST(ObsLimiter, TenABurstThenTenASecondWithDropsCounted) {
 }
 
 
+using Posture::AuditRing;
+using Posture::AuditEntry;
+
+TEST(LogFeed, SendsOnlyWhatWasRecordedSinceTheLastPoll) {
+  AuditRing r;
+  LogFeed f;
+  AuditEntry out[AuditRing::CAPACITY];
+  uint32_t d = 0;
+  r.add(10, Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_CLI);   // history: before anyone listened
+  f.skip(r);
+  EXPECT_EQ(0, f.poll(1000, r, out, &d));
+  r.add(20, Posture::EV_POSTURE_SET, Posture::CALLER_CABLE, 1);
+  r.add(21, Posture::EV_MODE_SET, Posture::CALLER_BUTTON, 1);
+  ASSERT_EQ(2, f.poll(1000, r, out, &d));
+  EXPECT_EQ(20u, out[0].ts);                // oldest first
+  EXPECT_EQ(21u, out[1].ts);
+  EXPECT_EQ(0u, d);
+  EXPECT_EQ(0, f.poll(1000, r, out, &d));   // nothing new
+}
+
+TEST(LogFeed, AFoldedRepeatIsSentAgainWithItsNewCountAndOnlyThatEntry) {
+  AuditRing r;
+  LogFeed f;
+  AuditEntry out[AuditRing::CAPACITY];
+  uint32_t d = 0;
+  r.add(1, Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_KEY_EXPORT);
+  r.add(2, Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_BLE_START);
+  f.skip(r);
+  r.add(3, Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_KEY_EXPORT);   // folds into the first
+  ASSERT_EQ(1, f.poll(0, r, out, &d));      // not the untouched entry that now sits beside it
+  EXPECT_EQ(Posture::W_KEY_EXPORT, out[0].what);
+  EXPECT_EQ(2, out[0].count);
+}
+
+TEST(LogFeed, RecordsTheRingNoLongerShowsAreCountedAsDropped) {
+  AuditRing r;
+  LogFeed f;
+  AuditEntry out[AuditRing::CAPACITY];
+  uint32_t d = 0;
+  f.skip(r);
+  for (int i = 0; i < 3; i++) r.add(i + 1, Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_KEY_EXPORT);   // one entry, 3 records
+  ASSERT_EQ(1, f.poll(0, r, out, &d));
+  EXPECT_EQ(3, out[0].count);
+  EXPECT_EQ(2u, d);                         // the two intermediate records
+}
+
 TEST(LogFeed, FiveASecondThenDroppedAndCountedOnTheNextEvent) {
+  AuditRing r;
   LogFeed f;
-  Posture::AuditEntry e = {1800000000, Posture::EV_REFUSED, Posture::CALLER_MQTT, Posture::W_CLI, 1};
-  int queued = 0;
-  for (int i = 0; i < 20; i++) queued += f.push(1000, e);   // one instant: the burst only
-  EXPECT_EQ((int)LOGS_RATE, queued);
-  EXPECT_EQ(15u, f.limit.dropped);
-  Posture::AuditEntry out;
-  uint32_t dropped = 99;
-  ASSERT_TRUE(f.pop(&out, &dropped));
-  EXPECT_EQ(15u, dropped);                                // the first event out carries the count...
-  ASSERT_TRUE(f.pop(&out, &dropped));
-  EXPECT_EQ(0u, dropped);                                 // ...once
-  EXPECT_FALSE(f.push(1100, e));                          // 100 ms: not yet a whole token at 5/s
-  EXPECT_TRUE(f.push(1200, e));                           // 200 ms: one token back
-}
-
-TEST(LogFeed, AFullQueueDropsAndCounts) {
-  LogFeed f;
-  Posture::AuditEntry e = {0, Posture::EV_POSTURE_SET, Posture::CALLER_CABLE, 1, 1};
-  for (int t = 0; t < LogFeed::QUEUE + 3; t++) f.push(t * 1000, e);   // a token every time, nobody pops
-  EXPECT_EQ((int)LogFeed::QUEUE, (int)f.count);
-  EXPECT_EQ(3u, f.limit.dropped);
-}
-
-TEST(LogFeed, KeepsOrder) {
-  LogFeed f;
-  for (uint8_t k = 1; k <= 4; k++) {
-    Posture::AuditEntry e = {0, Posture::EV_REFUSED, Posture::CALLER_NET, k, k};
-    f.push(0, e);
-  }
-  Posture::AuditEntry out;
-  uint32_t d;
-  for (uint8_t k = 1; k <= 4; k++) {
-    ASSERT_TRUE(f.pop(&out, &d));
-    EXPECT_EQ(k, out.what);
-  }
-  EXPECT_FALSE(f.pop(&out, &d));
+  AuditEntry out[AuditRing::CAPACITY];
+  uint32_t d = 0;
+  f.skip(r);
+  for (int i = 0; i < 20; i++) r.add(i, Posture::EV_REFUSED, Posture::CALLER_NET, (uint8_t)(100 + i));   // 20 distinct
+  ASSERT_EQ((int)LOGS_RATE, f.poll(1000, r, out, &d));   // one instant: the burst only
+  EXPECT_EQ(15u, d);
+  r.add(50, Posture::EV_REFUSED, Posture::CALLER_NET, 1);
+  EXPECT_EQ(0, f.poll(1100, r, out, &d));                // 100 ms: not yet a whole token at 5/s
+  r.add(51, Posture::EV_REFUSED, Posture::CALLER_NET, 2);
+  ASSERT_EQ(1, f.poll(1200, r, out, &d));                // 200 ms: one token
+  EXPECT_EQ(1u, d);                                      // the one refused at 1100 ms
 }
 
 TEST(LogData, NamesNotCodesAndNullTimeWhileTheClockWasUnset) {

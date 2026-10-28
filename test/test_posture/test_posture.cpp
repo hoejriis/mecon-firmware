@@ -361,52 +361,40 @@ TEST_F(Ring, LongestPageFitsTheReplyBuffer) {
   EXPECT_LT(strlen(out), 150u);
 }
 
-namespace {
-struct Heard {
-  int calls = 0;
-  AuditEntry last = {};
-};
-void hear(void* user, const AuditEntry& e) {
-  Heard* h = static_cast<Heard*>(user);
-  h->calls++;
-  h->last = e;
-}
-}  // namespace
-
-TEST(AuditListener, IsCalledForEveryAddWithTheFoldedCount) {
+TEST(AuditRecorded, CountsEveryRecordIncludingFoldedRepeatsAndStampsTheEntry) {
   AuditRing r;
-  Heard h;
-  r.setListener(hear, &h);
+  EXPECT_EQ(0u, r.recorded);
   r.add(100, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);
-  EXPECT_EQ(1, h.calls);
-  EXPECT_EQ(1, h.last.count);
-  r.add(101, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);   // folds in the ring; still an event, with the running count
-  EXPECT_EQ(2, h.calls);
-  EXPECT_EQ(2, h.last.count);
-  EXPECT_EQ(101u, h.last.ts);
-  EXPECT_EQ(1, r.n);
-  r.addOnce(102, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);   // already there: nothing happened
-  EXPECT_EQ(2, h.calls);
-  r.addOnce(103, EV_REFUSED, CALLER_NET, W_BLE_START);
-  EXPECT_EQ(3, h.calls);
+  r.add(101, EV_REFUSED, CALLER_NET, W_BLE_START);
+  EXPECT_EQ(2u, r.recorded);
+  EXPECT_EQ(1u, r.serial[0]);
+  EXPECT_EQ(2u, r.serial[1]);
+  r.add(102, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);   // folds: moves to the newest slot, new serial, count 2
+  EXPECT_EQ(3u, r.recorded);
+  ASSERT_EQ(2, r.n);
+  EXPECT_EQ(W_KEY_EXPORT, r.e[1].what);
+  EXPECT_EQ(2, r.e[1].count);
+  EXPECT_EQ(3u, r.serial[1]);
+  EXPECT_EQ(2u, r.serial[0]);                          // the other entry kept its own
+  r.addOnce(103, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);   // already there: nothing recorded
+  EXPECT_EQ(3u, r.recorded);
 }
 
-TEST(AuditListener, LoadingAFileAndClearingAreHistoryNotEvents) {
+TEST(AuditRecorded, LoadedEntriesAreHistoryAndTheCounterSurvivesClear) {
   AuditRing a;
   a.add(1, EV_POSTURE_SET, CALLER_CABLE, 1);
   uint8_t img[AuditRing::FILE_SIZE];
   a.serialize(img);
   AuditRing r;
-  Heard h;
-  r.setListener(hear, &h);
   ASSERT_TRUE(r.deserialize(img, sizeof(img)));
+  EXPECT_EQ(0u, r.recorded);
+  EXPECT_EQ(0u, r.serial[0]);
+  r.add(2, EV_MODE_SET, CALLER_BUTTON, 1);
   r.clear();
-  EXPECT_EQ(0, h.calls);
-  r.add(2, EV_MODE_SET, CALLER_BUTTON, 1);   // the listener survived clear()
-  EXPECT_EQ(1, h.calls);
-  r.setListener(nullptr, nullptr);
   r.add(3, EV_MODE_SET, CALLER_BUTTON, 0);
-  EXPECT_EQ(1, h.calls);
+  EXPECT_EQ(1, r.n);
+  EXPECT_EQ(2u, r.recorded);   // monotonic: clear() does not rewind it
+  EXPECT_EQ(2u, r.serial[0]);
 }
 
 int main(int argc, char **argv) {

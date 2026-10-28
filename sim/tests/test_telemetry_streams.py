@@ -464,3 +464,14 @@ def test_logs_are_refused_to_a_caller_without_the_posture_class(nodes):
     assert r["status"] == "refused", r
     r = i.request("sub.start", {"stream": "health"})
     assert r["status"] == "refused", r
+
+
+def test_logs_do_not_replay_history(nodes):
+    """Entries recorded before a subscription are history: the first event is the next thing that happens."""
+    n, c, i = companion(nodes, "logshist")
+    assert c.cli("set posture hardened") == "OK - posture hardened"
+    assert i.request("sub.start", {"stream": "logs", "lifetime_s": 120})["status"] == "ok"
+    assert collect(i, "logs", 3.0) == []
+    c._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY]))
+    evs = collect(i, "logs", 3.0)
+    assert [(e["data"]["event"], e["data"]["what"]) for e in evs] == [("refused", "key-export")], evs

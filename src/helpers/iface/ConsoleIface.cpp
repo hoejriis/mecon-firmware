@@ -122,13 +122,6 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _epoch = epoch;
   observeSink().fn = onObserve;
   observeSink().user = this;
-  Posture::audit().setListener(onAudit, this);
-}
-
-// A new audit entry: queued for the logs stream when someone is subscribed to it (a stream nobody reads costs a test).
-void ConsoleIface::onAudit(void* user, const Posture::AuditEntry& e) {
-  ConsoleIface* s = static_cast<ConsoleIface*>(user);
-  if (s->_subs.s[SID_LOGS].active) s->_logs.push(millis(), e);
 }
 
 // Whether the console, as a caller, may use a stream of this class: the CLI privilege table, as for any console line.
@@ -296,13 +289,17 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
       if (n > 0) printLine(out, ev, (size_t)n);
     }
   }
-  Posture::AuditEntry a;
-  uint32_t dropped;
-  while (_logs.pop(&a, &dropped)) {
-    if (!_subs.s[SID_LOGS].active) continue;   // unsubscribed since it was queued
-    char ev[320];
-    const int n = writeLog(ev, sizeof(ev), _clock, _epoch, false, 0, a, dropped);
-    if (n > 0) printLine(out, ev, (size_t)n);
+  if (!_subs.s[SID_LOGS].active) {
+    _logs.skip(Posture::audit());
+  } else {
+    Posture::AuditEntry a[Posture::AuditRing::CAPACITY];
+    uint32_t dropped = 0;
+    const int k = _logs.poll(now, Posture::audit(), a, &dropped);
+    for (int j = 0; j < k; j++) {
+      char ev[320];
+      const int n = writeLog(ev, sizeof(ev), _clock, _epoch, false, 0, a[j], j == 0 ? dropped : 0);
+      if (n > 0) printLine(out, ev, (size_t)n);
+    }
   }
 }
 

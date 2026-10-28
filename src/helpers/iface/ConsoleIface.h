@@ -93,7 +93,6 @@ private:
   LoopGap _gap;
   bool _boot_sent = false, _boot_pending = false;   // the runtime boot event: once per epoch
   LogFeed _logs;
-  static void onAudit(void* self, const Posture::AuditEntry& e);
   Print* _out = nullptr;   // the console, for events raised outside loop()
 };
 
