@@ -157,7 +157,7 @@ bool T1000SensorManager::setSettingValue(const char* name, const char* value) {
   return false;  // not supported
 }
 
-// Issue #1: the receiver's state for the runtime stream's `gnss` object. No position leaves here.
+// the receiver's state for the runtime stream's `gnss` object. No position leaves here.
 bool T1000eBoard::getGnssHealth(GnssHealth& out) {
   out.powered = sensors.gpsActive();
   out.fix = out.powered ? (nmea.isValid() ? 1 : 0) : -1;

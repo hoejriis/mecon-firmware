@@ -166,7 +166,7 @@ public :
         return alt;
     }
     long satellitesCount() override { return nmea.getNumSatellites(); }
-    // Issue #1: milliseconds since the last parsed GGA/RMC sentence that carried a valid fix; false before the first.
+    // milliseconds since the last parsed GGA/RMC sentence that carried a valid fix; false before the first.
     bool fixAgeMs(uint32_t& out) const { if (!_fix_seen) return false; out = ageMs(_last_fix_ms); return true; }
     bool isValid() override { return nmea.isValid(); }
 

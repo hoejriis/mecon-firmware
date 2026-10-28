@@ -71,10 +71,10 @@ public:
   virtual bool isExternalPowered() { return false; }
   // True while a board can identify an active battery-charging source.
   virtual bool isChargerActive() { return false; }
-  // Issue #1: true when the board reads external power and charging from its own pins without the nRF52 power
+  // true when the board reads external power and charging from its own pins without the nRF52 power
   // manager, so the power stream reports them rather than null.
   virtual bool hasPowerDetect() const { return false; }
-  // Issue #1: fills a GNSS receiver's state for the runtime stream; false on a board without one.
+  // fills a GNSS receiver's state for the runtime stream; false on a board without one.
   virtual bool getGnssHealth(GnssHealth& out) { (void)out; return false; }
 
   // Optional, source-specific power detection. Boards that can distinguish a USB

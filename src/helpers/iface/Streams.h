@@ -170,7 +170,22 @@ void writeCount(JsonWriter& w, const char* key, int count, int capacity);
 // heap_low: 1 or 0 where the build checks the heap floor (the Companion), -1 to leave the field out.
 void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low = -1);
 
-// Issue #1: the runtime stream's `gnss` object. Called only for a board that has a receiver, so it is absent
+// The power stream's fields from any board type (mesh::MainBoard in the firmware, a fake one in the native test).
+// The defaults answer false whether or not the board can tell, so external and charging are reported only by an
+// initialised power manager or a board with its own detect pins (hasPowerDetect); otherwise they are null.
+template <class Board> void writePowerOf(JsonWriter& w, Board& b) {
+  const uint16_t mv = b.getBattMilliVolts();
+  w.key("battery_mv"); if (mv) w.unum(mv); else w.null();
+  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();
+  w.key("external"); if (can_tell) w.boolean(b.isExternalPowered()); else w.null();
+  w.key("charging"); if (can_tell) w.boolean(b.isChargerActive()); else w.null();
+  if (b.hasUsbPowerDetect()) { w.key("usb_power"); w.boolean(b.isUsbPowered()); }
+  if (b.hasSolarChargerDetect()) { w.key("solar"); w.boolean(b.isSolarChargerActive()); }
+  const uint16_t boot_mv = b.getBootVoltage();
+  if (boot_mv) { w.key("boot_mv"); w.unum(boot_mv); }
+}
+
+// The runtime stream's `gnss` object. Called only for a board that has a receiver, so it is absent
 // otherwise. `fix` is null while the receiver is off; `fix_age_s` is null before the first fix of the boot.
 inline void writeGnss(JsonWriter& w, const GnssHealth& g) {
   w.key("gnss"); w.beginObject();

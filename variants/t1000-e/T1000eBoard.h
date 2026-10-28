@@ -34,7 +34,7 @@ public:
   #endif
   }
 
-  // Issue #1: the power stream's `external` and `charging` (docs/contract/TELEMETRY.md) from the board's own detect
+  // the power stream's `external` and `charging` (docs/contract/TELEMETRY.md) from the board's own detect
   // pins, which variant.cpp already configures as inputs but nothing read. Polarity is a build define so a hardware
   // read can correct it: EXT_PWR_DETECT high = external power; EXT_CHRG_DETECT low = charging (open-drain status).
 #ifndef T1000E_EXT_PWR_ACTIVE
