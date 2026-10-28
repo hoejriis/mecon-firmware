@@ -890,7 +890,7 @@ mutate boot_event_never_sent src/helpers/iface/ConsoleIface.h '    if (stream ==
 mutate boot_event_hardware_is_role src/helpers/iface/Streams.cpp '  w.key("hardware"); w.str(hardware);' '  w.key("hardware"); w.str(role);' sim/tests/test_telemetry_streams.py::test_the_boot_event_comes_once_per_epoch
 mutate logs_companion_listener_missing examples/companion_radio/MeconIface.cpp '  Posture::audit().setListener(onAudit, this);' '  (void)0;' sim/tests/test_telemetry_streams.py::test_logs_send_a_posture_change_and_a_refusal_with_names
 mutate logs_console_listener_missing src/helpers/iface/ConsoleIface.cpp '  Posture::audit().setListener(onAudit, this);' '  (void)0;' sim/tests/test_telemetry_streams.py::test_logs_on_the_repeater_console
-mutate logs_class_not_checked src/helpers/iface/Streams.cpp '  if (!allow || !allow(allow_user, def.cls)) return ST_REFUSED;' '' sim/tests/test_telemetry_streams.py::test_logs_are_refused_to_a_caller_without_the_posture_class
+mutate logs_class_not_checked src/helpers/iface/Streams.cpp '  if (!allow || !allow(allow_user, def.cls)) return ST_REFUSED;' '' sim/tests/test_device_interface.py::test_logs_are_refused_over_a_verified_mqtt_session_but_not_to_the_cable
 mutate logs_class_is_read src/helpers/iface/Streams.cpp '  {"logs", 0, 0, 0, Cli::C_POSTURE},' '  {"logs", 0, 0, 0, Cli::C_READ},' sim/tests/test_device_interface.py::test_logs_are_refused_over_a_verified_mqtt_session_but_not_to_the_cable
 mutate logs_rate_unlimited src/helpers/iface/Streams.h '    if (!limit.take(now)) return false;' '    limit.take(now);' sim/tests/test_telemetry_streams.py::test_logs_rate_is_limited_and_drops_are_counted
 mutate logs_drops_never_cleared src/helpers/iface/Streams.h '    limit.dropped = 0;
