@@ -1044,6 +1044,10 @@ mutate rescue_rebuild_marker_late examples/companion_radio/MyMesh.cpp '      if 
 mutate unlock_secret_set_over_any_transport src/helpers/iface/DeployAuth.cpp '  if (!viaCable()) { c.error = "usb_only"; return ST_REFUSED; }' '' sim/tests/test_deployment_authority.py::test_the_unlock_secret_is_accepted_only_over_the_usb_cable_even_in_a_signed_request
 mutate unlock_secret_provisioned_over_any_transport src/helpers/iface/DeployAuth.cpp '  if (k->p.has_unlock && !viaCable()) { c.error = "usb_only"; goto done; }' '' sim/tests/test_deployment_authority.py::test_the_unlock_secret_is_accepted_only_over_the_usb_cable_even_in_a_signed_request
 
+# --- issue #112: a stale login (right password, older timestamp) is audited as stale-login
+mutate stale_login_not_named_repeater examples/simple_repeater/MyMesh.cpp '                           Posture::W_STALE_LOGIN);' '                           Posture::W_BAD_PASSWORD);' sim/tests/test_stale_login.py::test_a_stale_login_is_refused_and_audited
+mutate stale_login_not_named_room examples/simple_room_server/MyMesh.cpp '                             Posture::W_STALE_LOGIN);' '                             Posture::W_BAD_PASSWORD);' sim/tests/test_stale_login.py::test_a_stale_login_is_refused_and_audited
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
