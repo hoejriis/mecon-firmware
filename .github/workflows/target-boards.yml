@@ -53,7 +53,9 @@ jobs:
           path: ~/.platformio
           key: pio-6.2.0-${{ matrix.env }}-${{ hashFiles('platformio.ini', 'variants/**/platformio.ini') }}
           restore-keys: pio-6.2.0-${{ matrix.env }}-
-      - run: pip install "platformio==6.2.0"
+      - run: pip install "platformio==6.2.0" PyYAML   # PyYAML: the hybrid IDF library compile (docs/PLATFORM.md)
+      - name: Rebuild the Arduino IDF libraries (ESP32-S3 Heltec envs; skipped for the rest)
+        run: bin/idf5_libs.sh ${{ matrix.env }}
       - run: |
           set -o pipefail   # a failed build must fail the step, not be hidden by tee
           pio run -e ${{ matrix.env }} | tee build.log

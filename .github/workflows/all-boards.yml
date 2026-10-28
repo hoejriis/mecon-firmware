@@ -39,7 +39,7 @@ jobs:
           python3 - <<'PY'
           import json, os
           envs = sorted(s[0][4:] for s in json.load(open('pio-config.json'))
-                        if s[0].startswith('env:') and not s[0].startswith('env:native'))
+                        if s[0].startswith('env:') and not s[0].startswith(('env:native', 'env:idf5_')))
           n = int(os.environ['SHARDS'])
           shards = [{'id': i, 'envs': ' '.join(envs[i::n])} for i in range(n)]
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
@@ -61,16 +61,20 @@ jobs:
           python-version: '3.13'
       - uses: actions/cache@v5
         with:
-          path: ~/.platformio
+          path: |
+            ~/.platformio
+            ~/.platformio-stock
           key: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-${{ hashFiles('platformio.ini', 'variants/**/platformio.ini') }}
           restore-keys: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-
-      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - run: pip install "platformio==${PLATFORMIO_VERSION}" PyYAML   # PyYAML: the hybrid IDF library compile
       - name: Build shard ${{ matrix.shard.id }}
         run: |
           failed=()
           for env in ${{ matrix.shard.envs }}; do
             echo "::group::$env"
-            if pio run -e "$env"; then echo "OK $env" >> results.txt; else echo "FAIL $env" >> results.txt; failed+=("$env"); fi
+            # ESP32-C6 envs use the stock IDF libraries, the Heltec envs the rebuilt ones; one package cannot hold both.
+            case "$env" in *C6*|*c6*) export PLATFORMIO_CORE_DIR="$HOME/.platformio-stock" ;; *) unset PLATFORMIO_CORE_DIR ;; esac
+            if bin/idf5_libs.sh "$env" && pio run -e "$env"; then echo "OK $env" >> results.txt; else echo "FAIL $env" >> results.txt; failed+=("$env"); fi
             echo "::endgroup::"
           done
           cat results.txt

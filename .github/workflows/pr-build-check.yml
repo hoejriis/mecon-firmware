@@ -54,5 +54,10 @@ jobs:
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
 
+      - name: Rebuild the Arduino IDF libraries (ESP32-S3 Heltec envs only)
+        run: |
+          pip install PyYAML
+          bin/idf5_libs.sh ${{ matrix.environment }}
+
       - name: Build ${{ matrix.environment }}
         run: pio run -e ${{ matrix.environment }}

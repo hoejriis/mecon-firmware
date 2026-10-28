@@ -154,7 +154,8 @@ build_firmware() {
   # disable debug flags if requested
   disable_debug_flags
 
-  # build firmware target
+  # build firmware target (the pioarduino envs need the rebuilt Arduino IDF libraries first)
+  bin/idf5_libs.sh "$1"
   pio run -e $1
 
   # build merge-bin for esp32 fresh install, copy .bins to out folder (e.g: Heltec_v3_room_server-v1.0.0-SHA.bin)
