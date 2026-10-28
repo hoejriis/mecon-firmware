@@ -274,6 +274,7 @@ void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw
   int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts >= 1704067200, ts, snr, rssi, raw, len,
                                  m->_obs.dropped);
   if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);   // -1: not signable, so not sent
+  if (n <= 0) m->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing
   if (n > 0) {
     m->_obs.dropped = 0;
     for (Link& l : m->_links) {

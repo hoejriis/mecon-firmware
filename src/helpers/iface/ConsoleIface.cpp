@@ -166,6 +166,7 @@ void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* r
   if (!ev) { s->_obs.dropped++; return; }
   int n = writeObservation(ev, CAP, s->_clock, s->_epoch, false, 0, snr, rssi, raw, len, s->_obs.dropped);
   if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);   // -1: not signable, so not sent
+  if (n <= 0) s->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing
   if (n > 0) {
     s->_obs.dropped = 0;
     s->printLine(*s->_out, ev, (size_t)n);
