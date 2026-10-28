@@ -234,11 +234,27 @@ class Broker:
         out, _ = sub.communicate(timeout=timeout + 5)
         return json.loads(out) if out.strip() else None
 
+    def iface_request_raw(self, device_id, envelope, timeout=8):
+        """iface_request, answered with the response exactly as published (text, not parsed), or None."""
+        resp = "mecon/%s/resp" % device_id
+        sub = subprocess.Popen(["mosquitto_sub"] + self._client_args() + ["-t", resp, "-C", "1", "-W", str(timeout)],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        time.sleep(0.6)
+        self.publish("mecon/%s/req" % device_id, json.dumps(envelope))
+        out, _ = sub.communicate(timeout=timeout + 5)
+        return out.rstrip("\n") if out.strip() else None
+
     def next_message(self, topic, timeout=10, count=1):
         """The next `count` payloads published on topic (parsed JSON), as a list; fewer when the time runs out."""
         cmd = ["mosquitto_sub"] + self._client_args() + ["-t", topic, "-C", str(count), "-W", str(timeout)]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
         return [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
+
+    def next_raw(self, topic, timeout=10, count=1):
+        """next_message, with each payload exactly as published (text), for checking a signature over its bytes."""
+        cmd = ["mosquitto_sub"] + self._client_args() + ["-t", topic, "-C", str(count), "-W", str(timeout)]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+        return [l for l in r.stdout.splitlines() if l.strip()]
 
     def retained_on(self, topic, timeout=5):
         """The retained payload on one exact topic, or None."""

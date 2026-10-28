@@ -988,7 +988,7 @@ mutate server_console_issues_no_nonce src/helpers/iface/ConsoleIface.cpp '      
 mutate server_console_is_not_the_cable src/helpers/iface/ConsoleIface.cpp '        const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));' '        const Cli::Context cable(Cli::T_TCP, Cli::A_NONE, _host.posture(_host.user));' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_repeater_erase_keeps_the_marker examples/simple_repeater/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
 mutate server_room_erase_keeps_the_marker examples/simple_room_server/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
-mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock };' '                                       nullptr, ifaceClock };' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock, &the_mesh.self_id };' '                                       nullptr, ifaceClock, &the_mesh.self_id };' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_format_hook_not_registered src/helpers/iface/DeployAuth.cpp '    Cli::serverCaller().on_format_user = this;' '    Cli::serverCaller().on_format_user = nullptr;' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
 
 # Local unlock (AUTHORITY.md sections 9 and 10): the handshake on the cable, what it opens, and the secret's confinement
@@ -1011,7 +1011,9 @@ mutate unlock_policy_opens_writes src/helpers/cli/CliPolicy.h '  const bool unlo
 mutate unlock_policy_honoured_for_any_principal src/helpers/cli/CliPolicy.h 'inline bool unlockManagement(const Context& c) { return c.unlocked && principalOf(c) == P_CABLE; }' 'inline bool unlockManagement(const Context& c) { return c.unlocked; }' unit:test_cli_engine
 mutate unlock_hmac_ignores_the_message src/helpers/deployment/DepHmac.cpp '  update(&c, msg, msg_len);' '' unit:test_dep_hmac
 mutate unlock_compare_checks_one_byte src/helpers/deployment/DepHmac.cpp '  for (size_t i = 0; i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' '  for (size_t i = 0; i < 1 && i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' unit:test_dep_hmac
-mutate unlock_set_unlock_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0)' ')' unit:test_dep_wrapper
+mutate unlock_set_unlock_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0 ||
+      strcmp(op, "identity.rotate") == 0)' ' ||
+      strcmp(op, "identity.rotate") == 0)' unit:test_dep_wrapper
 
 mutate unlock_salvage_takes_the_older_frame src/helpers/deployment/DepState.cpp '      if (s->has_salvage && gen <= best) continue;' '' unit:test_dep_state
 
@@ -1043,6 +1045,44 @@ mutate rescue_rebuild_marker_late examples/companion_radio/MyMesh.cpp '      if 
 # --- second review (L3): the unlock secret travels in the clear, so only over the cable
 mutate unlock_secret_set_over_any_transport src/helpers/iface/DeployAuth.cpp '  if (!viaCable()) { c.error = "usb_only"; return ST_REFUSED; }' '' sim/tests/test_deployment_authority.py::test_the_unlock_secret_is_accepted_only_over_the_usb_cable_even_in_a_signed_request
 mutate unlock_secret_provisioned_over_any_transport src/helpers/iface/DeployAuth.cpp '  if (k->p.has_unlock && !viaCable()) { c.error = "usb_only"; goto done; }' '' sim/tests/test_deployment_authority.py::test_the_unlock_secret_is_accepted_only_over_the_usb_cable_even_in_a_signed_request
+
+# --- provenance (AUTHORITY.md 3.4) and identity.rotate (section 11)
+PV=sim/tests/test_provenance.py
+IR=sim/tests/test_identity_rotate.py
+mutate prov_result_signature_dropped src/helpers/iface/Provenance.cpp '  if (!_auth || (!_auth->enrolled() && !_force)) return (int)len;   // a standalone device signs nothing' '  return (int)len;' $PV::test_companion_results_and_events_are_signed_once_a_record_exists
+mutate prov_console_event_signature_dropped src/helpers/iface/ConsoleIface.cpp '    if (n > 0) n = _prov.sign(STREAMS[s].name, ev, (size_t)n, sizeof(ev));   // -1: not signable, so not sent' '' $PV::test_console_results_and_events_are_signed_once_a_record_exists
+mutate prov_wrong_domain src/helpers/iface/Provenance.cpp 'const char DOMAIN[] = "MECON-UPLINK-v1";' 'const char DOMAIN[] = "MECON-UPLINK-v2";' $PV::test_companion_results_and_events_are_signed_once_a_record_exists
+mutate prov_unsigned_epoch_still_signs src/helpers/iface/Provenance.cpp '  if (!_epoch_saved || _seq == 0xFFFFFFFFu) {' '  if (_seq == 0xFFFFFFFFu) {' $PV::test_an_unsaved_boot_epoch_signs_nothing
+mutate rotate_without_signature src/helpers/iface/DeployAuth.cpp '  if (!_signed) { _dep->auth_rejections++; c.error = "unauthenticated"; return ST_REFUSED; }
+  return ST_OK;' '  return ST_OK;' $IR::test_rotation_needs_a_signature_and_a_readable_record
+mutate rotate_without_a_record src/helpers/iface/DeployAuth.cpp '  if (_dep_ls == Dep::LS_ABSENT) { c.error = "not_enrolled"; return ST_REFUSED; }
+  if (_dep_ls != Dep::LS_OK || !_dep) { if (_dep) _dep->auth_rejections++; c.error = "deployment_record_corrupt"; return ST_REFUSED; }' '' $IR::test_rotation_needs_a_signature_and_a_readable_record
+mutate rotate_keeps_contacts examples/companion_radio/MyMesh.cpp '    dropped = cs.clearAll();' '    dropped = true;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
+mutate rotate_drops_configuration examples/companion_radio/MyMesh.cpp '  if (_listener) _listener->onQueueSizeChanged(0);
+  return dropped;' '  if (_listener) _listener->onQueueSizeChanged(0);
+  strcpy(_prefs.node_name, "NONAME"); savePrefs();
+  return dropped;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
+mutate rotate_not_swapped examples/companion_radio/MyMesh.cpp '  self_id = fresh;' '  (void)fresh;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
+mutate rotate_unenrols examples/companion_radio/MyMesh.cpp '  self_id = fresh;' '  self_id = fresh;
+  _store->removeDeploymentCopies(-1, DataStore::DEP_RECORD);' $IR::test_rotation_changes_the_key_and_keeps_everything_else
+mutate rotate_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0 ||
+      strcmp(op, "identity.rotate") == 0)' ' || strcmp(op, "deployment.set_unlock") == 0)' $IR::test_rotation_needs_a_signature_and_a_readable_record
+mutate revoked_issuer_reported_unknown src/helpers/deployment/DepWrapper.cpp 'e = set.isRevoked(issuer) ? WR_ISSUER_REVOKED : WR_UNKNOWN_ISSUER; goto done; }' 'e = WR_UNKNOWN_ISSUER; goto done; }' $IR::test_a_revoked_member_is_refused_and_cannot_rotate_the_key
+
+# --- review 3 of PR 132 (AUTHORITY_REVIEW_2.md): one group of mutants per finding
+mutate rot_statement_signed_by_new_key examples/companion_radio/MyMesh.cpp '    self_id.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));' '    fresh.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate rot_statement_domain examples/companion_radio/MyMesh.cpp 'const char ROT_DOMAIN[] = "MECON-NODEROT-v1";' 'const char ROT_DOMAIN[] = "MECON-NODEROT-v2";' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate rotation_not_a_plain_read src/helpers/deployment/DepWrapper.cpp '"identity.rotation", "job.get", "job.list" };' '"job.get", "job.list" };' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate rot_stale_statement_kept examples/companion_radio/MyMesh.cpp '  if (!strstr(text, want)) { _store->removeRotation(); return; }   // the key change never took effect' '  if (!strstr(text, want)) { return; }   // the key change never took effect' $IR::test_a_cut_after_the_statement_and_before_the_key_save_leaves_the_key
+mutate rotate_result_signed_with_new_key examples/companion_radio/MeconDeploy.cpp '  m->_old_id = old;   // signs this result; dispatch() wipes it' '  Iface::wipe(old, sizeof(*old)); delete old;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
+mutate rot_pending_drop_not_finished examples/companion_radio/MyMesh.cpp '  if (!dropOldKeyState()) return;   // stays pending: tried again at the next boot' '  if (true) return;   // stays pending: tried again at the next boot' $IR::test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot
+mutate rot_pending_never_cleared examples/companion_radio/MyMesh.cpp '  const size_t m = rotFile(out, sizeof(out), text, sig, false);' '  const size_t m = rotFile(out, sizeof(out), text, sig, true);' $IR::test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot
+mutate rot_pending_not_cleared_after_drop examples/companion_radio/MyMesh.cpp '      const size_t m = rotFile(out, sizeof(out), text, sig_b64, false);' '      const size_t m = rotFile(out, sizeof(out), text, sig_b64, true);' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate native_signer_signs_mecon_bytes examples/companion_radio/MyMesh.cpp '    if (sign_data && sign_data_len >= 6 && memcmp(sign_data, "MECON-", 6) == 0) {' '    if (false) {' $IR::test_the_native_signer_never_signs_bytes_that_look_like_a_mecon_message
+mutate prov_result_names_no_op src/helpers/iface/Provenance.cpp '  if (a && a->op[0]) {' '  if (false) {' $PV::test_a_result_names_what_it_answers
+mutate prov_result_names_no_job src/helpers/iface/Provenance.cpp '    const int n = a->has_job ? snprintf(' '    const int n = false ? snprintf(' $PV::test_a_result_names_what_it_answers
+mutate prov_refusal_budget_unlimited src/helpers/iface/Provenance.cpp '  if (_tokens < 1000) return false;' '  if (_tokens < 1000) return true;' $PV::test_refusals_are_signed_within_a_budget_and_everything_else_always
+mutate prov_reset_result_unsigned src/helpers/iface/Provenance.cpp '  _force = was_enrolled;' '  _force = false;' $PV::test_the_result_of_the_reset_that_removes_the_record_is_still_signed
 
 # --- issue #113: screen privacy per posture (src/helpers/DisplayPrivacy.h, the three UI variants)
 mutate privacy_text_always_shown src/helpers/DisplayPrivacy.h 'inline bool showsMessageText(uint8_t posture) { return !Posture::isHardened(posture); }' 'inline bool showsMessageText(uint8_t posture) { return true; }' unit:test_display_privacy
