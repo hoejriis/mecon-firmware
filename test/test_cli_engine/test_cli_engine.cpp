@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include "helpers/Posture.h"
+#include "helpers/cli/CliCaller.h"
 #include "helpers/cli/CliEngine.h"
 #include "helpers/cli/NetConsole.h"
 #include "helpers/connmode/ConnMode.h"
@@ -38,6 +39,7 @@ const Expect EXPECT_TABLE[] = {
   {P_MQTT_UNVERIFIED, "MQTT unverified",  "VVVVVV", "VVVVVV"},
   {P_BUTTON,          "button",           "PPP.PP", "PPP.PP"},
   {P_NETCON_ADMIN,    "Ethernet admin",   ". . Y P Y .", "NNNNNN"},
+  {P_SIGNED,          "signed",           "..P.P.", "..P.P."},
 };
 
 std::string squeeze(const char* s) {
@@ -79,6 +81,12 @@ const Valid VALID[] = {
   {T_MQTT, A_TLS_UNVERIFIED, true, P_MQTT_UNVERIFIED},
   {T_BUTTON, A_BUTTON, false, P_BUTTON},
   {T_NETCON, A_NETCON_ADMIN, false, P_NETCON_ADMIN},
+  {T_USB, A_SIGNED, false, P_SIGNED},
+  {T_BLE, A_SIGNED, false, P_SIGNED},
+  {T_TCP, A_SIGNED, false, P_SIGNED},
+  {T_MQTT, A_SIGNED, true, P_SIGNED},
+  {T_LORA, A_SIGNED, true, P_SIGNED},
+  {T_NETCON, A_SIGNED, false, P_SIGNED},
 };
 
 Principal expectedPrincipal(uint8_t t, uint8_t a, bool remote) {
@@ -124,8 +132,8 @@ TEST_P(PrivilegeMatrix, EveryCellOfTheTableIsAsWritten) {
         EXPECT_EQ(v.allow, want == R_ALLOW);
         // "lowers protection" is for a cable: no other caller gets through with the flag, whatever its cell says
         const Verdict lower = decide(ctx, cls, F_CABLE_ONLY);
-        EXPECT_EQ(lower.allow, want == R_ALLOW && want_p == P_CABLE);
-        if (want == R_ALLOW && want_p != P_CABLE) EXPECT_EQ(lower.reason, R_NOT_PERMITTED);
+        EXPECT_EQ(lower.allow, want == R_ALLOW && (want_p == P_CABLE || want_p == P_SIGNED));
+        if (want == R_ALLOW && want_p != P_CABLE && want_p != P_SIGNED) EXPECT_EQ(lower.reason, R_NOT_PERMITTED);
         else EXPECT_EQ(lower.reason, want);
       }
     }
@@ -135,7 +143,7 @@ TEST_P(PrivilegeMatrix, EveryCellOfTheTableIsAsWritten) {
 static std::vector<Cell> allCells() {
   std::vector<Cell> v;
   for (uint8_t t = T_NONE; t <= T_NETCON; t++)
-    for (uint8_t a = A_NONE; a <= A_NETCON_ADMIN; a++)
+    for (uint8_t a = A_NONE; a <= A_SIGNED; a++)
       for (bool remote : {false, true}) v.push_back({t, a, remote});
   return v;
 }
@@ -149,6 +157,27 @@ TEST(PrivilegeProperties, ARemoteCallerNeverInheritsALocalCallersPrivileges) {
       }
     }
   }
+}
+
+TEST(PrivilegeProperties, ASignedCallerNeverEraseNorReadsKeysOnAnyTransport) {
+  for (uint8_t t : {T_USB, T_BLE, T_TCP, T_MQTT, T_LORA, T_NETCON})
+    for (uint8_t posture : {(uint8_t)0, (uint8_t)1}) {
+      const Context c(t, A_SIGNED, posture);
+      EXPECT_EQ(principalOf(c), P_SIGNED);
+      EXPECT_EQ(c.remote, t == T_MQTT || t == T_LORA) << "remote follows the transport, not the signature";
+      EXPECT_FALSE(decide(c, C_DESTRUCTIVE).allow);
+      EXPECT_FALSE(decide(c, C_SECRET).allow);
+      EXPECT_TRUE(decide(c, C_WRITE).allow);
+      EXPECT_TRUE(decide(c, C_REBOOT).allow);
+      EXPECT_TRUE(decide(c, C_POSTURE, F_CABLE_ONLY).allow) << "a signed request may lower the posture (section 11: signed, or the cable)";
+    }
+  EXPECT_EQ(principalOf(Context(T_BUTTON, A_SIGNED, 0)), P_UNTRUSTED);
+  EXPECT_EQ(principalOf(Context(T_NONE, A_SIGNED, 0)), P_UNTRUSTED);
+  Context lie(T_MQTT, A_SIGNED, 0);
+  lie.remote = false;                      // a signature does not make a broker request local
+  EXPECT_EQ(principalOf(lie), P_UNTRUSTED);
+  EXPECT_EQ(decide(Context(T_USB, A_SIGNED, 0), C_WRITE).caller, Posture::CALLER_CABLE);
+  EXPECT_EQ(decide(Context(T_MQTT, A_SIGNED, 0), C_WRITE).caller, Posture::CALLER_MQTT);
 }
 
 TEST(PrivilegeProperties, UntrustedAndUnverifiedCallersAreRefusedEverything) {
@@ -239,8 +268,8 @@ TEST(Registry, RepeaterClassification) {
 }
 
 TEST(Registry, SetPostureArgumentsAreClassifiedLikeThePostureHandlerParsesThem) {
-  EXPECT_EQ(resolve("set posture hardened", ROLE_COMPANION).flags, 0);
-  EXPECT_EQ(resolve("set posture   hardened", ROLE_COMPANION).flags, 0);       // the handler skips spaces too
+  EXPECT_EQ(resolve("set posture hardened", ROLE_COMPANION).flags, F_RAISES);
+  EXPECT_EQ(resolve("set posture   hardened", ROLE_COMPANION).flags, F_RAISES);       // the handler skips spaces too
   EXPECT_EQ(resolve("set posture normal", ROLE_COMPANION).flags, F_CABLE_ONLY);
   EXPECT_EQ(resolve("set posture normal confirm", ROLE_COMPANION).flags, F_CABLE_ONLY);
   EXPECT_EQ(resolve("set posture  normal confirm", ROLE_COMPANION).flags, F_CABLE_ONLY);
@@ -559,7 +588,283 @@ TEST(MeconCli, CheckIsADryRunOfTheTable) {
   EXPECT_FALSE(handleMecon("get mecon.cli", Context(T_USB, A_CABLE, 0), ROLE_COMPANION, r, sizeof(r)));
 }
 
+// ---- once the device holds a Deployment record (AUTHORITY.md section 9): Context.enrolled
+
+static Context enrolledCtx(uint8_t t, uint8_t a, uint8_t posture, bool mgmt = false) {
+  Context c(t, a, posture, mgmt);
+  c.enrolled = true;
+  return c;
+}
+
+TEST(Enrolled, AnUnsignedCallerKeepsReadsALocalOneRebootAndLosesEveryOtherClass) {
+  struct Caller { Context plain; const char* name; };
+  const Caller callers[] = {
+    {Context(T_USB, A_CABLE, 0), "cable"},
+    {Context(T_BLE, A_PAIRED_PIN, 0), "paired BLE"},
+    {Context(T_LORA, A_ADMIN, 0), "remote admin"},
+    {Context(T_LORA, A_CONTACT_FLAG, 0), "flagged contact"},
+    {Context(T_MQTT, A_TLS_VERIFIED, 0, true), "MQTT verified, managed"},
+    {Context(T_NETCON, A_NETCON_ADMIN, 0), "Ethernet admin"},
+  };
+  for (const Caller& k : callers) {
+    Context e = k.plain;
+    e.enrolled = true;
+    for (uint8_t cls = 0; cls < C_COUNT; cls++) {
+      SCOPED_TRACE(std::string(k.name) + " class " + std::to_string(cls));
+      const Verdict before = decide(k.plain, cls), after = decide(e, cls);
+      if (cls == C_READ || (cls == C_REBOOT && !e.remote)) {
+        EXPECT_EQ(after.reason, before.reason) << "reads, and a local reboot, are the table's, enrolled or not";
+      } else if (cls == C_DESTRUCTIVE && principalOf(e) == P_CABLE) {
+        EXPECT_EQ(after.reason, before.reason) << "the cable keeps erase and factory reset";
+        EXPECT_TRUE(after.allow);
+      } else if (before.allow) {
+        EXPECT_FALSE(after.allow);
+        EXPECT_EQ(after.reason, R_ENROLLED);
+      } else {
+        EXPECT_EQ(after.reason, before.reason) << "a cell that already refused keeps its own reason";
+      }
+    }
+  }
+}
+
+TEST(Enrolled, TheFlagIsIgnoredForASignedCallerAndNeverLoosensAnything) {
+  for (uint8_t t = T_NONE; t <= T_NETCON; t++)
+    for (uint8_t a = A_NONE; a <= A_SIGNED; a++)
+      for (uint8_t posture : {(uint8_t)0, (uint8_t)1})
+        for (uint8_t cls = 0; cls < C_COUNT; cls++) {
+          const Context plain(t, a, posture);
+          Context e = plain;
+          e.enrolled = true;
+          const Verdict v0 = decide(plain, cls), v1 = decide(e, cls);
+          if (principalOf(plain) == P_SIGNED) EXPECT_EQ(v1.reason, v0.reason);
+          if (!v0.allow) EXPECT_FALSE(v1.allow) << (int)t << "/" << (int)a << "/" << (int)cls;
+        }
+}
+
+TEST(Enrolled, TheCableIsTheOnlyUnsignedCallerThatKeepsTheDestructiveClass) {
+  for (uint8_t posture : {(uint8_t)0, (uint8_t)1}) {
+    EXPECT_TRUE(decide(enrolledCtx(T_USB, A_CABLE, posture), C_DESTRUCTIVE).allow);
+    EXPECT_FALSE(decide(enrolledCtx(T_BLE, A_PAIRED_PIN, posture), C_DESTRUCTIVE).allow) << "no BLE factory reset";
+  }
+  EXPECT_EQ(decide(enrolledCtx(T_BLE, A_PAIRED_PIN, 0), C_DESTRUCTIVE).reason, R_ENROLLED);
+  EXPECT_TRUE(decide(Context(T_BLE, A_PAIRED_PIN, 0), C_DESTRUCTIVE).allow) << "standalone: unchanged";
+}
+
+TEST(Enrolled, AUnsignedCommandLineIsRefusedWithAnExplicitReplyAndAnAuditEntry) {
+  char r[160];
+  Posture::audit().clear();
+  Outcome o;
+  EXPECT_TRUE(gate("set name x", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+  EXPECT_STREQ(r, "ERR: this device belongs to a Deployment; the change must be signed");
+  EXPECT_EQ(Posture::audit().n, 1);
+  EXPECT_EQ(Posture::audit().e[0].caller, Posture::CALLER_CABLE);
+  for (const char* line : {"set prv.key 00", "set posture hardened", "set mqtt.profile 0 manage on"}) {
+    EXPECT_TRUE(gate(line, enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o)) << line;
+    EXPECT_FALSE(o.allowed) << line;
+  }
+  EXPECT_FALSE(gate("get name", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o)) << "reads run";
+  EXPECT_TRUE(o.allowed);
+  EXPECT_FALSE(gate("reboot", enrolledCtx(T_BLE, A_PAIRED_PIN, 0), ROLE_COMPANION, 5, r, sizeof(r), &o)) << "reboot runs";
+  EXPECT_FALSE(gate("set name x", Context(T_USB, A_SIGNED, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+}
+
+TEST(Enrolled, MeconCanReportsTheVerdict) {
+  char r[160];
+  handleMecon("get mecon.cli.check set name x", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, r, sizeof(r));
+  EXPECT_STREQ(r, "> class=write enrolled-unsigned");
+  handleMecon("get mecon.cli.check get name", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, r, sizeof(r));
+  EXPECT_STREQ(r, "> class=read allowed");
+}
+
+// ---- the local unlock (AUTHORITY.md sections 9 and 10): Context.unlocked
+
+static Context unlockedCtx(uint8_t t, uint8_t a, uint8_t posture) {
+  Context c = enrolledCtx(t, a, posture);
+  c.unlocked = true;
+  return c;
+}
+
+TEST(Unlocked, AnUnlockedCableOpensOnlyThePostureAndOnlyInNormal) {
+  EXPECT_FALSE(decide(enrolledCtx(T_USB, A_CABLE, 0), C_POSTURE).allow) << "control: enrolled, locked";
+  EXPECT_TRUE(decide(unlockedCtx(T_USB, A_CABLE, 0), C_POSTURE).allow);
+  EXPECT_FALSE(decide(unlockedCtx(T_USB, A_CABLE, 1), C_POSTURE).allow) << "Hardened: the management surface, not the posture";
+  EXPECT_EQ(decide(unlockedCtx(T_USB, A_CABLE, 1), C_POSTURE).reason, R_ENROLLED);
+  for (uint8_t posture : {(uint8_t)0, (uint8_t)1}) {
+    EXPECT_FALSE(decide(unlockedCtx(T_USB, A_CABLE, posture), C_WRITE).allow) << "no configuration write";
+    EXPECT_EQ(decide(unlockedCtx(T_USB, A_CABLE, posture), C_WRITE).reason, R_ENROLLED);
+    EXPECT_FALSE(decide(unlockedCtx(T_USB, A_CABLE, posture), C_SECRET).allow) << "no key export";
+    EXPECT_TRUE(decide(unlockedCtx(T_USB, A_CABLE, posture), C_READ).allow);
+  }
+}
+
+TEST(Unlocked, TheFlagCountsForTheCablePrincipalAndNoOther) {
+  for (uint8_t t = T_NONE; t <= T_NETCON; t++)
+    for (uint8_t a = A_NONE; a <= A_SIGNED; a++)
+      for (uint8_t posture : {(uint8_t)0, (uint8_t)1})
+        for (uint8_t cls = 0; cls < C_COUNT; cls++) {
+          Context locked(t, a, posture);
+          locked.enrolled = true;
+          Context open = locked;
+          open.unlocked = true;
+          const Verdict v0 = decide(locked, cls), v1 = decide(open, cls);
+          if (principalOf(locked) != P_CABLE) {
+            EXPECT_EQ(v1.reason, v0.reason) << (int)t << "/" << (int)a << "/" << (int)cls;
+            EXPECT_FALSE(unlockManagement(open));
+          }
+          if (!v0.allow && !(principalOf(locked) == P_CABLE && cls == C_POSTURE && posture == 0)) EXPECT_FALSE(v1.allow);
+        }
+  Context bad(T_USB, A_CABLE, 0);   // a remote flag that does not match the transport is the untrusted row
+  bad.remote = true;
+  bad.unlocked = true;
+  EXPECT_FALSE(unlockManagement(bad));
+  EXPECT_TRUE(unlockManagement(unlockedCtx(T_USB, A_CABLE, 1)));
+  EXPECT_FALSE(unlockManagement(enrolledCtx(T_USB, A_CABLE, 1)));
+}
+
+TEST(Unlocked, TheServerCallerAsksTheLinkEachTimeAndOnlyTheConsoleCableGetsIt) {
+  ServerCaller& sc = serverCaller();
+  struct Reset { ~Reset() { serverCaller() = ServerCaller(); } } reset;
+  static bool live = true;
+  sc.enrolled = true;
+  sc.unlocked = [](void*) { return live; };
+  EXPECT_TRUE(withServerCaller(Context(T_USB, A_CABLE, 1)).unlocked);
+  live = false;
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 1)).unlocked) << "asked each time: a lapsed unlock is gone";
+  live = true;
+  EXPECT_FALSE(withServerCaller(Context(T_NETCON, A_NETCON_ADMIN, 1)).unlocked);
+  EXPECT_FALSE(withServerCaller(Context(T_LORA, A_ADMIN, 1)).unlocked);
+  sc.signed_line = true;
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 1)).unlocked) << "a signed line runs as the signed principal";
+  sc.signed_line = false;
+  sc.unlocked = nullptr;
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 1)).unlocked);
+}
+
+TEST(Unlocked, ACommandLineFromAnUnlockedCableMayChangeThePostureInNormalOnly) {
+  char r[160];
+  Outcome o;
+  EXPECT_TRUE(gate("set posture hardened", enrolledCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+  Context u = unlockedCtx(T_USB, A_CABLE, 0);
+  u.has_unlock_secret = true;   // an unlocked cable implies a secret in the record
+  EXPECT_FALSE(gate("set posture hardened", u, ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_TRUE(o.allowed);
+  EXPECT_TRUE(gate("set posture normal confirm", unlockedCtx(T_USB, A_CABLE, 1), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+  EXPECT_TRUE(gate("set name x", unlockedCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed) << "no configuration write";
+  EXPECT_TRUE(gate("set prv.key 00", unlockedCtx(T_USB, A_CABLE, 0), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed) << "no key import";
+}
+
+// ---- the servers' caller state (cli/CliCaller.h): enrolled, and a verified signed console line
+
+struct ServerCallerReset {
+  ServerCallerReset() { serverCaller() = ServerCaller(); }
+  ~ServerCallerReset() { serverCaller() = ServerCaller(); }
+};
+
+TEST(ServerCaller, StandaloneChangesNothing) {
+  ServerCallerReset r;
+  Context c = withServerCaller(Context(T_USB, A_CABLE, 0));
+  EXPECT_FALSE(c.enrolled);
+  EXPECT_EQ(c.auth, A_CABLE);
+  EXPECT_TRUE(decide(c, C_WRITE).allow);
+}
+
+TEST(ServerCaller, EnrolledRefusesUnsignedWritesOnEveryServerTransportButTheCableKeepsErase) {
+  ServerCallerReset r;
+  serverCaller().enrolled = true;
+  const Context cable = withServerCaller(Context(T_USB, A_CABLE, 0));
+  const Context lora = withServerCaller(Context(T_LORA, A_ADMIN, 0));
+  const Context eth = withServerCaller(Context(T_NETCON, A_NETCON_ADMIN, 0));
+  EXPECT_FALSE(decide(cable, C_WRITE).allow);
+  EXPECT_FALSE(decide(lora, C_WRITE).allow);
+  EXPECT_FALSE(decide(eth, C_WRITE).allow);
+  EXPECT_TRUE(decide(lora, C_READ).allow) << "LoRa remote admin keeps reads";
+  EXPECT_FALSE(decide(lora, C_REBOOT).allow) << "and nothing else";
+  EXPECT_TRUE(decide(cable, C_DESTRUCTIVE).allow) << "the cable keeps erase";
+  EXPECT_FALSE(decide(eth, C_DESTRUCTIVE).allow);
+}
+
+TEST(ServerCaller, OnlyAVerifiedLineOnTheCableBecomesTheSignedPrincipal) {
+  ServerCallerReset r;
+  serverCaller().enrolled = true;
+  EXPECT_EQ(withServerCaller(Context(T_USB, A_CABLE, 0)).auth, A_CABLE);
+  serverCaller().signed_line = true;
+  const Context s = withServerCaller(Context(T_USB, A_CABLE, 0));
+  EXPECT_EQ(s.auth, A_SIGNED);
+  EXPECT_TRUE(decide(s, C_WRITE).allow) << "a signed write runs on an enrolled device";
+  EXPECT_FALSE(decide(s, C_DESTRUCTIVE).allow) << "no erase, whatever the signature";
+  EXPECT_EQ(withServerCaller(Context(T_LORA, A_ADMIN, 0)).auth, A_ADMIN) << "a remote caller is never promoted";
+  EXPECT_EQ(withServerCaller(Context(T_NETCON, A_NETCON_ADMIN, 0)).auth, A_NETCON_ADMIN);
+}
+
+TEST(ServerCaller, FormattedCallsTheRegisteredHookOnce) {
+  ServerCallerReset r;
+  static int calls;
+  calls = 0;
+  serverFormatted();   // no hook: nothing happens
+  serverCaller().on_format = [](void*) { calls++; };
+  serverFormatted();
+  EXPECT_EQ(calls, 1);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
+}
+
+// ---- lowering by a signed request, and Hardened only with a local unlock secret (AUTHORITY.md sections 10 and 11)
+
+TEST(Posture2, ASignedRequestMayLowerTheFlaggedPostureCommandsAndNoOtherWireCallerMay) {
+  for (uint8_t t : {T_USB, T_BLE, T_TCP, T_MQTT, T_LORA}) {
+    EXPECT_TRUE(decide(Context(t, A_SIGNED, 1), C_POSTURE, F_CABLE_ONLY).allow) << "transport " << (int)t;
+  }
+  char r[160];
+  Outcome o;
+  Context sig(T_MQTT, A_SIGNED, 1);
+  sig.enrolled = true;
+  EXPECT_FALSE(gate("set posture normal confirm", sig, ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_TRUE(o.allowed) << "signed, enrolled, Hardened to Normal";
+  EXPECT_TRUE(gate("set posture normal confirm", enrolledCtx(T_BLE, A_PAIRED_PIN, 1), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed) << "an unsigned paired phone still may not";
+  EXPECT_TRUE(gate("set posture normal confirm", Context(T_MQTT, A_TLS_VERIFIED, 1), ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+}
+
+TEST(Posture2, EnteringHardenedWhileEnrolledNeedsALocalUnlockSecretInTheRecord) {
+  Context sig(T_USB, A_SIGNED, 0);
+  sig.enrolled = true;
+  Verdict v = decide(sig, C_POSTURE, F_RAISES);
+  EXPECT_FALSE(v.allow);
+  EXPECT_EQ(v.reason, R_NO_UNLOCK_SECRET);
+  sig.has_unlock_secret = true;
+  EXPECT_TRUE(decide(sig, C_POSTURE, F_RAISES).allow);
+  char r[160];
+  Outcome o;
+  Context nos(T_MQTT, A_SIGNED, 0);
+  nos.enrolled = true;
+  EXPECT_TRUE(gate("set posture hardened", nos, ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_FALSE(o.allowed);
+  EXPECT_EQ(o.reason, R_NO_UNLOCK_SECRET);
+  EXPECT_STREQ(r, "ERR: set a local unlock secret before Hardened (the device belongs to a Deployment)");
+  nos.has_unlock_secret = true;
+  EXPECT_FALSE(gate("set posture hardened", nos, ROLE_COMPANION, 5, r, sizeof(r), &o));
+  EXPECT_TRUE(o.allowed);
+  // a device with no record is untouched by the rule
+  EXPECT_TRUE(decide(Context(T_USB, A_CABLE, 0), C_POSTURE, F_RAISES).allow);
+  EXPECT_TRUE(decide(Context(T_BLE, A_PAIRED_PIN, 0), C_POSTURE, F_RAISES).allow);
+  // the server's context carries the fact from the record's owner
+  ServerCaller& sc = serverCaller();
+  sc.enrolled = true;
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 0)).has_unlock_secret);
+  static bool have = false;
+  sc.has_secret = [](void*) { return have; };
+  EXPECT_FALSE(withServerCaller(Context(T_USB, A_CABLE, 0)).has_unlock_secret);
+  have = true;
+  EXPECT_TRUE(withServerCaller(Context(T_USB, A_CABLE, 0)).has_unlock_secret);
+  sc.has_secret = nullptr;
+  sc.enrolled = false;
 }

@@ -518,8 +518,8 @@ mutate table_mqtt_unverified_row_open src/helpers/cli/CliPolicy.h "/* MQTT unver
 mutate table_button_cannot_switch src/helpers/cli/CliPolicy.h "/* button         N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED)," "/* button         N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED)," unit:test_connmode
 mutate table_button_runs_commands src/helpers/cli/CliPolicy.h "/* button         N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED)," "/* button         N */ { CLI_ROW(NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED)," unit:test_cli_engine
 # the rules around the table
-mutate policy_flag_ignored_for_the_lowering_rule src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" unit:test_posture
-mutate policy_flag_ignored_for_the_lowering_rule_unit src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" unit:test_cli_engine
+mutate policy_flag_ignored_for_the_lowering_rule src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE && p != P_SIGNED) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" unit:test_posture
+mutate policy_flag_ignored_for_the_lowering_rule_unit src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE && p != P_SIGNED) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" unit:test_cli_engine
 mutate policy_management_flag_ignored src/helpers/cli/CliPolicy.h "if (r == R_NEEDS_FLAG) r = c.mgmt ? R_ALLOW : R_MQTT_READONLY;" "if (r == R_NEEDS_FLAG) r = R_ALLOW;" unit:test_cli_engine
 mutate policy_hardened_byte_fails_open src/helpers/cli/CliPolicy.h "tableCell(p, c.posture != 0, cls)" "tableCell(p, c.posture == 1, cls)" unit:test_cli_engine
 mutate policy_inconsistent_context_trusted src/helpers/cli/CliPolicy.h "if (c.remote != wire_remote) return P_UNTRUSTED;" "" unit:test_cli_engine
@@ -540,7 +540,7 @@ mutate registry_poweroff_is_a_write src/helpers/cli/CliRegistry.h '{"poweroff", 
 mutate registry_poweroff_is_a_write_unit src/helpers/cli/CliRegistry.h '{"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE,' '{"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_WRITE,      ' unit:test_cli_engine
 mutate registry_reboot_is_a_prefix src/helpers/cli/CliRegistry.h "{\"reboot\",                 M_EXACT," "{\"reboot\",                 M_PREFIX," unit:test_cli_engine
 mutate registry_erase_is_a_write src/helpers/cli/CliRegistry.h "{\"erase\",                  M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE," "{\"erase\",                  M_EXACT,   ROLE_REPEATER,                  C_WRITE,      " unit:test_cli_engine
-mutate registry_set_posture_lowering_not_cable_only src/helpers/cli/CliRegistry.h "if (strcmp(arg, \"hardened\") != 0) r.flags = F_CABLE_ONLY;" "r.flags = 0;" unit:test_cli_engine
+mutate registry_set_posture_lowering_not_cable_only src/helpers/cli/CliRegistry.h "r.flags = strcmp(arg, \"hardened\") != 0 ? F_CABLE_ONLY : F_RAISES;" "r.flags = 0;" unit:test_cli_engine
 mutate registry_mgmt_flag_is_a_write src/helpers/cli/CliRegistry.h "if (role == ROLE_COMPANION && isMgmtFlag(cmd)) {" "if (false) {" sim/tests/test_cli_unified.py::test_mqtt_cannot_do_what_only_a_local_caller_may sim/tests/test_cli_unified.py::test_mqtt_cannot_do_what_only_a_local_caller_may
 mutate registry_remote_read_list_has_clock_for_companions src/helpers/cli/CliRegistry.h "{\"clock\",                  M_EXACT,   ROLE_REPEATER," "{\"clock\",                  M_EXACT,   ROLE_COMPANION | ROLE_REPEATER," unit:test_cli_engine
 mutate registry_frame_key_export_ungated src/helpers/cli/CliRegistry.h "case FR_KEY_EXPORT: r.cls = C_SECRET;" "case FR_KEY_EXPORT: r.cls = C_READ;" sim/tests/test_postures_companion.py::test_hardened_refuses_key_export_and_import_on_usb
@@ -557,7 +557,7 @@ mutate gate_refusal_what_is_wrong src/helpers/cli/CliEngine.h "    case R_CLI_OF
 mutate gate_not_run_by_the_companion examples/companion_radio/MyMesh.cpp "if (Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {" "if (false && Cli::gate(command, ctx, Cli::ROLE_COMPANION, getRTCClock()->getCurrentTime(), reply, 150, &outcome)) {" sim/tests/test_companion_remote_cli.py
 mutate gate_not_run_by_the_front_door_unit src/helpers/Posture.h "if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, now, reply, max)) return true;" "" unit:test_posture
 mutate gate_default_password_session_not_recognised src/helpers/Posture.h "isDefaultAdminPassword(admin_pw, build_default) ? Cli::A_ADMIN_DEFAULT_PW : Cli::A_ADMIN" "Cli::A_ADMIN" sim/tests/test_postures_admin.py::test_remote_commands_are_refused_while_the_password_is_default_even_with_a_session
-mutate frame_gate_skipped examples/companion_radio/MyMesh.cpp "if (frame != Cli::FR_NONE && !Cli::allowFrame(serialContext(), frame, now)) {" "if (false) {" sim/tests/test_companion_transport.py
+mutate frame_gate_skipped examples/companion_radio/MyMesh.cpp "if (frame != Cli::FR_NONE && !Cli::allowFrame(fctx, frame, now)) {" "if (false) {" sim/tests/test_companion_transport.py
 mutate frame_context_trusts_every_interface examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isTrustedTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" "if (_serial) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" sim/tests/test_companion_transport.py
 mutate frame_context_cable_is_not_a_cable examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isCableTransport()) return Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture);" "if (_serial && _serial->isCableTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" sim/tests/test_postures_companion.py::test_usb_factory_reset_recovers_a_hardened_companion
 mutate contact_context_is_a_cable examples/companion_radio/MyMesh.cpp "setCliCaller(Cli::Context(Cli::T_LORA, Cli::A_CONTACT_FLAG, _prefs.posture), Posture::CALLER_REMOTE_CLI);" "setCliCaller(Cli::Context(Cli::T_USB, Cli::A_CABLE, _prefs.posture), Posture::CALLER_CABLE);" sim/tests/test_companion_remote_cli.py
@@ -748,7 +748,7 @@ mutate connmode_ble_started_in_wifi_mode_sim examples/companion_radio/main.cpp "
 mutate connmode_ble_may_always_start_sim src/helpers/connmode/ConnMode.h "inline bool bleMayStart(uint8_t mode) { return sanitize(mode) == BLE; }" "inline bool bleMayStart(uint8_t mode) { return true; }" sim/tests/test_companion_ble.py::test_switching_to_wifi_mode_takes_ble_down_and_a_reboot_does_not_bring_it_back
 mutate table_paired_key_in_hardened_sim src/helpers/cli/CliPolicy.h "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           NOT_PERMITTED,   ALLOW) }," "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW) }," sim/tests/test_companion_ble.py::test_hardened_with_a_per_device_pin_starts_ble_but_keeps_the_rules
 mutate table_paired_factory_reset_in_hardened_sim src/helpers/cli/CliPolicy.h "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           NOT_PERMITTED,   ALLOW) }," "/* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           ALLOW,           ALLOW) }," sim/tests/test_companion_ble.py::test_hardened_with_a_per_device_pin_starts_ble_but_keeps_the_rules
-mutate policy_flag_ignored_for_the_lowering_rule_sim src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" sim/tests/test_companion_ble.py::test_hardened_with_a_per_device_pin_starts_ble_but_keeps_the_rules
+mutate policy_flag_ignored_for_the_lowering_rule_sim src/helpers/cli/CliPolicy.h "if (r == R_ALLOW && (flags & F_CABLE_ONLY) && p != P_CABLE && p != P_SIGNED) r = R_NOT_PERMITTED;" "if (false) r = R_NOT_PERMITTED;" sim/tests/test_companion_ble.py::test_hardened_with_a_per_device_pin_starts_ble_but_keeps_the_rules
 mutate frame_context_trusts_every_interface_sim examples/companion_radio/MyMesh.cpp "if (_serial && _serial->isTrustedTransport()) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" "if (_serial) return Cli::Context(Cli::T_BLE, Cli::A_PAIRED_PIN, _prefs.posture);" sim/tests/test_companion_ble.py::test_with_the_default_pin_management_is_refused_and_messaging_works
 
 # --- a reply goes back to the interface its request came from, and that interface's trust decides the command
@@ -811,7 +811,7 @@ mutate radio_never_reports_busy variants/sim/sim_radio.cpp 'bool SimRadio::isRec
 mutate duty_phase_always_zero src/Mesh.cpp '  return _rng->nextInt(0, DUTY_BIN_MS);' '  return 0;' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
 mutate duty_phase_not_applied src/Dispatcher.cpp '  duty.reset(_ms->getMillis() - (getDutyPhaseMs() % DUTY_BIN_MS));' '  duty.reset(_ms->getMillis());' sim/tests/test_lockstep.py::test_nodes_booted_together_do_not_release_on_the_same_bin_edge
 # --- device interface core (docs/contract/DEVICE_INTERFACE.md): undo each rule and test_iface must go red
-mutate iface_auth_refused_handler_still_runs src/helpers/iface/IfaceDispatch.cpp "else if (!_auth || !_auth(_auth_user, *op, req)) st = ST_REFUSED;" "else if (false) st = ST_REFUSED;" unit:test_iface
+mutate iface_auth_refused_handler_still_runs src/helpers/iface/IfaceDispatch.cpp "else if (!_auth || !_auth(_auth_user, *op, req)) {" "else if (false) {" unit:test_iface
 mutate iface_dedupe_cache_returns_nothing src/helpers/iface/IfaceCache.h "if (!_e[i].used || strcmp(_e[i].id, id) != 0) continue;" "if (true) continue;" unit:test_iface
 mutate iface_reassembly_timeout_ignored src/helpers/iface/IfaceFrames.cpp "if (_active && (uint32_t)(now_ms - _start) >= REASSEMBLY_TIMEOUT_MS)" "if (false)" unit:test_iface
 mutate iface_id_charset_unchecked src/helpers/iface/IfaceEnvelope.cpp "req.id, sizeof(req.id), CS_ID, 1)" "req.id, sizeof(req.id), CS_ANY, 1)" unit:test_iface
@@ -820,7 +820,7 @@ mutate iface_new_xid_does_not_discard src/helpers/iface/IfaceFrames.cpp "if (_ac
 mutate iface_events_take_the_result_slot src/helpers/iface/IfaceFrames.cpp '    if (_count >= QUEUE_MESSAGES - 1 ||' '    if (_count >= QUEUE_MESSAGES ||' unit:test_iface
 mutate iface_reads_are_cached src/helpers/iface/IfaceDispatch.cpp '  if (n > 0 && cache && op && op->mutating && (st == ST_OK || st == ST_FAILED))' '  if (n > 0 && cache && op && (st == ST_OK || st == ST_FAILED))' unit:test_iface
 mutate iface_dropped_message_keeps_its_buffer src/helpers/iface/IfaceFrames.h ' _mask = 0; _have_last = false; release(); }' ' _mask = 0; _have_last = false; }' unit:test_iface
-mutate iface_duplicate_skips_the_authority_check src/helpers/iface/IfaceDispatch.cpp '      if (dop && (!_auth || !_auth(_auth_user, *dop, req))) return' '      if (false) return' unit:test_iface
+mutate iface_duplicate_skips_the_authority_check src/helpers/iface/IfaceDispatch.cpp '      if (dop && (!_auth || !_auth(_auth_user, *dop, req)))' '      if (false)' unit:test_iface
 mutate iface_expired_ids_forgotten src/helpers/iface/IfaceCache.h '      if (_h[i] == h) return EXPIRED;' '      if (false) return EXPIRED;' unit:test_iface
 mutate iface_auth_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(self->_ctx, cls).allow;' '  return true;' sim/tests/test_device_interface.py::test_the_default_pin_is_refused_like_its_cli_line
 mutate iface_reply_not_bound_to_its_transport examples/companion_radio/MyMesh.h '    _serial->bindReply(src);
@@ -840,6 +840,40 @@ mutate config_leading_zero_accepted src/helpers/iface/IfaceConfig.cpp '  if (dn 
 mutate config_empty_profile_not_null src/helpers/iface/IfaceConfig.cpp '    *is_null = !(field == F_WIFI_SSID' '    *is_null = false && !(field == F_WIFI_SSID' unit:test_iface_config
 mutate config_radio_format_unchecked src/helpers/iface/IfaceConfig.cpp '      if (k.format && !checkFormat(k.format, out)) {' '      if (false) {' unit:test_iface_config
 mutate iface_cache_entry_too_small_for_an_apply src/helpers/iface/IfaceCache.h '#define IFACE_CACHE_ENTRY_CAP 384' '#define IFACE_CACHE_ENTRY_CAP 128' unit:test_iface_config
+# Deployment authority, device side (the security review of 2026-10-25)
+mutate dep_membership_stale_admission_ok src/helpers/deployment/DepRecord.cpp '      if (m.admitted_revision <= cur.authority_revision) return BAD_AUTHORITY_SET;   // new here, admitted before?' '' unit:test_dep_record
+mutate dep_membership_lowered_ok src/helpers/deployment/DepRecord.cpp '    } else if (m.admitted_revision < old->admitted_revision) {' '    } else if (false) {' unit:test_dep_record
+mutate dep_admitted_not_stored src/helpers/deployment/DepRecord.cpp '    x.adm[i].admitted_revision = p.u32();' '    p.u32();' unit:test_dep_record
+mutate dep_update_skips_membership src/helpers/deployment/DepProvision.cpp '  if (checkMembership(cur, *set) != OK) return P_BAD_AUTHORITY_SET;' '' unit:test_dep_provision
+mutate dep_provision_skips_membership src/helpers/deployment/DepProvision.cpp '  if (se == OK && has && checkMembership(*cur, *set) != OK) return P_BAD_AUTHORITY_SET;' '' unit:test_dep_provision
+mutate dep_duplicate_text_not_compared src/helpers/deployment/DepProvision.cpp '  if (se == DUPLICATE && (p.set_len != cur->set_len' '  if (false && (p.set_len != cur->set_len' unit:test_dep_provision
+mutate dep_update_duplicate_not_compared src/helpers/deployment/DepProvision.cpp '    if (set_len != cur.set_len || memcmp(set_text, current.set_text, set_len) != 0 ||' '    if (false &&' unit:test_dep_provision
+mutate dep_weak_dak_pinned src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0 || weakKey(p.dak)) return P_UNTRUSTED_AUTHORITY_KEY;' '    if (p.n_rotations > 0) return P_UNTRUSTED_AUTHORITY_KEY;' unit:test_dep_provision
+mutate dep_provision_rotation_applied src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0) return P_UNTRUSTED_AUTHORITY_KEY;' '' unit:test_dep_provision
+mutate dep_duplicate_member_key_ok src/helpers/deployment/DepAuthority.cpp '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0 ||
+          memcmp(s->members[j].public_key, mb.public_key, KEY_LEN) == 0)' '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0)' unit:test_dep_authority
+mutate dep_weak_member_key_ok src/helpers/deployment/DepAuthority.cpp '    if (weakKey(mb.public_key)) return BAD_AUTHORITY_SET;' '' unit:test_dep_authority
+mutate dep_weak_rotation_key_ok src/helpers/deployment/DepAuthority.cpp ' && to <= MAX_EPOCH && !weakKey(key)) {' ' && to <= MAX_EPOCH) {' unit:test_dep_authority
+mutate dep_weak_key_test_disabled src/helpers/deployment/DepAuthority.cpp '  return !fe_isnonzero(p.X) && !fe_isnonzero(d);   // the identity: X = 0, Y = Z' '  return false;' unit:test_dep_authority
+mutate dep_set_epoch_unbounded src/helpers/deployment/DepAuthority.cpp ' || s->authority_epoch == 0 || s->authority_epoch > MAX_EPOCH)' ')' unit:test_dep_authority
+mutate dep_wrong_deployment_code src/helpers/deployment/DepAuthority.cpp '  if (memcmp(out->deployment_id, ctx.deployment_id, ID_LEN) != 0) return WRONG_DEPLOYMENT;' '  if (memcmp(out->deployment_id, ctx.deployment_id, ID_LEN) != 0) return BAD_AUTHORITY_SET;' unit:test_dep_authority
+mutate dep_fallback_not_flagged src/helpers/deployment/DepState.cpp '    s->other_damaged = c[other]->data && !ok[other];' '    s->other_damaged = false;' unit:test_dep_state
+mutate dep_fallback_not_reported src/helpers/deployment/DepState.cpp '    w.key("fallback"); w.boolean(s->other_damaged);' '' unit:test_dep_state
+mutate dep_lost_marks_fresh src/helpers/deployment/DepState.cpp '  s->blocked = reconcileMarks(distrust ? nullptr : &lm.marks, s->set, &s->marks);' '  s->blocked = reconcileMarks(&lm.marks, s->set, &s->marks);' unit:test_dep_state
+mutate dep_replay_window_reopened src/helpers/deployment/DepReplay.cpp '  return job_id == w.mark ? RV_DUPLICATE : RV_TOO_OLD;' '  return job_id == w.mark ? RV_DUPLICATE : (w.mark - job_id < 24 ? RV_NEW : RV_TOO_OLD);' unit:test_dep_replay
+mutate dep_replay_mark_reruns src/helpers/deployment/DepReplay.cpp '  if (job_id > w.mark) return RV_NEW;' '  if (job_id >= w.mark) return RV_NEW;' unit:test_dep_replay
+mutate dep_marks_readmission_kept src/helpers/deployment/DepRecord.cpp '    } else if (mem.admitted_revision > stored->m[j].admitted_revision) {' '    } else if (false) {' unit:test_dep_record
+mutate dep_marks_fallback_reopens src/helpers/deployment/DepRecord.cpp '      nm.wm = stored->m[j].wm;                            // the same admission, or the record fell back: keep it' '      nm.wm.mark = stored->m[j].admitted_revision == mem.admitted_revision ? stored->m[j].wm.mark : 0;' unit:test_dep_record
+mutate dep_marks_missing_member_fresh src/helpers/deployment/DepRecord.cpp '      nm.wm.mark = mem.admitted_revision > stored->revision ? 0 : MARK_BLOCKED;' '      nm.wm.mark = 0;' unit:test_dep_record
+mutate dep_marks_lost_fresh src/helpers/deployment/DepRecord.cpp '      nm.wm.mark = MARK_BLOCKED;                          // the marks were lost: nothing to trust' '      nm.wm.mark = 0;' unit:test_dep_record
+mutate dep_removal_newer_first src/helpers/deployment/DepRecord.h '  order[0] = known ? 1 - newer_slot : 0;' '  order[0] = known ? newer_slot : 0;' unit:test_dep_record
+mutate dep_job_id_optional src/helpers/deployment/DepWrapper.cpp '    if (out->cls != OPC_PLAIN && !out->has_job) goto done;' '' unit:test_dep_wrapper
+mutate dep_unknown_op_plain src/helpers/deployment/DepWrapper.cpp '  return OPC_JOB;
+}' '  return OPC_PLAIN;
+}' unit:test_dep_wrapper
+mutate dep_issuer_unbound src/helpers/deployment/DepWrapper.cpp '    if (memcmp(bound_issuer, issuer, ID_LEN) != 0) { e = WR_BAD_SIGNATURE; goto done; }' '' unit:test_dep_wrapper
+mutate dep_nonce_unchecked src/helpers/deployment/DepWrapper.cpp '    if (out->cls == OPC_SENSITIVE) {' '    if (false) {' unit:test_dep_wrapper
+mutate dep_private_stream_plain src/helpers/deployment/DepWrapper.cpp '    if (strcmp(name, p) == 0) return true;' '    if (strcmp(name, p) == 0) return false;' unit:test_dep_wrapper
 # the Repeater and Room server console interface, and the per-role key table
 mutate config_onoff_word_dropped src/helpers/iface/IfaceConfig.cpp '      const bool onoff = (k.flags & KF_ONOFF) != 0;' '      const bool onoff = false;' unit:test_iface_config
 mutate config_server_table_ignored src/helpers/iface/IfaceConfig.cpp '  *n = h->keys ? h->nkeys : NKEYS;
@@ -875,7 +909,115 @@ mutate env_offered_without_sensors src/helpers/iface/ConsoleIface.h '  uint32_t 
 mutate env_not_checked_before_first_answer src/helpers/iface/ConsoleIface.cpp '  if (!_env_checked) refreshEnvironment(millis());' '' sim/tests/test_telemetry_streams.py::test_environment_carries_the_attached_sensors
 mutate inv_empty_neighbour_slots_counted examples/simple_repeater/MyMesh.h '    for (int i = 0; i < MAX_NEIGHBOURS; i++) if (neighbours[i].heard_timestamp) n++;' '    for (int i = 0; i < MAX_NEIGHBOURS; i++) n++;' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
 mutate inv_contacts_swapped examples/companion_radio/MeconIface.cpp '      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());' '      writeCount(w, "contacts", _mesh->getContactCapacity(), _mesh->getNumContacts());' sim/tests/test_telemetry_streams.py::test_inventory_counts_on_the_companion
-mutate inv_repeater_callback_missing examples/simple_repeater/main.cpp 'ifaceRadioCounts, &sensors, ifaceInventory };' 'ifaceRadioCounts, &sensors, nullptr };' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
+mutate inv_repeater_callback_missing examples/simple_repeater/main.cpp 'ifaceRadioCounts, &sensors, ifaceInventory,' 'ifaceRadioCounts, &sensors, nullptr,' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
+# --- the Deployment authority layer (docs/contract/AUTHORITY.md): undo each rule and its tests must go red
+DA=sim/tests/test_deployment_authority.py
+mutate deploy_mark_not_persisted_before_run src/helpers/iface/DeployAuth.cpp '    Dep::markAccepted(&wm, v.job_id);
+    if (!persistMarks()) {' '    Dep::markAccepted(&wm, v.job_id);
+    if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
+mutate deploy_failed_mark_write_still_runs src/helpers/iface/DeployAuth.cpp '    if (!persistMarks()) {
+      wm.mark = old;' '    if (false) {
+      wm.mark = old;' $DA::test_a_mark_that_cannot_be_written_runs_nothing_and_is_not_consumed
+mutate deploy_channel_nonce_not_compared src/helpers/deployment/DepWrapper.cpp 'strcmp(nonce, link_nonce) != 0)' 'false)' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
+mutate deploy_channel_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);   // used once' '' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
+mutate deploy_mqtt_provisions_unsigned src/helpers/iface/DeployAuth.cpp '  if (!has && !_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after
+mutate deploy_duplicate_runs_again src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_DUPLICATE) {' '    if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
+mutate deploy_replay_runs src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_TOO_OLD) {' '    if (false) {' $DA::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
+mutate deploy_unsigned_write_after_enrolment src/helpers/iface/DeployAuth.cpp '  if (_dep_ls != Dep::LS_ABSENT && !_signed && op.priv != PRIV_READ &&' '  if (false && !_signed && op.priv != PRIV_READ &&' $DA::test_unsigned_writes_are_refused_once_enrolled_but_reads_work
+mutate deploy_signed_principal_may_erase src/helpers/cli/CliPolicy.h '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW),' '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           ALLOW,           ALLOW),' unit:test_cli_engine
+mutate deploy_signed_context_follows_the_signature_not_the_transport src/helpers/cli/CliPolicy.h '  if (c.remote != wire_remote) return P_UNTRUSTED;   // a local-looking remote caller, or the reverse: fail closed' '' unit:test_cli_engine
+# --- the second slice (AUTHORITY.md sections 4, 9, 11): the provisioned marker, deployment.reset, the recovery paths
+mutate deploy_marker_ignored_at_load src/helpers/iface/DeployAuth.cpp '    // No copy of the record, but the provisioned marker says there was one: corrupt, never absent (section 4).
+    _dep_ls = Dep::withMarker(Dep::LS_ABSENT, Dep::markerRead());' '    _dep_ls = Dep::LS_ABSENT;' $DA::test_the_provisioned_marker_makes_lost_files_corrupt_not_absent
+mutate deploy_marker_not_written_at_first_provisioning src/helpers/iface/DeployAuth.cpp '    if (!has && !Dep::markerSet()) { c.error = "storage"; st = ST_BUSY; goto done; }' '' $DA::test_the_provisioned_marker_makes_lost_files_corrupt_not_absent
+mutate deploy_unsupported_marker_still_provisions src/helpers/iface/DeployAuth.cpp '  if (!has && Dep::markerRead() == Dep::MK_UNSUPPORTED) { c.error = "unsupported"; return ST_REFUSED; }' '' $DA::test_a_platform_with_no_marker_store_never_provisions_unsigned
+mutate deploy_reset_unsigned_on_a_healthy_record src/helpers/iface/DeployAuth.cpp '    if (!_signed) { if (_dep) _dep->auth_rejections++; c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_an_unsigned_reset_of_a_healthy_record_is_refused_even_over_the_cable
+mutate deploy_reset_over_a_broker src/helpers/iface/DeployAuth.cpp '    if (!usb) { _dep->auth_rejections++; c.error = "usb_only"; return ST_REFUSED; }' '' $DA::test_reset_and_unsigned_cli_writes_are_refused_over_mqtt
+mutate deploy_reset_leaves_the_marker src/helpers/iface/DeployAuth.cpp 'st->removeBoth(marks_slot, Dep::SF_MARKS) && Dep::markerClear();' 'st->removeBoth(marks_slot, Dep::SF_MARKS);' $DA::test_a_signed_reset_over_usb_unenrols_and_keeps_the_rest
+mutate deploy_reset_in_hardened src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture) && !(corrupt && Cli::unlockManagement(cx))) {' '  if (false) {' $DA::test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_needs_the_local_unlock
+mutate deploy_ble_factory_reset_when_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '' $DA::test_a_ble_factory_reset_is_refused_once_enrolled_and_audited
+mutate deploy_rebuild_without_reading_the_record examples/companion_radio/MyMesh.cpp '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
+      if (!snap) {' '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
+      if (false) {' $DA::test_a_rescue_rebuild_that_cannot_read_the_record_refuses_and_changes_nothing
+mutate deploy_cli_gate_not_told_the_device_is_enrolled examples/companion_radio/MyMesh.cpp '    ctx.enrolled = _iface.enrolled();   // the one place that gates a command line: every adapter and the rescue console' '    ctx.enrolled = false;' $DA::test_an_unsigned_cli_write_over_the_usb_frame_is_refused_once_enrolled_but_a_read_works
+mutate deploy_enrolled_rule_dropped_from_the_table src/helpers/cli/CliPolicy.h '  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&' '  if (false && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&' unit:test_cli_engine
+mutate deploy_enrolled_rule_takes_the_cables_destructive_class src/helpers/cli/CliPolicy.h '      !(p == P_CABLE && cls == C_DESTRUCTIVE) && !unlock_posture)' '      false)' unit:test_cli_engine
+mutate deploy_marker_alone_reads_as_absent src/helpers/deployment/DepMarker.h 'return (ls == LS_ABSENT && m == MK_PRESENT) ? LS_CORRUPT : ls;' 'return ls;' unit:test_dep_state
+mutate deploy_remote_reboot_unsigned_when_enrolled src/helpers/cli/CliPolicy.h ' && !(cls == C_REBOOT && !c.remote) &&' ' && !(cls == C_REBOOT) &&' unit:test_cli_engine
+mutate deploy_frames_not_told_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '    (void)0;' sim/tests/test_deployment_authority.py::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
+
+# ---- the authority layer on the Repeater and Room server console
+DS=sim/tests/test_deployment_authority_server.py
+mutate server_enrolled_flag_not_published src/helpers/iface/DeployAuth.cpp '  Cli::serverCaller().enrolled = _dep_ls != Dep::LS_ABSENT;' '  Cli::serverCaller().enrolled = false;' $DS::test_unsigned_writes_are_refused_once_enrolled_over_the_console
+mutate server_contexts_ignore_the_enrolled_flag src/helpers/cli/CliCaller.h '  c.enrolled = s.enrolled;' '  c.enrolled = false;' unit:test_cli_engine
+mutate server_remote_admin_not_told_enrolled src/helpers/cli/CliCaller.h '  c.enrolled = s.enrolled;' '  c.enrolled = s.enrolled && !c.remote;' $DS::test_lora_remote_admin_keeps_reads_only_once_enrolled
+mutate server_signed_line_not_the_signed_principal src/helpers/iface/DeployAuth.cpp '  if (_env.publish_caller) Cli::serverCaller().signed_line = true;' '' $DS::test_a_signed_config_apply_runs_once_and_its_duplicate_and_replay_run_nothing
+mutate server_signed_promotion_for_any_caller src/helpers/cli/CliCaller.h '  if (s.signed_line && !c.remote && c.transport == T_USB && c.auth == A_CABLE) c.auth = A_SIGNED;' '  if (s.signed_line) c.auth = A_SIGNED;' unit:test_cli_engine
+mutate server_console_ignores_signed_wrappers src/helpers/iface/ConsoleIface.cpp '        if (DeployAuth::isWrapper(_line, _len))' '        if (false)' $DS::test_a_signed_config_apply_runs_once_and_its_duplicate_and_replay_run_nothing
+mutate server_console_unsigned_write_allowed_once_enrolled src/helpers/iface/ConsoleIface.cpp '    case DeployAuth::PRE_DENY: return false;' '    case DeployAuth::PRE_DENY: return true;' $DS::test_unsigned_writes_are_refused_once_enrolled_over_the_console
+mutate server_console_has_no_deployment_reset src/helpers/iface/ConsoleIface.cpp '  {"deployment.reset", opDeployReset, PRIV_WRITE, true},' '  {"deployment.resetx", opDeployReset, PRIV_WRITE, true},' $DS::test_a_signed_reset_over_the_console_unenrols_and_keeps_the_rest
+mutate server_hello_hides_the_channel_nonce src/helpers/iface/ConsoleIface.cpp '  if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }' '' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_status_omits_the_deployment src/helpers/iface/ConsoleIface.cpp '  m->auth().writeStatus(w, hardened);' '' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_console_issues_no_nonce src/helpers/iface/ConsoleIface.cpp '        if (!_nonce[0]) DeployAuth::issueNonce(_nonce);   // issued when the link'"'"'s first request arrives' '' $DS::test_a_sensitive_operation_needs_the_consoles_nonce_once
+mutate server_console_is_not_the_cable src/helpers/iface/ConsoleIface.cpp '        const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));' '        const Cli::Context cable(Cli::T_TCP, Cli::A_NONE, _host.posture(_host.user));' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_repeater_erase_keeps_the_marker examples/simple_repeater/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
+mutate server_room_erase_keeps_the_marker examples/simple_room_server/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
+mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock };' '                                       nullptr, ifaceClock };' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_format_hook_not_registered src/helpers/iface/DeployAuth.cpp '    Cli::serverCaller().on_format_user = this;' '    Cli::serverCaller().on_format_user = nullptr;' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
+
+# Local unlock (AUTHORITY.md sections 9 and 10): the handshake on the cable, what it opens, and the secret's confinement
+mutate unlock_wrong_response_accepted src/helpers/iface/DeployAuth.cpp '  if (parsed && fresh && match) {' '  if (parsed && fresh) {' $DA::test_a_challenge_answers_one_attempt_only
+mutate unlock_wrong_response_accepted_server src/helpers/iface/DeployAuth.cpp '  if (parsed && fresh && match) {' '  if (parsed && fresh) {' $DS::test_in_hardened_the_console_unlock_resets_a_corrupt_record_and_opens_nothing_else
+mutate unlock_lockout_dropped src/helpers/iface/DeployAuth.cpp '  if (++_fails >= MAX_FAILURES) { _locked = true; _locked_ms = millis(); }' '  ++_fails;' $DA::test_a_wrong_answer_is_refused_and_counted_and_the_sixth_attempt_meets_the_lockout
+mutate unlock_challenge_reusable src/helpers/iface/DeployAuth.cpp '  memset(l.challenge, 0, sizeof(l.challenge)); l.have_challenge = false;' '' $DA::test_a_challenge_answers_one_attempt_only
+mutate unlock_allowed_over_mqtt src/helpers/iface/DeployAuth.cpp '  if (!cable) return "usb_only";' '  if (false) return "usb_only";' $DA::test_the_handshake_is_refused_over_mqtt_and_to_a_signed_request
+mutate unlock_hardened_reset_without_unlock src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture) && !(corrupt && Cli::unlockManagement(cx))) {' '  if (Posture::isHardened(cx.posture) && !corrupt) {' $DA::test_in_hardened_the_unlock_opens_reads_and_the_reset_of_a_corrupt_record_and_nothing_else
+mutate unlock_secret_leaked_in_deployment_get src/helpers/iface/DeployAuth.cpp '  w.key("fallback"); w.boolean(s.other_damaged);' '  { char sx[2 * Dep::UNLOCK_LEN + 1]; hexTo(sx, rec.unlock_secret, Dep::UNLOCK_LEN); w.key("unlock"); w.str(sx); }
+  w.key("fallback"); w.boolean(s.other_damaged);' $DA::test_the_secret_appears_in_no_reply_status_log_or_file_as_text
+mutate unlock_survives_a_new_secret src/helpers/iface/DeployAuth.cpp '  if (!l || !l->unlocked || _dep_ls == Dep::LS_ABSENT || l->unlocked_epoch != _secret_epoch) return false;' '  if (!l || !l->unlocked || _dep_ls == Dep::LS_ABSENT) return false;' $DA::test_a_signed_set_unlock_replaces_the_secret_and_ends_every_older_unlock
+mutate unlock_never_lapses src/helpers/iface/DeployAuth.cpp '  return (uint32_t)(millis() - l->unlocked_ms) < UNLOCK_MS;' '  return true;' $DA::test_an_unlock_lapses_after_ten_minutes
+mutate unlock_challenge_never_expires src/helpers/iface/DeployAuth.cpp '                     (uint32_t)(millis() - l.challenge_ms) < CHALLENGE_MS;' '                     true;' $DA::test_an_expired_challenge_is_refused
+mutate unlock_survives_a_new_session examples/companion_radio/MeconDeploy.cpp '  if (l) l->unlock.clear();' '' $DA::test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_opens_only_the_posture
+mutate unlock_cli_flag_not_stamped examples/companion_radio/MyMesh.cpp '      ctx.unlocked = ctx.transport == Cli::T_USB && ctx.auth == Cli::A_CABLE && _iface.unlockedFor(_cmd_src);   // section 10' '      (void)0;' $DA::test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_opens_only_the_posture
+mutate unlock_server_cli_flag_not_published src/helpers/iface/ConsoleIface.cpp '    Cli::serverCaller().unlocked = consoleUnlocked;   // the console lines of the stock CLI see the unlock too' '' $DS::test_the_console_unlock_opens_the_posture_in_normal_and_nothing_else
+mutate unlock_policy_opens_hardened_posture src/helpers/cli/CliPolicy.h '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0;' '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE;' unit:test_cli_engine
+mutate unlock_policy_opens_writes src/helpers/cli/CliPolicy.h '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0;' '  const bool unlock_posture = unlockManagement(c) && c.posture == 0;' unit:test_cli_engine
+mutate unlock_policy_honoured_for_any_principal src/helpers/cli/CliPolicy.h 'inline bool unlockManagement(const Context& c) { return c.unlocked && principalOf(c) == P_CABLE; }' 'inline bool unlockManagement(const Context& c) { return c.unlocked; }' unit:test_cli_engine
+mutate unlock_hmac_ignores_the_message src/helpers/deployment/DepHmac.cpp '  update(&c, msg, msg_len);' '' unit:test_dep_hmac
+mutate unlock_compare_checks_one_byte src/helpers/deployment/DepHmac.cpp '  for (size_t i = 0; i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' '  for (size_t i = 0; i < 1 && i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' unit:test_dep_hmac
+mutate unlock_set_unlock_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0)' ')' unit:test_dep_wrapper
+
+mutate unlock_salvage_takes_the_older_frame src/helpers/deployment/DepState.cpp '      if (s->has_salvage && gen <= best) continue;' '' unit:test_dep_state
+
+# --- second review (H1): the rescue console's file commands
+mutate rescue_files_not_locked examples/companion_radio/MyMesh.cpp '    if (file_cmd && rescueFilesLocked()) {' '    if (false) {' sim/tests/test_deployment_authority.py::test_the_rescue_file_commands_are_refused_while_a_record_exists_healthy_or_corrupt
+mutate rescue_files_open_in_hardened examples/companion_radio/MyMesh.cpp '  return _prefs.posture != Posture::NORMAL;
+}' '  return false;
+}' sim/tests/test_deployment_authority.py::test_the_rescue_file_commands_are_refused_in_hardened_with_no_record_and_work_in_normal_standalone
+
+# --- second review (M1): an unsigned first provisioning is the cable's alone
+mutate provision_unsigned_over_ble src/helpers/iface/DeployAuth.cpp '  const bool present = cx.transport == Cli::T_USB && cx.auth == Cli::A_CABLE;' '  const bool present = (cx.transport == Cli::T_USB && cx.auth == Cli::A_CABLE) || (cx.transport == Cli::T_BLE && cx.auth == Cli::A_PAIRED_PIN);' sim/tests/test_deployment_authority.py::test_an_unsigned_first_provisioning_over_ble_is_refused_whatever_the_pin_and_the_cable_still_works
+
+# --- second review (M2): signed lowering, and Hardened only with a local unlock secret in the record
+mutate posture_signed_may_not_lower src/helpers/cli/CliPolicy.h '(flags & F_CABLE_ONLY) && p != P_CABLE && p != P_SIGNED) r = R_NOT_PERMITTED;' '(flags & F_CABLE_ONLY) && p != P_CABLE) r = R_NOT_PERMITTED;' unit:test_cli_engine
+mutate posture_hardened_without_secret_allowed src/helpers/cli/CliPolicy.h '  if (r == R_ALLOW && (flags & F_RAISES) && c.enrolled && !c.has_unlock_secret) r = R_NO_UNLOCK_SECRET;' '' unit:test_cli_engine
+mutate posture_raise_not_flagged src/helpers/cli/CliRegistry.h 'r.flags = strcmp(arg, "hardened") != 0 ? F_CABLE_ONLY : F_RAISES;' 'r.flags = strcmp(arg, "hardened") != 0 ? F_CABLE_ONLY : 0;' unit:test_cli_engine
+mutate posture_companion_secret_not_told examples/companion_radio/MyMesh.cpp 'the rescue console
+    ctx.has_unlock_secret = _iface.hasUnlockSecret();' 'the rescue console' sim/tests/test_deployment_authority.py::test_an_unlocked_cable_may_enter_hardened_because_the_record_holds_the_secret_and_without_one_nobody_unsigned_may
+mutate posture_server_secret_not_told src/helpers/cli/CliCaller.h '  c.has_unlock_secret = s.has_secret && s.has_secret(s.has_secret_user);' '  c.has_unlock_secret = false;' sim/tests/test_deployment_authority_server.py::test_an_unlocked_console_may_enter_hardened_because_the_record_holds_the_secret
+
+# --- second review (L1): a damaged marks copy blocks every member
+mutate marks_fallback_not_detected src/helpers/deployment/DepRecord.cpp '  if (out->state == LS_OK) out->other_damaged = c[1 - out->slot]->data && !intact[1 - out->slot];' '' unit:test_dep_state
+mutate marks_fallback_trusted src/helpers/deployment/DepState.cpp 'reconcileMarks(distrust ? nullptr : &lm.marks, s->set, &s->marks);' 'reconcileMarks(s->marks_lost ? nullptr : &lm.marks, s->set, &s->marks);' sim/tests/test_deployment_authority.py::test_a_damaged_marks_copy_blocks_every_member_so_a_captured_request_cannot_run_again
+mutate marks_fallback_not_reported src/helpers/iface/DeployAuth.cpp '  w.key("marks_fallback"); w.boolean(s.marks_fallback);' '  w.key("marks_fallback"); w.boolean(false);' sim/tests/test_deployment_authority.py::test_a_damaged_marks_copy_blocks_every_member_so_a_captured_request_cannot_run_again
+
+# --- second review (L2): the stock-array rescue rebuild puts the marker back right after the format
+mutate rescue_rebuild_marker_late examples/companion_radio/MyMesh.cpp '      if (!_iface.restoreMarker(snap)) Serial.println("  Error: the provisioned marker could not be written back; use deployment.reset");' '' sim/tests/test_deployment_authority.py::test_a_stock_array_rescue_rebuild_puts_the_marker_back_before_anything_else
+
+# --- second review (L3): the unlock secret travels in the clear, so only over the cable
+mutate unlock_secret_set_over_any_transport src/helpers/iface/DeployAuth.cpp '  if (!viaCable()) { c.error = "usb_only"; return ST_REFUSED; }' '' sim/tests/test_deployment_authority.py::test_the_unlock_secret_is_accepted_only_over_the_usb_cable_even_in_a_signed_request
+mutate unlock_secret_provisioned_over_any_transport src/helpers/iface/DeployAuth.cpp '  if (k->p.has_unlock && !viaCable()) { c.error = "usb_only"; goto done; }' '' sim/tests/test_deployment_authority.py::test_the_unlock_secret_is_accepted_only_over_the_usb_cable_even_in_a_signed_request
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

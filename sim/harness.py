@@ -29,6 +29,8 @@ BIN = {
     "companion_standalone": os.path.join(REPO, ".pio/build/sim_companion_standalone/program"),
     # the Companion built with the stock contact array (-D CONTACTS_STOCK_ARRAY): the opt-out of the adaptive contact store
     "companion_stockcontacts": os.path.join(REPO, ".pio/build/sim_companion_stockcontacts/program"),
+    # the standalone Companion with the stock contact array: the rescue rebuild formats the file system
+    "companion_standalone_stockcontacts": os.path.join(REPO, ".pio/build/sim_companion_standalone_stockcontacts/program"),
 }
 
 
@@ -260,7 +262,7 @@ class Node:
         self.mqtt = mqtt
         self.lockstep, self.quantum_us = lockstep, quantum_us   # --lockstep: the ether broker owns the clock
         self.extra = list(extra or [])   # further node command-line options, e.g. ["--heap-budget", "60000"]
-        self.ui = UiProbe(workdir, name) if kind == "companion_standalone" else None
+        self.ui = UiProbe(workdir, name) if kind in ("companion_standalone", "companion_standalone_stockcontacts") else None
         self.heap_path = os.path.join(str(workdir), name + ".heap")   # --heap-file: the heap the node reports at run time
         self.proc = None
         self.port = None

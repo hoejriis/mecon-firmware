@@ -1,5 +1,6 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <helpers/BootTimes.h>
+#include <helpers/CryptoRNG.h>
 #include <helpers/BootPresence.h>
 #include <Mesh.h>
 #include "MyMesh.h"
@@ -268,7 +269,7 @@ void setup() {
   if (the_mesh.getNodePrefs()->ble_pin == 0) {
 #ifdef DISPLAY_CLASS
     if (disp != NULL && BLE_PIN_CODE == 123456) {
-      StdRNG rng;
+      CryptoRNG rng(&fast_rng);   // a PIN must not follow from a small seed (the sim uses the seeded fallback)
       the_mesh.setBLEPin(rng.nextInt(100000, 999999)); // random pin each session
     } else {
       the_mesh.setBLEPin(BLE_PIN_CODE); // otherwise static pin

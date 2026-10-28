@@ -10,6 +10,7 @@
 #include <Arduino.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "DeployAuth.h"
 #include "IfaceConfig.h"
 #include "IfaceDispatch.h"
 #include "Streams.h"
@@ -38,6 +39,11 @@ public:
     void (*radio_counts)(void* user, RadioCounts* out);
     SensorManager* sensors;
     void (*inventory)(void* user, JsonWriter& w);   // the role's counts (TELEMETRY.md, inventory)
+    // Where the Deployment record's files live (docs/contract/AUTHORITY.md section 4): the role's own file system. Null
+    // leaves the device a standalone one that cannot be enrolled.
+    Dep::CopyStore* dep_store;
+    // Wall-clock seconds for the audit entries of the unlock handshake; null: seconds since boot.
+    uint32_t (*clock_s)(void* user);
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY);
@@ -54,6 +60,9 @@ public:
 
   // For the operations.
   const Host& host() const { return _host; }
+  DeployAuth& auth() { return _auth; }
+  // The channel nonce hello reports: the console is one link, and holds its own.
+  const char* helloNonce() { return _auth.helloNonce(_nonce); }
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
   ConfigHost configHost();
@@ -63,6 +72,9 @@ public:
 
 private:
   static bool authorize(void* self, const OpEntry& op, const Request& req);
+  static const char* denyReason(void* self);
+  static int runSigned(void* user, const Cli::Context& ctx, const char* body, size_t len, char* out, size_t cap);
+  int run(const Cli::Context& ctx, const char* msg, size_t len, char* out, size_t cap, ResultCache* cache);
   static bool cliRun(void* self, const char* line, char* reply, size_t cap);
   static bool cliAllow(void* self, const char* line);
   void answer(Print& out);
@@ -76,6 +88,13 @@ private:
   bool _collecting = false;
   bool _overflow = false;
   ResultCache* _cache = nullptr;
+  DeployAuth _auth;            // the Deployment record and the signed-request checks (shared with the Companion)
+  Cli::Context _ctx;           // the caller of the request being handled: the cable, or the signed principal on it
+  const char* _deny = nullptr; // why authorize() refused, when it has a contract code for it
+  char _nonce[33] = {0};       // the console's channel nonce (AUTHORITY.md section 7.1)
+  LinkUnlock _unlock;          // the console's local unlock challenge and state (section 10). The console is the cable and
+                               // has no link-drop signal: an unlock ends after 10 minutes or at a reboot.
+  static bool consoleUnlocked(void* self);
   SubSet _subs;
   StreamClock _clock;
   bool writeStream(int stream, JsonWriter& w);

@@ -2,6 +2,8 @@
 #include "DataStore.h"
 #include <helpers/iface/DeviceMeta.h>
 #include <helpers/AtomicFile.h>
+#include <helpers/deployment/DepRecord.h>
+#include <helpers/deployment/DepFsStore.h>
 
 #if defined(EXTRAFS) || defined(QSPIFLASH)
   #define MAX_BLOBRECS 100
@@ -251,6 +253,21 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs) {
 
 bool DataStore::bootDeviceMeta(mesh::RNG* rng, uint8_t device_id[16], uint32_t* epoch) {
   return Iface::bootDeviceMeta(_fs, rng, device_id, epoch);
+}
+
+bool DataStore::readDeploymentCopy(int slot, uint8_t* buf, size_t cap, size_t* len, bool* exists, DepFile which) {
+  Dep::FsStore fs(_fs);
+  return fs.read(slot, buf, cap, len, exists, which == DEP_MARKS ? Dep::SF_MARKS : Dep::SF_RECORD);
+}
+
+bool DataStore::writeDeploymentCopy(int slot, const uint8_t* frame, size_t len, DepFile which) {
+  Dep::FsStore fs(_fs);
+  return fs.write(slot, frame, len, which == DEP_MARKS ? Dep::SF_MARKS : Dep::SF_RECORD);
+}
+
+bool DataStore::removeDeploymentCopies(int newer_slot, DepFile which) {
+  Dep::FsStore fs(_fs);
+  return fs.removeBoth(newer_slot, which == DEP_MARKS ? Dep::SF_MARKS : Dep::SF_RECORD);
 }
 
 bool DataStore::savePrefs(NodePrefs& _prefs) {

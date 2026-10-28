@@ -9,9 +9,22 @@
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
+#include <helpers/iface/DeployAuth.h>
 
 class MyMesh;
 class BaseSerialInterface;
+class DataStore;
+
+// The Companion's DataStore as the Deployment record's file store (the shared layer in helpers/iface/DeployAuth).
+class DataStoreCopies : public Dep::CopyStore {
+public:
+  void set(DataStore* s) { _s = s; }
+  bool read(int slot, uint8_t* buf, size_t cap, size_t* len, bool* exists, Dep::StoreFile which) override;
+  bool write(int slot, const uint8_t* frame, size_t len, Dep::StoreFile which) override;
+  bool removeBoth(int newer_slot, Dep::StoreFile which) override;
+private:
+  DataStore* _s = nullptr;
+};
 
 #define CMD_MECON 0x7F   // the one Companion code the interface uses, both directions
 
@@ -55,6 +68,43 @@ public:
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
 
+  // ---- the Deployment authority layer (docs/contract/AUTHORITY.md; MeconDeploy.cpp)
+  // Loads the record and its sequence marks from storage; called once from begin(). No record leaves a standalone device
+  // with no DepState at all.
+  void deployLoad();
+  // The channel nonce hello reports on the current link: empty when the device holds no Deployment record.
+  const char* helloNonce();
+  // status.deployment: nothing for a device with no record.
+  void writeDeploymentStatus(Iface::JsonWriter& w, bool hardened);
+  static Iface::Status opDeployGet(Iface::OpContext& c);
+  static Iface::Status opDeployProvision(Iface::OpContext& c);
+  static Iface::Status opDeployUpdate(Iface::OpContext& c);
+  static Iface::Status opDeployReset(Iface::OpContext& c);
+  static Iface::Status opDeploySetUnlock(Iface::OpContext& c);
+  static Iface::Status opDeployUnlockChallenge(Iface::OpContext& c);
+  static Iface::Status opDeployUnlock(Iface::OpContext& c);
+  // Whether the link of this serial interface holds a valid local unlock (AUTHORITY.md section 10); the CLI privilege
+  // table takes it as Context.unlocked, for the cable link only.
+  bool unlockedFor(const BaseSerialInterface* src);
+  // An app has started a session on this serial interface. A USB serial link cannot say when it drops, so a new session is
+  // the drop: the link's challenge and unlock are gone (section 10).
+  void onNewSession(const BaseSerialInterface* src);
+  // Whether the device holds a Deployment record, healthy or corrupt: an unsigned caller then changes nothing
+  // (AUTHORITY.md section 9). The CLI privilege table takes it as Context.enrolled.
+  bool enrolled() const { return _auth.enrolled(); }
+  bool hasUnlockSecret() const { return _auth.hasUnlockSecret(); }
+  // After a factory reset has formatted the storage: the provisioned marker goes with the record, and the state in
+  // memory follows what is now stored.
+  void onFactoryReset() { _auth.onFactoryReset(); }
+  // The rescue console's rebuild must not unenrol (section 9, 11): the record's two copies, the marks' two copies and
+  // the provisioned marker are read before it, and written back after. A null snapshot means something exists that
+  // cannot be read; the rebuild is then refused.
+  typedef Iface::DeployAuth::RecordSnapshot RecordSnapshot;
+  RecordSnapshot* snapshotRecord() { return _auth.snapshotRecord(); }
+  bool restoreMarker(const RecordSnapshot* s) { return _auth.restoreMarker(s); }
+  bool restoreRecord(RecordSnapshot* s) { return _auth.restoreRecord(s); }
+  static void freeSnapshot(RecordSnapshot* s) { Iface::DeployAuth::freeSnapshot(s); }
+
   static const size_t QUEUE_BYTES = 2048;   // per transport, allocated on its first message
   static const size_t RESULT_MAX = 1536;    // largest result an operation writes in one piece (pages above that)
 
@@ -64,6 +114,8 @@ private:
     Iface::Reassembler rx;
     Iface::OutQueue* q = nullptr;
     Iface::SubSet subs;
+    char nonce[33] = {0};                   // the channel nonce issued for this link (AUTHORITY.md section 7.1)
+    Iface::LinkUnlock unlock;               // its local unlock challenge and state (section 10); cleared when the link drops
   };
   static const int LINKS = 4;               // USB, BLE, TCP and one spare
 
@@ -74,6 +126,14 @@ private:
   static bool cliAllow(void* self, const char* line);
   Link* linkFor(const BaseSerialInterface* src, bool create);
   int dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
+  int runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap,
+                  Iface::ResultCache* cache);
+  int dispatchSigned(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
+                     size_t cap);
+  struct SignedRun;
+  static int runSigned(void* user, const Cli::Context& ctx, const char* body, size_t len, char* out, size_t cap);
+  static const char* denyReason(void* self);
+  char* nonceOf(Link* link) { return link ? link->nonce : _mqtt_nonce; }
   bool queueResult(Link& l, const char* msg, size_t len);
   bool ensureQueue(Link& l);
 
@@ -83,6 +143,7 @@ private:
   Cli::Context _ctx;                        // the caller of the request being handled (a transport, or the broker)
   Link* _cur_link = nullptr;                // its transport, or nullptr for the broker
   Iface::SubSet _mqtt_subs;
+  Iface::LinkUnlock _mqtt_unlock;           // the broker has no cable: its unlock state never leaves cleared (the handshake refuses)
   EventPublishFn _ev_publish = nullptr;
   SessionUpFn _ev_up = nullptr;
   Iface::StreamClock _clock;                // per stream per device: seq (design section 3) and pacing
@@ -99,6 +160,10 @@ private:
   uint32_t _env_at = 0;
   bool writeStream(int stream, Iface::JsonWriter& w);
   uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
+  Iface::DeployAuth _auth;                  // the record, its marks and the signed-request checks (shared with the servers)
+  DataStoreCopies _copies;
+  const char* _deny = nullptr;              // why authorize() refused, when it has a contract code for it
+  char _mqtt_nonce[33] = {0};               // the MQTT session is one link
   char _id_hex[33] = {0};
   uint32_t _epoch = 0;
 };

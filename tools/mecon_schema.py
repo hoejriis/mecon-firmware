@@ -1,6 +1,6 @@
 """A small JSON Schema checker for the device interface schemas (docs/contract/schema/), covering only the keywords
-they use: type (including null and lists of types), required, properties, enum, const, pattern, minimum, items and
-contains. Any standard JSON Schema 2020-12 validator accepts the same files; this one keeps the tests free of a
+they use: type (including null and lists of types), required, properties, additionalProperties (false only), enum,
+const, pattern, minimum, items, contains and oneOf. Any standard JSON Schema 2020-12 validator accepts the same files; this one keeps the tests free of a
 dependency. Returns a list of problems, empty when the value conforms."""
 import json
 import os
@@ -45,10 +45,18 @@ def check(value, schema, path="$"):
         for k, sub in schema.get("properties", {}).items():
             if k in value:
                 errs += check(value[k], sub, "%s.%s" % (path, k))
+        if schema.get("additionalProperties") is False:
+            for k in value:
+                if k not in schema.get("properties", {}):
+                    errs.append("%s: unexpected %s" % (path, k))
     if isinstance(value, list):
         if "items" in schema:
             for i, v in enumerate(value):
                 errs += check(v, schema["items"], "%s[%d]" % (path, i))
         if "contains" in schema and not any(not check(v, schema["contains"]) for v in value):
             errs.append("%s: no item matches %r" % (path, schema["contains"]))
+    if "oneOf" in schema:
+        matching = sum(1 for sub in schema["oneOf"] if not check(value, sub, path))
+        if matching != 1:
+            errs.append("%s: matches %d of the oneOf branches, not exactly 1" % (path, matching))
     return errs

@@ -275,6 +275,7 @@ private:
   }
 
   void checkCLIRescueCmd();
+  bool rescueFilesLocked();
   bool handleCommand(const char* text, uint32_t sender_timestamp, char* reply);
   void checkSerialInterface();
   bool isValidClientRepeatFreq(uint32_t f) const;
