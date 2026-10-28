@@ -232,7 +232,12 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #else
       const bool device_interface_build = false;
 #endif
-      if (!BleDfuPolicy::otaStartAllowed(device_interface_build)) {   // Issue #143: an unsigned image over BLE
+#ifdef NRF52_PLATFORM
+      const bool nrf52_build = true;
+#else
+      const bool nrf52_build = false;
+#endif
+      if (!BleDfuPolicy::otaStartAllowed(device_interface_build, nrf52_build)) {   // Issue #143: an unsigned image
         strcpy(reply, "ERR: start ota is off on this build; update over the signed path or the USB cable");
       } else if (!_board->startOTAUpdate(_prefs->node_name, reply)) {
         strcpy(reply, "Error");

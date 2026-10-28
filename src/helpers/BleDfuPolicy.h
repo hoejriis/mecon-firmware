@@ -20,8 +20,10 @@ inline bool mayRegister(bool device_interface_build, uint32_t pin) {
   return !device_interface_build && pin != 0 && pin != 123456;
 }
 
-// The Repeater / Room server CLI's `start ota` restarts BLE in an OTA-only mode with the DFU service up. A
-// device-interface build refuses it outright and starts nothing; other builds keep it, with the service protected.
-inline bool otaStartAllowed(bool device_interface_build) { return !device_interface_build; }
+// The Repeater / Room server CLI's `start ota` restarts the radio stack in an OTA-only mode. A device-interface build
+// refuses it outright and starts nothing. So does every nRF52 build: it would put the BLE DFU service up, and these
+// roles have no BLE PIN, so the link could be neither paired with a passkey nor protected (an MITM requirement with no
+// PIN would make it a silent no-op). Stock-like ESP32 builds keep upstream's behaviour.
+inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build && !nrf52_build; }
 
 }  // namespace BleDfuPolicy

@@ -71,7 +71,7 @@ inline const Entry* entries(size_t& count) {
     {"get wifi.pwd",           M_EXACT,   ROLE_COMPANION,                 C_READ,        0,            Posture::W_NONE,      "> wifi.pwd is write-only",   nullptr,                                            nullptr},
     {"erase",                  M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     // Issue #143: replaces the firmware (BLE OTA), so destructive, never the unregistered write default
-    {"start ota",              M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
+    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     // powering off needs someone on site to recover the device: no remote caller, broker or not
     {"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     {"shutdown",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},

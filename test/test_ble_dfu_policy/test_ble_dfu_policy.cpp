@@ -14,9 +14,11 @@ TEST(BleDfuPolicy, OtherBuildsOnlyWithAChosenPin) {
   EXPECT_TRUE(mayRegister(false, 100000));
 }
 
-TEST(BleDfuPolicy, StartOtaIsRefusedOnADeviceInterfaceBuild) {
-  EXPECT_FALSE(BleDfuPolicy::otaStartAllowed(true));
-  EXPECT_TRUE(BleDfuPolicy::otaStartAllowed(false));   // positive control: a stock-like build keeps it, protected
+TEST(BleDfuPolicy, StartOtaIsRefusedOnInterfaceAndNrf52Builds) {
+  EXPECT_FALSE(BleDfuPolicy::otaStartAllowed(true, false));    // an interface build, any board
+  EXPECT_FALSE(BleDfuPolicy::otaStartAllowed(true, true));
+  EXPECT_FALSE(BleDfuPolicy::otaStartAllowed(false, true));    // nRF52: BLE DFU with no PIN to protect it
+  EXPECT_TRUE(BleDfuPolicy::otaStartAllowed(false, false));    // positive control: a stock-like ESP32 build keeps it
 }
 
 int main(int argc, char** argv) {
