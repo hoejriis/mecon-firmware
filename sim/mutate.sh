@@ -1102,6 +1102,7 @@ mutate devid_duplicate_readback_without_pair src/helpers/iface/DeployAuth.cpp ' 
 mutate devid_rotation_read_open examples/companion_radio/MeconIface.cpp '  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;' '  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "identity.rotation") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;' $DB::test_after_a_rotation_hello_signs_with_the_new_key_and_untrusted_links_never_see_the_id
 mutate devid_get_carries_rotation_to_anyone examples/companion_radio/MeconDeploy.cpp '  if (st == ST_OK && Cli::decide(self(c)->_ctx, Cli::C_READ).allow) writeRotationMember' '  if (st == ST_OK) writeRotationMember' $DB::test_after_a_rotation_hello_signs_with_the_new_key_and_untrusted_links_never_see_the_id
 mutate devid_cli_empty_nonce_fixed_form src/helpers/CommonCLI.cpp '    else if (has_arg && !*nonce) strcpy(reply, "Error: bad nonce");' '    else if (false) strcpy(reply, "Error: bad nonce");' $DB::test_console_hello_and_cli_sign_the_device_id
+mutate cache_hit_under_another_op src/helpers/iface/IfaceCache.h '      if (strcmp(_e[i].op, op) != 0) return CONFLICT;' '      if (false) return CONFLICT;' $DB::test_a_stored_write_result_cannot_be_fetched_under_another_operation
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

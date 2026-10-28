@@ -17,6 +17,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+// The operation a signed request's cached result is stored under. '#' is outside the operation-name charset, so a plain
+// request can never name it: one reusing a signed key's text as its id gets a conflict, not the signed result.
+static const char SIGNED_OP[] = "#signed";
+
 namespace Iface {
 
 namespace {
@@ -394,7 +398,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (rv == Dep::RV_DUPLICATE) {
       const char* data;
       size_t dl;
-      if (cache && cache->find(key, &data, &dl) == ResultCache::HIT && dl < cap) {
+      if (cache && cache->find(key, SIGNED_OP, &data, &dl) == ResultCache::HIT && dl < cap) {
         memcpy(out, data, dl);
         out[dl] = 0;
         n = (int)dl;
@@ -423,7 +427,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   n = run(run_user, sctx, v.body, v.body_len, out, cap);   // job ids guard replay; no id cache
   if (_env.publish_caller) Cli::serverCaller().signed_line = false;
   _signed = false;
-  if (n > 0 && key[0] && cache) cache->store(key, out, (size_t)n);
+  if (n > 0 && key[0] && cache) cache->store(key, SIGNED_OP, out, (size_t)n);
   if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);   // used once
   free(body);
   return n;

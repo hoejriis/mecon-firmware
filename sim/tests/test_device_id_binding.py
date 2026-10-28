@@ -187,3 +187,24 @@ def test_after_a_rotation_hello_signs_with_the_new_key_and_untrusted_links_never
     f = b.request(bytes([harness.CMD_RUN_CLI_COMMAND]) + b"get device.id")
     assert f is not None and f[0] == harness.RESP_ERR and f[1] == harness.ERR_NOT_PERMITTED, f
     assert dev.encode() not in f
+
+
+@pytest.mark.parametrize("kind", ["companion", "repeater"])
+def test_a_stored_write_result_cannot_be_fetched_under_another_operation(nodes, kind):
+    """The result cache is keyed by id and bound to the operation: deployment.get (open to any caller) naming the id
+    of a stored provisioning gets id-in-use, not the read-back with device_id and node_key."""
+    from test_deployment_authority import apply_name, provision_args
+    d = boot_companion(nodes, "dvk", 53) if kind == "companion" else boot_server(nodes, "repeater", "dvk", 55)
+    # a write small enough to be kept: its id answers only the same operation
+    a = d.i.request("config.apply", apply_name("Kept"), rid="a1")
+    assert a["status"] == "ok", a
+    g = d.i.request("deployment.get", rid="a1")
+    assert g["status"] == "invalid" and g["error"] == "id-in-use", g
+    again = d.i.request("config.apply", apply_name("Kept"), rid="a1")
+    assert again.raw == a.raw, "the same operation under the same id still gets its stored result"
+    # the provisioning read-back (device_id and node_key): held as too large to keep, and still bound to its operation
+    p = d.i.request("deployment.provision", provision_args(d.node_key), rid="p1")
+    assert p["status"] == "ok" and "device_id" in p["result"], p
+    g = d.i.request("deployment.get", rid="p1")
+    assert g["status"] == "invalid" and g["error"] == "id-in-use", g
+    assert b"node_key" not in g.raw
