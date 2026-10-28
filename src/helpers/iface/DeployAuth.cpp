@@ -901,7 +901,7 @@ Status DeployAuth::opReset(OpContext& c) {
 }
 
 void DeployAuth::onFactoryReset() {
-  Dep::markerClear();   // the format does not touch it; only a reset and the factory reset do
+  Dep::markerClear();   // the format already takes it on ESP32 (NVS erase) and the sim; kept for a platform whose format does not
   _secret_epoch++;
   if (_dep) Dep::depFree(_dep);
   _dep = nullptr;

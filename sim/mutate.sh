@@ -935,7 +935,6 @@ mutate deploy_reset_unsigned_on_a_healthy_record src/helpers/iface/DeployAuth.cp
 mutate deploy_reset_over_a_broker src/helpers/iface/DeployAuth.cpp '    if (!usb) { _dep->auth_rejections++; c.error = "usb_only"; return ST_REFUSED; }' '' $DA::test_reset_and_unsigned_cli_writes_are_refused_over_mqtt
 mutate deploy_reset_leaves_the_marker src/helpers/iface/DeployAuth.cpp 'st->removeBoth(marks_slot, Dep::SF_MARKS) && Dep::markerClear();' 'st->removeBoth(marks_slot, Dep::SF_MARKS);' $DA::test_a_signed_reset_over_usb_unenrols_and_keeps_the_rest
 mutate deploy_reset_in_hardened src/helpers/iface/DeployAuth.cpp '  if (Posture::isHardened(cx.posture) && !(corrupt && Cli::unlockManagement(cx))) {' '  if (false) {' $DA::test_reset_needs_normal_posture_and_a_corrupt_record_in_hardened_needs_the_local_unlock
-mutate deploy_factory_reset_keeps_the_marker src/helpers/iface/DeployAuth.cpp '  Dep::markerClear();   // the format does not touch it; only a reset and the factory reset do' '' $DA::test_a_factory_reset_over_the_cable_clears_the_marker_and_the_record
 mutate deploy_ble_factory_reset_when_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '' $DA::test_a_ble_factory_reset_is_refused_once_enrolled_and_audited
 mutate deploy_rebuild_without_reading_the_record examples/companion_radio/MyMesh.cpp '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
       if (!snap) {' '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
