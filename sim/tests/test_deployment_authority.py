@@ -428,7 +428,7 @@ def test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after(nodes, t
     assert r["status"] == "ok", r
     assert d.name() == "> ViaMqtt"
     r2 = b.iface_request(dev, w)
-    assert r2 == r, "a resend over MQTT gets the stored result, and nothing runs twice"
+    assert bare(r2) == bare(r), "a resend over MQTT gets the stored result, and nothing runs twice"
     # the USB link's nonce is not the broker session's
     h = b.iface_request(dev, {"v": 1, "id": "h1", "op": "hello"})["result"]
     assert len(h["channel_nonce"]) == 32 and h["channel_nonce"] != d.nonce()
@@ -1171,7 +1171,7 @@ def test_the_handshake_is_refused_over_mqtt_and_to_a_signed_request(nodes, tmp_p
     r = b.iface_request(dev, {"v": 1, "id": "c1", "op": "deployment.unlock_challenge"})
     assert bare(r) == {"v": 1, "id": "c1", "status": "refused", "error": "usb_only"}, r
     r = b.iface_request(dev, {"v": 1, "id": "c2", "op": "deployment.unlock", "args": {"response": "00" * 32}})
-    assert r == {"v": 1, "id": "c2", "status": "refused", "error": "usb_only"}, r
+    assert bare(r) == {"v": 1, "id": "c2", "status": "refused", "error": "usb_only"}, r
     ch = challenge(d.i.request)   # control: the cable has a challenge outstanding; the broker cannot answer it
     r = b.iface_request(dev, {"v": 1, "id": "c3", "op": "deployment.unlock", "args": {"response": unlock_answer(SECRET, ch)}})
     assert r["status"] == "refused" and r["error"] == "usb_only", r
