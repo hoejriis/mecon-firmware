@@ -203,6 +203,7 @@ def test_a_lost_rotate_result_is_recovered_from_the_stored_statement(nodes):
     sr = d.send(wrap(new_key, "identity.rotation", job=None, target=new_key, rid="rr"))
     assert sr["status"] == "ok" and sr["result"]["rotation"] == rot, sr
     assert d.i.request("deployment.get")["result"]["rotation"] == rot
+    assert open(rotation_file(d), "rb").read().endswith(b"\n"), "the drop is done, so nothing is pending"
     d.reboot()
     assert d.i.request("identity.rotation")["result"]["rotation"] == rot, "kept across a reboot"
     # a second rotation replaces it
@@ -249,3 +250,23 @@ def test_a_cut_after_the_statement_and_before_the_key_save_leaves_the_key(nodes)
     assert "rotation" not in d.i.request("identity.rotation")["result"], "so its statement is deleted at boot"
     assert not os.path.exists(rotation_file(d))
     assert d.c.get_contacts()[0] == 1, "and nothing was dropped"
+
+
+def test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot(nodes):
+    d = enrolled_companion(nodes, "rd", 55)
+    old_key = d.node_key
+    cts = contacts_on_flash(d)
+    assert len(cts) == 1, os.listdir(d.n.dir)
+    start_with_fault(d, "remove:/" + cts[0])   # the first step of the drop
+    rotate_into_a_cut(d, 2)
+    assert open(rotation_file(d), "rb").read().endswith(b"\nP"), "the statement still says the drop is pending"
+    d.n.start()
+    d.attach()
+    assert d.node_key != old_key, "the new key was saved before the cut"
+    assert d.c.get_contacts()[0] == 0, "the old owner's contacts are gone after the boot"
+    assert open(rotation_file(d), "rb").read().endswith(b"\n"), "and the pending mark is cleared"
+    rot = d.i.request("identity.rotation")["result"]["rotation"]
+    statement_checks(rot, old_key, d.node_key, d.i.request("hello")["result"]["device_id"], 2)
+    d.reboot()
+    assert d.c.get_contacts()[0] == 0 and d.i.request("identity.rotation")["result"]["rotation"] == rot
+

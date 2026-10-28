@@ -1027,7 +1027,7 @@ void MyMesh::begin() {
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure public channel
   _store->loadChannels(this);
 #ifdef ENABLE_MECON_IFACE
-  recoverRotation();   // a rotation cut by a power loss: delete a statement that never took effect
+  recoverRotation();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
@@ -2264,7 +2264,8 @@ private:
 
 namespace {
 const char ROT_DOMAIN[] = "MECON-NODEROT-v1";   // + 0x00 + the statement text, signed with the key being retired
-// The stored file: the statement text, '\n', the base64 signature and '\n'.
+// The stored file: the statement text, '\n', the base64 signature, and a third line "P" while the drop is pending. The
+// flag is outside the signed text because the retired key is gone by the time it is cleared.
 const size_t ROT_FILE_MAX = 512;
 
 void hex32(char* out, const uint8_t* k) {
@@ -2273,13 +2274,13 @@ void hex32(char* out, const uint8_t* k) {
   out[2 * PUB_KEY_SIZE] = 0;
 }
 
-size_t rotFile(char* out, size_t cap, const char* text, const char* sig_b64) {
-  const int n = snprintf(out, cap, "%s\n%s\n", text, sig_b64);
+size_t rotFile(char* out, size_t cap, const char* text, const char* sig_b64, bool pending) {
+  const int n = snprintf(out, cap, "%s\n%s\n%s", text, sig_b64, pending ? "P" : "");
   return n > 0 && (size_t)n < cap ? (size_t)n : 0;
 }
 
 // Splits a stored file: false when it is not whole. text and sig_b64 are copied out NUL terminated.
-bool rotSplit(char* file, size_t n, const char** text, const char** sig_b64) {
+bool rotSplit(char* file, size_t n, const char** text, const char** sig_b64, bool* pending) {
   file[n] = 0;
   char* nl = strchr(file, '\n');
   if (!nl) return false;
@@ -2290,6 +2291,7 @@ bool rotSplit(char* file, size_t n, const char** text, const char** sig_b64) {
   *nl2 = 0;
   *text = file;
   *sig_b64 = sig;
+  *pending = nl2[1] == 'P';
   return true;
 }
 }  // namespace
@@ -2298,7 +2300,8 @@ bool MyMesh::readRotation(char* text, size_t tcap, char* sig_b64, size_t scap) {
   char file[ROT_FILE_MAX + 1];
   const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
   const char *t, *s;
-  if (!n || !rotSplit(file, n, &t, &s) || strlen(t) >= tcap || strlen(s) >= scap) return false;
+  bool pending;
+  if (!n || !rotSplit(file, n, &t, &s, &pending) || strlen(t) >= tcap || strlen(s) >= scap) return false;
   strcpy(text, t);
   strcpy(sig_b64, s);
   return true;
@@ -2331,12 +2334,18 @@ void MyMesh::recoverRotation() {
   const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
   if (!n) return;
   const char *text, *sig;
-  if (!rotSplit(file, n, &text, &sig)) { _store->removeRotation(); return; }
+  bool pending;
+  if (!rotSplit(file, n, &text, &sig, &pending)) { _store->removeRotation(); return; }
   char cur[2 * PUB_KEY_SIZE + 1];
   hex32(cur, self_id.pub_key);
   char want[2 * PUB_KEY_SIZE + 16];
   snprintf(want, sizeof(want), "\"new\":\"%s\"", cur);
-  if (!strstr(text, want)) _store->removeRotation();   // the key change never took effect
+  if (!strstr(text, want)) { _store->removeRotation(); return; }   // the key change never took effect
+  if (!pending) return;
+  if (!dropOldKeyState()) return;   // stays pending: tried again at the next boot
+  char out[ROT_FILE_MAX + 1];
+  const size_t m = rotFile(out, sizeof(out), text, sig, false);
+  if (m) _store->saveRotation(reinterpret_cast<uint8_t*>(out), m);
 }
 
 int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t job_id) {
@@ -2359,7 +2368,7 @@ int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t
   }
   if (!ok) { *err = "rng"; memset(&fresh, 0, sizeof(fresh)); return 0; }
   // 2. The rotation statement: the old key signs "old key is replaced by new key" before anything changes, and it is
-  // stored before the key is. A manager that lost the result reads it back (identity.rotation).
+  // stored (marked drop-pending) before the key is. A manager that lost the result reads it back (identity.rotation).
   {
     char oldhex[2 * PUB_KEY_SIZE + 1], newhex[2 * PUB_KEY_SIZE + 1];
     hex32(oldhex, self_id.pub_key);
@@ -2375,7 +2384,7 @@ int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t
     char sig_b64[89];
     Iface::base64Encode(sig_b64, sig, 64);
     char file[ROT_FILE_MAX + 1];
-    const size_t fl = rotFile(file, sizeof(file), text, sig_b64);
+    const size_t fl = rotFile(file, sizeof(file), text, sig_b64, true);
     if (!fl || !_store->saveRotation(reinterpret_cast<uint8_t*>(file), fl)) {
       _store->removeRotation();
       *err = "storage";
@@ -2392,8 +2401,17 @@ int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t
   }
   // 4. Swap.
   self_id = fresh;
-  // 5. Drop what belonged to the old key.
+  // 5. Drop what belonged to the old key. A cut before this ends is finished at the next boot (the statement is still
+  // marked drop-pending).
   const bool dropped = dropOldKeyState();
+  if (dropped) {
+    char text[256], sig_b64[89];
+    char out[ROT_FILE_MAX + 1];
+    if (readRotation(text, sizeof(text), sig_b64, sizeof(sig_b64))) {
+      const size_t m = rotFile(out, sizeof(out), text, sig_b64, false);
+      if (m) _store->saveRotation(reinterpret_cast<uint8_t*>(out), m);
+    }
+  }
   // 6. One self-advert, zero hop like the app's default.
   mesh::Packet* pkt = _prefs.advert_loc_policy == ADVERT_LOC_NONE ? createSelfAdvert(_prefs.node_name)
                                                                    : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);

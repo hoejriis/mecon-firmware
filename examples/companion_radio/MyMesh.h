@@ -270,7 +270,8 @@ public:
   uint8_t runMqttCli(const Cli::Context& ctx, const char* cmd, char* reply, size_t cap);
 
 private:
-  // Boot: a statement whose new key is not the current key never took effect and is deleted.
+  // Boot: a statement whose new key is not the current key never took effect and is deleted; one that is the current key
+  // and still marked drop-pending finishes the drop of the old key's contacts and queue.
   void recoverRotation();
   bool dropOldKeyState();
   void writeOKFrame();
