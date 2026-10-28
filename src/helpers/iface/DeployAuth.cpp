@@ -287,8 +287,9 @@ DeployAuth::Pre DeployAuth::preAuthorize(const OpEntry& op, const char** deny) {
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).
+  // identity.rotate likewise: rotateGate() answers with the contract's code for each state.
   if (_dep_ls != Dep::LS_ABSENT && !_signed && op.priv != PRIV_READ && strcmp(op.name, "deployment.provision") != 0 &&
-      strcmp(op.name, "deployment.reset") != 0) {
+      strcmp(op.name, "deployment.reset") != 0 && strcmp(op.name, "identity.rotate") != 0) {
     *deny = _dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";
     if (_dep) _dep->auth_rejections++;
     return PRE_DENY;
@@ -353,6 +354,10 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     free(body);
     return n;
   }
+  strncpy(_answering.op, v.op, sizeof(_answering.op) - 1);   // the verified request: its result names it
+  _answering.op[sizeof(_answering.op) - 1] = 0;
+  _answering.has_job = v.has_job;
+  _answering.job = v.job_id;
   char id[ID_MAX + 1];
   bodyId(v.body, v.body_len, id);
   char key[24];   // the result cache key of this request: '#' is outside the id charset, so no unsigned id can collide
@@ -829,6 +834,15 @@ done:
   memset(secret, 0, sizeof(secret));
   delete k;
   return st;
+}
+
+// identity.rotate may run only for a member's signature, and only while the record is readable: a device that cannot tell
+// who its managers are does not get a new owner's key (section 11).
+Status DeployAuth::rotateGate(OpContext& c) {
+  if (_dep_ls == Dep::LS_ABSENT) { c.error = "not_enrolled"; return ST_REFUSED; }
+  if (_dep_ls != Dep::LS_OK || !_dep) { if (_dep) _dep->auth_rejections++; c.error = "deployment_record_corrupt"; return ST_REFUSED; }
+  if (!_signed) { _dep->auth_rejections++; c.error = "unauthenticated"; return ST_REFUSED; }
+  return ST_OK;
 }
 
 // ---- unenrolment: reset, factory reset, and the rescue console's rebuild

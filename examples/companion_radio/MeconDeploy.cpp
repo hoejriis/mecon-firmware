@@ -5,6 +5,8 @@
 #include "MeconIface.h"
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
+#include <new>
+#include <helpers/iface/Wipe.h>
 
 using namespace Iface;
 
@@ -52,6 +54,67 @@ void MeconIface::deployLoad() {
 
 void MeconIface::writeDeploymentStatus(JsonWriter& w, bool hardened) { _auth.writeStatus(w, hardened); }
 
+// identity.rotate (AUTHORITY.md section 11). The result is signed with the key being retired (dispatch() does it from
+// _old_id), so the manager that enrolled that key can verify the answer and learn the new one from it.
+Status MeconIface::opIdentityRotate(OpContext& c) {
+  MeconIface* m = self(c);
+  Status st = m->_auth.rotateGate(c);
+  if (st != ST_OK) return st;
+  char oldhex[2 * PUB_KEY_SIZE + 1], newhex[2 * PUB_KEY_SIZE + 1];
+  static const char H[] = "0123456789abcdef";
+  const uint8_t* ok = m->_mesh->self_id.pub_key;
+  for (int i = 0; i < PUB_KEY_SIZE; i++) { oldhex[2 * i] = H[ok[i] >> 4]; oldhex[2 * i + 1] = H[ok[i] & 15]; }
+  oldhex[2 * PUB_KEY_SIZE] = 0;
+  mesh::LocalIdentity* old = new (std::nothrow) mesh::LocalIdentity(m->_mesh->self_id);
+  if (!old) { c.error = "no-memory"; return ST_BUSY; }
+  const char* err = "failed";
+  uint32_t job = 0;
+  {
+    int64_t j;
+    if (c.doc && jsonGetInt(*c.doc, jsonFind(*c.doc, 0, "job_id"), 0, 0xFFFFFFFFLL, &j)) job = (uint32_t)j;
+  }
+  const int r = m->_mesh->rotateIdentity(&err, m->deviceIdHex(), job);
+  if (r == 0) { Iface::wipe(old, sizeof(*old)); delete old; c.error = err; return ST_FAILED; }
+  m->_old_id = old;   // signs this result; dispatch() wipes it
+  if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }
+  const uint8_t* nk = m->_mesh->self_id.pub_key;
+  for (int i = 0; i < PUB_KEY_SIZE; i++) { newhex[2 * i] = H[nk[i] >> 4]; newhex[2 * i + 1] = H[nk[i] & 15]; }
+  newhex[2 * PUB_KEY_SIZE] = 0;
+  JsonWriter& w = *c.out;
+  w.key("old_public_key"); w.str(oldhex);
+  w.key("new_public_key"); w.str(newhex);
+  w.key("removed"); w.beginArray(); w.str("node_key"); w.str("contacts"); w.str("message_queue"); w.endArray();
+  w.key("kept"); w.beginArray();
+  w.str("configuration"); w.str("record"); w.str("channels"); w.str("posture"); w.str("device_id");
+  w.endArray();
+  return ST_OK;
+}
+
+// The statement the old key signed before the swap (AUTHORITY.md section 11): {"statement":"<signed text>","sig":"<base64>"}.
+// Written as members of the current object; false when there is none.
+static bool writeRotationMember(JsonWriter& w, MyMesh* mesh, const char* key) {
+  char text[256], sig[89];
+  if (!mesh->readRotation(text, sizeof(text), sig, sizeof(sig))) return false;
+  w.key(key);
+  w.beginObject();
+  w.key("statement"); w.str(text);
+  w.key("sig"); w.str(sig);
+  w.endObject();
+  return true;
+}
+
+// identity.rotation: a plain read. The stored statement, or an empty result when the key was never rotated.
+Status MeconIface::opIdentityRotation(OpContext& c) {
+  writeRotationMember(*c.out, self(c)->_mesh, "rotation");
+  return ST_OK;
+}
+
+Status MeconIface::opDeployGet(OpContext& c) {
+  const Status st = self(c)->_auth.opGet(c);
+  if (st == ST_OK) writeRotationMember(*c.out, self(c)->_mesh, "rotation");
+  return st;
+}
+
 const char* MeconIface::helloNonce() { return _auth.helloNonce(nonceOf(_cur_link)); }
 
 // ---- signed requests and operations
@@ -73,7 +136,6 @@ int MeconIface::dispatchSigned(const Cli::Context& uctx, uint8_t caller, Link* l
   return _auth.dispatchSigned(uctx, nonceOf(link), msg, len, _cache, runSigned, &run, out, cap);
 }
 
-Status MeconIface::opDeployGet(OpContext& c) { return self(c)->_auth.opGet(c); }
 Status MeconIface::opDeployProvision(OpContext& c) { return self(c)->_auth.opProvision(c); }
 Status MeconIface::opDeployUpdate(OpContext& c) { return self(c)->_auth.opUpdate(c); }
 Status MeconIface::opDeployReset(OpContext& c) { return self(c)->_auth.opReset(c); }

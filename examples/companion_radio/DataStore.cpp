@@ -193,6 +193,24 @@ bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
   return identity_store.save("_main", identity);
 }
 
+size_t DataStore::loadRotation(uint8_t* buf, size_t cap) {
+  AtomicFile::recover(_fs, "/rotation");   // finish or drop a save that was cut by a power loss
+  if (!AtomicFile::exists(_fs, "/rotation")) return 0;
+  File f = openRead(_fs, "/rotation");
+  if (!f) return 0;
+  const int n = f.read(buf, cap);
+  f.close();
+  return n > 0 ? (size_t)n : 0;
+}
+
+bool DataStore::saveRotation(const uint8_t* buf, size_t len) {
+  return AtomicFile::save(_fs, "/rotation", [buf, len](Stream& s) { return s.write(buf, len) == len; });
+}
+
+void DataStore::removeRotation() {
+  AtomicFile::discard(_fs, "/rotation");
+}
+
 void DataStore::loadPrefs(NodePrefs& prefs) {
   AtomicFile::recover(_fs, "/prefs.json");   // finish or drop a save that was cut by a power loss
   if (AtomicFile::exists(_fs, "/prefs.json")) {

@@ -34,6 +34,11 @@ public:
   FILESYSTEM* getSecondaryFS() const { return _fsExtra; }
   bool loadMainIdentity(mesh::LocalIdentity &identity);
   bool saveMainIdentity(const mesh::LocalIdentity &identity);
+  // The rotation statement (docs/contract/AUTHORITY.md section 11), one small file replaced atomically. load returns the
+  // length read, 0 when there is none.
+  size_t loadRotation(uint8_t* buf, size_t cap);
+  bool saveRotation(const uint8_t* buf, size_t len);
+  void removeRotation();
   // The device interface's identity and boot counter (docs/contract/DEVICE_INTERFACE.md): device_id is created on the
   // first boot and kept; epoch is incremented and saved on every call (once per boot). False when the file could
   // not be written: the values are still usable for this boot.

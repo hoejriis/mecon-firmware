@@ -147,6 +147,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `advert.send` | self advert (zero-hop or flood) | `CMD_SEND_SELF_ADVERT`, CLI `advert` | write | yes | C R S | all | planned #109 |
 | `identity.get` | node key, device id | | read | no | C R S | all | built as part of `hello` |
 | `identity.rotate` | new node key on the device | | per #95 | yes | C R S | per #95 | planned #95 |
+| `identity.rotation` | the old key's signed statement of the rotation | | read | no | C | all | planned #95 |
 | `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per #95 | planned #95 |
 | `ble.bonds` | bond count | | read | no | C (BLE builds) | all | planned #109 |
 | `ble.pin.get` | the BLE PIN | device info, CLI | secret | no | C (BLE builds) | USB, MQTT (SECURITY_AND_AUTHORITY) | planned #109 |

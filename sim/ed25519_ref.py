@@ -77,3 +77,27 @@ def sign(seed, msg):
     Rs = _compress(_mul(r, _G))
     s = (r + _h(Rs + A + msg) * a) % _q
     return Rs + int.to_bytes(s, 32, "little")
+
+
+def _decompress(b):
+    y = int.from_bytes(b, "little")
+    sign = y >> 255
+    y &= (1 << 255) - 1
+    if y >= _p:
+        return None
+    x = _recover_x(y, sign)
+    if (x * x - (y * y - 1) * _inv(_d * y * y + 1)) % _p != 0:
+        return None
+    return (x, y, 1, x * y % _p)
+
+
+def verify(pub, msg, sig):
+    """RFC 8032 verification: True only for a valid signature by the key `pub` (32 bytes) over msg."""
+    if len(pub) != 32 or len(sig) != 64:
+        return False
+    A, R = _decompress(pub), _decompress(sig[:32])
+    s = int.from_bytes(sig[32:], "little")
+    if A is None or R is None or s >= _q:
+        return False
+    k = _h(sig[:32] + pub + msg)
+    return _compress(_mul(s, _G)) == _compress(_add(R, _mul(k, A)))

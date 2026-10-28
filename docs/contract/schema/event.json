@@ -10,6 +10,10 @@
     "seq": {"type": "integer", "minimum": 0, "description": "Per stream per device: the same on every transport."},
     "epoch": {"type": "integer", "minimum": 1, "description": "Boot counter, incremented on every boot."},
     "ts": {"type": ["integer", "null"], "description": "Unix seconds, null while the device clock is not set."},
-    "data": {"type": "object"}
+    "data": {"type": "object"},
+    "usig_boot": {"type": "integer", "minimum": 1, "description": "Signed events (AUTHORITY.md section 3.4): the boot epoch the signature counts in."},
+    "usig_seq": {"type": "integer", "minimum": 1, "description": "One counter for every signed message of this boot, across all streams."},
+    "usig": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$", "description": "Base64 Ed25519 by the node key over the object without this member; always the last member."},
+    "unsigned": {"type": "string", "enum": ["epoch_unsaved", "seq_exhausted"], "description": "Present instead of the three above when the device cannot sign."}
   }
 }
