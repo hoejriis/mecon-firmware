@@ -4,17 +4,17 @@
 # to a whole KB.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1512448     123904
-Heltec_v3_companion_radio_standalone    1681408     130048
+Heltec_v3_companion_radio_standalone    1686528     130048
 Heltec_v3_companion_radio_usb            746496      43008
 Heltec_v3_companion_radio_wifi          1479680     118784
 Heltec_v3_repeater                      1419264      67584
 Heltec_v3_room_server                   1415168      71680
 heltec_v4_companion_radio_ble           1499136     123904
-heltec_v4_companion_radio_standalone    1668096     130048
+heltec_v4_companion_radio_standalone    1673216     130048
 heltec_v4_companion_radio_usb            732160      43008
 heltec_v4_companion_radio_wifi          1466368     118784
-heltec_v4_repeater                      1400832      67584
-heltec_v4_room_server                   1395712      71680
+heltec_v4_repeater                      1408000      67584
+heltec_v4_room_server                   1403904      71680
 t1000e_companion_radio_ble               352256      84992
 t1000e_companion_radio_usb               346112      80896
 t1000e_repeater                          318464      37888
