@@ -28,6 +28,8 @@ A broker login, a TLS session, a paired BLE link, a USB cable, a LoRa route and 
 | signed request (*provisional*) | `MECON-DEVMSG-v1` | `iface` |
 | signed event | `MECON-UPLINK-v1` | the stream name, e.g. `health` |
 | signed result | `MECON-UPLINK-v1` | the literal `result` |
+| node rotation statement | `MECON-NODEROT-v1` | none (section 11) |
+| release manifest (*planned*, [UPDATES](UPDATES.md)) | `MECON-RELEASE-v1` | none |
 
 - A key a device would trust is checked first: a member's key, a rotation's new DAK, and the DAK of a first provisioning. A key that is not a valid curve point, or whose point has small order, is refused (`bad_authority_set`, or `untrusted_authority_key` for a DAK). A signature against such a key proves nothing.
 
@@ -296,7 +298,7 @@ The first security review (2026-10-25) decided the questions this page had left 
 
 | Question | Decision | Section |
 |---|---|---|
-| Who may provision unsigned | the USB cable, and BLE paired with the device's own random PIN; never a broker, the TCP port, a default or static PIN, or LoRa | 6.1 |
+| Who may provision unsigned | the USB cable only; never BLE (whatever its PIN), a broker, the TCP port or LoRa *(corrected 2026-10-28: this row still said BLE with the device's own PIN after 6.1 was narrowed)* | 6.1 |
 | Unsigned configuration writes over USB once enrolled | refused; recovery paths keep the record | 9, 11 |
 | One suffix for every operation | kept; replay across transports is closed by `job_id` on everything but plain reads, and by the channel nonce on sensitive replies | 3.3, 7.1 |
 | Remote erase | never | 11 |
