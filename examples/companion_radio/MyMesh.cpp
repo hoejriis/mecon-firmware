@@ -3017,8 +3017,16 @@ void MyMesh::loop() {
 
   // is there are pending dirty contacts write needed?
   if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
+#ifdef CONTACTS_STOCK_ARRAY
     saveContacts();
     dirty_contacts_expiry = 0;
+#else
+    // One bucket per pass: after a burst of adds, a flush of every bucket at once held the loop for seconds.
+    // The timer stays due until the last changed bucket is written; a write error ends the pass as before.
+    bool more = false;
+    bool ok = contactStore().flushSome(1, &more);
+    if (!ok || !more) dirty_contacts_expiry = 0;
+#endif
   }
 }
 

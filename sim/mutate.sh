@@ -1091,6 +1091,11 @@ mutate gnss_age_never_null src/helpers/iface/Streams.h '  w.key("fix_age_s"); if
 mutate power_detect_ignored src/helpers/iface/Streams.h '  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();' '  const bool can_tell = b.isPwrMgtInitialised();' unit:test_streams
 mutate gnss_written_without_a_receiver src/helpers/iface/Streams.cpp '  if (b.getGnssHealth(g)) writeGnss(w, g);' '  b.getGnssHealth(g); writeGnss(w, g);' sim/tests/test_telemetry_streams.py::test_runtime_has_no_gnss_object_without_a_receiver
 
+# the lazy contacts write after a burst takes one bucket per pass and drains to the end (#145)
+mutate contacts_flush_some_ignores_the_bound $CS '      if (written == max_buckets) { if (more) *more = true; break; }' '' unit:test_contact_store
+mutate contacts_flush_some_restarts_at_the_first_bucket $CS '      _flush_from = (b + 1) % _nbuckets;' '' unit:test_contact_store
+mutate contacts_lazy_write_stops_after_one_bucket examples/companion_radio/MyMesh.cpp '    if (!ok || !more) dirty_contacts_expiry = 0;' '    dirty_contacts_expiry = 0;' $CT_SIM::test_a_burst_of_adds_is_written_bucket_by_bucket_and_survives_a_power_cut
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
