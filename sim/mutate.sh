@@ -1084,6 +1084,10 @@ mutate prov_result_names_no_job src/helpers/iface/Provenance.cpp '    const int 
 mutate prov_refusal_budget_unlimited src/helpers/iface/Provenance.cpp '  if (_tokens < 1000) return false;' '  if (_tokens < 1000) return true;' $PV::test_refusals_are_signed_within_a_budget_and_everything_else_always
 mutate prov_reset_result_unsigned src/helpers/iface/Provenance.cpp '  _force = was_enrolled;' '  _force = false;' $PV::test_the_result_of_the_reset_that_removes_the_record_is_still_signed
 
+# the nRF52 provisioned-marker page (DepMarkerPage.h): fail closed, and the log's bounds
+mutate marker_page_garbage_reads_absent src/helpers/deployment/DepMarkerPage.h '    if (ended || !markerSlotValid(s, &st)) return {MK_PRESENT, p.size(), false};   // data after the end, or not ours' '    if (ended || !markerSlotValid(s, &st)) continue;' unit:test_dep_marker_page
+mutate marker_page_write_not_read_back src/helpers/deployment/DepMarkerPage.h '  return markerPageRead(p) == (present ? MK_PRESENT : MK_ABSENT);' '  return true;' unit:test_dep_marker_page
+mutate marker_page_never_erased src/helpers/deployment/DepMarkerPage.h '  if (!sc.clean || sc.next + MARKER_SLOT > p.size()) {' '  if (false) {' unit:test_dep_marker_page
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
