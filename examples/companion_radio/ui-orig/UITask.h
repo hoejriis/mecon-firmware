@@ -1,6 +1,7 @@
 #pragma once
 
 #include <MeshCore.h>
+#include <helpers/DisplayPrivacy.h>
 #include <helpers/ui/DisplayDriver.h>
 #include <helpers/SensorManager.h>
 #include <stddef.h>
@@ -30,7 +31,9 @@ class UITask : public AbstractUITask {
   unsigned long _next_refresh, _auto_off;
   NodePrefs* _node_prefs;
   char _version_info[32];
-  char _origin[62];
+  char _origin[62];        // the sender or channel name (issue #113)
+  uint8_t _origin_path = 0; // its path length, 0xFF for direct
+  DisplayPrivacy::Watch _posture_watch;   // issue #113
   char _msg[80];
   char _alert[80];
   int _msgcount;
