@@ -2,11 +2,13 @@
 discovery in hello, each stream's first event and its schema, the radio counters moving with a transmission, and the
 stream table's bounds."""
 import os
+import struct
 import sys
 import time
 
 import pytest
 
+from sim import harness
 from sim.harness import CliClient, CompanionClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
@@ -38,11 +40,11 @@ def first_event(i, stream, timeout=15.0):
     end = time.time() + timeout
     while time.time() < end:
         for e in list(i.events):
-            if e.get("ev") == stream:
+            if e.get("ev") == stream and not e["data"].get("boot"):   # the runtime boot event is not a snapshot
                 i.events.remove(e)
                 return e
         m = i.read_message(0.5)
-        if m and m.get("ev") == stream:
+        if m and m.get("ev") == stream and not m["data"].get("boot"):
             return m
         if m and "ev" in m:
             i.events.append(m)
@@ -223,3 +225,242 @@ def test_inventory_counts_a_heard_neighbour_on_the_repeater(ether, nodes):
     d = check(first_event(i, "inventory"), "inventory")
     assert d["neighbours"]["count"] == 1 and d["neighbours"]["capacity"] > 0, d
     assert d["clients"]["count"] == 0 and d["clients"]["capacity"] > 0, d
+
+
+# ------------------------------------------------------------------ connectivity: BLE and USB link state
+
+def collect(i, stream, seconds):
+    """Every event of `stream` that arrives within `seconds` (events of other streams are skipped)."""
+    out, end = [], time.time() + seconds
+    for e in list(i.events):
+        if e.get("ev") == stream:
+            out.append(e)
+        i.events.remove(e)
+    while time.time() < end:
+        m = i.read_message(max(0.05, end - time.time()))
+        if m and m.get("ev") == stream:
+            out.append(m)
+    return out
+
+
+def wait_state(i, pred, timeout=15.0, stream="connectivity"):
+    """The first `stream` event whose data satisfies pred."""
+    end = time.time() + timeout
+    while time.time() < end:
+        for e in list(i.events):
+            i.events.remove(e)
+            if e.get("ev") == stream and pred(e["data"]):
+                return e
+        m = i.read_message(max(0.05, min(0.5, end - time.time())))
+        if m and m.get("ev") == stream and pred(m["data"]):
+            return m
+    return None
+
+
+def test_ble_link_changes_are_events(nodes):
+    """The simulated BLE transport's connected state (the phone) as the connectivity stream carries it."""
+    n, c, i = companion(nodes, "bleev")
+    d = check(first_event(i, "connectivity"), "connectivity")
+    assert d["ble"] == {"connected": False}, d
+    n.ui.phone(True)
+    e = wait_state(i, lambda x: x["ble"]["connected"])
+    assert e is not None, "no event when the BLE link came up"
+    check(e, "connectivity")
+    n.ui.phone(False)
+    e = wait_state(i, lambda x: not x["ble"]["connected"])
+    assert e is not None, "no event when the BLE link went down"
+
+
+def test_usb_link_changes_are_events(nodes):
+    """Subscribed over BLE, the USB host link is seen coming and going; the simulated board's serial port reports its
+    client, as a native USB port reports its line state."""
+    n = nodes("companion_standalone", "usbev", rtc=RTC, seed=7).start()
+    c0 = CompanionClient(n)
+    c0.app_start()
+    assert c0.cli("set pin 424242").startswith("> pin is now")
+    c0.close()
+    n.restart()
+    b = n.connect_ble(424242)
+    b.app_start()
+    i = mecon_iface.IfaceClient(b._send, b._read_frame)
+    d = check(first_event(i, "connectivity"), "connectivity")
+    assert d["usb"] == {"connected": False} and d["ble"] == {"connected": True}, d
+    u = CompanionClient(n)
+    u.app_start()
+    assert wait_state(i, lambda x: x["usb"]["connected"] is True) is not None, "no event when USB attached"
+    u.close()
+    assert wait_state(i, lambda x: x["usb"]["connected"] is False) is not None, "no event when USB detached"
+
+
+# ------------------------------------------------------------------ runtime: heap_low and the boot event
+
+@pytest.mark.timescale(20)
+def test_runtime_carries_heap_low_on_the_companion(nodes):
+    n, c, i = companion(nodes, "heaplow")
+    assert check(first_event(i, "runtime"), "runtime")["heap_low"] is False
+    n.heap(10000)   # the largest block under the floor (20480): an episode
+    end = time.time() + 30
+    seen = None
+    while time.time() < end and seen is not True:
+        i.request("sub.stop", {"stream": "runtime"})
+        d = check(first_event(i, "runtime", timeout=10), "runtime")
+        seen = d["heap_low"]
+        time.sleep(0.5)
+    assert seen is True, "heap_low never became true"
+    n.heap(100000)
+    end = time.time() + 30
+    while time.time() < end and seen is not False:
+        i.request("sub.stop", {"stream": "runtime"})
+        seen = check(first_event(i, "runtime", timeout=10), "runtime")["heap_low"]
+        time.sleep(0.5)
+    assert seen is False, "heap_low never ended"
+
+
+def test_runtime_has_no_heap_low_on_the_repeater(nodes):
+    n, cli, i = repeater(nodes, "noheaplow")
+    assert "heap_low" not in check(first_event(i, "runtime"), "runtime")
+
+
+def boot_events(events):
+    return [e for e in events if e["data"].get("boot") is True]
+
+
+def connect_iface(n, kind):
+    if kind == "companion_standalone":
+        c = CompanionClient(n)
+        c.app_start()
+        return mecon_iface.IfaceClient(c._send, c._read_frame)
+    cli = CliClient(n)
+    return mecon_iface.ConsoleClient(cli.sock.sendall, mecon_iface.socket_lines(cli.sock))
+
+
+@pytest.mark.parametrize("kind", ["companion_standalone", "repeater"])
+def test_the_boot_event_comes_once_per_epoch(nodes, kind):
+    n = nodes(kind, "bootev", rtc=RTC).start()
+    i = connect_iface(n, kind)
+    hello = i.request("hello")["result"]
+    r = i.request("sub.start", {"stream": "runtime", "period_s": 60, "lifetime_s": 60})
+    assert r["status"] == "ok", r
+    evs = collect(i, "runtime", 3.0)
+    assert len(evs) == 2, evs                                       # the snapshot, then the boot event
+    assert "boot" not in evs[0]["data"] and "loop_gap_ms" in evs[0]["data"], evs[0]
+    b = check(evs[1], "runtime")
+    assert evs[1]["seq"] == evs[0]["seq"] + 1 and evs[1]["epoch"] == hello["epoch"], evs
+    assert b["boot"] is True and "loop_gap_ms" not in b, b
+    for k in ("firmware", "upstream", "hardware", "role"):
+        assert b[k] == hello[k], (k, b, hello)
+    assert b["reset_reason"] is None, "the simulated board has no reset reason"
+    # a new subscription in the same epoch: a snapshot, no second boot event
+    assert i.request("sub.stop", {"stream": "runtime"})["status"] == "ok"
+    assert i.request("sub.start", {"stream": "runtime", "period_s": 60, "lifetime_s": 60})["status"] == "ok"
+    again = collect(i, "runtime", 3.0)
+    assert len(again) == 1 and not boot_events(again), again
+    # the next epoch gets its own
+    n.restart()
+    i = connect_iface(n, kind)
+    h2 = i.request("hello")["result"]
+    assert h2["epoch"] == hello["epoch"] + 1, h2
+    assert i.request("sub.start", {"stream": "runtime", "period_s": 60, "lifetime_s": 60})["status"] == "ok"
+    evs = collect(i, "runtime", 3.0)
+    assert len(boot_events(evs)) == 1 and boot_events(evs)[0]["epoch"] == h2["epoch"], evs
+
+
+# ------------------------------------------------------------------ logs: the audit ring as an event stream
+
+def cli_line(text):
+    return bytes([harness.CMD_RUN_CLI_COMMAND]) + text.encode()
+
+
+def logs_companion(nodes, name, hardened=False):
+    n, c, i = companion(nodes, name)
+    if hardened:
+        c.cli("set posture hardened")
+    r = i.request("sub.start", {"stream": "logs", "lifetime_s": 120})
+    assert r["status"] == "ok" and r["result"] == {"stream": "logs", "period_s": None, "lifetime_s": 120}, r
+    return n, c, i
+
+
+def test_logs_are_discovered_and_take_no_period(nodes):
+    n, c, i = companion(nodes, "logsdisc")
+    assert "stream.logs" in i.request("hello")["result"]["capabilities"]
+    r = i.request("sub.start", {"stream": "logs", "period_s": 60})
+    assert r["status"] == "invalid" and r["error"] == "no-period", r
+    n2, cli, j = repeater(nodes, "logsdiscr")
+    assert "stream.logs" in j.request("hello")["result"]["capabilities"]
+
+
+def test_logs_send_a_posture_change_and_a_refusal_with_names(nodes):
+    n, c, i = logs_companion(nodes, "logsc")
+    c._send(cli_line("set posture hardened"))
+    c._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY]))                  # Hardened: refused on every transport
+    evs = collect(i, "logs", 4.0)
+    got = [(check(e, "logs")["event"], e["data"]["caller"], e["data"]["what"], e["data"]["count"]) for e in evs]
+    assert got == [("posture", "cable", "hardened", 1), ("refused", "cable", "key-export", 1)], got
+    assert evs[1]["seq"] == evs[0]["seq"] + 1, "one sequence for the stream"
+    assert all(e["data"]["dropped"] == 0 and e["data"]["ts"] >= RTC for e in evs), evs
+    # the same refusal again folds in the ring (one entry, count 2) and is sent again with the running count
+    c._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY]))
+    again = collect(i, "logs", 3.0)
+    assert [(e["data"]["event"], e["data"]["count"]) for e in again] == [("refused", 2)], again
+
+
+def test_logs_on_the_repeater_console(nodes):
+    n, cli, i = repeater(nodes, "logsr")
+    assert i.request("sub.start", {"stream": "logs", "lifetime_s": 120})["status"] == "ok"
+    cli.sock.sendall(b"set posture hardened\r")
+    evs = collect(i, "logs", 4.0)
+    got = [(check(e, "logs")["event"], e["data"]["caller"], e["data"]["what"]) for e in evs]
+    assert ("posture", "cable", "hardened") in got, got
+
+
+def test_logs_rate_is_limited_and_drops_are_counted(nodes):
+    n, c, i = logs_companion(nodes, "logsrate", hardened=True)
+    collect(i, "logs", 1.0)                                           # the posture change
+    burst = 40
+    c.sock.sendall(b"".join(b"<" + struct.pack("<H", 1) + bytes([harness.CMD_EXPORT_PRIVATE_KEY]) for _ in range(burst)))
+    first = collect(i, "logs", 2.5)
+    assert 1 <= len(first) <= 8, "at most 5 a second (a burst of 5): %d" % len(first)
+    time.sleep(1.5)                                                   # the bucket refills
+    c._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY]))
+    last = collect(i, "logs", 3.0)
+    assert len(last) == 1, last
+    allv = first + last
+    assert sum(e["data"]["dropped"] for e in allv) + len(allv) == burst + 1, [e["data"] for e in allv]
+    assert last[0]["data"]["dropped"] > 0 and last[0]["data"]["count"] == burst + 1, last
+
+
+def test_logs_carry_no_secret(nodes):
+    n, c, i = logs_companion(nodes, "logsec")
+    secrets = ["hunter2-wifi-SECRET", "mqtt-pass-SECRET99"]
+    c._send(cli_line("set wifi.profile 0 ssid net"))
+    c._send(cli_line("set wifi.profile 0 pwd " + secrets[0]))
+    c._send(cli_line("set mqtt.profile 0 type static"))
+    c._send(cli_line("set mqtt.profile 0 pwd " + secrets[1]))
+    c._send(cli_line("set posture hardened"))
+    c._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY]))
+    evs = collect(i, "logs", 4.0)
+    assert len(evs) >= 2, evs
+    replies = [f[1:].decode(errors="replace") for f in i.native if f and f[0] == harness.RESP_CLI_REPLY]
+    assert len(replies) >= 4 and not any(r.startswith("ERR") for r in replies), replies   # the passwords were set
+    text = repr(evs)
+    for s in secrets:
+        assert s not in text and s[:8] not in text, (s, evs)
+    for e in evs:
+        assert set(e["data"]) == {"ts", "event", "caller", "what", "count", "dropped"}, e
+
+
+def test_logs_are_refused_to_a_caller_without_the_posture_class(nodes):
+    """A BLE link that paired with the published default PIN is not trusted: the table gives it no class at all."""
+    n = nodes("companion_standalone", "logsble", rtc=RTC).start()
+    c0 = CompanionClient(n)
+    c0.app_start()
+    assert c0.cli("set pin 123456").startswith("> pin is now")
+    c0.close()
+    n.restart()
+    b = n.connect_ble(123456)
+    b.app_start()
+    i = mecon_iface.IfaceClient(b._send, b._read_frame)
+    r = i.request("sub.start", {"stream": "logs", "lifetime_s": 60})
+    assert r["status"] == "refused", r
+    r = i.request("sub.start", {"stream": "health"})
+    assert r["status"] == "refused", r

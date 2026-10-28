@@ -1,6 +1,6 @@
 # Telemetry catalogue
 
-> **Status: catalogue recorded before the code. Built: `health`, `radio`, `power`, `runtime`, `observations`, `environment`, `inventory` counts (every role with the device interface) and `connectivity` (Companion builds with a network). The rest is being built.** Each family below says what is implemented today. This page is the one telemetry model: the device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server), with the same meaning on every transport. Where [CORE_DEVICE_CONTRACT](CORE_DEVICE_CONTRACT.md) or [MQTT_PROTOCOL](MQTT_PROTOCOL.md) describe telemetry differently, this page is the newer decision.
+> **Status: catalogue recorded before the code. Built: `health`, `radio`, `power`, `runtime` (with the boot event; `heap_low` on the Companion), `observations`, `environment`, `inventory` counts and `logs` (every role with the device interface) and `connectivity` (Companion builds, with BLE and USB link state). `location`, `screen` and inventory entries wait for the Deployment authority stage.** Each family below says what is implemented today. This page is the one telemetry model: the device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server), with the same meaning on every transport. Where [CORE_DEVICE_CONTRACT](CORE_DEVICE_CONTRACT.md) or [MQTT_PROTOCOL](MQTT_PROTOCOL.md) describe telemetry differently, this page is the newer decision.
 
 ## 1. Model
 
@@ -10,7 +10,7 @@
 - **Absent, null, zero, stale.** Absent: this build or board does not have the field. `null`: the field exists but is unknown right now (a noise floor not yet calibrated, a clock not yet set). `0`: measured zero. Where a value can go stale (a GPS fix, a sensor reading), the event carries its age in seconds beside it. A sensor that fails a read reports its key with `null` and the sensor's `fault` flag, not a missing key.
 - **Counters.** Counters are cumulative since boot and restart at 0 with a new `epoch`; a counter reset by command (`clear stats`) is reported as an event. A consumer works out rates from successive snapshots.
 - **Limits.** Each stream has a minimum period, a maximum event rate and a bounded per-transport queue. When a queue is full the event is dropped and a drop counter in the next event of that stream says how many. A slow or vanished consumer costs dropped events, never time in the radio loop (DEVICE_INTERFACE section 8).
-- **Access.** Each stream has the class it needs in the CLI privilege table: `read` for operational state, more for anything private. A subscription is decided like the CLI line its data comes from, with the caller's real context. Passwords, keys and secrets are never in any stream.
+- **Access.** Each stream has the class it needs in the CLI privilege table: `read` for operational state, more for anything private. A subscription is decided like the CLI line its data comes from, with the caller's real context, when `sub.start` arrives: a caller whose class does not allow the stream gets `refused`. `logs` is class `posture`, like `get audit`: the cable and a BLE link paired with a per-device PIN may subscribe; a broker session, a remote admin and a BLE link on the default PIN may not. Passwords, keys and secrets are never in any stream.
 
 ## 2. Streams
 
@@ -19,14 +19,14 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | Stream | Content | Class | Default / minimum period | Status |
 |---|---|---|---|---|
 | `health` | uptime, heap and stack, battery, contacts | read | 60 s / 5 s | built |
-| `runtime` | reset reason, abnormal reset, boot times, longest loop pass | read | 300 s / 60 s | built |
+| `runtime` | reset reason, abnormal reset, boot times, longest loop pass, heap-low state, a boot event | read | 300 s / 60 s | built |
 | `radio` | packet and error counters, noise floor, last RSSI and SNR, airtime, duty cycle | read | 60 s / 5 s | built |
-| `connectivity` | Wi-Fi, MQTT, BLE and USB link state; changes as events | read | 60 s / 10 s, plus an event at each change | built for Wi-Fi and MQTT on Companion builds with a network (BLE and USB link state: next) |
+| `connectivity` | Wi-Fi, MQTT, BLE and USB link state; changes as events | read | 60 s / 10 s, plus an event at each change | built on Companion builds: Wi-Fi and MQTT where the build has a network, BLE and USB link state |
 | `power` | battery voltage, external power, charger, USB and solar detection | read | 300 s / 30 s | built |
 | `environment` | readings of the attached sensors, with units, and the MCU temperature | read | 300 s / 30 s | built |
 | `location` | GNSS position, fix, satellites and age | location (private) | 300 s / 30 s | after trust |
 | `observations` | each received packet: raw bytes, RSSI, SNR | read | event per packet, at most 10/s (no period) | built |
-| `logs` | audit events and bounded diagnostics, with severity and category | posture | events | after trust |
+| `logs` | each new audit-ring entry: posture changes, refusals, failed logins, resets, mode changes, low memory | posture | event per entry, at most 5/s (no period) | built (audit events; bounded diagnostics after trust) |
 | `inventory` | contacts, channels, neighbours, clients: counts (entries later) | read for counts; private for entries | 3600 s / 300 s | counts built; entries after trust |
 | `screen` | framebuffer snapshots of the device's own display | private | on request, at most 1 per 5 s | after trust |
 
@@ -43,16 +43,19 @@ Status column: **built** is in the firmware; **next** is being built in this sta
 | `battery_mv` | mV | `getBattMilliVolts()` | all | `null` when the board cannot measure it |
 | `contacts.count`, `.capacity` | entries | contact store | Companion | absent on the server roles |
 
-### `runtime` (built; `heap_low` and the boot event next)
+### `runtime` (built)
 | Field | Unit | Source | Notes |
 |---|---|---|---|
 | `reset_reason` | text | `getResetReason()` | ESP32 and nRF52; `null` elsewhere. Includes panic, watchdog and brownout on ESP32 |
 | `abnormal_reset` | bool | derived from `reset_reason` | true for panic, watchdog, brownout; `null` where the reason is unknown |
 | `shutdown_reason` | text | nRF52 GPREGRET2 | nRF52 only |
 | `boot_ms.store`, `.mesh`, `.setup` | ms | `BootTimes` | `null` for an unmarked stage |
-| `firmware`, `upstream`, `hardware`, `role` | text | as `hello` | next: a boot event; today in `hello` only |
+| `boot` | bool | the boot event | `true`, on the boot event only (below) |
+| `firmware`, `upstream`, `hardware`, `role` | text | as `hello` | the boot event only |
 | `loop_gap_ms.max` | ms | the device interface's loop tick | the longest main-loop pass since the previous runtime event; reading it resets it. 0 before two passes |
-| `heap_low` | bool | `HeapFloor` | Companion; the low-memory state the display shows |
+| `heap_low` | bool | `HeapFloor` | Companion; the low-memory state the display shows. Absent where the build does not check the floor (it is enforced on ESP32 only) |
+
+**Boot event.** The first time a runtime subscription starts in an epoch, a second runtime event follows the first snapshot at once: `{"boot": true, "firmware", "upstream", "hardware", "role", "reset_reason"}`. It is sent once per epoch and per device (a later subscription in the same epoch, on any transport, gets snapshots only; `hello` carries the same identity), with the next `seq`, to every transport subscribed at that moment. It has none of the snapshot members.
 
 A crash record (panic backtrace kept across a reset) is **unsupported** in this firmware today: nothing keeps one. It needs an ESP32 core-dump partition or an RTC-retained record and is a separate piece of work.
 
@@ -67,7 +70,7 @@ A crash record (panic backtrace kept across a reset) is **unsupported** in this 
 | `airtime.tx_ms`, `airtime.rx_ms` | ms | Dispatcher | cumulative since boot |
 | `duty.limit_bp`, `duty.used_ms`, `duty.limit_ms` | 0.01 %, ms | duty window | the trailing hour; seeded at the limit after boot |
 
-### `connectivity` (built for Wi-Fi and MQTT)
+### `connectivity` (built)
 | Field | Unit | Source | Notes |
 |---|---|---|---|
 | `mode` | `ble`/`wifi` | connectivity mode | Companion builds with modes |
@@ -76,10 +79,12 @@ A crash record (panic backtrace kept across a reset) is **unsupported** in this 
 | `mqtt.state`, `.profile`, `.broker`, `.tls`, `.up_s` | | MQTT controller | `tls` is `plain`, `verified` or `unverified` |
 | `mqtt.reconnects` | count | MQTT controller | sessions after the first since boot |
 | `mqtt.browsing` | bool | MQTT controller | looking for a discovery broker |
-| `ble.connected` | bool | BLE interface | Companion BLE builds |
-| `usb.connected` | bool | serial interface | where the host link is detectable |
+| `ble.connected` | bool | BLE interface | Companion builds with BLE; `false` while the BLE stack is not running (Wi-Fi mode, Hardened with a default PIN). Absent on builds without BLE |
+| `usb.connected` | bool | the USB serial port | Companion builds with a USB interface; `null` where the board cannot tell (below) |
 
-Events: one on every state change of Wi-Fi, MQTT or BLE, carrying the new state.
+Events: one on every state change of Wi-Fi, MQTT, BLE or USB, carrying the new state. A build without a network stack omits `wifi` and `mqtt`.
+
+**USB host link.** A port behind a UART bridge chip (the CP210x on the Heltec V3) is open whether or not a host is attached, so `usb.connected` is `null` there. A native USB CDC port (the Heltec V4) can report its line state, but no hardware board enables that yet (it needs a hardware run to confirm what the port reports), so `usb.connected` is `null` on every hardware board today. The simulated boards report their serial client, which is how the event is tested.
 
 ### `power` (built)
 | Field | Unit | Source | Notes |
@@ -101,9 +106,22 @@ Each received packet: `{"raw": <hex>, "len", "rssi_dbm", "snr_db", "dropped"}`, 
 ### `inventory` counts (built)
 Each count is `{"count", "capacity"}`. Companion: `contacts`, `channels` (a channel with a name). Repeater: `neighbours` (those heard since boot), `clients` (the ACL). Room server: `clients`.
 
-### `location`, `logs`, `inventory` entries, `screen` (after trust)
+### `logs` (built)
+One event per new entry of the audit ring, when it is recorded (an event stream: `sub.start` takes no `period_s`). A repeat of an earlier entry is folded in the ring and sent again with its running `count`. Entries loaded from flash at boot are history, not events.
+
+| Field | Notes |
+|---|---|
+| `ts` | Unix seconds when recorded; `null` while the clock was not set |
+| `event` | `posture`, `refused`, `login-fail`, `reset`, `mode`, `low-mem` |
+| `caller` | `cable`, `ble`, `net`, `remote-admin`, `remote-cli`, `button`, `mqtt`, `system` |
+| `what` | the command class refused, or the new posture (`normal`, `hardened`) or mode (`ble`, `wifi`) |
+| `count` | how many times this (event, caller, what) has been recorded |
+| `dropped` | entries not sent since the previous event |
+
+Names, never codes. The audit ring holds no secret, password or command argument, so none can appear here. At most 5 events a second (a burst of 5); an entry over the rate, or one that finds the 8-entry queue full, is dropped and counted in `dropped` of the next event. Available on the Companion and on the Repeater and Room server console. Bounded diagnostics (a general log ring) are not built: its size and retention are set when it is.
+
+### `location`, `inventory` entries, `screen` (after trust)
 - `location`: latitude, longitude (degrees), altitude (m), satellites, fix, `age_s`. Location is private: its class is decided with the Deployment authority stage.
-- `logs`: the audit ring's events (posture changes, refusals, failed logins, resets, mode changes, low memory) and bounded diagnostics, each with severity, category and caller. A general log ring does not exist yet; its size and retention are set when it is built.
 - `inventory` entries: contact and neighbour entries. Counts are `read`; entries are private.
 - `screen`: a snapshot of the device's own framebuffer, `{"width","height","format":"mono1","on","age_s","data"}`, fragmented to the transport's size. The Heltec boards' SSD1306 (128x64, 1,024 bytes a frame) exposes its buffer; e-ink and TFT drivers are reported per board when built. The display is never woken or changed by a capture. A frame can show messages and the BLE pairing PIN, so its access rule is the strictest of any stream and is set with the Deployment authority stage.
 
