@@ -233,6 +233,7 @@ int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, co
 
 int MeconIface::dispatchInner(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                               size_t cap) {
+  _link_ctx = ctx;   // the transport's own context, before any signature replaces it
   _ctx = ctx;
   _auth.setContext(ctx);
   _caller = caller;
@@ -263,7 +264,14 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
 
 // Whether the caller of the request being handled may use a stream of this class: the CLI privilege table with its
 // real context, as for the CLI line the data would come from.
-bool MeconIface::streamAllow(void* user, uint8_t cls) { return Cli::decide(static_cast<MeconIface*>(user)->_ctx, cls).allow; }
+// A stream beyond read (logs, the private streams) also needs the link that will carry it to be allowed it by itself: a
+// signature authorises the request, not the wire, so a signed sub.start on the open TCP port or a default-PIN BLE link
+// does not send positions or contacts over that link.
+bool MeconIface::streamAllow(void* user, uint8_t cls) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  if (!Cli::decide(m->_ctx, cls).allow) return false;
+  return cls == Cli::C_READ || Cli::decide(m->_link_ctx, cls).allow;
+}
 
 // One received packet: an observations event to every transport subscribed, within the stream's rate.
 void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
@@ -495,7 +503,9 @@ void MeconIface::drainLogs() {
 }
 
 void MeconIface::startInventory(uint32_t now) {
-  _inv_active = true;   // a snapshot still being sent is restarted: the newest is the one a Backend keeps
+  if (_inv_active) { _inv_again = true; return; }   // finish this one, then send another: never restarted, so no caller can
+                                                    // keep a Backend from ever completing a snapshot
+  _inv_active = true;
   _inv_snapshot++;
   _inv_part = 0;
   _inv_channel = 0;
@@ -506,8 +516,12 @@ void MeconIface::startInventory(uint32_t now) {
 void MeconIface::inventoryTick(uint32_t now) {
   if (!_inv_active || (int32_t)(now - _inv_next) < 0) return;
   bool any = _mqtt_subs.s[SID_INVENTORY].active;
-  for (Link& l : _links) any = any || l.subs.s[SID_INVENTORY].active;
-  if (!any) { _inv_active = false; return; }
+  for (Link& l : _links) {
+    if (!l.subs.s[SID_INVENTORY].active) continue;
+    any = true;
+    if (l.q && !l.q->eventFits(INV_EVENT)) { _inv_next = now + INV_PAGE_MS; return; }   // wait until the page fits
+  }
+  if (!any) { _inv_active = false; _inv_again = false; return; }
   char* data = static_cast<char*>(malloc(INV_DATA));
   char* ev = static_cast<char*>(malloc(INV_EVENT));
   if (!data || !ev) { free(data); free(ev); _inv_next = now + 1000; return; }   // no heap now: try again in a second
@@ -518,6 +532,7 @@ void MeconIface::inventoryTick(uint32_t now) {
     ChannelDetails ch;
     for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
       if (_mesh->getChannel(i, ch) && ch.name[0]) channels++;
+    Iface::wipe(&ch, sizeof(ch));   // the copy holds a channel's secret
   }
 #endif
   InventoryPage page(data, INV_DATA);
@@ -527,9 +542,11 @@ void MeconIface::inventoryTick(uint32_t now) {
 #ifdef MAX_GROUP_CHANNELS
   for (; ok && _inv_channel < MAX_GROUP_CHANNELS; _inv_channel++) {
     ChannelDetails ch;
-    if (!_mesh->getChannel(_inv_channel, ch) || !ch.name[0]) continue;
+    const bool got = _mesh->getChannel(_inv_channel, ch);
     char name[sizeof(ch.name) + 1];
     memcpy(name, ch.name, sizeof(ch.name)); name[sizeof(ch.name)] = 0;
+    Iface::wipe(&ch, sizeof(ch));   // the copy holds the channel's secret; only the name is used below
+    if (!got || !name[0]) continue;
     JsonWriter w(entry, sizeof(entry));
     writeChannelEntry(w, _inv_channel, name);   // the name only: never the channel's secret
     if (!w.ok()) continue;
@@ -552,6 +569,7 @@ void MeconIface::inventoryTick(uint32_t now) {
     e.has_pos = c.gps_lat != 0 || c.gps_lon != 0;
     e.lat_e6 = c.gps_lat;
     e.lon_e6 = c.gps_lon;
+    Iface::wipe(&c, sizeof(c));   // the copy may hold a cached shared secret
     JsonWriter w(entry, sizeof(entry));
     writeContactEntry(w, e);   // no shared secret, no path bytes
     if (!w.ok()) continue;
@@ -569,7 +587,10 @@ void MeconIface::inventoryTick(uint32_t now) {
     if (n > 0) n = _prov.sign(STREAMS[SID_INVENTORY].name, ev, (size_t)n, INV_EVENT);
     if (n > 0) sendEvent(SID_INVENTORY, ev, (size_t)n);   // a page that is not sent is not retried: the next snapshot is
   }
-  if (done || !ok || !dn) _inv_active = false;
+  if (done || !ok || !dn) {
+    _inv_active = false;
+    if (_inv_again) { _inv_again = false; startInventory(now + INV_PAGE_MS); }
+  }
   _inv_next = now + INV_PAGE_MS;
   free(data);
   free(ev);
@@ -584,6 +605,8 @@ void MeconIface::loop(uint32_t now) {
     if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it
       l.nonce[0] = 0;
       l.unlock.clear();
+      l.subs.clear();              // and its subscriptions and queued messages: the next client on it inherits nothing
+      if (l.q) l.q->clear();
     }
     if (l.rx.tick(now)) {
       uint8_t xid;

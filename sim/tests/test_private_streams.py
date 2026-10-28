@@ -2,7 +2,9 @@
 2026-10-28: "All this should go via the broker to the backend". The location stream reaches the cable and a TLS-verified
 broker session (unlike logs, which a broker session is refused), and never an untrusted link. The simulated receiver is
 driven by "<dir>.gps" (variants/sim/target.h); without it the board has no receiver and the stream is absent."""
+import json
 import os
+import struct
 import sys
 import time
 
@@ -171,3 +173,112 @@ def test_inventory_snapshot_over_a_verified_broker_session(nodes, tmp_path, brok
     d = got[0]["data"]
     assert d["part"] == 1 and d["contacts"]["count"] == 1
     assert any(e.get("key") == bytes(range(32)).hex() for e in d["entries"]), d
+
+
+# ------------------------------------------------------------------ from the security review of this branch
+
+def ble_default(n):
+    """A client on BLE paired with the published default PIN (set over USB first); the node is restarted."""
+    u = CompanionClient(n)
+    u.app_start()
+    assert u.cli("set pin 123456").startswith("> pin is now")
+    u.close()
+    n.restart()
+    b = CompanionClient(n, sock=n.connect_ble(123456).sock)
+    b.device_query()
+    b.app_start()
+    return b, mecon_iface.IfaceClient(b._send, b._read_frame)
+
+
+def test_inventory_is_refused_on_default_pin_ble(nodes):
+    n = nodes("companion_standalone", "invb", seed=65, rtc=RTC).start()
+    b, bi = ble_default(n)
+    r = bi.request("sub.start", {"stream": "inventory", "lifetime_s": 60})
+    assert r["status"] == "refused", r
+
+
+@pytest.mark.timescale(10)
+def test_location_is_refused_to_an_unverified_broker_session(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "locu", b, anchor=False)   # TLS without an anchor: unverified
+    r = b.iface_request(dev, {"v": 1, "id": "lu1", "op": "sub.start", "args": {"stream": "location", "lifetime_s": 60}})
+    assert r is None or r["status"] == "refused", r
+
+
+@pytest.mark.timescale(10)
+def test_a_subscription_does_not_pass_to_the_next_client_on_the_link(nodes):
+    """BLE knows when its client goes: the link's subscriptions and queue end with it. (A USB UART cannot tell, so a
+    cable's subscription lasts until its lifetime; the cable is trusted by possession either way.)"""
+    n = nodes("companion_standalone", "locl", seed=67, rtc=RTC)
+    gps(n, FIX)
+    n.start()
+    u = CompanionClient(n)
+    u.app_start()
+    assert u.cli("set pin 654321").startswith("> pin is now")
+    u.close()
+    n.restart()
+    a = CompanionClient(n, sock=n.connect_ble(654321).sock)
+    a.device_query()
+    a.app_start()
+    ai = mecon_iface.IfaceClient(a._send, a._read_frame)
+    r = ai.request("sub.start", {"stream": "location", "period_s": 30, "lifetime_s": 600})
+    assert r["status"] == "ok", r
+    a.close()
+    time.sleep(1.0)
+    c = CompanionClient(n, sock=n.connect_ble(654321).sock)   # the next client on the same BLE link
+    c.device_query()
+    c.app_start()
+    ci = mecon_iface.IfaceClient(c._send, c._read_frame)
+    end = time.time() + 8.0   # several 30 s periods at timescale 10
+    while time.time() < end:
+        m = ci.read_message(0.5)
+        assert not (m and m.get("ev") == "location"), "the previous client's subscription reached the next client"
+
+
+def test_a_signed_request_on_an_untrusted_link_gets_no_private_stream_over_it(nodes):
+    """The signature authorises the request; the link that would carry the data must be allowed it by itself."""
+    from test_deployment_authority import Dev, wrap
+    n = nodes("companion_standalone", "locs", seed=69, rtc=RTC)
+    gps(n, FIX)
+    n.start()
+    d = Dev(n)
+    assert d.c.cli("set pin 123456").startswith("> pin is now")
+    assert d.provision()["status"] == "ok"
+    key = d.node_key
+    d.c.close()
+    n.restart()
+    b = CompanionClient(n, sock=n.connect_ble(123456).sock)
+    b.device_query()
+    b.app_start()
+    bi = mecon_iface.IfaceClient(b._send, b._read_frame)
+
+    def signed(op, args, job):
+        w = wrap(key, op, args, job=job)
+        bi.send_raw(json.dumps(w, separators=(",", ":")).encode())
+        return bi.wait_result(json.loads(w["body"])["id"], 5.0)
+
+    r = signed("sub.start", {"stream": "health", "lifetime_s": 60}, 1)
+    assert r["status"] == "ok", r   # the positive control: a read stream
+    r = signed("sub.start", {"stream": "location", "lifetime_s": 60}, 2)
+    assert r["status"] == "refused", r
+
+
+def test_a_contact_name_that_is_not_utf8_leaves_the_snapshot_parseable(nodes):
+    n = nodes("companion_standalone", "invu", seed=71, rtc=RTC).start()
+    c = CompanionClient(n)
+    c.app_start()
+    raw_name = b"Bad\xc3"   # cut in the middle of a two-byte character, as a 31-byte advert name can be
+    f = (bytes([harness_cmd_add()]) + bytes(range(32)) + bytes([1, 0, 0xFF]) + b"\0" * 64 +
+         raw_name.ljust(32, b"\0") + struct.pack("<I", 0))
+    c.request(f)
+    i = mecon_iface.IfaceClient(c._send, c._read_frame)
+    pages, entries = snapshot(i)
+    for p in pages:
+        json.loads(p.raw.decode("utf-8"))   # strict: invalid UTF-8 would raise
+    names = [e["name"] for e in entries if e["kind"] == "contact"]
+    assert names == ["Bad�"], names
+
+
+def harness_cmd_add():
+    from sim import harness as h
+    return h.CMD_ADD_UPDATE_CONTACT

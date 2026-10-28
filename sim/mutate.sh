@@ -1097,6 +1097,11 @@ mutate location_claimed_without_receiver_console src/helpers/iface/ConsoleIface.
 mutate inv_page_without_tail_room src/helpers/iface/Streams.h '    const size_t need = (_count ? 1 : 0) + len + TAIL;' '    const size_t need = (_count ? 1 : 0) + len;' unit:test_streams
 mutate inv_contact_lost_at_page_boundary examples/companion_radio/MeconIface.cpp '      _inv_cursor = before;              // this contact opens the next page' '' $PS::test_inventory_snapshot_carries_every_contact_and_channel_once_and_no_secret
 mutate inv_snapshot_never_ends examples/companion_radio/MeconIface.cpp '  const size_t dn = ok ? page.finish(done) : 0;' '  const size_t dn = ok ? page.finish(false) : 0;' $PS::test_inventory_snapshot_carries_every_contact_and_channel_once_and_no_secret
+# the security review of the private streams
+mutate private_link_need_not_be_allowed examples/companion_radio/MeconIface.cpp '  return cls == Cli::C_READ || Cli::decide(m->_link_ctx, cls).allow;' '  return true;' $PS::test_a_signed_request_on_an_untrusted_link_gets_no_private_stream_over_it
+mutate subs_survive_a_disconnect examples/companion_radio/MeconIface.cpp '      l.subs.clear();              // and its subscriptions and queued messages: the next client on it inherits nothing' '' $PS::test_a_subscription_does_not_pass_to_the_next_client_on_the_link
+mutate json_utf8_unchecked src/helpers/iface/IfaceJson.cpp '      const size_t k = utf8Len(b + i, n - i);' '      const size_t k = 1;' unit:test_iface
+mutate inv_page_ignores_queue_room examples/companion_radio/MeconIface.cpp '    if (l.q && !l.q->eventFits(INV_EVENT)) { _inv_next = now + INV_PAGE_MS; return; }   // wait until the page fits' '' $PS::test_inventory_snapshot_carries_every_contact_and_channel_once_and_no_secret
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

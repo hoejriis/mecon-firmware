@@ -178,6 +178,8 @@ private:
   uint32_t _inv_snapshot = 0, _inv_part = 0, _inv_next = 0;
   int _inv_channel = 0;
   int _inv_cursor = 0;   // the contact store's cursor (record ids), kept between pages
+  bool _inv_again = false;   // another snapshot is due once this one ends
+  Cli::Context _link_ctx;   // the transport's own context of the request being handled (a signature replaces _ctx)
   ConnWriteFn _conn_write = nullptr;
   ConnSignatureFn _conn_sig = nullptr;
   uint64_t _conn_last = 0;
