@@ -28,18 +28,18 @@ struct Expect {
   const char* hardened;
 };
 const Expect EXPECT_TABLE[] = {
-  {P_UNTRUSTED,       "untrusted",        "UUUUUU", "UUUUUU"},
-  {P_CABLE,           "cable",            "......", "..K..."},
-  {P_PAIRED,          "paired BLE",       "......", "..K.P."},
-  {P_ADMIN,           "remote admin",     ". . Y P Y .", ". H H P H ."},
-  {P_ADMIN_DEFAULT,   "admin, default pw", "DDDDDD", "DDDDDD"},
-  {P_GUEST,           "guest",            "PPPPPP", "PPPPPP"},
-  {P_CONTACT,         "flagged contact",  ".LLPL.", "OOOOOO"},
-  {P_MQTT,            "MQTT verified",    "..PPP.", ".FPPPF"},
-  {P_MQTT_UNVERIFIED, "MQTT unverified",  "VVVVVV", "VVVVVV"},
-  {P_BUTTON,          "button",           "PPP.PP", "PPP.PP"},
-  {P_NETCON_ADMIN,    "Ethernet admin",   ". . Y P Y .", "NNNNNN"},
-  {P_SIGNED,          "signed",           "..P.P.", "..P.P."},
+  {P_UNTRUSTED,       "untrusted",        "UUUUUUU", "UUUUUUU"},
+  {P_CABLE,           "cable",            ".......", "..K...."},
+  {P_PAIRED,          "paired BLE",       ".......", "..K.P.."},
+  {P_ADMIN,           "remote admin",     ". . Y P Y . P", ". H H P H . P"},
+  {P_ADMIN_DEFAULT,   "admin, default pw", "DDDDDDD", "DDDDDDD"},
+  {P_GUEST,           "guest",            "PPPPPPP", "PPPPPPP"},
+  {P_CONTACT,         "flagged contact",  ".LLPL.P", "OOOOOOO"},
+  {P_MQTT,            "MQTT verified",    "..PPP..", ".FPPPF."},
+  {P_MQTT_UNVERIFIED, "MQTT unverified",  "VVVVVVV", "VVVVVVV"},
+  {P_BUTTON,          "button",           "PPP.PPP", "PPP.PPP"},
+  {P_NETCON_ADMIN,    "Ethernet admin",   ". . Y P Y . P", "NNNNNNN"},
+  {P_SIGNED,          "signed",           "..P.P..", "..P.P.."},
 };
 
 std::string squeeze(const char* s) {
@@ -96,7 +96,7 @@ Principal expectedPrincipal(uint8_t t, uint8_t a, bool remote) {
 
 const Expect& rowFor(Principal p) {
   for (const Expect& e : EXPECT_TABLE) if (e.p == p) return e;
-  static Expect none = {P_UNTRUSTED, "?", "UUUUUU", "UUUUUU"};
+  static Expect none = {P_UNTRUSTED, "?", "UUUUUUU", "UUUUUUU"};
   return none;
 }
 
@@ -157,6 +157,15 @@ TEST(PrivilegeProperties, ARemoteCallerNeverInheritsALocalCallersPrivileges) {
       }
     }
   }
+}
+
+TEST(PrivilegeProperties, PrivateTelemetryGoesToTheBrokerAndTheDevicesOwnLinksOnly) {
+  // The owner's rule, 2026-10-28: "All this should go via the broker to the backend" (location, inventory, screen).
+  for (bool hardened : {false, true})
+    for (uint8_t p = 0; p < P_COUNT; p++) {
+      const bool want = p == P_CABLE || p == P_PAIRED || p == P_MQTT || p == P_SIGNED;
+      EXPECT_EQ(tableCell((Principal)p, hardened, C_PRIVATE) == R_ALLOW, want) << "principal " << (int)p << " hardened " << hardened;
+    }
 }
 
 TEST(PrivilegeProperties, ASignedCallerNeverEraseNorReadsKeysOnAnyTransport) {

@@ -18,7 +18,7 @@ public:
     virtual long satellitesCount() = 0;
     virtual bool isValid() = 0;
     virtual long getTimestamp() = 0;
-    virtual void sendSentence(const char * sentence);
+    virtual void sendSentence(const char * sentence) { (void)sentence; }   // declared without a body upstream
     virtual bool waitFor(const char* prefix, uint32_t timeout_ms) { return false; }
     virtual void drain() { }
     virtual void reset() = 0;
@@ -26,6 +26,8 @@ public:
     virtual void stop() = 0;
     virtual void loop() = 0;
     virtual bool isEnabled() = 0;
+    // Milliseconds since the last valid fix; false when the provider cannot tell or has had none (the location stream's age_s).
+    virtual bool fixAgeMs(uint32_t& out) const { (void)out; return false; }
 
     // Format compact diagnostics in the caller-provided buffer. Providers that
     // have more information (for example UART counters) can override this.

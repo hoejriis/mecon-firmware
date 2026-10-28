@@ -63,7 +63,7 @@ public:
   }
   uint32_t streamsProduced() const {
     return STREAMS_PRODUCED | (_conn_write ? (1u << Iface::SID_CONNECTIVITY) : 0) |
-           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0);
+           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << Iface::SID_LOCATION) : 0);
   }
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);
@@ -172,6 +172,7 @@ private:
   ConnSignatureFn _conn_sig = nullptr;
   uint64_t _conn_last = 0;
   bool _env_ok = false;          // the environment stream has something to report (sensors start after the mesh)
+  bool _loc_ok = false;          // the build has a location provider (the location stream)
   bool _env_checked = false;
   void refreshEnvironment(uint32_t now);
   uint32_t _env_at = 0;

@@ -355,6 +355,7 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
 void MeconIface::refreshEnvironment(uint32_t now) {
   if (_env_checked && now - _env_at < 60000) return;
   _env_ok = countEnvironment(sensors, board) > 0;
+  _loc_ok = sensors.getLocationProvider() != nullptr;   // the location stream: a build with a GNSS provider
   _env_checked = true;
   _env_at = now;
 }
@@ -382,6 +383,12 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
     case SID_ENVIRONMENT:
       if (writeEnvironment(w, sensors, board) == 0) return false;   // nothing to report this time
       break;
+    case SID_LOCATION: {
+      LocationFix fix;
+      if (!readLocation(sensors.getLocationProvider(), fix)) return false;
+      writeLocation(w, fix);
+      break;
+    }
     case SID_INVENTORY: {
       writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());
       int channels = 0, capacity = 0;

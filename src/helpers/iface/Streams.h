@@ -11,10 +11,11 @@
 
 namespace mesh { class Dispatcher; class Radio; class MainBoard; }
 class SensorManager;
+class LocationProvider;
 
 namespace Iface {
 
-enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, SID_CONNECTIVITY, SID_ENVIRONMENT, SID_INVENTORY, SID_LOGS, STREAM_COUNT };
+enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, SID_CONNECTIVITY, SID_ENVIRONMENT, SID_INVENTORY, SID_LOGS, SID_LOCATION, STREAM_COUNT };
 
 struct StreamDef {
   const char* name;
@@ -168,6 +169,26 @@ void writeCount(JsonWriter& w, const char* key, int count, int capacity);
 // Reset reason, boot times, and the loop's longest gap since the previous runtime event.
 // heap_low: 1 or 0 where the build checks the heap floor (the Companion), -1 to leave the field out.
 void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low = -1);
+
+// The location stream (TELEMETRY.md): a GNSS fix as integers, never floats. lat_e6/lon_e6 in millionths of a degree,
+// alt_m in metres; position members are null without a fix; age_s is null when the provider cannot tell or has had no
+// fix this boot. Private: class C_PRIVATE, never in logs or any other stream.
+struct LocationFix {
+  bool fix = false;
+  int32_t lat_e6 = 0, lon_e6 = 0, alt_m = 0;
+  uint8_t sats = 0;
+  int32_t age_s = -1;
+};
+inline void writeLocation(JsonWriter& w, const LocationFix& f) {
+  w.key("fix"); w.boolean(f.fix);
+  w.key("lat_e6"); if (f.fix) w.num(f.lat_e6); else w.null();
+  w.key("lon_e6"); if (f.fix) w.num(f.lon_e6); else w.null();
+  w.key("alt_m"); if (f.fix) w.num(f.alt_m); else w.null();
+  w.key("sats"); w.unum(f.sats);
+  w.key("age_s"); if (f.age_s >= 0) w.unum((uint32_t)f.age_s); else w.null();
+}
+// The fix of a location provider (sensors.getLocationProvider()); false when there is none.
+bool readLocation(LocationProvider* p, LocationFix& out);
 
 // The boot event of a runtime subscription: sent once per epoch, right after the first snapshot, so a consumer learns
 // what is running without a hello. The members are the ones hello carries, plus the reset reason.

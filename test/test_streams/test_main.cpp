@@ -1,5 +1,6 @@
 // The stream layer's pure parts (src/helpers/iface/Streams.h): the loop-gap meter and the observation rate limit.
 #include <gtest/gtest.h>
+#include <string>
 #include "helpers/iface/Streams.h"
 
 using namespace Iface;
@@ -103,6 +104,32 @@ TEST(LogData, NamesNotCodesAndNullTimeWhileTheClockWasUnset) {
   ASSERT_GT(formatLogData(buf, sizeof(buf), p, 0), 0);
   EXPECT_STREQ("{\"ts\":null,\"event\":\"posture\",\"caller\":\"cable\",\"what\":\"hardened\",\"count\":1,\"dropped\":0}", buf);
   EXPECT_EQ(-1, formatLogData(buf, 20, e, 0));   // too small: never truncated
+}
+
+// The location stream's data: integers only, position null without a fix, age null when unknown.
+static std::string locationJson(const LocationFix& f) {
+  char buf[200];
+  Iface::JsonWriter w(buf, sizeof(buf));
+  w.beginObject();
+  Iface::writeLocation(w, f);
+  w.endObject();
+  EXPECT_TRUE(w.ok());
+  return buf;
+}
+
+TEST(Location, NoFixHasNoPositionAndNoAge) {
+  LocationFix f; f.sats = 3;
+  EXPECT_EQ(R"({"fix":false,"lat_e6":null,"lon_e6":null,"alt_m":null,"sats":3,"age_s":null})", locationJson(f));
+}
+
+TEST(Location, AFixCarriesItsPositionAndAge) {
+  LocationFix f; f.fix = true; f.lat_e6 = 59913900; f.lon_e6 = 10752200; f.alt_m = 23; f.sats = 9; f.age_s = 0;
+  EXPECT_EQ(R"({"fix":true,"lat_e6":59913900,"lon_e6":10752200,"alt_m":23,"sats":9,"age_s":0})", locationJson(f));
+}
+
+TEST(Location, SouthernAndWesternHemispheresAreNegative) {
+  LocationFix f; f.fix = true; f.lat_e6 = -33868800; f.lon_e6 = -151209300; f.alt_m = -2; f.sats = 5; f.age_s = 12;
+  EXPECT_EQ(R"({"fix":true,"lat_e6":-33868800,"lon_e6":-151209300,"alt_m":-2,"sats":5,"age_s":12})", locationJson(f));
 }
 
 int main(int argc, char** argv) {

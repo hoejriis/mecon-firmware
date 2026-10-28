@@ -6,6 +6,7 @@
 #include "helpers/MeconVersion.h"
 #include "helpers/MemStats.h"
 #include "helpers/Posture.h"
+#include "helpers/SensorManager.h"
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/cli/CliRegistry.h"
 #include "Observe.h"
@@ -263,6 +264,7 @@ void ConsoleIface::printLine(Print& out, const char* msg, size_t len) {
 void ConsoleIface::refreshEnvironment(uint32_t now) {
   if (!_host.sensors || (_env_checked && now - _env_at < 60000)) return;
   _env_ok = countEnvironment(*_host.sensors, *_host.board) > 0;
+  _loc_ok = _host.sensors->getLocationProvider() != nullptr;
   _env_checked = true;
   _env_at = now;
 }
@@ -326,6 +328,12 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
     case SID_ENVIRONMENT:
       if (!_host.sensors || writeEnvironment(w, *_host.sensors, *_host.board) == 0) return false;
       break;
+    case SID_LOCATION: {
+      LocationFix fix;
+      if (!_host.sensors || !readLocation(_host.sensors->getLocationProvider(), fix)) return false;
+      writeLocation(w, fix);
+      break;
+    }
     case SID_INVENTORY:
       if (!_host.inventory) return false;
       _host.inventory(_host.user, w);
