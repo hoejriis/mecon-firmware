@@ -30,9 +30,13 @@ public:
   // object cannot be signed within cap (the caller drops an event, and answers a result with a short busy). A device with
   // no record returns len unchanged. stream: an event's stream name, or "result". signer: the key to sign with, or null for
   // the node key as it is now (identity.rotate signs its own result with the key being retired).
-  int sign(const char* stream, char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer = nullptr);
-  // A result: if it cannot be signed in place, it is replaced by a short signed busy. -1 only when even that does not fit.
-  int signResult(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer = nullptr);
+  // extra: members added before the signature fields, already in the form ,"k":v (a result names what it answers).
+  int sign(const char* stream, char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer = nullptr,
+           const char* extra = "");
+  // A result: it names what it answers (answering: "op", and "job_id" when the request had one) and is signed. If it cannot
+  // be signed in place, it is replaced by a short signed busy. -1 only when even that does not fit.
+  int signResult(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer = nullptr,
+                 const Answering* answering = nullptr);
 
   uint32_t seq() const { return _seq; }
 

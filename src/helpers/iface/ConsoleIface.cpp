@@ -215,6 +215,7 @@ int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char
   _auth.setContext(_ctx);
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
+  d.setAnswering(&_auth.answering());
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -273,6 +274,7 @@ void ConsoleIface::answer(Print& out) {
       n = writeResult(res, OUT_MAX, "", ST_BUSY, nullptr, _line ? "line-too-long" : "no-memory");
     } else {
       if (!_cache) _cache = new (std::nothrow) ResultCache();
+      _auth.answering().clear();
       if (!_cache) {
         n = writeResult(res, OUT_MAX, "", ST_BUSY, nullptr, "no-memory");
       } else {
@@ -284,7 +286,8 @@ void ConsoleIface::answer(Print& out) {
           n = run(cable, _line, _len, res, OUT_MAX, _cache);
       }
     }
-    if (n > 0) n = _prov.signResult(res, (size_t)n, OUT_MAX);
+    if (n > 0) n = _prov.signResult(res, (size_t)n, OUT_MAX, nullptr, &_auth.answering());
+    _auth.answering().clear();
     if (n > 0) printLine(out, res, (size_t)n);
     free(res);
   }

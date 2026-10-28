@@ -76,8 +76,8 @@
   "uplink_result": {
     "status": "stable",
     "stream": "result",
-    "wire": "{\"v\":1,\"id\":\"r-1\",\"status\":\"ok\",\"result\":{\"complete\":true},\"usig_boot\":7,\"usig_seq\":13,\"usig\":\"ofLr9bPBT/HVVu1tm11oTugaMclo86Vo7Il7s2XmzrwBlU6BCaDrSzgVkxq5bvCO5ehXfOa+Bsth48kSAssaDg==\"}",
-    "signed_bytes_hex": "4d45434f4e2d55504c494e4b2d763100726573756c74007b2276223a312c226964223a22722d31222c22737461747573223a226f6b222c22726573756c74223a7b22636f6d706c657465223a747275657d2c22757369675f626f6f74223a372c22757369675f736571223a31337d",
+    "wire": "{\"v\":1,\"id\":\"r-1\",\"status\":\"ok\",\"result\":{\"complete\":true},\"op\":\"config.apply\",\"job_id\":1,\"usig_boot\":7,\"usig_seq\":13,\"usig\":\"YnT/xY4gijYtrOwvQ8U6olAdOelH7g6b8mtwOsjJ6cpunuMQ9Vx6+N/IlcPn73CJhmKvyQj7oUbFuSSjtF+eCw==\"}",
+    "signed_bytes_hex": "4d45434f4e2d55504c494e4b2d763100726573756c74007b2276223a312c226964223a22722d31222c22737461747573223a226f6b222c22726573756c74223a7b22636f6d706c657465223a747275657d2c226f70223a22636f6e6669672e6170706c79222c226a6f625f6964223a312c22757369675f626f6f74223a372c22757369675f736571223a31337d",
     "signer": "device node"
   }
 }

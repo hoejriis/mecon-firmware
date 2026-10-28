@@ -42,8 +42,9 @@ def test_the_reference_signer_reproduces_the_vectors():
 
 
 def bare(r):
-    """A result without its provenance members (contract 3.4: usig_boot, usig_seq, usig), for comparing what ran."""
-    return {k: v for k, v in r.items() if not k.startswith("usig")}
+    """A result without its provenance members (contract 3.4: usig_boot, usig_seq, usig) and the members that name what it
+    answers (op, job_id), for comparing what ran. test_provenance checks those members themselves."""
+    return {k: v for k, v in r.items() if not k.startswith("usig") and k not in ("op", "job_id")}
 
 
 def wrap(node_key, op, args=None, job=1, issuer=INST_A, rev=1, rid=None, nonce=None, target=None, deployment=DEP):

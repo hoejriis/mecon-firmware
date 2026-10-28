@@ -26,11 +26,12 @@ void base64Encode(char* out, const uint8_t* in, size_t n) {
 }
 
 
-int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer) {
+int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer,
+                     const char* extra) {
   if (!_auth || !_auth->enrolled()) return (int)len;   // a standalone device signs nothing
   if (!_id || len < 2 || buf[len - 1] != '}' || len >= cap) return -1;
   const mesh::LocalIdentity* key = signer ? signer : _id;
-  char tail[64];
+  char tail[160];
   int tl;
   if (!_epoch_saved || _seq == 0xFFFFFFFFu) {
     // The boot counter may repeat (or this boot's own is spent): sign nothing, and say so.
@@ -40,8 +41,9 @@ int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, cons
     return (int)(len - 1 + (size_t)tl);
   }
   const uint32_t seq = ++_seq;
-  tl = snprintf(tail, sizeof(tail), ",\"usig_boot\":%lu,\"usig_seq\":%lu}", (unsigned long)_boot, (unsigned long)seq);
-  if (tl < 0) return -1;
+  tl = snprintf(tail, sizeof(tail), "%s,\"usig_boot\":%lu,\"usig_seq\":%lu}", extra ? extra : "", (unsigned long)_boot,
+                (unsigned long)seq);
+  if (tl < 0 || (size_t)tl >= sizeof(tail)) return -1;
   const size_t text_len = len - 1 + (size_t)tl;
   static const size_t SIG_MEMBER = 9 + 88 + 2;   // ,"usig":"  + 88 base64 characters + "}   (and the NUL, kept inside cap)
   if (text_len + SIG_MEMBER >= cap) return -1;
@@ -68,12 +70,20 @@ int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, cons
   return (int)n;
 }
 
-int Provenance::signResult(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer) {
-  int n = sign("result", buf, len, cap, signer);
+int Provenance::signResult(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer, const Answering* a) {
+  if (!_auth || !_auth->enrolled()) return (int)len;   // a standalone device signs nothing
+  char extra[72];
+  extra[0] = 0;
+  if (a && a->op[0]) {
+    const int n = a->has_job ? snprintf(extra, sizeof(extra), ",\"op\":\"%s\",\"job_id\":%lu", a->op, (unsigned long)a->job)
+                             : snprintf(extra, sizeof(extra), ",\"op\":\"%s\"", a->op);
+    if (n < 0 || (size_t)n >= sizeof(extra)) extra[0] = 0;
+  }
+  int n = sign("result", buf, len, cap, signer, extra);
   if (n >= 0) return n;
   n = writeResult(buf, cap, "", ST_BUSY, nullptr, "too-large-to-sign");
   if (n < 0) return -1;
-  return sign("result", buf, (size_t)n, cap, signer);
+  return sign("result", buf, (size_t)n, cap, signer, extra);
 }
 
 }  // namespace Iface

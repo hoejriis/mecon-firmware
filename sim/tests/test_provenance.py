@@ -154,3 +154,22 @@ def test_provenance_survives_a_broker(nodes, tmp_path, broker):
     assert verifies(got[0], d.node_key, "health"), got[0]
     assert json.loads(got[0])["ev"] == "health"
 
+
+def test_a_result_names_what_it_answers(nodes):
+    d = boot_companion(nodes, "pn", 37)
+    assert d.provision()["status"] == "ok"
+    h = d.i.request("hello")
+    assert h["op"] == "hello" and "job_id" not in h and verifies(h.raw, d.node_key, "result"), h
+    r = d.send(wrap(d.node_key, "config.apply", apply_name("Names"), job=7))
+    assert r["status"] == "ok" and r["op"] == "config.apply" and r["job_id"] == 7 and verifies(r.raw, d.node_key, "result"), r
+    assert members(r)[-5:-3] == ["op", "job_id"], "inside the signed text, before the signature members"
+    u = d.i.request("no.such.op")
+    assert u["status"] == "unknown-op" and u["op"] == "no.such.op" and verifies(u.raw, d.node_key, "result"), u
+    # a refusal names the operation too, and the stored result of a resend names the same request
+    old = d.send(wrap(d.node_key, "config.apply", apply_name("Old"), job=3, rid="s-old"))
+    assert old["error"] == "replay" and old["op"] == "config.apply" and old["job_id"] == 3, old
+    dup = d.send(wrap(d.node_key, "config.apply", apply_name("Names"), job=7))
+    assert dup["op"] == "config.apply" and dup["job_id"] == 7 and verifies(dup.raw, d.node_key, "result"), dup
+    # a result cannot be moved to another request of the same id: the signed text differs by op and job
+    assert not verifies(r.raw.replace(b'"op":"config.apply"', b'"op":"config.get"'), d.node_key, "result")
+

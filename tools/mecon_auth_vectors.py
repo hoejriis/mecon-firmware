@@ -108,7 +108,8 @@ def build():
     up_wire = payload[:-1] + ',"usig":"%s"}' % b64(up_sig)
 
     # Signed result: the same, with the literal "result" in place of the stream.
-    res = compact({"v": 1, "id": "r-1", "status": "ok", "result": {"complete": True}})
+    # (it names what it answers: "op", and "job_id" for a signed request, before the signature members)
+    res = compact({"v": 1, "id": "r-1", "status": "ok", "result": {"complete": True}, "op": "config.apply", "job_id": 1})
     res = res[:-1] + ',"usig_boot":7,"usig_seq":13}'
     res_bytes = signed(DOMAIN_UPLINK, b"result", res.encode())
     res_wire = res[:-1] + ',"usig":"%s"}' % b64(node.sign(res_bytes))

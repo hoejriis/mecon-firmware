@@ -23,6 +23,7 @@ int Dispatcher::handleWith(JsonDoc& doc, const char* msg, size_t len, char* out,
   Request req;
   Status st = parseRequest(doc, msg, len, req);
   const char* id = req.has_id ? req.id : "";
+  if (_ans && st == ST_OK) { strncpy(_ans->op, req.op, sizeof(_ans->op) - 1); _ans->op[sizeof(_ans->op) - 1] = 0; }
   const char* err = nullptr;
   int n = -1;
 

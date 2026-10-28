@@ -10,6 +10,8 @@
     "status": {"type": "string", "enum": ["ok", "refused", "invalid", "unknown-op", "unsupported-version", "busy", "failed"]},
     "result": {"type": "object", "description": "Present with status ok: the operation's result, see <op>.result.json."},
     "error": {"type": "string", "description": "A short reason, with failed or busy (for example result-expired, result-too-large, queue-full, no-memory)."},
+    "op": {"type": "string", "description": "A signed result names the operation it answers (AUTHORITY.md section 3.4); absent when the request was not understood far enough to name one."},
+    "job_id": {"type": "integer", "minimum": 0, "description": "With op: the job id of the signed request it answers."},
     "usig_boot": {"type": "integer", "minimum": 1, "description": "Signed results (AUTHORITY.md section 3.4): the boot epoch the signature counts in."},
     "usig_seq": {"type": "integer", "minimum": 1, "description": "One counter for every signed message of this boot."},
     "usig": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$", "description": "Base64 Ed25519 by the node key over the object without this member; always the last member."},

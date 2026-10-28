@@ -213,14 +213,17 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
   _cur_link = link;
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
+  d.setAnswering(&_auth.answering());
   return d.handle(msg, len, out, cap, cache);
 }
 
 // Every result of the interface is signed while a record exists (AUTHORITY.md section 3.4), whichever path produced it.
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                          size_t cap) {
+  _auth.answering().clear();
   int n = dispatchInner(ctx, caller, link, msg, len, out, cap);
-  if (n > 0) n = _prov.signResult(out, (size_t)n, cap, _old_id);
+  if (n > 0) n = _prov.signResult(out, (size_t)n, cap, _old_id, &_auth.answering());
+  _auth.answering().clear();
   if (_old_id) { memset(_old_id, 0, sizeof(*_old_id)); delete _old_id; _old_id = nullptr; }   // the retired key lives for one result
   return n;
 }

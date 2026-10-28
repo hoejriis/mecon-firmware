@@ -108,6 +108,8 @@ public:
   // The gate of identity.rotate (AUTHORITY.md section 11): ST_OK only for a verified signed request on a device whose record
   // reads back healthy. Anything else is a refusal with a contract code and nothing changes.
   Status rotateGate(OpContext& c);
+  // What the result being produced answers (op, job id); the owner clears it before each request and signs with it after.
+  Answering& answering() { return _answering; }
 
   // After the file system has been formatted (the factory reset): the provisioned marker goes with the record, and the
   // state in memory follows what is now stored.
@@ -142,6 +144,7 @@ private:
   Cli::Context _ctx;                        // the caller of the request being handled
   Dep::DepState* _dep = nullptr;            // the loaded record; null with no record (a standalone device) or a corrupt one
   Dep::LoadState _dep_ls = Dep::LS_ABSENT;  // LS_ABSENT: no Deployment; LS_CORRUPT: something exists, nothing usable
+  Answering _answering = {};
   bool _signed = false;                     // the request being dispatched passed AUTHORITY.md section 7
   uint32_t _last_update_ms = 0;             // rate limit of deployment.authority_update (flash wear)
   bool _have_update = false;

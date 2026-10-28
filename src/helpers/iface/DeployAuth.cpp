@@ -354,6 +354,10 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     free(body);
     return n;
   }
+  strncpy(_answering.op, v.op, sizeof(_answering.op) - 1);   // the verified request: its result names it
+  _answering.op[sizeof(_answering.op) - 1] = 0;
+  _answering.has_job = v.has_job;
+  _answering.job = v.job_id;
   char id[ID_MAX + 1];
   bodyId(v.body, v.body_len, id);
   char key[24];   // the result cache key of this request: '#' is outside the id charset, so no unsigned id can collide
