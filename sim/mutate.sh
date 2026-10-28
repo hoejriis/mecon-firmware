@@ -1098,6 +1098,8 @@ mutate ble_dfu_with_the_default_pin src/helpers/BleDfuPolicy.h '  return !device
 mutate ble_start_ota_on_nrf52_builds src/helpers/BleDfuPolicy.h 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build && !nrf52_build; }' 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build; }' unit:test_ble_dfu_policy
 mutate start_ota_not_destructive src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE,' unit:test_cli_engine
 
+mutate start_ota_class_write src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_WRITE,' unit:test_cli_engine
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
