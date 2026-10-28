@@ -196,7 +196,7 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
 #else
   const bool device_interface_build = false;
 #endif
-  if (BleDfuPolicy::mayRegister(device_interface_build, pin_code)) {
+  if (BleDfuPolicy::mayRegister(device_interface_build, pin_code, _pin_chosen_by_user)) {
     // Register DFU on the main BLE stack so paired clients can discover it
     // without switching the device into a separate OTA-only BLE mode first.
     bledfu.setPermission(SECMODE_ENC_WITH_MITM, SECMODE_ENC_WITH_MITM);

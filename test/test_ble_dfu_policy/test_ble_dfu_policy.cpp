@@ -4,14 +4,16 @@
 using BleDfuPolicy::mayRegister;
 
 TEST(BleDfuPolicy, ADeviceInterfaceBuildNeverRegistersIt) {
-  for (uint32_t pin : {0u, 123456u, 654321u, 100000u}) EXPECT_FALSE(mayRegister(true, pin)) << pin;
+  for (uint32_t pin : {0u, 123456u, 654321u, 100000u})
+    for (bool chosen : {false, true}) EXPECT_FALSE(mayRegister(true, pin, chosen)) << pin;
 }
 
-TEST(BleDfuPolicy, OtherBuildsOnlyWithAChosenPin) {
-  EXPECT_FALSE(mayRegister(false, 0));        // build default: no PIN to speak of
-  EXPECT_FALSE(mayRegister(false, 123456));   // the published PIN: anyone in range could pair and flash
-  EXPECT_TRUE(mayRegister(false, 654321));    // positive control: a PIN the user chose
-  EXPECT_TRUE(mayRegister(false, 100000));
+TEST(BleDfuPolicy, OtherBuildsOnlyWithAPinTheUserStored) {
+  EXPECT_FALSE(mayRegister(false, 0, true));        // build default: no PIN to speak of
+  EXPECT_FALSE(mayRegister(false, 123456, true));   // the published PIN: anyone in range could pair and flash
+  EXPECT_FALSE(mayRegister(false, 654321, false));  // a random session PIN, shown on the screen: not the owner's secret
+  EXPECT_TRUE(mayRegister(false, 654321, true));    // positive control: a PIN the user chose and stored
+  EXPECT_TRUE(mayRegister(false, 100000, true));
 }
 
 TEST(BleDfuPolicy, StartOtaIsRefusedOnInterfaceAndNrf52Builds) {
