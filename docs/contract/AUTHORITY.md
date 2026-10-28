@@ -28,6 +28,7 @@ A broker login, a TLS session, a paired BLE link, a USB cable, a LoRa route and 
 | signed request (*provisional*) | `MECON-DEVMSG-v1` | `iface` |
 | signed event | `MECON-UPLINK-v1` | the stream name, e.g. `health` |
 | signed result | `MECON-UPLINK-v1` | the literal `result` |
+| device_id binding | `MECON-DEVID-v1` | none; raw bytes follow (section 3.5) |
 
 - A key a device would trust is checked first: a member's key, a rotation's new DAK, and the DAK of a first provisioning. A key that is not a valid curve point, or whose point has small order, is refused (`bad_authority_set`, or `untrusted_authority_key` for a DAK). A signature against such a key proves nothing.
 
@@ -97,6 +98,26 @@ While the device holds a record (healthy or corrupt), it signs every interface e
 - The native signing command of the Companion (`CMD_SIGN_*`) refuses data that starts with `MECON-`, so no native signature can be a protocol signature, enrolled or not.
 - Signing cost: about 12 µs per signature of a 250-byte message on the simulated board's host (aarch64, gcc -O2, the firmware's own `lib/ed25519`, 20,000 signatures, measured 2026-10-28; see Review 3 in [AUTHORITY_REVIEW_2.md](AUTHORITY_REVIEW_2.md)). It has not been measured on a target MCU.
 
+### 3.5 Signed device_id binding
+
+A Backend records a device's `device_id` from `hello` or from `get device.id`, and both are self-reported. So the device also sends the node key's signature binding the two:
+
+- Ed25519 with the node key over `MECON-DEVID-v1` 0x00 `<device_id>` `<node_key>` `[<nonce>]`. Unlike the other objects, these are raw bytes, not text: `device_id` is its 16 bytes and `node_key` its 32, with no separator between them or before the nonce.
+- **Where it is sent.** Always, enrolled or not:
+  - `get device.id` answers `> <device_id> <sig>` on every CLI path. For `get device.id <nonce>` it answers `> <device_id> <sig> <nonce>`, signed over the nonce form.
+  - `hello` carries `device_id_sig`. With `args.nonce`, it also carries `nonce` (echoed) and `device_id_sig_nonce`.
+  - A nonce is 1 to 32 characters of `[0-9A-Za-z._-]`. Anything else is refused: `Error: bad nonce` on the CLI, `invalid` from `hello`.
+- **What it proves.** Only that the holder of that node key asserts this `device_id`. It binds the key, so a signature replayed under another login fails against that login's key. The fixed form can be replayed for the same key, which is harmless, because `device_id` changes only with the key, at a factory reset. A Backend that wants proof that the key is held now sends a nonce. The native signing command refuses data that starts with `MECON-` (section 3.4), so a host cannot have a device sign one.
+- **What it does not prove.** A device could sign another device's `device_id` with its own key. So the signature is necessary but not sufficient, and three rules complete it:
+  1. **The Backend binds one `device_id` to one enrolled key and refuses a re-bind.** It never resolves a conflict first-come: two verified claims for one `device_id` are both refused and alerted. Pre-emption then gives at most a visible denial of service, never a takeover.
+  2. **The firmware never discloses `device_id` on an unauthenticated path.** It leaves the device over:
+     - `hello`, status and results on the device interface (USB, BLE, the device's own MQTT topics);
+     - the CLI: the local console, BLE or USB, a logged-in remote admin, a contact granted remote CLI, and the device's legacy MQTT topic;
+     - the rotation statement (section 11) and the provisioning read-back.
+     It is not in adverts, on the display or in logs, and guests run no CLI. A BLE link on the default PIN is a direct link, not a login. It can read `device_id` like any other plain read, and rule 1 bounds what that gives.
+  3. **Enrolment binds at the trusted moment.** The read-back of `deployment.provision` (section 6.1) carries `device_id` and `node_key`, and the Backend records them together.
+- Public vectors: `device_id_binding` and `device_id_binding_nonce` (nonce `r-7.nonce_A`).
+
 ## 4. The record on the device
 
 - **Two copies.** The device keeps two copies, A and B. Each is framed as `"MDR1" | u32 generation | u16 length | payload | u32 CRC-32`.
@@ -158,7 +179,7 @@ A provisioning carries no rotations. A device whose DAK has rotated gets `deploy
 - **First provisioning** (no record, no marker) is trust on first use: it pins the DAK. It is accepted unsigned from the USB cable only. Never over BLE (a device cannot tell its own random PIN from one a user or a build chose), the TCP port, a broker of any kind (a broker would gain first-use trust over every reset or unenrolled device it can reach) or LoRa. *(Narrowed 2026-10-28 by the second security review; this section earlier also allowed BLE with the device's own random PIN.)*
 - A platform with no store for the provisioned marker (section 4) refuses an unsigned first provisioning.
 - **A device that holds a record** accepts `deployment.provision` only when signed by a current member. An unsigned re-send of a byte-identical `deployment` object returns the stored read-back; anything else unsigned is `unauthenticated`.
-- **Order and commit.** Checks run in the order above, then section 5 on the set. One commit, and the answer is read back from storage. An equal `provision_revision` with identical content is `duplicate`; a lower one is `stale_revision`.
+- **Order and commit.** Checks run in the order above, then section 5 on the set. One commit, and the answer is read back from storage. That read-back, and the one an unsigned duplicate gets, carries `device_id` and `node_key` (section 3.5). An equal `provision_revision` with identical content is `duplicate`; a lower one is `stale_revision`.
 
 ### 6.2 `deployment.authority_update`
 
@@ -310,7 +331,7 @@ The review also changed: the size limits (2,048-byte set, 16 revoked ids, no rot
 
 ## 16. Conformance
 
-- Public test vectors: `test/fixtures/deployment_authority_public_v1.json`, generated by `tools/mecon_auth_vectors.py` from this page. Both land with the implementation branch. Every key is derived from a public label, so these are test keys and valid nowhere. The vectors cover two authority sets, a rotation, a signed request, a signed event and a signed result. `--check` fails if the fixture drifts from the generator.
+- Public test vectors: `test/fixtures/deployment_authority_public_v1.json`, generated by `tools/mecon_auth_vectors.py` from this page. Both land with the implementation branch. Every key is derived from a public label, so these are test keys and valid nowhere. The vectors cover two authority sets, a rotation, a signed request, a signed event, a signed result, the node rotation statement and the signed device_id binding with and without a nonce. `--check` fails if the fixture drifts from the generator.
 - Unit tests cover:
   - every check of sections 5 and 7, in order;
   - the record framing under damage of either copy and a power cut at each step;

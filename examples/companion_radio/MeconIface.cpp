@@ -1,4 +1,5 @@
 #include "MeconIface.h"
+#include <helpers/iface/DevIdHello.h>
 #include <helpers/iface/Wipe.h>
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
@@ -79,6 +80,8 @@ Status opHello(OpContext& c) {
   w.key("interface"); w.str("1.0");
   w.key("device_id"); w.str(m->deviceIdHex());
   w.key("node_key"); w.str(key);
+  const Status ds = writeDeviceIdSig(c, mesh->self_id, m->deviceIdHex());
+  if (ds != ST_OK) return ds;
   w.key("role"); w.str("companion");
   w.key("hardware"); w.str(mesh->hardwareName());
   w.key("firmware"); w.str(mecon::versionFull());

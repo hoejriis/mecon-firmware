@@ -12,6 +12,7 @@
 #include <helpers/deployment/DepMarker.h>
 #include <helpers/deployment/DepProvision.h>
 #include <helpers/deployment/DepReplay.h>
+#include "DeviceId.h"
 #include <new>
 #include <stdlib.h>
 #include <string.h>
@@ -438,10 +439,21 @@ void hexOfId(char* out, const uint8_t id[Dep::ID_LEN]) { hexTo(out, id, Dep::ID_
 
 // The fields of a stored Deployment (AUTHORITY.md section 6.3), shared by deployment.get and the read-back of a
 // provisioning. Nothing secret: the unlock secret and the DAK-signed set's private side never exist here.
-static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record& rec, const char* set_text, bool full) {
+// bind_key: for a provisioning's read-back, this device's node key; the read-back then carries device_id and node_key,
+// so the manager records the pair at the trusted moment of enrolment (AUTHORITY.md section 3.5). Null elsewhere.
+static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record& rec, const char* set_text, bool full,
+                        const uint8_t* bind_key = nullptr) {
   char id[2 * Dep::ID_LEN + 1];
   hexOfId(id, rec.deployment_id);
   w.key("state"); w.str("provisioned");
+  if (bind_key) {
+    char key[2 * Dep::KEY_LEN + 1];
+    static const char H[] = "0123456789abcdef";
+    for (int i = 0; i < Dep::KEY_LEN; i++) { key[2 * i] = H[bind_key[i] >> 4]; key[2 * i + 1] = H[bind_key[i] & 15]; }
+    key[2 * Dep::KEY_LEN] = 0;
+    w.key("device_id"); w.str(Iface::deviceIdHex());
+    w.key("node_key"); w.str(key);
+  }
   w.key("deployment_id"); w.str(id);
   w.key("deployment_name"); w.str(rec.deployment_name);
   w.key("authority_epoch"); w.unum(rec.authority_epoch);
@@ -593,7 +605,7 @@ Status DeployAuth::opProvision(OpContext& c) {
     }
     if (pe == Dep::P_DUPLICATE) {
       w.key("duplicate"); w.boolean(true);
-      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false);
+      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false, _env.node_key);
       st = ST_OK;
       goto done;
     }
@@ -614,7 +626,7 @@ Status DeployAuth::opProvision(OpContext& c) {
     }
     if (!saveMarksFor(k->set)) { c.error = "marks"; st = ST_BUSY; goto done; }
     if (!readCurrent(k)) { c.error = "storage"; st = ST_FAILED; goto done; }
-    writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false);
+    writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false, _env.node_key);
     st = ST_OK;
   }
 done:

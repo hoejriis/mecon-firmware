@@ -28,6 +28,7 @@ DOMAIN_DAKROT = b"MECON-DAKROT-v1"
 DOMAIN_DEVMSG = b"MECON-DEVMSG-v1"
 DOMAIN_UPLINK = b"MECON-UPLINK-v1"
 DOMAIN_NODEROT = b"MECON-NODEROT-v1"
+DOMAIN_DEVID = b"MECON-DEVID-v1"
 
 DEPLOYMENT_ID = hashlib.sha256(b"mecon-firmware public test deployment").hexdigest()[:32]
 
@@ -119,6 +120,12 @@ def build():
                        "job_id": 5})
     nr_bytes = signed(DOMAIN_NODEROT, nr_text.encode())
 
+    # Signed device_id binding (AUTHORITY.md section 3.5): device_id and node key as raw bytes after the domain's NUL,
+    # then the optional nonce's bytes with no separator.
+    dev_id = "00112233445566778899aabbccddeeff"
+    dv_bytes = DOMAIN_DEVID + b"\x00" + bytes.fromhex(dev_id) + node.public
+    dvn_bytes = dv_bytes + b"r-7.nonce_A"
+
     keys = {k.label: {"seed_hex": k.seed.hex(), "public_key": k.pub_hex}
             for k in (dak1, dak2, inst_a, inst_b, node, node2)}
     return {
@@ -141,6 +148,11 @@ def build():
                           "signed_bytes_hex": up_bytes.hex(), "signer": "device node"},
         "node_rotation": {"status": "stable", "statement": nr_text, "sig": b64(node.sign(nr_bytes)),
                           "signed_bytes_hex": nr_bytes.hex(), "signer": "device node"},
+        "device_id_binding": {"status": "stable", "device_id": dev_id, "sig": b64(node.sign(dv_bytes)),
+                              "signed_bytes_hex": dv_bytes.hex(), "signer": "device node"},
+        "device_id_binding_nonce": {"status": "stable", "device_id": dev_id, "nonce": "r-7.nonce_A",
+                                    "sig": b64(node.sign(dvn_bytes)), "signed_bytes_hex": dvn_bytes.hex(),
+                                    "signer": "device node"},
         "uplink_result": {"status": "stable", "stream": "result", "wire": res_wire,
                           "signed_bytes_hex": res_bytes.hex(), "signer": "device node"},
     }
@@ -158,12 +170,16 @@ def header(v):
         lines.append("static const char* PUB_%s = %s;" % (name, c_str(k["public_key"])))
         lines.append("static const char* SEED_%s = %s;" % (name, c_str(k["seed_hex"])))
     for obj in ("authority_set_rev1", "rotation_1_to_2", "authority_set_rev2", "iface_request", "uplink_health", "uplink_result",
-                "node_rotation"):
+                "node_rotation", "device_id_binding", "device_id_binding_nonce"):
         o = v[obj]
         name = obj.upper()
         lines.append("static const char* %s_SIGNED_HEX = %s;" % (name, c_str(o["signed_bytes_hex"])))
         if "sig" in o:
             lines.append("static const char* %s_SIG = %s;" % (name, c_str(o["sig"])))
+        if "nonce" in o:
+            lines.append("static const char* %s_NONCE = %s;" % (name, c_str(o["nonce"])))
+        if "device_id" in o:
+            lines.append("static const char* %s_DEVICE_ID = %s;" % (name, c_str(o["device_id"])))
         if "wire" in o:
             lines.append("static const char* %s_WIRE = %s;" % (name, c_str(o["wire"])))
     lines.append("static const char* DEPLOYMENT_ID = %s;" % c_str(v["deployment_id"]))

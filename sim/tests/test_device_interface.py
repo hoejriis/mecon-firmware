@@ -509,7 +509,7 @@ def test_logs_are_refused_over_a_verified_mqtt_session_but_not_to_the_cable(node
 def test_get_device_id_on_the_cli_matches_hello(nodes):
     n, (c, i) = start(nodes, "did")
     h = i.request("hello")["result"]
-    assert c.cli("get device.id") == "> " + h["device_id"]
+    assert c.cli("get device.id").split(" ")[:2] == [">", h["device_id"]]   # the signature: test_device_id_binding.py
 
 
 @pytest.mark.timescale(10)
@@ -517,7 +517,7 @@ def test_get_device_id_over_the_legacy_cli_topic(nodes, tmp_path, broker):
     b = broker()
     n, c, i, dev = mqtt_boot(nodes, tmp_path, "didm", b)
     r = b.cli_request(c.pub_key[:4].hex(), "get device.id")
-    assert r is not None and r["status"] == "ok" and r["reply"] == "> " + dev, r
+    assert r is not None and r["status"] == "ok" and r["reply"].split(" ")[:2] == [">", dev], r
 
 
 

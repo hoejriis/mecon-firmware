@@ -1084,6 +1084,21 @@ mutate prov_result_names_no_job src/helpers/iface/Provenance.cpp '    const int 
 mutate prov_refusal_budget_unlimited src/helpers/iface/Provenance.cpp '  if (_tokens < 1000) return false;' '  if (_tokens < 1000) return true;' $PV::test_refusals_are_signed_within_a_budget_and_everything_else_always
 mutate prov_reset_result_unsigned src/helpers/iface/Provenance.cpp '  _force = was_enrolled;' '  _force = false;' $PV::test_the_result_of_the_reset_that_removes_the_record_is_still_signed
 
+# the signed device_id binding (docs/contract/AUTHORITY.md section 3.5)
+DB=sim/tests/test_device_id_binding.py
+mutate devid_domain_wrong src/helpers/iface/DevIdSig.h 'const char DEVID_DOMAIN[] = "MECON-DEVID-v1";' 'const char DEVID_DOMAIN[] = "MECON-DEVID-v0";' unit:test_deployment_vectors
+mutate devid_key_not_signed src/helpers/iface/DevIdSig.h '  memcpy(out + n, node_key, 32);' '  memset(out + n, 0, 32);' unit:test_deployment_vectors
+mutate devid_nonce_not_signed src/helpers/iface/DevIdSig.h '  return n + nl;' '  return n;' unit:test_deployment_vectors
+mutate devid_nonce_unchecked src/helpers/iface/DevIdSig.h '  if (nl && !devIdNonceValid(nonce, nl)) return 0;' '  if (false) return 0;' unit:test_deployment_vectors
+mutate devid_nonce_one_too_long src/helpers/iface/DevIdSig.h 'len > DEVID_NONCE_MAX) return false;' 'len > DEVID_NONCE_MAX + 1) return false;' unit:test_deployment_vectors
+mutate devid_hello_companion_unsigned examples/companion_radio/MeconIface.cpp '  const Status ds = writeDeviceIdSig(c, mesh->self_id, m->deviceIdHex());' '  const Status ds = ST_OK;' $DB::test_companion_hello_and_cli_sign_the_device_id
+mutate devid_hello_console_unsigned src/helpers/iface/ConsoleIface.cpp '    const Status ds = writeDeviceIdSig(c, *m->host().identity, m->deviceIdHex());' '    const Status ds = ST_OK;' $DB::test_console_hello_and_cli_sign_the_device_id
+mutate devid_hello_bad_nonce_accepted src/helpers/iface/DevIdHello.h '  if (t >= 0 && !jsonGetString(*c.doc, t, nonce, sizeof(nonce), CS_NAME, 1)) return ST_INVALID;' '  if (false) return ST_INVALID;' $DB::test_companion_hello_and_cli_sign_the_device_id
+mutate devid_cli_server_any_suffix src/helpers/CommonCLI.cpp '(config[9] == 0 || config[9] == '"' '"')) {' 'true) {' $DB::test_console_hello_and_cli_sign_the_device_id
+mutate devid_cli_companion_nonce_ignored examples/companion_radio/MyMesh.cpp '    const char* nonce = command[13] == '"' '"' ? &command[14] : "";' '    const char* nonce = "";' $DB::test_companion_hello_and_cli_sign_the_device_id
+mutate devid_readback_without_pair src/helpers/iface/DeployAuth.cpp '  if (bind_key) {' '  if (false) {' $DB::test_companion_provisioning_read_back_carries_the_pair
+mutate devid_duplicate_readback_without_pair src/helpers/iface/DeployAuth.cpp '      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false, _env.node_key);' '      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false);' $DB::test_companion_provisioning_read_back_carries_the_pair
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
