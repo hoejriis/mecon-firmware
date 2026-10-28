@@ -62,6 +62,21 @@ The Wio Tracker L1 (nRF52840) builds a Companion (USB and BLE) and a Repeater. T
 
 This note describes the private 0.9x reference firmware, not this repository's builds, and is not evidence for them. The private beta ships, among other things: Deployment-signed management, security posture, identity rotation/export, BLE bonds and an opaque continuity slot; on the T1000-E an update through the USB bootloader after a Deployment-signed offer (BLE DFU compiled out, no over-the-air update); on the Wio repeater RF management with Deployment-signed writes, a signed status beacon, USB DFU and a LoRa-staged update that is stored but not activated by the radio; the ESP32 Repeater Observer on the V3 only; and, on the V3 and V4 gateways, a fixed contact limit of 50 (350 on the T1000-E). Its hardware evidence is limited-scope bench testing in the private line. Its behaviour is summarised in [CONTRACT_MIGRATION_NOTES](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
 
+## Moving a board from the private 0.90.x line
+
+The private reference firmware stores its Deployment record in files with the same names and frame header as this firmware's, but in a different layout. A board flashed from 0.90.x to this firmware with its file system kept therefore reads them as a **corrupt record**. That is deliberate: it fails closed, and it never treats another firmware's authority state as its own. Until the record is cleared, the board refuses provisioning, signed requests and unsigned configuration writes, Wi-Fi settings included.
+
+To move a board:
+
+1. Flash this firmware over the USB cable.
+2. Over the same cable, in Normal posture, send `deployment.reset`. It needs no signature, because a corrupt record may be reset from the cable (contract: [Management authority](contract/AUTHORITY.md), section 11). It removes the old record and keeps the node key, `device_id`, contacts and channels.
+3. Reboot the board. Right after the reset, the heap can stay fragmented until the next boot: a largest free block of about 15 KB, against about 30 KB normally.
+4. Configure and provision it as a new device. The first provisioning is accepted unsigned over the USB cable only.
+
+An erase over the cable (a factory reset) is the alternative. It removes everything, the node key included.
+
+This firmware does not recognise or import the private line's record. That decision may be revisited with MECON's own fleet migration.
+
 ## Other boards
 
 All other board environments are software-verification targets under the policy above. Use the current CI matrix for the environment count and actual results; describe build-only evidence as such. No hardware verification is claimed for these boards.
