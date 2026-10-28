@@ -60,6 +60,51 @@ On ESP-IDF 5.3, Bluedroid against NimBLE for the same build (before the switch):
 
 The size budgets in `ci/size-budget.txt` are seeded from the "after" column (use + 4 KB).
 
+## Heap: rebuilt Arduino IDF libraries (hybrid compile)
+
+The Heltec V3 and V4 envs (`esp32s3_idf5_base` in `platformio.ini`) carry a `custom_sdkconfig` and a `custom_component_remove` list. On the first build pioarduino's "hybrid compile" rebuilds the Arduino ESP-IDF libraries for the ESP32-S3 with them, instead of using the prebuilt set.
+
+What is set:
+
+- **Wi-Fi TX buffers are dynamic** (`CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER=y`, 16 buffers), not a static pool of 8 buffers of about 1.6 KB. `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n` goes with it: Arduino's base config puts Wi-Fi and LWIP buffers in PSRAM, which locks out dynamic TX. The V3 has no PSRAM, so nothing else moves there. On the V4 (2 MB PSRAM) Wi-Fi and LWIP buffers now come from internal RAM, not PSRAM; the V4 has not been measured on hardware with this build.
+- **13 unused managed components are removed** from the library build: esp_insights, esp_rainmaker, rmaker_common, esp_diagnostics, esp_diag_data_store, esp_schedule, esp-sr, esp-zboss-lib, esp-zigbee-lib, esp_modem, esp-modbus, esp_rcp_update and esp-libhelix-mp3.
+
+**The mbedTLS buffers stay static.** Dynamic mbedTLS buffers (`CONFIG_MBEDTLS_DYNAMIC_BUFFER`) were tried and break Wi-Fi: the radio never leaves `scanning` once a TLS session starts. Do not add them to `custom_sdkconfig`.
+
+Measured on v3test (V3 standalone Companion, Wi-Fi + TLS MQTT verified, about 4 minutes after start, Issue #100): free heap 44,440 B on main against 59,536 B with both changes (about 15 KB more), low-water 31,796 B against 48,216 B (about 16 KB more); the largest free block is unchanged at 31,732 B. Of that, removing the components gives about 8 KB free and 11 KB low-water, and the dynamic TX buffers about 7 KB and 5 KB more. Both gains need the rebuilt libraries; there is no runtime-only route, because the prebuilt libraries reserve the static pool from their own sdkconfig.
+
+Flash and static RAM, main against this build (local builds in the project container, same toolchain; the Wi-Fi and TLS envs shrink the most):
+
+| Target | Flash before | Flash after | Difference | Static RAM before | Static RAM after | Difference |
+|---|---|---|---|---|---|---|
+| `Heltec_v3_companion_radio_ble` | 1,509,044 B | 1,444,828 B | −64,216 B | 119,156 B | 117,828 B | −1,328 B |
+| `Heltec_v3_companion_radio_standalone` | 1,713,020 B | 1,654,564 B | −58,456 B | 126,988 B | 125,412 B | −1,576 B |
+| `Heltec_v3_companion_radio_usb` | 743,912 B | 704,056 B | −39,856 B | 39,064 B | 37,740 B | −1,324 B |
+| `Heltec_v3_companion_radio_wifi` | 1,477,396 B | 1,419,524 B | −57,872 B | 114,636 B | 113,068 B | −1,568 B |
+| `Heltec_v3_repeater` | 1,445,804 B | 1,383,208 B | −62,596 B | 63,940 B | 62,612 B | −1,328 B |
+| `Heltec_v3_room_server` | 1,440,816 B | 1,378,152 B | −62,664 B | 67,628 B | 66,300 B | −1,328 B |
+| `heltec_v4_companion_radio_ble` | 1,496,012 B | 1,432,004 B | −64,008 B | 119,132 B | 117,808 B | −1,324 B |
+| `heltec_v4_companion_radio_standalone` | 1,699,700 B | 1,641,428 B | −58,272 B | 126,932 B | 125,360 B | −1,572 B |
+| `heltec_v4_companion_radio_usb` | 729,300 B | 690,436 B | −38,864 B | 39,016 B | 37,688 B | −1,328 B |
+| `heltec_v4_companion_radio_wifi` | 1,464,332 B | 1,406,680 B | −57,652 B | 114,588 B | 113,024 B | −1,564 B |
+| `heltec_v4_repeater` | 1,432,508 B | 1,369,996 B | −62,512 B | 63,908 B | 62,584 B | −1,324 B |
+| `heltec_v4_room_server` | 1,427,476 B | 1,364,976 B | −62,500 B | 67,596 B | 66,272 B | −1,324 B |
+
+Flash drops by about 58-64 KB on every target except the USB Companions (about 39 KB); static RAM by about 1.3-1.6 KB. The budgets in `ci/size-budget.txt` were lowered for all twelve (use + 4 KB).
+
+### Building
+
+The libraries are rebuilt once into the shared `framework-arduinoespressif32-libs` package of the PlatformIO core directory (about 6 minutes cold). pioarduino keys the rebuilt set by the `custom_sdkconfig` text and the chip, so **every ESP32-S3 env must carry the same section** (they do, through `esp32s3_idf5_base`): an env without it, or for another chip such as the ESP32-C6 boards, makes the next build reinstall the stock libraries and rebuild again. A CI job that mixes them uses a separate `PLATFORMIO_CORE_DIR` for the others (`all-boards.yml` does this for the C6 envs).
+
+It is a two-step build, because the hybrid pass matches `build_src_filter` against a placeholder directory and our `../examples` entries escape it:
+
+1. `bin/idf5_libs.sh` builds the stub env `idf5_hybrid_libs`, which only exists to trigger the library rebuild. It is idempotent (a second run takes seconds) and installs PyYAML into PlatformIO's Python if it is missing, which the component removal needs. Given an env name it does nothing unless that env has a `custom_sdkconfig`, so a workflow can call it before every build.
+2. `pio run -e <env>` as usual.
+
+Locally: `sim/run.sh bin/idf5_libs.sh`, then `sim/run.sh pio run -e Heltec_v3_repeater`. `build.sh` and the three build workflows (`target-boards`, `pr-build-check`, `all-boards`) call the script. The native sim envs are not affected. To check the result, read `packages/framework-arduinoespressif32-libs/esp32s3/sdkconfig` in the PlatformIO core directory (the options above) and the "Removing component" lines in the first build's log.
+
+Not done: a hardware run of the V4 and of the other roles with this build.
+
 ## On hardware
 
 Measured on v3test and v4test on 2026-10-24, each board first on main (2.0.17) and then with the ESP-IDF 5.3 app written over it without an erase, same store and configuration. Every row, with its build, is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md).
