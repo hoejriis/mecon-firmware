@@ -57,6 +57,7 @@ UTF-8 JSON objects. Three shapes:
 | `deployment.get` | the stored authority set and its signature, the epochs and revisions, the fallback flag and each member's sequence mark ([authority contract](AUTHORITY.md) section 6.3). Companion only | open read |
 | `deployment.provision` | first provisioning into a Deployment, or a signed re-enrolment ([authority contract](AUTHORITY.md) section 6.1). Companion only | write; unsigned only from the cable or BLE with a PIN of the device's own, and only for a first provisioning |
 | `deployment.authority_update` | a newer DAK-signed authority set with any rotations before it ([authority contract](AUTHORITY.md) section 6.2). Companion only | any caller (it carries its own signature); rate limited |
+| `identity.rotate` | a new node key for a new owner; drops contacts and the message queue, keeps configuration, channels, the record and `device_id` ([authority contract](AUTHORITY.md) section 11). Companion only | signed and sensitive; refused without a readable record |
 | `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 
 Native operations stay native: messaging, contacts, channels, adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.
