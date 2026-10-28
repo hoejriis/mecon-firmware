@@ -1101,7 +1101,7 @@ mutate inv_snapshot_never_ends examples/companion_radio/MeconIface.cpp '  const 
 mutate private_link_need_not_be_allowed examples/companion_radio/MeconIface.cpp '  return cls == Cli::C_READ || Cli::decide(m->_link_ctx, cls).allow;' '  return true;' $PS::test_a_signed_request_on_an_untrusted_link_gets_no_private_stream_over_it
 mutate subs_survive_a_disconnect examples/companion_radio/MeconIface.cpp '      l.subs.clear();              // and its subscriptions and queued messages: the next client on it inherits nothing' '' $PS::test_a_subscription_does_not_pass_to_the_next_client_on_the_link
 mutate json_utf8_unchecked src/helpers/iface/IfaceJson.cpp '      const size_t k = utf8Len(b + i, n - i);' '      const size_t k = 1;' unit:test_iface
-mutate inv_page_ignores_queue_room examples/companion_radio/MeconIface.cpp '    if (l.q && !l.q->eventFits(INV_EVENT)) { _inv_next = now + INV_PAGE_MS; return; }   // wait until the page fits' '' $PS::test_inventory_snapshot_carries_every_contact_and_channel_once_and_no_secret
+mutate queue_room_check_too_generous src/helpers/iface/IfaceFrames.h '           len <= _cap - RESULT_RESERVE - _used;' '           len <= _cap - _used;' unit:test_iface
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

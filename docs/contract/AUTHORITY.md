@@ -198,7 +198,7 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 - **Every other operation**, including any the device does not recognise as a plain read, carries a `job_id` and is subject to section 8. A captured request can then run at most once.
 - **Sensitive operations** are those whose reply is itself secret or private:
   - `identity.key.export` and `ble.pin.get`;
-  - `sub.start` of a private stream (screen, location, logs, and inventory entries).
+  - `sub.start` of a private stream: `screen`, `location`, `logs` and `inventory` (which carries the contact and channel entries on the Companion).
 
   On top of the `job_id`, each must carry the `channel_nonce` the device issued for the link it arrives on. A device issues a fresh nonce per link, readable with `hello` on that link and replaced when the link drops, and a nonce is used once. A request captured on one link and replayed over another link (the attacker's own USB, BLE or broker session) fails before the reply exists.
 

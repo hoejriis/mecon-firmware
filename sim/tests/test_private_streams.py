@@ -257,10 +257,21 @@ def test_a_signed_request_on_an_untrusted_link_gets_no_private_stream_over_it(no
         bi.send_raw(json.dumps(w, separators=(",", ":")).encode())
         return bi.wait_result(json.loads(w["body"])["id"], 5.0)
 
+    def signed_with_nonce(op, args, job, nonce):
+        w = wrap(key, op, args, job=job, nonce=nonce)
+        bi.send_raw(json.dumps(w, separators=(",", ":")).encode())
+        return bi.wait_result(json.loads(w["body"])["id"], 5.0)
+
     r = signed("sub.start", {"stream": "health", "lifetime_s": 60}, 1)
     assert r["status"] == "ok", r   # the positive control: a read stream
-    r = signed("sub.start", {"stream": "location", "lifetime_s": 60}, 2)
-    assert r["status"] == "refused", r
+    # a private sub.start is sensitive: it needs this link's channel nonce, which a signed hello reads even here
+    h = signed("hello", None, None)
+    nonce = h["result"]["channel_nonce"]
+    r = signed_with_nonce("sub.start", {"stream": "location", "lifetime_s": 60}, 3, nonce)
+    assert r["status"] == "refused" and r.get("error") != "bad_channel_nonce", r   # refused for the link, not the nonce
+    h = signed("hello", None, None)
+    r = signed_with_nonce("sub.start", {"stream": "inventory", "lifetime_s": 60}, 5, h["result"]["channel_nonce"])
+    assert r["status"] == "refused" and r.get("error") != "bad_channel_nonce", r
 
 
 def test_a_contact_name_that_is_not_utf8_leaves_the_snapshot_parseable(nodes):

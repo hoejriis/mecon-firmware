@@ -288,6 +288,29 @@ TEST(IfaceEnvelope, EventSerialization) {
   EXPECT_EQ(-1, writeEvent(b, 20, "health", 1, 1, true, 1, nullptr));
 }
 
+// ---- the queue's room check (the inventory pages wait on it): it answers exactly what push() would do
+
+TEST(OutQueueRoom, EventFitsAgreesWithPushAtEveryFillLevel) {
+  for (size_t len : {(size_t)100, (size_t)700, (size_t)1300, (size_t)1500}) {
+    uint8_t store[2048];
+    OutQueue q(store, sizeof(store));
+    std::vector<uint8_t> msg(len, 'x');
+    for (int i = 0; i < 12; i++) {
+      const bool fits = q.eventFits(len);
+      const OutQueue::Push p = q.push(OutQueue::EVENT, msg.data(), len);
+      EXPECT_EQ(fits, p == OutQueue::PUSH_OK) << "len " << len << " step " << i;
+    }
+  }
+  uint8_t store[2048];
+  OutQueue q(store, sizeof(store));
+  std::vector<uint8_t> big(1400, 'y');
+  ASSERT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::EVENT, big.data(), big.size()));
+  EXPECT_FALSE(q.eventFits(1400)) << "a second page waits while the first is queued";
+  q.clear();
+  EXPECT_TRUE(q.eventFits(1400)) << "cleared on a disconnect";
+  EXPECT_EQ(0, q.count());
+}
+
 // ---- strings that are not UTF-8 (a contact name cut at a byte limit, or hostile)
 
 static std::string jsonOfBytes(const std::string& bytes) {
