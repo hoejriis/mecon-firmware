@@ -270,3 +270,22 @@ def test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot(
     d.reboot()
     assert d.c.get_contacts()[0] == 0 and d.i.request("identity.rotation")["result"]["rotation"] == rot
 
+
+def sign_with_native_signer(c, data):
+    c._send(bytes([33]))
+    start = c._read_frame(5)
+    assert start[0] == 19, start
+    c._send(bytes([34]) + data)
+    assert c._read_frame(5)[0] == 0
+    c._send(bytes([35]))
+    return c._read_frame(5)
+
+
+def test_the_native_signer_never_signs_bytes_that_look_like_a_mecon_message(nodes):
+    d = boot_companion(nodes, "rs", 57)   # not enrolled: the native signer is open, so this is its attack surface
+    plain = sign_with_native_signer(d.c, b"hello world")
+    assert plain[0] == 20 and ed25519_ref.verify(bytes.fromhex(d.node_key), b"hello world", plain[1:65]), "ordinary data signs"
+    for text in (b"MECON-UPLINK-v1\x00result\x00{}", b"MECON-NODEROT-v1\x00{}", b"MECON-"):
+        r = sign_with_native_signer(d.c, text)
+        assert r[0] == 1 and r[1] == 6, "ILLEGAL_ARG, not a signature: %r" % r
+    assert sign_with_native_signer(d.c, b"MECON")[0] == 20, "only the MECON- prefix is held back"

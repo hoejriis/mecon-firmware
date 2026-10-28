@@ -1052,6 +1052,7 @@ mutate rotate_result_signed_with_new_key examples/companion_radio/MeconDeploy.cp
 mutate rot_pending_drop_not_finished examples/companion_radio/MyMesh.cpp '  if (!dropOldKeyState()) return;   // stays pending: tried again at the next boot' '  if (true) return;   // stays pending: tried again at the next boot' $IR::test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot
 mutate rot_pending_never_cleared examples/companion_radio/MyMesh.cpp '  const size_t m = rotFile(out, sizeof(out), text, sig, false);' '  const size_t m = rotFile(out, sizeof(out), text, sig, true);' $IR::test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot
 mutate rot_pending_not_cleared_after_drop examples/companion_radio/MyMesh.cpp '      const size_t m = rotFile(out, sizeof(out), text, sig_b64, false);' '      const size_t m = rotFile(out, sizeof(out), text, sig_b64, true);' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate native_signer_signs_mecon_bytes examples/companion_radio/MyMesh.cpp '    if (sign_data && sign_data_len >= 6 && memcmp(sign_data, "MECON-", 6) == 0) {' '    if (false) {' $IR::test_the_native_signer_never_signs_bytes_that_look_like_a_mecon_message
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi

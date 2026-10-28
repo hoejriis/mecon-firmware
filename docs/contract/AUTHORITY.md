@@ -91,6 +91,7 @@ While the device holds a record (healthy or corrupt), it signs every interface e
 - When the boot counter could not be saved at boot, `usig_boot` might repeat. The device then signs nothing and appends `"unsigned":"epoch_unsaved"` instead (and `"unsigned":"seq_exhausted"` in the 2³² messages after which `usig_seq` would wrap). A manager that requires signed messages drops those.
 - A message too large to carry its signature is not sent as an event, and answered as a short signed `busy` (`too-large-to-sign`) for a result.
 - The answer to `identity.rotate` (section 11) is signed with the key it retires, so that the manager that enrolled that key can verify it and learn the new one from inside it. Every later message is signed with the new key.
+- The native signing command of the Companion (`CMD_SIGN_*`) refuses data that starts with `MECON-`, so no native signature can be a protocol signature, enrolled or not.
 - Signing cost: about 20 µs per signature on the simulated board's host (ARM64, -O2). It has not been measured on a target MCU.
 
 ## 4. The record on the device

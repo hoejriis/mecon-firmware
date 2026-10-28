@@ -1924,7 +1924,13 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeOKFrame();
     }
   } else if (cmd_frame[0] == CMD_SIGN_FINISH) {
-    if (sign_data) {
+    if (sign_data && sign_data_len >= 6 && memcmp(sign_data, "MECON-", 6) == 0) {
+      // The MECON protocols sign under their own domain prefixes ("MECON-UPLINK-v1", "MECON-NODEROT-v1"); the native signer
+      // never signs bytes that begin that way, enrolled or not (AUTHORITY.md section 3.4).
+      free(sign_data);
+      sign_data = NULL;
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (sign_data) {
       self_id.sign(&out_frame[1], sign_data, sign_data_len);
 
       free(sign_data); // don't need sign_data now
