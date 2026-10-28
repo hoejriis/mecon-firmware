@@ -156,7 +156,10 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
 
 // Whether the console, as a caller, may use a stream of this class: the CLI privilege table, as for any console line.
 bool ConsoleIface::streamAllow(void* user, uint8_t cls) {
-  return Cli::decide(consoleContext(static_cast<ConsoleIface*>(user)->_host), cls).allow;
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  Cli::Context c(Cli::T_USB, Cli::A_CABLE, s->_host.posture(s->_host.user));
+  s->_auth.stampContext(c, &s->_unlock);   // enrolled and unlocked, as for every console decision
+  return Cli::decide(c, cls).allow;
 }
 
 // One received packet, as a console line, within the stream's rate. Not while a request is being typed: a line never
