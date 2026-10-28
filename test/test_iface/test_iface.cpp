@@ -291,7 +291,7 @@ TEST(IfaceEnvelope, EventSerialization) {
 // ---- the queue's room check (the inventory pages wait on it): it answers exactly what push() would do
 
 TEST(OutQueueRoom, EventFitsAgreesWithPushAtEveryFillLevel) {
-  for (size_t len : {(size_t)100, (size_t)700, (size_t)1300, (size_t)1500}) {
+  for (size_t len : {(size_t)100, (size_t)500, (size_t)700, (size_t)1300, (size_t)1500}) {   // 500 reaches the reserve at 1,500 used
     uint8_t store[2048];
     OutQueue q(store, sizeof(store));
     std::vector<uint8_t> msg(len, 'x');
