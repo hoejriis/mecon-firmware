@@ -1094,6 +1094,9 @@ mutate location_age_never_null src/helpers/iface/Streams.h '  w.key("age_s"); if
 mutate location_altitude_in_mm src/helpers/iface/Streams.cpp '    out.alt_m = (int32_t)(p->getAltitude() / 1000);' '    out.alt_m = (int32_t)p->getAltitude();' $PS::test_location_carries_the_fix_and_nulls_without_one
 mutate location_claimed_without_receiver_companion examples/companion_radio/MeconIface.cpp '  _loc_ok = sensors.getLocationProvider() != nullptr;' '  _loc_ok = true;' "$PS::test_location_is_absent_without_a_receiver[companion_standalone]"
 mutate location_claimed_without_receiver_console src/helpers/iface/ConsoleIface.cpp '  _loc_ok = _host.sensors->getLocationProvider() != nullptr;' '  _loc_ok = true;' "$PS::test_location_is_absent_without_a_receiver[repeater]"
+mutate inv_page_without_tail_room src/helpers/iface/Streams.h '    const size_t need = (_count ? 1 : 0) + len + TAIL;' '    const size_t need = (_count ? 1 : 0) + len;' unit:test_streams
+mutate inv_contact_lost_at_page_boundary examples/companion_radio/MeconIface.cpp '      _inv_cursor = before;              // this contact opens the next page' '' $PS::test_inventory_snapshot_carries_every_contact_and_channel_once_and_no_secret
+mutate inv_snapshot_never_ends examples/companion_radio/MeconIface.cpp '  const size_t dn = ok ? page.finish(done) : 0;' '  const size_t dn = ok ? page.finish(false) : 0;' $PS::test_inventory_snapshot_carries_every_contact_and_channel_once_and_no_secret
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

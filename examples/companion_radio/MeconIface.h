@@ -168,6 +168,16 @@ private:
   Iface::LogFeed _logs;
   void sendEvent(int stream, const char* ev, size_t n);
   void drainLogs();
+  // The inventory stream's snapshot (TELEMETRY.md): started when the stream is due (a new subscription, each period),
+  // then one page per pass, at most INV_PAGES_PER_S a second, so a long contact list never holds the RF loop.
+  void startInventory(uint32_t now);
+  void inventoryTick(uint32_t now);
+  static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
+  static const uint32_t INV_PAGE_MS = 200;
+  bool _inv_active = false;
+  uint32_t _inv_snapshot = 0, _inv_part = 0, _inv_next = 0;
+  int _inv_channel = 0;
+  int _inv_cursor = 0;   // the contact store's cursor (record ids), kept between pages
   ConnWriteFn _conn_write = nullptr;
   ConnSignatureFn _conn_sig = nullptr;
   uint64_t _conn_last = 0;

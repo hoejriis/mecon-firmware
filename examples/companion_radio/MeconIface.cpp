@@ -436,6 +436,7 @@ void MeconIface::streamTick(uint32_t now) {
   const bool ts_known = ts >= 1704067200;   // 2024-01-01: an RTC that has never been set reads far earlier
   for (int s = 0; s < STREAM_COUNT; s++) {
     if (!(due & (1u << s))) continue;
+    if (s == SID_INVENTORY) { startInventory(now); continue; }   // paged: inventoryTick sends it
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;
@@ -493,9 +494,91 @@ void MeconIface::drainLogs() {
   }
 }
 
+void MeconIface::startInventory(uint32_t now) {
+  _inv_active = true;   // a snapshot still being sent is restarted: the newest is the one a Backend keeps
+  _inv_snapshot++;
+  _inv_part = 0;
+  _inv_channel = 0;
+  _inv_cursor = 0;
+  _inv_next = now;
+}
+
+void MeconIface::inventoryTick(uint32_t now) {
+  if (!_inv_active || (int32_t)(now - _inv_next) < 0) return;
+  bool any = _mqtt_subs.s[SID_INVENTORY].active;
+  for (Link& l : _links) any = any || l.subs.s[SID_INVENTORY].active;
+  if (!any) { _inv_active = false; return; }
+  char* data = static_cast<char*>(malloc(INV_DATA));
+  char* ev = static_cast<char*>(malloc(INV_EVENT));
+  if (!data || !ev) { free(data); free(ev); _inv_next = now + 1000; return; }   // no heap now: try again in a second
+  int channels = 0, ch_cap = 0;
+#ifdef MAX_GROUP_CHANNELS
+  ch_cap = MAX_GROUP_CHANNELS;
+  {
+    ChannelDetails ch;
+    for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
+      if (_mesh->getChannel(i, ch) && ch.name[0]) channels++;
+  }
+#endif
+  InventoryPage page(data, INV_DATA);
+  bool ok = page.begin(_inv_snapshot, ++_inv_part, _mesh->getNumContacts(), _mesh->getContactCapacity(), channels, ch_cap);
+  char entry[400];
+  bool full = false, done = false;
+#ifdef MAX_GROUP_CHANNELS
+  for (; ok && _inv_channel < MAX_GROUP_CHANNELS; _inv_channel++) {
+    ChannelDetails ch;
+    if (!_mesh->getChannel(_inv_channel, ch) || !ch.name[0]) continue;
+    char name[sizeof(ch.name) + 1];
+    memcpy(name, ch.name, sizeof(ch.name)); name[sizeof(ch.name)] = 0;
+    JsonWriter w(entry, sizeof(entry));
+    writeChannelEntry(w, _inv_channel, name);   // the name only: never the channel's secret
+    if (!w.ok()) continue;
+    if (!page.add(entry, w.size())) { full = true; break; }   // this channel opens the next page
+  }
+#endif
+  while (ok && !full) {
+    const int before = _inv_cursor;
+    ContactInfo c;
+    if (!_mesh->contactStore().next(_inv_cursor, c)) { done = true; break; }
+    char name[sizeof(c.name) + 1];
+    memcpy(name, c.name, sizeof(c.name)); name[sizeof(c.name)] = 0;
+    ContactEntry e{};
+    memcpy(e.key, c.id.pub_key, 32);
+    e.name = name;
+    e.type = c.type;
+    e.fav = c.isFav();
+    e.last_advert = c.last_advert_timestamp;
+    e.hops = c.out_path_len == OUT_PATH_UNKNOWN ? -1 : (int16_t)(c.out_path_len & 63);
+    e.has_pos = c.gps_lat != 0 || c.gps_lon != 0;
+    e.lat_e6 = c.gps_lat;
+    e.lon_e6 = c.gps_lon;
+    JsonWriter w(entry, sizeof(entry));
+    writeContactEntry(w, e);   // no shared secret, no path bytes
+    if (!w.ok()) continue;
+    if (!page.add(entry, w.size())) {
+      if (page.count() == 0) continue;   // cannot fit even an empty page: skipped rather than stall the snapshot
+      _inv_cursor = before;              // this contact opens the next page
+      full = true;
+    }
+  }
+  const size_t dn = ok ? page.finish(done) : 0;
+  if (dn) {
+    const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
+    int n = writeEvent(ev, INV_EVENT, STREAMS[SID_INVENTORY].name, ++_clock.seq[SID_INVENTORY], _epoch, ts >= 1704067200,
+                       ts, data);
+    if (n > 0) n = _prov.sign(STREAMS[SID_INVENTORY].name, ev, (size_t)n, INV_EVENT);
+    if (n > 0) sendEvent(SID_INVENTORY, ev, (size_t)n);   // a page that is not sent is not retried: the next snapshot is
+  }
+  if (done || !ok || !dn) _inv_active = false;
+  _inv_next = now + INV_PAGE_MS;
+  free(data);
+  free(ev);
+}
+
 void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
   streamTick(now);
+  inventoryTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
     if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it

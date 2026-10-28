@@ -5,6 +5,7 @@
 // every role and transport.
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include "IfaceDispatch.h"
 #include "../AuditRing.h"
 #include "IfaceJson.h"
@@ -189,6 +190,79 @@ inline void writeLocation(JsonWriter& w, const LocationFix& f) {
 }
 // The fix of a location provider (sensors.getLocationProvider()); false when there is none.
 bool readLocation(LocationProvider* p, LocationFix& out);
+
+// Inventory entries (TELEMETRY.md, class private): a snapshot of the Companion's contacts and channels in pages, each
+// page one event under the transport limit. Never a secret: no channel key, no shared secret, no path bytes.
+struct ContactEntry {
+  uint8_t key[32];
+  const char* name;
+  uint8_t type;          // ADV_TYPE_*
+  bool fav;
+  uint32_t last_advert;  // their clock
+  int16_t hops;          // hops of the known path (path length & 63); -1: none, flood
+  bool has_pos;
+  int32_t lat_e6, lon_e6;
+};
+inline void writeContactEntry(JsonWriter& w, const ContactEntry& c) {
+  static const char H[] = "0123456789abcdef";
+  char key[65];
+  for (int i = 0; i < 32; i++) { key[2 * i] = H[c.key[i] >> 4]; key[2 * i + 1] = H[c.key[i] & 15]; }
+  key[64] = 0;
+  static const char* const TYPES[] = {"none", "chat", "repeater", "room", "sensor"};
+  w.beginObject();
+  w.key("kind"); w.str("contact");
+  w.key("key"); w.str(key);
+  w.key("name"); w.str(c.name);
+  w.key("type"); w.str(c.type < 5 ? TYPES[c.type] : "other");
+  w.key("fav"); w.boolean(c.fav);
+  w.key("last_advert"); w.unum(c.last_advert);
+  w.key("hops"); w.num(c.hops);
+  if (c.has_pos) { w.key("lat_e6"); w.num(c.lat_e6); w.key("lon_e6"); w.num(c.lon_e6); }
+  w.endObject();
+}
+inline void writeChannelEntry(JsonWriter& w, int index, const char* name) {
+  w.beginObject();
+  w.key("kind"); w.str("channel");
+  w.key("index"); w.num(index);
+  w.key("name"); w.str(name);
+  w.endObject();
+}
+
+// One page of an inventory snapshot, built in out: {"snapshot":n,"part":p,"contacts":{...},"channels":{...},
+// "entries":[...],"last":bool}. add() takes one entry's complete JSON and returns false, leaving the page as it was,
+// when the entry would not fit with the page's closing bytes; finish() closes it and returns its length (0 on error).
+class InventoryPage {
+public:
+  InventoryPage(char* out, size_t cap) : _o(out), _cap(cap) {}
+  bool begin(uint32_t snapshot, uint32_t part, int contacts, int contacts_cap, int channels, int channels_cap) {
+    const int n = snprintf(_o, _cap, "{\"snapshot\":%lu,\"part\":%lu,\"contacts\":{\"count\":%d,\"capacity\":%d},"
+                           "\"channels\":{\"count\":%d,\"capacity\":%d},\"entries\":[",
+                           (unsigned long)snapshot, (unsigned long)part, contacts, contacts_cap, channels, channels_cap);
+    if (n < 0 || (size_t)n >= _cap) return false;
+    _n = (size_t)n; _count = 0;
+    return true;
+  }
+  bool add(const char* entry, size_t len) {
+    const size_t need = (_count ? 1 : 0) + len + TAIL;
+    if (_n + need >= _cap) return false;
+    if (_count) _o[_n++] = ',';
+    memcpy(_o + _n, entry, len); _n += len; _count++;
+    _o[_n] = 0;
+    return true;
+  }
+  size_t finish(bool last) {
+    const int n = snprintf(_o + _n, _cap - _n, "],\"last\":%s}", last ? "true" : "false");
+    if (n < 0 || _n + (size_t)n >= _cap) return 0;
+    _n += (size_t)n;
+    return _n;
+  }
+  int count() const { return _count; }
+private:
+  static const size_t TAIL = 16;   // "],\"last\":false}" and the NUL
+  char* _o;
+  size_t _cap, _n = 0;
+  int _count = 0;
+};
 
 // The boot event of a runtime subscription: sent once per epoch, right after the first snapshot, so a consumer learns
 // what is running without a hello. The members are the ones hello carries, plus the reset reason.

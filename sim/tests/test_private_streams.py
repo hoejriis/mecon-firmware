@@ -95,3 +95,79 @@ def test_location_reaches_a_verified_broker_session(nodes, tmp_path, broker):
     got = b.next_message("mecon/%s/ev/location" % dev, timeout=30, count=1)   # the next periodic event
     assert got and got[0]["data"] == FIX_DATA, got
     assert not mecon_schema.check(got[0]["data"], mecon_schema.load("event.location.json"))
+
+
+# ------------------------------------------------------------------ inventory entries (Companion)
+
+SECRET = bytes(range(0x40, 0x50))   # a channel secret that must never appear in any event
+
+
+def snapshot(i, timeout=30.0):
+    """sub.start inventory and collect one snapshot's pages until last; returns (pages, entries)."""
+    r = i.request("sub.start", {"stream": "inventory", "lifetime_s": 300})
+    assert r["status"] == "ok", r
+    pages, end = [], time.time() + timeout
+    while time.time() < end:
+        m = i.read_message(0.5)
+        if not m or m.get("ev") != "inventory":
+            continue
+        pages.append(m)
+        if m["data"].get("last"):
+            break
+    assert pages and pages[-1]["data"]["last"], pages
+    snap = pages[0]["data"]["snapshot"]
+    assert [p["data"]["part"] for p in pages] == list(range(1, len(pages) + 1))
+    assert all(p["data"]["snapshot"] == snap for p in pages)
+    entries = [e for p in pages for e in p["data"]["entries"]]
+    return pages, entries
+
+
+def test_inventory_snapshot_carries_every_contact_and_channel_once_and_no_secret(nodes):
+    n = nodes("companion_standalone", "inv", seed=63, rtc=RTC).start()
+    c = CompanionClient(n)
+    c.app_start()
+    keys = [bytes([k]) + bytes(range(1, 32)) for k in range(1, 31)]   # 30 contacts: several pages
+    for j, k in enumerate(keys):
+        c.add_contact(k, "C%02d \"q\"" % j)
+    assert c.set_channel(1, "Team", SECRET)[0] == 0
+    i = mecon_iface.IfaceClient(c._send, c._read_frame)
+    pages, entries = snapshot(i)
+    assert len(pages) > 1, "30 contacts do not fit one page"
+    for p in pages:
+        assert len(p.raw) <= 1536, len(p.raw)   # under the link queue's and the MQTT client's limits
+        check(p, "inventory")
+        assert SECRET.hex().encode() not in p.raw and SECRET.hex().upper().encode() not in p.raw
+        assert p["data"]["contacts"]["count"] == 30
+    got = sorted(e["key"] for e in entries if e["kind"] == "contact")
+    assert got == sorted(k.hex() for k in keys), "every contact exactly once"
+    names = {e["name"] for e in entries if e["kind"] == "contact"}
+    assert "C07 \"q\"" in names
+    chans = [e for e in entries if e["kind"] == "channel"]
+    assert {"kind": "channel", "index": 1, "name": "Team"} in chans
+    assert all(set(e) == {"kind", "index", "name"} for e in chans), "a channel entry carries no secret"
+
+
+def test_inventory_snapshot_over_a_verified_broker_session(nodes, tmp_path, broker):
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "invm", b)
+    c.add_contact(bytes(range(32)), "Bob")
+    r = b.iface_request(dev, {"v": 1, "id": "inv1", "op": "sub.start", "args": {"stream": "inventory", "period_s": 300}})
+    assert r["status"] == "ok", r
+    # the first snapshot is sent at once, before this subscriber is listening: restart it so the pages are seen
+    got = []
+    for attempt in range(3):
+        assert b.iface_request(dev, {"v": 1, "id": "inv-s%d" % attempt, "op": "sub.stop", "args": {"stream": "inventory"}})["status"] == "ok"
+        import threading
+        res = {}
+        t = threading.Thread(target=lambda: res.update(m=b.next_message("mecon/%s/ev/inventory" % dev, timeout=15, count=1)))
+        t.start()
+        time.sleep(1.0)
+        assert b.iface_request(dev, {"v": 1, "id": "inv-r%d" % attempt, "op": "sub.start", "args": {"stream": "inventory", "period_s": 300}})["status"] == "ok"
+        t.join()
+        got = res.get("m") or []
+        if got:
+            break
+    assert got, "no inventory page over MQTT"
+    d = got[0]["data"]
+    assert d["part"] == 1 and d["contacts"]["count"] == 1
+    assert any(e.get("key") == bytes(range(32)).hex() for e in d["entries"]), d
