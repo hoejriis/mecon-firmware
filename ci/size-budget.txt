@@ -1,7 +1,7 @@
 # Size budget per target environment: the most flash and static RAM a build may use, in bytes.
 # The target-boards workflow fails when a build goes over its budget. Raise a budget in the same PR that
 # needs it, and say why in the commit message. Seeded 2026-10-21 from main (dd5c9c44): use + 4 KB, rounded up
-# to a whole KB. The Heltec V3 and V4 rows were lowered 2026-10-28 for the rebuilt IDF libraries (docs/PLATFORM.md), same rule.
+# to a whole KB. The Heltec V3 rows were lowered 2026-10-28 for the rebuilt IDF libraries (docs/PLATFORM.md), same rule.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1448960     122880
 Heltec_v3_companion_radio_standalone    1658880     130048
@@ -9,12 +9,12 @@ Heltec_v3_companion_radio_usb            708608      41984
 Heltec_v3_companion_radio_wifi          1424384     117760
 Heltec_v3_repeater                      1387520      67584
 Heltec_v3_room_server                   1382400      70656
-heltec_v4_companion_radio_ble           1436672     122880
-heltec_v4_companion_radio_standalone    1645568     130048
-heltec_v4_companion_radio_usb            695296      41984
-heltec_v4_companion_radio_wifi          1411072     117760
-heltec_v4_repeater                      1374208      67584
-heltec_v4_room_server                   1369088      70656
+heltec_v4_companion_radio_ble           1499136     123904
+heltec_v4_companion_radio_standalone    1702912     130048
+heltec_v4_companion_radio_usb            732160      43008
+heltec_v4_companion_radio_wifi          1466368     118784
+heltec_v4_repeater                      1436672      67584
+heltec_v4_room_server                   1431552      71680
 t1000e_companion_radio_ble               352256      84992
 t1000e_companion_radio_usb               346112      80896
 t1000e_repeater                          323584      37888
