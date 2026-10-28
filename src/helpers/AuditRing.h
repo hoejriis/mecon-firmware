@@ -40,6 +40,11 @@ struct AuditEntry {
   uint8_t event, caller, what, count;
 };
 
+// Called with each entry as add() leaves it (after folding, so `count` is the running total): the device interface's
+// logs stream hangs here (helpers/iface/Streams.h). It must be quick and must not call back into the ring. Entries
+// loaded from the file and clear() do not call it: they are history, not events.
+typedef void (*AuditListener)(void* user, const AuditEntry& entry);
+
 class AuditRing {
 public:
   // enums, not static const members: they are never odr-used, so no out-of-class definition is needed on any C++ standard
@@ -78,6 +83,13 @@ public:
     e[n++] = rec;
     _dirty = true;
     if (event == EV_POSTURE_SET || event == EV_FACTORY_RESET || event == EV_MODE_SET) _urgent = true;
+    if (_listener) _listener(_listener_user, rec);
+  }
+
+  // One listener (the device interface); clear() leaves it in place.
+  void setListener(AuditListener fn, void* user) {
+    _listener = fn;
+    _listener_user = user;
   }
 
   // Like add(), but only when this kind of event is not in the ring yet. For things that can repeat on
@@ -217,6 +229,8 @@ public:
 private:
   bool _dirty, _urgent, _flushed_once;
   uint32_t _last_flush;
+  AuditListener _listener = nullptr;
+  void* _listener_user = nullptr;
 
   int find(uint8_t event, uint8_t caller, uint8_t what) const {
     for (int i = 0; i < n; i++) {

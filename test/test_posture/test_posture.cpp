@@ -361,6 +361,54 @@ TEST_F(Ring, LongestPageFitsTheReplyBuffer) {
   EXPECT_LT(strlen(out), 150u);
 }
 
+namespace {
+struct Heard {
+  int calls = 0;
+  AuditEntry last = {};
+};
+void hear(void* user, const AuditEntry& e) {
+  Heard* h = static_cast<Heard*>(user);
+  h->calls++;
+  h->last = e;
+}
+}  // namespace
+
+TEST(AuditListener, IsCalledForEveryAddWithTheFoldedCount) {
+  AuditRing r;
+  Heard h;
+  r.setListener(hear, &h);
+  r.add(100, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);
+  EXPECT_EQ(1, h.calls);
+  EXPECT_EQ(1, h.last.count);
+  r.add(101, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);   // folds in the ring; still an event, with the running count
+  EXPECT_EQ(2, h.calls);
+  EXPECT_EQ(2, h.last.count);
+  EXPECT_EQ(101u, h.last.ts);
+  EXPECT_EQ(1, r.n);
+  r.addOnce(102, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);   // already there: nothing happened
+  EXPECT_EQ(2, h.calls);
+  r.addOnce(103, EV_REFUSED, CALLER_NET, W_BLE_START);
+  EXPECT_EQ(3, h.calls);
+}
+
+TEST(AuditListener, LoadingAFileAndClearingAreHistoryNotEvents) {
+  AuditRing a;
+  a.add(1, EV_POSTURE_SET, CALLER_CABLE, 1);
+  uint8_t img[AuditRing::FILE_SIZE];
+  a.serialize(img);
+  AuditRing r;
+  Heard h;
+  r.setListener(hear, &h);
+  ASSERT_TRUE(r.deserialize(img, sizeof(img)));
+  r.clear();
+  EXPECT_EQ(0, h.calls);
+  r.add(2, EV_MODE_SET, CALLER_BUTTON, 1);   // the listener survived clear()
+  EXPECT_EQ(1, h.calls);
+  r.setListener(nullptr, nullptr);
+  r.add(3, EV_MODE_SET, CALLER_BUTTON, 0);
+  EXPECT_EQ(1, h.calls);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
