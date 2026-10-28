@@ -87,7 +87,8 @@ Status opStatus(OpContext& c) {
 Status opSubStart(OpContext& c) {
   int started;
   const uint32_t now = millis();
-  Status st = subStart(c, &self(c)->subs(), self(c)->produced(), now, &started);
+  Status st = subStart(c, &self(c)->subs(), self(c)->produced(), now, &started, ConsoleIface::streamAllow,
+                      self(c));
   self(c)->scheduleStream(started, now);
   return st;
 }
@@ -151,6 +152,14 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   }
   observeSink().fn = onObserve;
   observeSink().user = this;
+}
+
+// Whether the console, as a caller, may use a stream of this class: the CLI privilege table, as for any console line.
+bool ConsoleIface::streamAllow(void* user, uint8_t cls) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  Cli::Context c(Cli::T_USB, Cli::A_CABLE, s->_host.posture(s->_host.user));
+  s->_auth.stampContext(c, &s->_unlock);   // enrolled and unlocked, as for every console decision
+  return Cli::decide(c, cls).allow;
 }
 
 // One received packet, as a console line, within the stream's rate. Not while a request is being typed: a line never
@@ -332,6 +341,32 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
     char ev[640];
     const int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, false, 0, data);
     if (n > 0) printLine(out, ev, (size_t)n);
+  }
+  if (_boot_pending) {   // once per epoch, right after the first runtime snapshot
+    _boot_pending = false;
+    if (_subs.s[SID_RUNTIME].active) {
+      _boot_sent = true;
+      char data[384];
+      JsonWriter w(data, sizeof(data));
+      w.beginObject();
+      writeBoot(w, *_host.board, _host.role, _host.hardware);
+      w.endObject();
+      char ev[512];
+      const int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, false, 0, data) : -1;
+      if (n > 0) printLine(out, ev, (size_t)n);
+    }
+  }
+  if (!_subs.s[SID_LOGS].active) {
+    _logs.skip(Posture::audit());
+  } else {
+    Posture::AuditEntry a[Posture::AuditRing::CAPACITY];
+    uint32_t dropped = 0;
+    const int k = _logs.poll(now, Posture::audit(), a, &dropped);
+    for (int j = 0; j < k; j++) {
+      char ev[320];
+      const int n = writeLog(ev, sizeof(ev), _clock, _epoch, false, 0, a[j], j == 0 ? dropped : 0);
+      if (n > 0) printLine(out, ev, (size_t)n);
+    }
   }
 }
 

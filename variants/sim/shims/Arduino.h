@@ -123,7 +123,7 @@ public:
   int available() override;
   int read() override;
   int peek() override;
-  operator bool() const { return true; }
+  operator bool() const;   // a host is connected to the serial port (the TCP client of the test)
 };
 extern SimSerial Serial;
 

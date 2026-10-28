@@ -373,6 +373,42 @@ TEST_F(Ring, LongestPageFitsTheReplyBuffer) {
   EXPECT_LT(strlen(out), 150u);
 }
 
+TEST(AuditRecorded, CountsEveryRecordIncludingFoldedRepeatsAndStampsTheEntry) {
+  AuditRing r;
+  EXPECT_EQ(0u, r.recorded);
+  r.add(100, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);
+  r.add(101, EV_REFUSED, CALLER_NET, W_BLE_START);
+  EXPECT_EQ(2u, r.recorded);
+  EXPECT_EQ(1u, r.serial[0]);
+  EXPECT_EQ(2u, r.serial[1]);
+  r.add(102, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);   // folds: moves to the newest slot, new serial, count 2
+  EXPECT_EQ(3u, r.recorded);
+  ASSERT_EQ(2, r.n);
+  EXPECT_EQ(W_KEY_EXPORT, r.e[1].what);
+  EXPECT_EQ(2, r.e[1].count);
+  EXPECT_EQ(3u, r.serial[1]);
+  EXPECT_EQ(2u, r.serial[0]);                          // the other entry kept its own
+  r.addOnce(103, EV_REFUSED, CALLER_NET, W_KEY_EXPORT);   // already there: nothing recorded
+  EXPECT_EQ(3u, r.recorded);
+}
+
+TEST(AuditRecorded, LoadedEntriesAreHistoryAndTheCounterSurvivesClear) {
+  AuditRing a;
+  a.add(1, EV_POSTURE_SET, CALLER_CABLE, 1);
+  uint8_t img[AuditRing::FILE_SIZE];
+  a.serialize(img);
+  AuditRing r;
+  ASSERT_TRUE(r.deserialize(img, sizeof(img)));
+  EXPECT_EQ(0u, r.recorded);
+  EXPECT_EQ(0u, r.serial[0]);
+  r.add(2, EV_MODE_SET, CALLER_BUTTON, 1);
+  r.clear();
+  r.add(3, EV_MODE_SET, CALLER_BUTTON, 0);
+  EXPECT_EQ(1, r.n);
+  EXPECT_EQ(2u, r.recorded);   // monotonic: clear() does not rewind it
+  EXPECT_EQ(2u, r.serial[0]);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

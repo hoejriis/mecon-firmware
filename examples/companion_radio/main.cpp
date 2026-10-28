@@ -144,12 +144,25 @@ void halt() {
   bool wifi_enabled = false;   // set at boot from prefs; false also when no profile is configured
 #endif
 
-#if defined(ENABLE_MECON_IFACE) && defined(ENABLE_WIFI_INTERFACE)
+#ifdef ENABLE_MECON_IFACE
+// The USB host link: 1 or 0 where the build can tell, -1 where it cannot. A UART bridge chip (a CP210x or CH340 between
+// the MCU and the connector) keeps the MCU's port open whether or not a host is attached, so the port alone says
+// nothing; a native USB CDC port reports its line state, which MECON_USB_HOST_DETECT names (the simulated board's
+// serial port reports its connection; no hardware board sets it yet).
+static int ifaceUsbHostLink() {
+#if defined(ENABLE_USB_INTERFACE) && defined(MECON_USB_HOST_DETECT)
+  return Serial ? 1 : 0;
+#else
+  return -1;
+#endif
+}
+
 // The connectivity stream (docs/contract/TELEMETRY.md): the links main.cpp owns, as plain values.
 static void ifaceConnWrite(Iface::JsonWriter& w) {
 #ifdef ENABLE_CONNMODE
   w.key("mode"); w.str(the_mesh.getConnectivityMode() == ConnMode::WIFI ? "wifi" : "ble");
 #endif
+#ifdef ENABLE_WIFI_INTERFACE
   WifiController::Snapshot ws;
   wifiController().snapshot(&ws);
   w.key("wifi"); w.beginObject();
@@ -180,21 +193,43 @@ static void ifaceConnWrite(Iface::JsonWriter& w) {
   w.key("reconnects"); w.unum(ms.reconnects);
   w.endObject();
 #endif
+#endif  // ENABLE_WIFI_INTERFACE
+#if defined(BLE_PIN_CODE)
+  // false while the BLE stack is not running (Wi-Fi mode, Hardened with the default PIN): there is no link to report
+  w.key("ble"); w.beginObject();
+  w.key("connected"); w.boolean(interface_manager.isInterfaceConnected(InterfaceType::Bluetooth));
+  w.endObject();
+#endif
+#if defined(ENABLE_USB_INTERFACE)
+  w.key("usb"); w.beginObject();
+  const int usb = ifaceUsbHostLink();
+  w.key("connected"); if (usb >= 0) w.boolean(usb != 0); else w.null();
+  w.endObject();
+#endif
 }
 
 // Changes when any link changes state or profile: the stream then sends an event at once.
-static uint32_t ifaceConnSignature() {
+static uint64_t ifaceConnSignature() {
+  uint64_t sig = 0;
+#ifdef ENABLE_WIFI_INTERFACE
   WifiController::Snapshot ws;
   wifiController().snapshot(&ws);
-  uint32_t sig = (uint32_t)ws.state | ((uint32_t)ws.profile << 8);
+  sig = (uint32_t)ws.state | ((uint32_t)ws.profile << 8);
 #ifdef ENABLE_MQTT
   MqttController::Snapshot ms;
   mqttController().snapshot(&ms);
   sig |= ((uint32_t)ms.state << 16) | ((uint32_t)ms.profile << 24);
 #endif
+#endif
+#if defined(BLE_PIN_CODE)
+  sig |= (uint64_t)(interface_manager.isInterfaceConnected(InterfaceType::Bluetooth) ? 1 : 0) << 32;
+#endif
+#if defined(ENABLE_USB_INTERFACE)
+  sig |= (uint64_t)(ifaceUsbHostLink() + 1) << 33;
+#endif
   return sig;
 }
-#endif
+#endif  // ENABLE_MECON_IFACE
 
 void setup() {
 #if defined(ENABLE_MECON_IFACE) && defined(ESP32)
@@ -326,9 +361,6 @@ void setup() {
     wifi_enabled = false;
     Posture::audit().addOnce(rtc_clock.getCurrentTime(), Posture::EV_REFUSED, Posture::CALLER_NET, Posture::W_NET_START);
   }
-#ifdef ENABLE_MECON_IFACE
-  the_mesh.iface().setConnectivity(ifaceConnWrite, ifaceConnSignature);   // reported even while Wi-Fi is off
-#endif
   if (wifi_enabled && wifi_has_profile) {
 #if defined(ESP32)
     board.setInhibitSleep(true);   // prevent sleep when WiFi is active
@@ -383,6 +415,10 @@ void setup() {
   companion_serial.begin(115200);
   hardware_serial_interface.begin(companion_serial);
   interface_manager.addInterface(InterfaceType::HardwareSerial, &hardware_serial_interface);
+#endif
+
+#ifdef ENABLE_MECON_IFACE
+  the_mesh.iface().setConnectivity(ifaceConnWrite, ifaceConnSignature);   // reported even while Wi-Fi is off
 #endif
 
   heapFloor().begin(HEAP_FLOOR_BYTES);   // the enforced heap floor (helpers/HeapFloor.h): first look in loop(), then every 60 s

@@ -6,22 +6,25 @@
 #include <Dispatcher.h>
 #include <MeshCore.h>
 #include "helpers/BootTimes.h"
+#include "helpers/MeconVersion.h"
 #include "helpers/SensorManager.h"
 #include "Lpp.h"
+#include "../cli/CliPolicy.h"
 #include <math.h>
 
 namespace Iface {
 
 // TELEMETRY.md section 2.
 const StreamDef STREAMS[STREAM_COUNT] = {
-  {"health", 5, 3600, 60},
-  {"radio", 5, 3600, 60},
-  {"power", 30, 3600, 300},
-  {"runtime", 60, 3600, 300},
-  {"observations", 0, 0, 0},
-  {"connectivity", 10, 3600, 60},
-  {"environment", 30, 3600, 300},
-  {"inventory", 300, 3600, 3600},
+  {"health", 5, 3600, 60, Cli::C_READ},
+  {"radio", 5, 3600, 60, Cli::C_READ},
+  {"power", 30, 3600, 300, Cli::C_READ},
+  {"runtime", 60, 3600, 300, Cli::C_READ},
+  {"observations", 0, 0, 0, Cli::C_READ},
+  {"connectivity", 10, 3600, 60, Cli::C_READ},
+  {"environment", 30, 3600, 300, Cli::C_READ},
+  {"inventory", 300, 3600, 3600, Cli::C_READ},
+  {"logs", 0, 0, 0, Cli::C_POSTURE},   // the audit ring: the same class as `get audit`
 };
 
 int streamIndex(const char* name, size_t len) {
@@ -42,11 +45,13 @@ static int streamArg(OpContext& c, uint32_t supported) {
   return s;
 }
 
-Status subStart(OpContext& c, SubSet* set, uint32_t supported, uint32_t now, int* started) {
+Status subStart(OpContext& c, SubSet* set, uint32_t supported, uint32_t now, int* started, StreamAllowFn allow,
+                void* allow_user) {
   *started = -1;
   const int s = streamArg(c, supported);
   if (s < 0) return ST_INVALID;
   const StreamDef& def = STREAMS[s];
+  if (!allow || !allow(allow_user, def.cls)) return ST_REFUSED;   // before anything else of the request is looked at
   int64_t period = def.default_s, life = LIFE_DEFAULT_S;
   const int pt = jsonFind(*c.doc, c.req->args, "period_s"), lt = jsonFind(*c.doc, c.req->args, "lifetime_s");
   if (pt >= 0 && def.events()) { c.error = "no-period"; return ST_INVALID; }   // an event stream has no period
@@ -108,6 +113,13 @@ int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, b
     out = writeEvent(ev, cap, STREAMS[SID_OBSERVATIONS].name, ++clock.seq[SID_OBSERVATIONS], epoch, ts_known, ts, data);
   free(data);
   return out;
+}
+
+int writeLog(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts,
+             const Posture::AuditEntry& a, uint32_t dropped) {
+  char data[160];
+  if (formatLogData(data, sizeof(data), a, dropped) < 0) return -1;
+  return writeEvent(ev, cap, STREAMS[SID_LOGS].name, ++clock.seq[SID_LOGS], epoch, ts_known, ts, data);
 }
 
 void writeStreamCapabilities(JsonWriter& w, uint32_t supported) {
@@ -226,7 +238,7 @@ static bool containsNoCase(const char* s, const char* word) {
   return false;
 }
 
-void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap) {
+void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low) {
   const char* why = b.getResetReasonString(b.getResetReason());
   const bool known = why && strcmp(why, "Not available") != 0;
   w.key("reset_reason"); if (known) w.str(why); else w.null();
@@ -245,6 +257,18 @@ void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap) {
   w.key("loop_gap_ms"); w.beginObject();
   w.key("max"); w.unum(gap.take());
   w.endObject();
+  if (heap_low >= 0) { w.key("heap_low"); w.boolean(heap_low != 0); }
+}
+
+void writeBoot(JsonWriter& w, mesh::MainBoard& b, const char* role, const char* hardware) {
+  w.key("boot"); w.boolean(true);
+  w.key("firmware"); w.str(mecon::versionFull());
+  w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
+  w.key("hardware"); w.str(hardware);
+  w.key("role"); w.str(role);
+  const char* why = b.getResetReasonString(b.getResetReason());
+  w.key("reset_reason");
+  if (why && strcmp(why, "Not available") != 0) w.str(why); else w.null();
 }
 
 }  // namespace Iface

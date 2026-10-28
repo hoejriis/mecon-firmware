@@ -49,11 +49,17 @@ public:
 
   AuditEntry e[CAPACITY];   // e[0] oldest ... e[n-1] newest
   uint8_t n = 0;
+  // How many times add() has recorded something since boot (a folded repeat counts: it changes an entry), and the value
+  // of that counter when each held entry was last recorded (0 for entries loaded from the file). The logs stream polls
+  // these from the main loop, so nothing is pushed from whichever task records.
+  uint32_t recorded = 0;
+  uint32_t serial[CAPACITY];
 
   AuditRing() { clear(); }
 
   void clear() {
     memset(e, 0, sizeof(e));
+    memset(serial, 0, sizeof(serial));
     n = 0;
     _dirty = _urgent = false;
     _flushed_once = false;
@@ -68,13 +74,14 @@ public:
     AuditEntry rec = {ts, event, caller, what, 1};
     if (at >= 0) {
       rec.count = e[at].count == 255 ? 255 : e[at].count + 1;
-      for (int i = at; i < n - 1; i++) e[i] = e[i + 1];
+      for (int i = at; i < n - 1; i++) { e[i] = e[i + 1]; serial[i] = serial[i + 1]; }
       n--;
     }
     if (n == CAPACITY) {
-      for (int i = 0; i < CAPACITY - 1; i++) e[i] = e[i + 1];
+      for (int i = 0; i < CAPACITY - 1; i++) { e[i] = e[i + 1]; serial[i] = serial[i + 1]; }
       n--;
     }
+    serial[n] = ++recorded;
     e[n++] = rec;
     _dirty = true;
     if (event == EV_POSTURE_SET || event == EV_FACTORY_RESET || event == EV_MODE_SET) _urgent = true;
@@ -130,6 +137,7 @@ public:
       e[i].ts = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
       e[i].event = p[4]; e[i].caller = p[5]; e[i].what = p[6]; e[i].count = p[7];
     }
+    memset(serial, 0, sizeof(serial));
     n = in[4];
     _dirty = _urgent = false;
     return true;

@@ -488,6 +488,20 @@ def test_health_events_over_mqtt(nodes, tmp_path, broker):
     assert not mecon_schema.check(got[0]["data"], mecon_schema.load("event.health.json"))
 
 
+@pytest.mark.timescale(10)
+def test_logs_are_refused_over_a_verified_mqtt_session_but_not_to_the_cable(nodes, tmp_path, broker):
+    """The logs stream is class posture, like `get audit`: the table gives a TLS-verified broker session reads and
+    writes but not posture, so the same sub.start that health gets is refused, and the cable gets it."""
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "lgm", b)
+    r = b.iface_request(dev, {"v": 1, "id": "l1", "op": "sub.start", "args": {"stream": "logs", "lifetime_s": 120}})
+    assert r["status"] == "refused", r
+    r = b.iface_request(dev, {"v": 1, "id": "l2", "op": "sub.start", "args": {"stream": "health", "period_s": 5}})
+    assert r["status"] == "ok", r
+    r = i.request("sub.start", {"stream": "logs", "lifetime_s": 120})
+    assert r["status"] == "ok", r
+
+
 # ------------------------------------------------------------------ get device.id: how a Backend learns device_id
 # for a device upgraded in place, over the CLI paths it already has
 

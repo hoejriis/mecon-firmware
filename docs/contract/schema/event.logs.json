@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.logs.json",
+  "title": "Data of a logs event (TELEMETRY.md section 3)",
+  "description": "One new entry of the audit ring, sent when it is recorded (an event stream: no period). Names, never codes. A repeat of an earlier entry is folded in the ring and sent again with its running count. The entry holds no secret, password or command argument. At most 5 events a second; dropped counts the entries not sent since the previous event.",
+  "type": "object",
+  "required": [
+    "ts",
+    "event",
+    "caller",
+    "what",
+    "count",
+    "dropped"
+  ],
+  "properties": {
+    "ts": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Unix seconds when the entry was recorded; null while the device clock was not set"
+    },
+    "event": {
+      "enum": [
+        "posture",
+        "refused",
+        "login-fail",
+        "reset",
+        "mode",
+        "low-mem"
+      ]
+    },
+    "caller": {
+      "enum": [
+        "cable",
+        "ble",
+        "net",
+        "remote-admin",
+        "remote-cli",
+        "button",
+        "mqtt",
+        "system"
+      ]
+    },
+    "what": {
+      "type": "string",
+      "description": "the command class refused, or the new posture or connectivity mode (posture: normal or hardened; mode: ble or wifi)"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 255
+    },
+    "dropped": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}
