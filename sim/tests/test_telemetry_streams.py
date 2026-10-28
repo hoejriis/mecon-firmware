@@ -321,6 +321,14 @@ def test_runtime_has_no_heap_low_on_the_repeater(nodes):
     assert "heap_low" not in check(first_event(i, "runtime"), "runtime")
 
 
+def test_runtime_has_no_gnss_object_without_a_receiver(nodes):
+    # The simulated boards have no GNSS receiver: the object is absent, never an empty or all-null one.
+    n, c, i = companion(nodes, "nognssc")
+    assert "gnss" not in check(first_event(i, "runtime"), "runtime")
+    n, cli, i = repeater(nodes, "nognssr")
+    assert "gnss" not in check(first_event(i, "runtime"), "runtime")
+
+
 def boot_events(events):
     return [e for e in events if e["data"].get("boot") is True]
 

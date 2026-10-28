@@ -11,6 +11,7 @@
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/AuditLog.h>
 #include <helpers/iface/DeployAuth.h>
+#include <helpers/iface/Provenance.h>
 
 class MyMesh;
 class BaseSerialInterface;
@@ -31,7 +32,8 @@ private:
 
 class MeconIface {
 public:
-  void begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch);
+  // epoch_saved: false when this boot's epoch could not be written, so it may repeat and nothing is signed (AUTHORITY.md 3.4).
+  void begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch, bool epoch_saved);
   // One CMD_MECON frame from the transport the current command arrived on (called while the reply is bound to it).
   void onFrame(const BaseSerialInterface* src, const uint8_t* frame, size_t len, uint32_t now);
   // Hands out pending frames, at most one per transport per call, and drops stale partial messages.
@@ -89,6 +91,10 @@ public:
   static Iface::Status opDeploySetUnlock(Iface::OpContext& c);
   static Iface::Status opDeployUnlockChallenge(Iface::OpContext& c);
   static Iface::Status opDeployUnlock(Iface::OpContext& c);
+  // identity.rotate (AUTHORITY.md section 11): signed, sensitive, only with a readable record.
+  static Iface::Status opIdentityRotate(Iface::OpContext& c);
+  // identity.rotation: a plain read of the rotation statement the old key signed.
+  static Iface::Status opIdentityRotation(Iface::OpContext& c);
   // Whether the link of this serial interface holds a valid local unlock (AUTHORITY.md section 10); the CLI privilege
   // table takes it as Context.unlocked, for the cable link only.
   bool unlockedFor(const BaseSerialInterface* src);
@@ -134,6 +140,7 @@ private:
   int dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
   int runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap,
                   Iface::ResultCache* cache);
+  int dispatchInner(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
   int dispatchSigned(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                      size_t cap);
   struct SignedRun;
@@ -170,6 +177,9 @@ private:
   uint32_t _env_at = 0;
   bool writeStream(int stream, Iface::JsonWriter& w);
   uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
+  Iface::Provenance _prov;                  // signs every result and event while a record exists (section 3.4)
+  mesh::LocalIdentity* _old_id = nullptr;   // the key identity.rotate retired: signs that one result, then is wiped
+  void sendSmall(Link& l, Iface::Status st, const char* error);
   Iface::DeployAuth _auth;                  // the record, its marks and the signed-request checks (shared with the servers)
   DataStoreCopies _copies;
   const char* _deny = nullptr;              // why authorize() refused, when it has a contract code for it

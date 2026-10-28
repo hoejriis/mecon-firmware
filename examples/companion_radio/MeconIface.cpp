@@ -1,4 +1,5 @@
 #include "MeconIface.h"
+#include <helpers/iface/Wipe.h>
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
 #include <helpers/MeconVersion.h>
@@ -32,7 +33,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock"};
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation"};
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -59,6 +60,8 @@ const OpEntry OPS[] = {
   // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
   {"deployment.unlock_challenge", MeconIface::opDeployUnlockChallenge, PRIV_WRITE, false},
   {"deployment.unlock", MeconIface::opDeployUnlock, PRIV_WRITE, false},
+  {"identity.rotate", MeconIface::opIdentityRotate, PRIV_WRITE, false},   // never answered from the cache: it must run once
+  {"identity.rotation", MeconIface::opIdentityRotation, PRIV_READ, false},
 };
 
 }  // namespace
@@ -186,7 +189,8 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   self->_deny = nullptr;
   // Open to any caller that can reach the interface: the read of the stored set (it reveals nothing secret), and the
   // DAK-signed authority update (it carries its own proof; AUTHORITY.md sections 6.2 and 6.3).
-  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;
+  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "identity.rotation") == 0 ||
+      strcmp(op.name, "deployment.authority_update") == 0) return true;
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).
@@ -211,11 +215,24 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
   _cur_link = link;
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
+  d.setAnswering(&_auth.answering());
   return d.handle(msg, len, out, cap, cache);
 }
 
+// Every result of the interface is signed while a record exists (AUTHORITY.md section 3.4), whichever path produced it.
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                          size_t cap) {
+  _auth.answering().clear();
+  const bool was_enrolled = _auth.enrolled();
+  int n = dispatchInner(ctx, caller, link, msg, len, out, cap);
+  if (n > 0) n = _prov.signResult(out, (size_t)n, cap, _old_id, &_auth.answering(), was_enrolled);
+  _auth.answering().clear();
+  if (_old_id) { Iface::wipe(_old_id, sizeof(*_old_id)); delete _old_id; _old_id = nullptr; }   // the retired key lives for one result
+  return n;
+}
+
+int MeconIface::dispatchInner(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
+                              size_t cap) {
   _ctx = ctx;
   _auth.setContext(ctx);
   _caller = caller;
@@ -234,11 +251,12 @@ size_t MeconIface::onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t le
   return n > 0 ? (size_t)n : 0;
 }
 
-void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch) {
+void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch, bool epoch_saved) {
   _mesh = mesh;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   deployLoad();
+  _prov.begin(&_mesh->self_id, &_auth, epoch, epoch_saved);
   observeSink().fn = onObserve;
   observeSink().user = this;
 }
@@ -258,8 +276,10 @@ void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
   if (!ev) { m->_obs.dropped++; return; }
   const uint32_t ts = m->_mesh->getRTCClock()->getCurrentTime();
-  const int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts >= 1704067200, ts, snr, rssi, raw, len,
+  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts >= 1704067200, ts, snr, rssi, raw, len,
                                  m->_obs.dropped);
+  if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);   // -1: not signable, so not sent
+  if (n <= 0) m->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing
   if (n > 0) {
     m->_obs.dropped = 0;
     for (Link& l : m->_links) {
@@ -290,9 +310,18 @@ bool MeconIface::ensureQueue(Link& l) {
 bool MeconIface::queueResult(Link& l, const char* msg, size_t len) {
   if (!ensureQueue(l)) return false;
   if (l.q->push(OutQueue::RESULT, reinterpret_cast<const uint8_t*>(msg), len) == OutQueue::PUSH_OK) return true;
-  char busy[96];   // fits what events must leave free (RESULT_RESERVE)
+  char busy[320];   // signed, still well inside what events must leave free (RESULT_RESERVE)
   int n = writeResult(busy, sizeof(busy), "", ST_BUSY, nullptr, "queue-full");
+  if (n > 0) n = _prov.signResult(busy, (size_t)n, sizeof(busy));
   return n > 0 && l.q->push(OutQueue::RESULT, reinterpret_cast<const uint8_t*>(busy), (size_t)n) == OutQueue::PUSH_OK;
+}
+
+// A short result the interface itself raises (no request ran): signed like any other.
+void MeconIface::sendSmall(Link& l, Status st, const char* error) {
+  char msg[320];
+  int n = writeResult(msg, sizeof(msg), "", st, nullptr, error);
+  if (n > 0) n = _prov.signResult(msg, (size_t)n, sizeof(msg));
+  if (n > 0) queueResult(l, msg, (size_t)n);
 }
 
 void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, size_t len, uint32_t now) {
@@ -301,14 +330,10 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
   RxResult r = l->rx.feed(frame, len, now);
   uint8_t xid;
   if (l->rx.takeDiscard(&xid)) {
-    char msg[96];
-    int n = writeResult(msg, sizeof(msg), "", ST_INVALID, nullptr, "incomplete");
-    if (n > 0) queueResult(*l, msg, (size_t)n);
+    sendSmall(*l, ST_INVALID, "incomplete");
   }
   if (r == RX_NOMEM) {
-    char msg[96];
-    int n = writeResult(msg, sizeof(msg), "", ST_BUSY, nullptr, "no-memory");
-    if (n > 0) queueResult(*l, msg, (size_t)n);
+    sendSmall(*l, ST_BUSY, "no-memory");
     return;
   }
   if (r != RX_COMPLETE) return;
@@ -319,9 +344,7 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
     int n = dispatch(ctx, caller, l, reinterpret_cast<const char*>(l->rx.data()), l->rx.size(), out, RESULT_MAX + 1);
     if (n > 0) queueResult(*l, out, (size_t)n);
   } else {
-    char msg[96];
-    int n = writeResult(msg, sizeof(msg), "", ST_BUSY, nullptr, "no-memory");
-    if (n > 0) queueResult(*l, msg, (size_t)n);
+    sendSmall(*l, ST_BUSY, "no-memory");
   }
   free(out);
   l->rx.release();
@@ -409,8 +432,9 @@ void MeconIface::streamTick(uint32_t now) {
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;
-    char ev[640];
-    const int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, ts_known, ts, data);
+    char ev[800];   // an event of up to 640 bytes, and its signature
+    int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, ts_known, ts, data);
+    if (n > 0) n = _prov.sign(STREAMS[s].name, ev, (size_t)n, sizeof(ev));   // -1: not signable, so not sent
     if (n <= 0) continue;
     sendEvent(s, ev, (size_t)n);
   }
@@ -474,9 +498,7 @@ void MeconIface::loop(uint32_t now) {
     if (l.rx.tick(now)) {
       uint8_t xid;
       l.rx.takeDiscard(&xid);
-      char msg[96];
-      int n = writeResult(msg, sizeof(msg), "", ST_INVALID, nullptr, "incomplete");
-      if (n > 0) queueResult(l, msg, (size_t)n);
+      sendSmall(l, ST_INVALID, "incomplete");
     }
     if (!l.q || !l.q->count()) continue;
     uint8_t f[FRAME_MAX];

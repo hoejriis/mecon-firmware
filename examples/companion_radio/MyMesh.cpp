@@ -1,6 +1,8 @@
 #include "MyMesh.h"
 #include <helpers/iface/Observe.h>
 #include <helpers/iface/DeviceId.h>
+#include <helpers/iface/Provenance.h>
+#include <helpers/iface/Wipe.h>
 #include <helpers/AuditStore.h>
 #include <helpers/CryptoRNG.h>
 
@@ -974,8 +976,9 @@ void MyMesh::begin() {
     uint8_t device_id[16];
     uint32_t epoch = 0;
     CryptoRNG crng(getRNG());   // device_id must not follow from a small seed (docs/contract/AUTHORITY.md section 12)
-    _store->bootDeviceMeta(&crng, device_id, &epoch);   // a failed save still leaves this boot's values
-    _iface.begin(this, device_id, epoch);
+    // A failed save still leaves this boot's values, but the epoch may repeat: nothing is signed then (section 3.4).
+    const bool saved = _store->bootDeviceMeta(&crng, device_id, &epoch);
+    _iface.begin(this, device_id, epoch, saved);
   }
 #endif
 
@@ -1024,6 +1027,9 @@ void MyMesh::begin() {
   loadContactsAtBoot();
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure public channel
   _store->loadChannels(this);
+#ifdef ENABLE_MECON_IFACE
+  recoverRotation();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop
+#endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
   _radio_freq = _prefs.freq; _radio_bw = _prefs.bw;
@@ -1919,7 +1925,13 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeOKFrame();
     }
   } else if (cmd_frame[0] == CMD_SIGN_FINISH) {
-    if (sign_data) {
+    if (sign_data && sign_data_len >= 6 && memcmp(sign_data, "MECON-", 6) == 0) {
+      // The MECON protocols sign under their own domain prefixes ("MECON-UPLINK-v1", "MECON-NODEROT-v1"); the native signer
+      // never signs bytes that begin that way, enrolled or not (AUTHORITY.md section 3.4).
+      free(sign_data);
+      sign_data = NULL;
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (sign_data) {
       self_id.sign(&out_frame[1], sign_data, sign_data_len);
 
       free(sign_data); // don't need sign_data now
@@ -2241,6 +2253,189 @@ void MyMesh::reloadContactSecrets() {
   invalidateContactSecrets();
 #endif
 }
+
+#ifdef ENABLE_MECON_IFACE
+namespace {
+// Replays 32 bytes already drawn and checked, so the key is built from exactly the seed that was tested for zeros.
+class SeedRng : public mesh::RNG {
+public:
+  explicit SeedRng(const uint8_t* s) { memcpy(_s, s, sizeof(_s)); }
+  ~SeedRng() { Iface::wipe(_s, sizeof(_s)); }
+  void random(uint8_t* dest, size_t sz) override {
+    for (size_t i = 0; i < sz; i++) dest[i] = i < sizeof(_s) ? _s[i] : 0;
+  }
+private:
+  uint8_t _s[32];
+};
+}  // namespace
+
+namespace {
+const char ROT_DOMAIN[] = "MECON-NODEROT-v1";   // + 0x00 + the statement text, signed with the key being retired
+// The stored file: the statement text, '\n', the base64 signature, and a third line "P" while the drop is pending. The
+// flag is outside the signed text because the retired key is gone by the time it is cleared.
+const size_t ROT_FILE_MAX = 512;
+
+void hex32(char* out, const uint8_t* k) {
+  static const char H[] = "0123456789abcdef";
+  for (int i = 0; i < PUB_KEY_SIZE; i++) { out[2 * i] = H[k[i] >> 4]; out[2 * i + 1] = H[k[i] & 15]; }
+  out[2 * PUB_KEY_SIZE] = 0;
+}
+
+size_t rotFile(char* out, size_t cap, const char* text, const char* sig_b64, bool pending) {
+  const int n = snprintf(out, cap, "%s\n%s\n%s", text, sig_b64, pending ? "P" : "");
+  return n > 0 && (size_t)n < cap ? (size_t)n : 0;
+}
+
+// Splits a stored file: false when it is not whole. text and sig_b64 are copied out NUL terminated.
+bool rotSplit(char* file, size_t n, const char** text, const char** sig_b64, bool* pending) {
+  file[n] = 0;
+  char* nl = strchr(file, '\n');
+  if (!nl) return false;
+  *nl = 0;
+  char* sig = nl + 1;
+  char* nl2 = strchr(sig, '\n');
+  if (!nl2 || nl2 - sig != 88) return false;
+  *nl2 = 0;
+  *text = file;
+  *sig_b64 = sig;
+  *pending = nl2[1] == 'P';
+  return true;
+}
+}  // namespace
+
+bool MyMesh::readRotation(char* text, size_t tcap, char* sig_b64, size_t scap) {
+  char file[ROT_FILE_MAX + 1];
+  const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
+  const char *t, *s;
+  bool pending;
+  if (!n || !rotSplit(file, n, &t, &s, &pending) || strlen(t) >= tcap || strlen(s) >= scap) return false;
+  strcpy(text, t);
+  strcpy(sig_b64, s);
+  return true;
+}
+
+// Drops what belonged to the old key: contacts (their shared secrets), the message queue and what was cached from them.
+bool MyMesh::dropOldKeyState() {
+  bool dropped = true;
+  {
+    ContactStore& cs = contactStore();
+    int cursor = 0;
+    ContactInfo ci;
+    while (cs.next(cursor, ci)) _store->deleteBlobByKey(ci.id.pub_key, PUB_KEY_SIZE);
+    dropped = cs.clearAll();
+    resetContacts();   // the transient anon slots
+#ifdef CONTACTS_STOCK_ARRAY
+    saveContacts();   // the stock array is a file: write the empty list
+#endif
+  }
+  offline_queue_len = 0;
+  memset(advert_paths, 0, sizeof(advert_paths));
+  clearPendingReqs();
+  dirty_contacts_expiry = 0;
+  if (_listener) _listener->onQueueSizeChanged(0);
+  return dropped;
+}
+
+void MyMesh::recoverRotation() {
+  char file[ROT_FILE_MAX + 1];
+  const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
+  if (!n) return;
+  const char *text, *sig;
+  bool pending;
+  if (!rotSplit(file, n, &text, &sig, &pending)) { _store->removeRotation(); return; }
+  char cur[2 * PUB_KEY_SIZE + 1];
+  hex32(cur, self_id.pub_key);
+  char want[2 * PUB_KEY_SIZE + 16];
+  snprintf(want, sizeof(want), "\"new\":\"%s\"", cur);
+  if (!strstr(text, want)) { _store->removeRotation(); return; }   // the key change never took effect
+  if (!pending) return;
+  if (!dropOldKeyState()) return;   // stays pending: tried again at the next boot
+  char out[ROT_FILE_MAX + 1];
+  const size_t m = rotFile(out, sizeof(out), text, sig, false);
+  if (m) _store->saveRotation(reinterpret_cast<uint8_t*>(out), m);
+}
+
+int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t job_id) {
+  // 1. Generate. The cryptographic RNG (AUTHORITY.md section 12); a source that delivers nothing is a refusal, never a
+  // fixed key. The reserved id hashes and the current key are redrawn.
+  CryptoRNG crng;
+  mesh::LocalIdentity fresh;
+  bool ok = false;
+  uint8_t prev[32] = {0};
+  for (int tries = 0; tries < 10 && !ok; tries++) {
+    uint8_t seed[32];
+    memset(seed, 0, sizeof(seed));
+    crng.random(seed, sizeof(seed));
+    bool nonzero = false;
+    for (uint8_t b : seed) nonzero = nonzero || b != 0;
+    // A source stuck at a constant or a short pattern passes the zero test: a draw with fewer than 16 distinct byte values, or
+    // one equal to the previous draw, is a failing source too (a random 32 bytes has about 28 distinct values).
+    bool seen[256];
+    memset(seen, 0, sizeof(seen));
+    int distinct = 0;
+    for (uint8_t b : seed) { if (!seen[b]) { seen[b] = true; distinct++; } }
+    if (!nonzero || distinct < 16 || (tries > 0 && memcmp(seed, prev, sizeof(seed)) == 0)) { Iface::wipe(seed, sizeof(seed)); Iface::wipe(prev, sizeof(prev)); Iface::wipe(&fresh, sizeof(fresh)); *err = "rng"; return 0; }
+    memcpy(prev, seed, sizeof(prev));
+    SeedRng r(seed);
+    Iface::wipe(seed, sizeof(seed));
+    fresh = mesh::LocalIdentity(&r);
+    ok = fresh.pub_key[0] != 0x00 && fresh.pub_key[0] != 0xFF && !fresh.matches(self_id);
+  }
+  Iface::wipe(prev, sizeof(prev));
+  if (!ok) { *err = "rng"; Iface::wipe(&fresh, sizeof(fresh)); return 0; }
+  // 2. The rotation statement: the old key signs "old key is replaced by new key" before anything changes, and it is
+  // stored (marked drop-pending) before the key is. A manager that lost the result reads it back (identity.rotation).
+  {
+    char oldhex[2 * PUB_KEY_SIZE + 1], newhex[2 * PUB_KEY_SIZE + 1];
+    hex32(oldhex, self_id.pub_key);
+    hex32(newhex, fresh.pub_key);
+    char msg[sizeof(ROT_DOMAIN) + 256];
+    memcpy(msg, ROT_DOMAIN, sizeof(ROT_DOMAIN));   // with its NUL
+    char* text = msg + sizeof(ROT_DOMAIN);
+    const int tl = snprintf(text, 256, "{\"v\":1,\"old\":\"%s\",\"new\":\"%s\",\"device_id\":\"%s\",\"job_id\":%lu}", oldhex,
+                            newhex, device_id_hex, (unsigned long)job_id);
+    if (tl <= 0 || tl >= 256) { *err = "failed"; Iface::wipe(&fresh, sizeof(fresh)); return 0; }
+    uint8_t sig[64];
+    self_id.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));
+    char sig_b64[89];
+    Iface::base64Encode(sig_b64, sig, 64);
+    char file[ROT_FILE_MAX + 1];
+    const size_t fl = rotFile(file, sizeof(file), text, sig_b64, true);
+    if (!fl || !_store->saveRotation(reinterpret_cast<uint8_t*>(file), fl)) {
+      _store->removeRotation();
+      *err = "storage";
+      Iface::wipe(&fresh, sizeof(fresh));
+      return 0;
+    }
+  }
+  // 3. Save the key, atomically. A failed save leaves the old key in place and the device exactly as it was.
+  if (!_store->saveMainIdentity(fresh)) {
+    _store->removeRotation();
+    Iface::wipe(&fresh, sizeof(fresh));
+    *err = "storage";
+    return 0;
+  }
+  // 4. Swap.
+  self_id = fresh;
+  // 5. Drop what belonged to the old key. A cut before this ends is finished at the next boot (the statement is still
+  // marked drop-pending).
+  const bool dropped = dropOldKeyState();
+  if (dropped) {
+    char text[256], sig_b64[89];
+    char out[ROT_FILE_MAX + 1];
+    if (readRotation(text, sizeof(text), sig_b64, sizeof(sig_b64))) {
+      const size_t m = rotFile(out, sizeof(out), text, sig_b64, false);
+      if (m) _store->saveRotation(reinterpret_cast<uint8_t*>(out), m);
+    }
+  }
+  // 6. One self-advert, zero hop like the app's default.
+  mesh::Packet* pkt = _prefs.advert_loc_policy == ADVERT_LOC_NONE ? createSelfAdvert(_prefs.node_name)
+                                                                   : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
+  if (pkt) sendZeroHop(pkt);
+  Iface::wipe(&fresh, sizeof(fresh));
+  return dropped ? 1 : 2;
+}
+#endif
 
 // The command line over MQTT: the controller built the context from the broker session, the gate inside
 // handleCommand() decides, and a refusal is a reply. A remote caller always has a non-zero timestamp.

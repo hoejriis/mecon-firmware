@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <math.h>
+#include "helpers/GnssHealth.h"
 
 #define MAX_HASH_SIZE        8
 #define PUB_KEY_SIZE        32
@@ -70,6 +71,11 @@ public:
   virtual bool isExternalPowered() { return false; }
   // True while a board can identify an active battery-charging source.
   virtual bool isChargerActive() { return false; }
+  // true when the board reads external power and charging from its own pins without the nRF52 power
+  // manager, so the power stream reports them rather than null.
+  virtual bool hasPowerDetect() const { return false; }
+  // fills a GNSS receiver's state for the runtime stream; false on a board without one.
+  virtual bool getGnssHealth(GnssHealth& out) { (void)out; return false; }
 
   // Optional, source-specific power detection. Boards that can distinguish a USB
   // supply from a solar charger override these; defaults keep every other board

@@ -15,7 +15,7 @@ from sim.harness import CliClient, CompanionClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
 import mecon_iface  # noqa: E402
-from test_deployment_authority import (DEP, INST_A, INST_B, SET1, SECRET, SECRET2, WHAT_UNLOCK, apply_name,  # noqa: E402
+from test_deployment_authority import (bare, DEP, INST_A, INST_B, SET1, SECRET, SECRET2, WHAT_UNLOCK, apply_name,  # noqa: E402
                                        provision_args, record_files, try_unlock, unlock_answer, update_args,
                                        with_secret, wrap)
 
@@ -113,7 +113,7 @@ def test_a_signed_config_apply_runs_once_and_its_duplicate_and_replay_run_nothin
     r = d.send(w)
     assert r["status"] == "ok" and r["result"]["complete"], r
     assert d.name() == "> Signed1"
-    assert d.send(w) == r, "the same bytes get the stored result"
+    assert bare(d.send(w)) == bare(r), "the same bytes get the stored result"
     w2 = wrap(d.node_key, "config.apply", apply_name("Meanwhile"), job=2)
     assert d.send(w2)["status"] == "ok"
     refused = d.send(w)
