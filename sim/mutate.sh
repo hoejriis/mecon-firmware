@@ -867,7 +867,7 @@ mutate conn_tls_names_swapped examples/companion_radio/main.cpp '  static const 
 mutate conn_reconnects_not_counted src/helpers/mqtt/MqttController.cpp '  _sessions++;' '' sim/tests/test_device_interface.py::test_connectivity_reports_the_links_and_each_change_at_once
 mutate loopgap_never_raised src/helpers/iface/Streams.h '    if (last && now - last > max) max = now - last;' '' unit:test_streams
 mutate loopgap_read_not_reset src/helpers/iface/Streams.h '  uint32_t take() { uint32_t m = max; max = 0; return m; }' '  uint32_t take() { return max; }' unit:test_streams
-mutate obs_limiter_refills_to_full src/helpers/iface/Streams.h '      tokens = tokens + refill > RATE ? RATE : tokens + refill;' '      tokens = OBS_RATE;' unit:test_streams
+mutate obs_limiter_refills_to_full src/helpers/iface/Streams.h '      tokens = tokens + refill > RATE ? RATE : tokens + refill;' '      tokens = RATE;' unit:test_streams
 mutate lpp_sign_ignored src/helpers/iface/Lpp.cpp '    if (t->is_signed && (raw & (1u << (8 * t->size - 1)))) v -= (int64_t)1 << (8 * t->size);' '' unit:test_lpp
 mutate lpp_everything_signed src/helpers/iface/Lpp.cpp '    if (t->is_signed && (raw & (1u << (8 * t->size - 1))))' '    if ((raw & (1u << (8 * t->size - 1))))' unit:test_lpp
 mutate lpp_gps_not_skipped src/helpers/iface/Lpp.cpp '    if (code == LPP_GPS) {' '    if (false) {' unit:test_lpp
