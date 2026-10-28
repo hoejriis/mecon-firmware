@@ -38,9 +38,9 @@ Neither signature stands in for the other. A URL, a paired link or a broker sess
   - the simulated boards and the native tests carry the `test` key.
   Today the file holds the test key alone, which is derived from a public label like the authority vectors. No signed public release exists yet, so a firmware build has **no anchors** and refuses every update, with `no-release-anchor`.
 - **No private release key is ever in the repository or a build.** Production keys are held by the release owner, at least two with separate custody, so the loss or compromise of one is recoverable (below).
-- **No remote command adds an anchor.** A Deployment may only narrow the accepted keys: `allowed_release_keys`, a list of `key_id`s in the Deployment record, set by a DAK-signed authority update. Empty means every compiled-in anchor. A Deployment that suspects a key drops it there, and the device refuses manifests signed by it at once.
+- **No remote command adds an anchor.** A Deployment may only narrow the accepted keys: `allowed_release_keys`, a list of `key_id`s, set by a DAK-signed authority update. Empty means every compiled-in anchor. A Deployment that suspects a key drops it there, and the device refuses manifests signed by it at once. *Planned:* the field will be specified in AUTHORITY.md's authority set with the implementation, together with its size budget and acceptance checks. Until then every compiled-in anchor is accepted.
 - **Compromise and loss.**
-  - **A compromised key** can sign a high `version` (version squatting). Once that key is narrowed out, the genuine fix is a downgrade by version number. It installs with `downgrade:true`, a Deployment-signed offer and a `security_version` at or above the floor (section 4).
+  - **A compromised key** can sign a high `version` (version squatting). Once that key is narrowed out, the genuine fix is a downgrade by version number. It installs with `downgrade:true` and a Deployment-signed offer. It cannot inflate the security floor: the floor follows the version compiled into the running image, never the manifest's claim (section 4).
   - **If every production key is lost,** no device can be updated remotely again. Recovery is physical (section 1). A new release with new anchors then goes on by cable.
 
 ## 4. The release manifest, and preflight
