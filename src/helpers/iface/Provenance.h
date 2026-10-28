@@ -24,6 +24,7 @@ public:
   // id: the node identity (read at signing time, so a rotation takes effect at once). auth: whether a record exists.
   void begin(const mesh::LocalIdentity* id, const DeployAuth* auth, uint32_t boot_epoch, bool epoch_saved) {
     _id = id; _auth = auth; _boot = boot_epoch; _epoch_saved = epoch_saved; _seq = 0;
+    _tokens = RATE_BURST * 1000; _tok_ms = 0; _tok_init = false;
   }
 
   // buf holds one JSON object of len bytes, ending in '}'; cap is its capacity. Returns the new length, or -1 when the
@@ -34,9 +35,12 @@ public:
   int sign(const char* stream, char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer = nullptr,
            const char* extra = "");
   // A result: it names what it answers (answering: "op", and "job_id" when the request had one) and is signed. If it cannot
-  // be signed in place, it is replaced by a short signed busy. -1 only when even that does not fit.
+  // be signed in place, it is replaced by a short signed busy. -1 only when even that does not fit. A refusal is signed
+  // within a budget of RATE_PER_S signatures a second (burst RATE_BURST): beyond it the refusal goes out unsigned with
+  // "unsigned":"rate", so unauthenticated input cannot keep the signer busy. Every other result is always signed.
   int signResult(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer = nullptr,
                  const Answering* answering = nullptr);
+  static const uint32_t RATE_PER_S = 8, RATE_BURST = 8;
 
   uint32_t seq() const { return _seq; }
 
@@ -46,6 +50,10 @@ private:
   uint32_t _boot = 0;
   bool _epoch_saved = false;
   uint32_t _seq = 0;
+  uint32_t _tokens = 0;      // refusal-signing budget in thousandths of a signature
+  uint32_t _tok_ms = 0;
+  bool _tok_init = false;
+  bool allowRefusalSignature();
 };
 
 }  // namespace Iface

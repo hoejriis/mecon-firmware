@@ -1,4 +1,5 @@
 #include "Provenance.h"
+#include <Arduino.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -70,8 +71,39 @@ int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, cons
   return (int)n;
 }
 
+bool Provenance::allowRefusalSignature() {
+  const uint32_t now = millis();
+  if (!_tok_init) { _tok_init = true; _tok_ms = now; }
+  const uint32_t dt = now - _tok_ms;
+  _tok_ms = now;
+  const uint32_t add = dt > 4000 ? RATE_BURST * 1000 : dt * RATE_PER_S;   // dt ms at RATE_PER_S a second, in thousandths
+  _tokens = _tokens + add > RATE_BURST * 1000 ? RATE_BURST * 1000 : _tokens + add;
+  if (_tokens < 1000) return false;
+  _tokens -= 1000;
+  return true;
+}
+
+namespace {
+// Whether the result in buf is a refusal: the first "status" member is the envelope's own (the id before it is escaped, so
+// it cannot contain a raw quote).
+bool isRefusal(const char* buf, size_t len) {
+  static const char K[] = "\"status\":\"refused\"";
+  const size_t kl = sizeof(K) - 1;
+  for (size_t i = 0; i + kl <= len; i++) {
+    if (buf[i] == '"' && memcmp(buf + i, "\"status\":\"", 10) == 0) return memcmp(buf + i, K, kl) == 0;
+  }
+  return false;
+}
+}  // namespace
+
 int Provenance::signResult(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer, const Answering* a) {
   if (!_auth || !_auth->enrolled()) return (int)len;   // a standalone device signs nothing
+  if (len >= 2 && isRefusal(buf, len) && !allowRefusalSignature()) {
+    static const char T[] = ",\"unsigned\":\"rate\"}";
+    if (len - 1 + sizeof(T) - 1 >= cap) return -1;
+    memcpy(buf + len - 1, T, sizeof(T));
+    return (int)(len - 1 + sizeof(T) - 1);
+  }
   char extra[72];
   extra[0] = 0;
   if (a && a->op[0]) {

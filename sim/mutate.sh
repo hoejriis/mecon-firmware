@@ -1055,6 +1055,7 @@ mutate rot_pending_not_cleared_after_drop examples/companion_radio/MyMesh.cpp ' 
 mutate native_signer_signs_mecon_bytes examples/companion_radio/MyMesh.cpp '    if (sign_data && sign_data_len >= 6 && memcmp(sign_data, "MECON-", 6) == 0) {' '    if (false) {' $IR::test_the_native_signer_never_signs_bytes_that_look_like_a_mecon_message
 mutate prov_result_names_no_op src/helpers/iface/Provenance.cpp '  if (a && a->op[0]) {' '  if (false) {' $PV::test_a_result_names_what_it_answers
 mutate prov_result_names_no_job src/helpers/iface/Provenance.cpp '    const int n = a->has_job ? snprintf(' '    const int n = false ? snprintf(' $PV::test_a_result_names_what_it_answers
+mutate prov_refusal_budget_unlimited src/helpers/iface/Provenance.cpp '  if (_tokens < 1000) return false;' '  if (_tokens < 1000) return true;' $PV::test_refusals_are_signed_within_a_budget_and_everything_else_always
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi

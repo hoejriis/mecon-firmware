@@ -173,3 +173,37 @@ def test_a_result_names_what_it_answers(nodes):
     # a result cannot be moved to another request of the same id: the signed text differs by op and job
     assert not verifies(r.raw.replace(b'"op":"config.apply"', b'"op":"config.get"'), d.node_key, "result")
 
+
+def test_refusals_are_signed_within_a_budget_and_everything_else_always(nodes):
+    d = boot_companion(nodes, "pr", 39)
+    assert d.provision()["status"] == "ok"
+    garbage = json.dumps({"mecon_auth": 1, "issuer": "zz", "sig": "x", "body": "x"}).encode()
+    t0 = time.time()
+    for _ in range(30):
+        d.i.send_raw(garbage)
+    results = []
+    last = t0
+    try:
+        while len(results) < 30:
+            results.append(d.i.wait_result("", 1.5))
+            last = time.time()
+    except TimeoutError:
+        pass   # the output queue may drop a result of a burst; what arrived is what is judged
+    elapsed = last - t0
+    refusals = [m for m in results if m["status"] == "refused"]
+    signed = [m for m in refusals if signed_text(m.raw)]
+    limited = [m for m in refusals if m.get("unsigned") == "rate"]
+    assert len(results) >= 20 and len(refusals) >= 20, [m["status"] for m in results]
+    assert len(signed) + len(limited) == len(refusals), "every refusal is either signed or marked"
+    assert 1 <= len(signed) <= 8 + int(max(elapsed, 0) * 8), (len(signed), elapsed)
+    assert len(limited) >= len(refusals) - 8 - int(max(elapsed, 0) * 8)
+    assert all(not any(k.startswith("usig") for k in m) for m in limited)
+    for m in signed:
+        assert verifies(m.raw, d.node_key, "result")
+    # not a refusal: always signed, and so is an event, with the refusal budget spent
+    for m in (d.i.request("hello"), d.i.request("status.get"), event_of(d.i, "health")):
+        assert signed_text(m.raw), m
+    # the budget comes back with time
+    time.sleep(1.2)
+    d.i.send_raw(garbage)
+    assert signed_text(d.i.wait_result("").raw), "a second later a refusal is signed again"
