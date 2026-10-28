@@ -156,3 +156,13 @@ bool T1000SensorManager::setSettingValue(const char* name, const char* value) {
   }
   return false;  // not supported
 }
+
+// the receiver's state for the runtime stream's `gnss` object. No position leaves here.
+bool T1000eBoard::getGnssHealth(GnssHealth& out) {
+  out.powered = sensors.gpsActive();
+  out.fix = out.powered ? (nmea.isValid() ? 1 : 0) : -1;
+  out.sats = (uint8_t)(out.powered ? nmea.satellitesCount() : 0);
+  uint32_t ms = 0;
+  out.fix_age_s = nmea.fixAgeMs(ms) ? (int32_t)(ms / 1000) : -1;
+  return true;
+}

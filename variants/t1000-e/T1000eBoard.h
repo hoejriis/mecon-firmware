@@ -34,6 +34,20 @@ public:
   #endif
   }
 
+  // the power stream's `external` and `charging` (docs/contract/TELEMETRY.md) from the board's own detect
+  // pins, which variant.cpp already configures as inputs but nothing read. Polarity is a build define so a hardware
+  // read can correct it: EXT_PWR_DETECT high = external power; EXT_CHRG_DETECT low = charging (open-drain status).
+#ifndef T1000E_EXT_PWR_ACTIVE
+  #define T1000E_EXT_PWR_ACTIVE HIGH
+#endif
+#ifndef T1000E_CHRG_ACTIVE
+  #define T1000E_CHRG_ACTIVE LOW
+#endif
+  bool isExternalPowered() override { return digitalRead(EXT_PWR_DETECT) == T1000E_EXT_PWR_ACTIVE; }
+  bool isChargerActive() override { return digitalRead(EXT_CHRG_DETECT) == T1000E_CHRG_ACTIVE; }
+  bool hasPowerDetect() const override { return true; }
+  bool getGnssHealth(GnssHealth& out) override;   // target.cpp: it reads the GNSS sensor manager
+
   const char* getManufacturerName() const override {
     return "Seeed Tracker T1000-E";
   }
