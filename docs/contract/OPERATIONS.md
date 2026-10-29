@@ -102,6 +102,9 @@ The bound on any pending change is therefore `within_s` plus at most one reboot.
   - A previous value with a byte below 0x20 or 0x7F, or a snapshot that cannot be saved, refuses the request (`busy` / `storage`) with nothing written.
   - The file goes when its job ends, and at boot when no awaiting job owns it. The flash file systems are copy-on-write, so the old blocks may keep the bytes until reused, as they do for the prefs.
 - **Apply.** If a write fails, what did apply is reverted at once, and the job ends `failed` with `reverted`. Otherwise the result carries `job`, `state:"awaiting-confirm"` and `confirm_left_s`. A key that applies only after a reboot (`radio`, `wifi.enabled`) gets that reboot as its first.
+  - The device does not reboot by itself for these keys: the manager asks for the reboot.
+  - Until that boot, `within_s` bounds the wait, so a change nobody activates is reverted. At that boot the window starts again in full.
+  - `confirm_left_s` counts running seconds, and is saved every 30 seconds and at every boot, so the job and its time survive the reboot.
 - **Revert.** The snapshot's lines run as the caller who applied the change, under the posture in force at the time of the revert. A revert can do nothing that caller could not do, and the audit names that caller.
   - On the Companion, a revert at boot runs before the radio and the links start, so it takes effect at once.
   - A revert while running, of a key that needs a reboot, reboots after 1.5 s.
