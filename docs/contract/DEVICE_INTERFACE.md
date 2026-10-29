@@ -59,9 +59,11 @@ UTF-8 JSON objects. Three shapes:
 | `deployment.authority_update` | a newer DAK-signed authority set with any rotations before it ([authority contract](AUTHORITY.md) section 6.2). Companion only | any caller (it carries its own signature); rate limited |
 | `identity.rotation` | the rotation statement the old node key signed, `{"rotation":{"statement":"<signed text>","sig":"<base64>"}}`, or an empty result when the key was never rotated; `deployment.get` carries the same member, only for a caller that may read ([authority contract](AUTHORITY.md) sections 3.5 and 11). Companion only | read: the statement names `device_id`, so untrusted links are refused |
 | `identity.rotate` | a new node key for a new owner; drops contacts and the message queue, keeps configuration, channels, the record and `device_id` ([authority contract](AUTHORITY.md) section 11). Companion only | signed and sensitive; refused without a readable record |
+| `channel.list` / `channel.get` | the native channel table: per used slot its name, the one-byte channel hash and the key size, never the secret; `list` is paged by 8 used slots (`cursor` in, `next` out). Companion only | read |
+| `channel.put` / `channel.remove` | write or clear a slot of the native channel table, as the app's `CMD_SET_CHANNEL` does: a name of 1 to 31 bytes and a 128-bit key as 32 hex digits; a key another slot holds is `failed` `duplicate-secret`; a table that cannot be saved is `failed` `write-failed` with the slot unchanged, in RAM and on flash. A slot holding a key under an empty name counts as present for `remove`. Companion only | write |
 | `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 
-Native operations stay native: messaging, contacts, channels, adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.
+Native operations stay native: messaging, contacts, channels (which `channel.*` also reaches, on the same table), adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.
 
 ### 5. Settings: one store, the CLI's
 

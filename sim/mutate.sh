@@ -1137,6 +1137,16 @@ mutate ble_dfu_with_a_session_pin src/helpers/BleDfuPolicy.h '  return !device_i
 # the authority layer's Ed25519 verify (DepVerify.h, #158): the Crypto library path the sim and the ESP32 builds run
 mutate dep_verify_accepts_any_signature src/helpers/deployment/DepVerify.h '  return Ed25519::verify(sig, key, msg, len);' '  return true;' sim/tests/test_deployment_authority.py::test_bad_signatures_wrong_targets_and_unknown_issuers_are_refused
 mutate dep_verify_malleable_accepted src/helpers/deployment/DepVerify.h '  if (!canonicalS(sig + 32) || !canonicalPoint(sig)) return false;' '' unit:test_dep_verify
+# channel.* on the native channel table: the key as written, no duplicate or empty key, empty slots unlisted, saved,
+# and a write class that an unsigned caller of an enrolled device does not have
+mutate channel_key_nibbles_swapped src/helpers/iface/ChannelOps.cpp '    if (i & 1) out[i / 2] |= (uint8_t)v; else out[i / 2] = (uint8_t)(v << 4);' '    if (i & 1) out[i / 2] |= (uint8_t)(v << 4); else out[i / 2] = (uint8_t)v;' unit:test_channel_ops
+mutate channel_duplicate_key_allowed src/helpers/iface/ChannelOps.cpp '  if (other >= 0 && other != slot) { wipe(key, sizeof(key)); c.error = "duplicate-secret"; return ST_FAILED; }   // the native table matches the first' '' unit:test_channel_ops
+mutate channel_zero_key_accepted src/helpers/iface/ChannelOps.cpp '  if (!any) return ST_INVALID;   // an all-zero key is an empty slot, not a channel' '' unit:test_channel_ops
+mutate channel_list_shows_empty_slots src/helpers/iface/ChannelOps.cpp '    if (!h->get(h->user, slot, ch) || !ch.name[0]) continue;' '    if (!h->get(h->user, slot, ch)) continue;' unit:test_channel_ops
+mutate channel_put_not_saved examples/companion_radio/MeconIface.cpp '  if (ok && !mesh->saveChannels()) {' '  if (ok && false) {' sim/tests/test_channel_ops.py::test_a_channel_put_through_the_interface_is_the_native_channel_and_survives_a_reboot
+mutate channel_failed_save_keeps_the_new_slot_in_ram examples/companion_radio/MeconIface.cpp '    mesh->setChannel(slot, before);' '' sim/tests/test_channel_ops.py::test_a_failed_save_answers_write_failed_and_keeps_ram_and_flash_alike
+mutate channel_remove_skips_a_nameless_key src/helpers/iface/ChannelOps.cpp '  const bool was = h->get(h->user, slot, ch) && (ch.name[0] || ch.keyed);   // a key with no name still receives' '  const bool was = h->get(h->user, slot, ch) && ch.name[0];' unit:test_channel_ops
+mutate channel_put_is_a_read examples/companion_radio/MeconIface.cpp '  {"channel.put", opChanPut, PRIV_WRITE, true},' '  {"channel.put", opChanPut, PRIV_READ, true},' sim/tests/test_deployment_authority.py::test_an_unsigned_channel_put_is_refused_once_enrolled_and_channel_reads_work
 # the lazy contacts write after a burst takes one bucket per pass and drains to the end (#145)
 mutate contacts_flush_some_ignores_the_bound $CS '      if (written == max_buckets) { if (more) *more = true; break; }' '' unit:test_contact_store
 mutate contacts_flush_some_restarts_at_the_first_bucket $CS '      _flush_from = (b + 1) % _nbuckets;' '' unit:test_contact_store

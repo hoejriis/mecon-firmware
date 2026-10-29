@@ -70,7 +70,7 @@ public:
   bool keepAside(uint16_t b, const uint8_t* buf, uint32_t len) override;   // /ct<N>.bad
   uint32_t freeBytes() override;
   void loadChannels(DataStoreHost* host);
-  void saveChannels(DataStoreHost* host);
+  bool saveChannels(DataStoreHost* host);   // false when the atomic save failed (the previous table is kept)
   void migrateToSecondaryFS();
   uint8_t getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_buf[]);
   bool putBlobByKey(const uint8_t key[], int key_len, const uint8_t src_buf[], uint8_t len);

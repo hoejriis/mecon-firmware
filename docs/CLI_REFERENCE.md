@@ -165,7 +165,7 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | `log` | Print the captured log to the serial console. | stock | write | Console only. |
 | `neighbors` | List nearby repeaters heard. | stock | read | Repeater only; the room server and the sensor answer `not supported`. Exactly `neighbors`. |
 | `neighbor.remove <pubkey-hex>` | Forget a neighbor. | stock | write | Repeater only in effect. |
-| `tempradio <freq> <bw> <sf> <cr> <minutes>` | Use other radio parameters for a number of minutes, then return to the saved ones. | stock | write | Space-separated, unlike `set radio`. |
+| `tempradio <freq>,<bw>,<sf>,<cr>,<minutes>` | Use other radio parameters for a number of minutes, then return to the saved ones. | stock | write | Comma-separated, like `set radio` (corrected 2026-10-29: this row said space-separated, which the CLI answers with `Error, invalid params`). |
 | `setperm <pubkey-hex> <permissions>` | Add, change or (permissions 0) remove an ACL entry. | stock | write | Handled by each role's own front end. |
 | `get acl` | Print the ACL to the serial console. | stock | read | Console only; the output goes to the serial port, the reply is empty. |
 | `get public.key` | This node's public key (hex). | stock | read |  |

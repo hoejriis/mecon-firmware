@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/channel.list.result.json",
+  "title": "Result of channel.list",
+  "description": "Request args: {\"cursor\": first slot to look at, optional}. The used slots from the cursor on, up to 8 per page; a channel secret is never in a result. Companion only.",
+  "type": "object",
+  "required": [
+    "capacity",
+    "channels",
+    "next"
+  ],
+  "properties": {
+    "capacity": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "channels": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "slot",
+          "name",
+          "hash",
+          "key_bits"
+        ],
+        "properties": {
+          "slot": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 31
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{2}$",
+            "description": "The channel hash on air: the first byte of SHA-256 of the key."
+          },
+          "key_bits": {
+            "enum": [
+              128,
+              256
+            ]
+          }
+        }
+      }
+    },
+    "next": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "The cursor of the next page, or null after the last slot."
+    }
+  }
+}

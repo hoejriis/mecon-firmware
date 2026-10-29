@@ -103,7 +103,10 @@ microseconds and exit). A node exits with status 75 on `reboot` and 0 on `powero
 
 `--fault /path:BYTES` kills the process (status 99, nothing closed or flushed beyond what was written) after BYTES
 of the next write to that file. `--fault-before rename:/path` or `remove:/path` kills it just before that operation
-(the source path for a rename). SimFS refuses rename over an existing file, as ESP32 SPIFFS does.
+(the source path for a rename). `--write-fail FILE` is a write error rather than a power cut: while FILE exists, a write
+to a file whose path starts with the prefix on FILE's first line (for example `/ct`) writes nothing and returns 0, as a
+failing flash write does; the test removes FILE to let the file system recover. SimFS refuses rename over an existing
+file, as ESP32 SPIFFS does.
 
 On stock 1.18 the prefs save rewrites `/prefs.json` in place: cut after 40 bytes it leaves a truncated file that the
 loader accepts, the early field (`name`) takes the new value and a field in the lost tail (`tx`) silently reverts to its

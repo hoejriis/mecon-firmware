@@ -59,6 +59,10 @@ void RadioLibWrapper::idle() {
   state = STATE_IDLE;   // need another startReceive()
 }
 
+void RadioLibWrapper::idleIfReceiving() {
+  if (state == STATE_RX) idle();
+}
+
 void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
   _threshold = threshold;
   if (_num_floor_samples >= NUM_NOISE_FLOOR_SAMPLES) {  // ignore trigger if currently sampling
