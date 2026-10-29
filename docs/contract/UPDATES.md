@@ -66,9 +66,12 @@ Neither signature stands in for the other. A URL, a paired link or a broker sess
 | `issued_at` | for the record only; freshness is the authority layer's job |
 
 **The security floor.**
-- The device keeps the highest `security_version` it has confirmed, in the same store as the provisioned marker, outside every file system (AUTHORITY.md section 4). It never lowers it.
-- Anything below the floor is refused, `downgrade:true` or not, so no signed release can take a device back below a security fix.
-- Every release with the authority layer has `security_version` of at least 1, and a build without the layer counts as 0. No update can therefore remove the authority layer.
+- **Where it lives.** It is kept in the same protected store as the provisioned marker, outside every file system and outside any region a DFU writes (AUTHORITY.md section 4; on nRF52 a slot of the marker page). Unlike the marker, **a factory reset keeps it**. It is never lowered.
+- **What raises it.** Only the security version **compiled into the running image**, never a manifest's claim. A manifest's `security_version` is checked before install (refused below the floor), but it does not move the floor.
+  - At every boot the floor rises to the running image's compiled version. That covers a cable install, an nRF52 job left unconfirmed but installed, and a job confirmed by supersede.
+  - A compromised release key that signs a manifest with an inflated `security_version` over a genuine image therefore raises the floor only to what that genuine image carries.
+- **What it refuses.** Anything below the floor, `downgrade:true` or not, so no signed release takes a device back below a security fix.
+- **Release-signing policy.** Every release with the authority layer has a security version of at least 1, and a build without it counts as 0. "No update can remove the authority layer" holds because no release key signs a manifest at 0. That is policy for whoever holds the keys, not something the floor itself enforces.
 
 **Preflight**, in this order; each step refuses with the code shown and writes nothing:
 1. **Authority.** The request is authorised (section 5): `unauthenticated`, `refused`.
@@ -88,7 +91,7 @@ Passing them makes the request a job, `accepted` (OPERATIONS.md 3.1).
 
 ## 5. Who may offer an update
 
-`update.offer`, `update.chunk` (section 6) and the update's `job.confirm` and `job.cancel` use their own class in the CLI privilege table, **`update`**. Its cells are:
+`update.offer` and the update's `job.confirm` and `job.cancel` use their own class in the CLI privilege table, **`update`**. `update.chunk` is the exception: the job's transfer token authorises it in place of the class check (section 6), so an enrolled Reader can push over USB or BLE once a member's signed offer has opened the job. The class's cells are:
 
 | Caller | `update` |
 |---|---|
@@ -98,6 +101,8 @@ Passing them makes the request a job, `accepted` (OPERATIONS.md 3.1).
 | everything else (BLE of any PIN, a broker session, LoRa, the TCP port, the Ethernet console) | refused |
 
 BLE is refused even with the device's own PIN, for the reason AUTHORITY.md section 6.1 gives for first provisioning: a device cannot tell its own random PIN from one a user or a build chose.
+
+*Planned:* the class's column lands in docs/CLI.md's privilege table and AUTHORITY.md section 9's caller table with the code. Those pages describe what is built.
 
 ## 6. Delivery and what each target verifies
 
@@ -112,9 +117,14 @@ Measured worst cases, each a published vector:
 
 | Target | `kind` | IP | USB | BLE | Image check before activation | Rollback |
 |---|---|---|---|---|---|---|
-| Heltec V3, V4 (ESP32-S3) | `app` | yes | yes | yes | SHA-256 of the written slot, read back from flash, against the manifest | the bootloader's app rollback, **only if the shipped bootloader enables it** (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`). The implementation checks this first. Without it, a running image can still revert itself, but an image that crashes before running needs physical recovery |
+| Heltec V3, V4 (ESP32-S3) | `app` | yes | yes | yes | SHA-256 of the written slot, read back from flash, against the manifest | two stages, below the table |
 | T1000-E, Wio Tracker L1 (nRF52840) | `bootloader-dfu` | no IP on these boards | yes, through the Adafruit bootloader | **not supported** | none on the device: the bootloader receives the bytes itself | none |
 
+- **ESP32 rollback, in two stages.**
+  1. **Until the new image's start-up checks pass** (radio, mesh, the interface, within 60 s of boot), it is left pending-verify. With the bootloader's app rollback (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`), any reset in that window returns to the previous slot. That catches an image that crashes or hangs before it can run.
+  2. **Once the checks pass,** the image marks itself valid, so the bootloader stops reverting it, and the confirmation deadline (section 7) takes over. The previous slot is kept untouched until the job is `confirmed`. An app-level revert, on the deadline or an abnormal reset, boots it again.
+  - **What stage 2 gives up:** if the image later fails so badly that it cannot run its own revert (a crash loop that begins after the checks), the bootloader no longer rolls it back. Recovery is then physical.
+  - **Prerequisite:** the implementation first checks that the shipped bootloader enables rollback. Without it, stage 1 does not exist, and an image that fails before its checks needs physical recovery too.
 - **IP.** The offer's `source` is `{"url": "https://..."}`.
   - The device downloads at most `image.size` bytes, writing one piece per loop pass. The digest decides.
   - A download that has not finished 30 minutes after `accepted` is `failed` (`download-timeout`), and the slot is erased.
@@ -122,6 +132,10 @@ Measured worst cases, each a published vector:
 - **USB and BLE on ESP32.** The offer's `source` is `{"push": true}`. Its result carries a **`transfer_token`** (16 random bytes, hex) for that job.
   - **Chunks.** The bytes come as `update.chunk {"job", "token", "offset", "data"}`. `data` is base64 of at most **2,304 bytes** (3,072 characters), so a chunk in a signed wrapper still fits the 4,096-byte request bound.
   - **Chunks are not jobs.** They need no `job_id` and no signature, and never answer `busy job-open`. A chunk without the job's token is refused on every link.
+  - **The token is a credential for the job's write path.**
+    - It is returned only in the offer's own result (and its owed copy). It never appears in `job` events, `job.get`, `job.list`, `update.status`, the status snapshot or any log.
+    - It dies when the job reaches a terminal state, and is compared in constant time.
+    - A chunk with a wrong token is a refusal, under the refusal budget. A relayer that reads it can at most withhold or spoil chunks, which the digest catches. That is a denial of service it could cause anyway.
   - **Bridged transfers.** The offerer can pass the token to the bridge that pushes the bytes. For example, a Backend offers over MQTT and a Reader pushes over USB.
   - **Resuming.** Each chunk answers `{"next": <offset>}`, and a chunk at any other offset gets the expected offset back. A transfer survives a disconnect, a reconnect or a re-enumeration.
   - **Integrity** is the manifest's digest over the whole image.
@@ -134,7 +148,7 @@ Measured worst cases, each a published vector:
 1. **Verified.** On ESP32 the firmware reads the slot back, compares its SHA-256 with the manifest, and only then marks it bootable: `progress`, step `verified`. A mismatch is `failed` (`digest-mismatch`), and nothing is activated.
 2. **Activation.** The device reboots into the new image. The job spans the reboot in the owed-results table (OPERATIONS.md 3.2).
 3. **Attestation.** The firmware that boots reports `update {"job", "version", "sha256"}` in `hello`, in the status snapshot and in a `job` event. `sha256` is the hash of its own running application image, computed at boot. Read it as section 1 says.
-4. **Awaiting confirmation.** The job is `awaiting-confirm` (OPERATIONS.md 3.4). `job.confirm`, from a caller with the `update` class, arriving after the new image runs, makes it `confirmed`. The security floor rises to the manifest's `security_version` at that moment. Reachability alone never confirms.
+4. **Awaiting confirmation.** The job is `awaiting-confirm` (OPERATIONS.md 3.4). `job.confirm`, from a caller with the `update` class, arriving after the new image runs, makes it `confirmed`. Reachability alone never confirms. The floor follows the running image's compiled version, as section 4 says, whether or not the job is confirmed.
 5. **The deadline.** `confirm.within_s` is 30 to 3,600, default 900. This is wider than OPERATIONS.md 3.4's 900 s ceiling, because an update's confirmation follows a download, a reboot and a health check. It counts the image's **running time across boots**, kept in the job's entry.
    - Revert when the deadline passes, or **at once on an abnormal reset**: a panic, the watchdog or a brownout, as `runtime`'s `reset_reason` reports.
    - A normal reboot or a power cycle does not revert. Otherwise anyone allowed `reboot` (a LoRa admin, a broker session) could veto a security update by rebooting.
@@ -150,7 +164,7 @@ Measured worst cases, each a published vector:
 
 | Operation | Does |
 |---|---|
-| `update.manifest` | stages one manifest `{"manifest", "manifest_sig"}` in RAM, unsigned, for any caller with `read`. It changes nothing persistent. It verifies the release signature and the target at once, refusing as preflight steps 5 to 7 would. It answers the manifest's `sha256` and what preflight would say. One slot: a later stage replaces it, and an offer naming another hash gets `manifest-not-staged`, so a stage from someone else costs a retry, never a wrong install. A job consumes it |
+| `update.manifest` | stages one manifest `{"manifest", "manifest_sig"}` in RAM, unsigned, for any caller with `read`. It changes nothing persistent. It verifies the release signature and the target at once, refusing as preflight steps 5 to 7 would. It answers the manifest's `sha256` and what preflight would say. One slot, not bound to the link that staged it: a Reader may stage over USB and a Backend offer over MQTT. A later stage replaces a manifest that no offer has taken yet. While an update job is open, a stage is refused `busy` and the job's manifest is left alone. An offer naming another hash gets `manifest-not-staged`, so a stage from someone else costs a retry, never a wrong install. The slot is RAM, so a reboot empties it. A job consumes it |
 | `update.status` | the open update job: state, bytes received, the offset expected next, the manifest's `version` and `sha256`, and the security floor |
 | `job.cancel` | before activation: stops the transfer and erases the partial slot. After activation it is the revert rule |
 | `job.confirm`, `job.get`, `job.list`, `job.ack` | as in OPERATIONS.md, with the `update` class for update jobs |
