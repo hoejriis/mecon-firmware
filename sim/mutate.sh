@@ -1091,6 +1091,14 @@ mutate gnss_age_never_null src/helpers/iface/Streams.h '  w.key("fix_age_s"); if
 mutate power_detect_ignored src/helpers/iface/Streams.h '  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();' '  const bool can_tell = b.isPwrMgtInitialised();' unit:test_streams
 mutate gnss_written_without_a_receiver src/helpers/iface/Streams.cpp '  if (b.getGnssHealth(g)) writeGnss(w, g);' '  b.getGnssHealth(g); writeGnss(w, g);' sim/tests/test_telemetry_streams.py::test_runtime_has_no_gnss_object_without_a_receiver
 
+# the job table (Jobs.h, OPERATIONS.md section 3): one open job, eviction order, never twice, deadlines, boot rules, image
+mutate jobs_second_open_allowed src/helpers/iface/Jobs.h '    if (openJob()) return nullptr;' '' unit:test_jobs
+mutate jobs_unacked_evicted_first src/helpers/iface/Jobs.h '        if (!jobTerminal(j.state) || (pass == 0 && !j.acked)) continue;' '        if (!jobTerminal(j.state) || (pass == 0 && j.acked)) continue;' unit:test_jobs
+mutate jobs_evicted_id_forgotten src/helpers/iface/Jobs.h '      _h[_hnext] = hash(pick->id);' '' unit:test_jobs
+mutate jobs_terminal_moves src/helpers/iface/Jobs.h '    if (!j || !j->state || jobTerminal(j->state) || state < JOB_ACCEPTED || state > JOB_CANCELLED || state == JOB_AWAITING)' '    if (!j || !j->state || state < JOB_ACCEPTED || state > JOB_CANCELLED || state == JOB_AWAITING)' unit:test_jobs
+mutate jobs_deadline_never_fires src/helpers/iface/Jobs.h '    if (!j->confirm_left_s) expired(j);' '' unit:test_jobs
+mutate jobs_any_boot_reverts_an_update src/helpers/iface/Jobs.h '      if (abnormal) revert(j);' '      revert(j);' unit:test_jobs
+mutate jobs_image_crc_unchecked src/helpers/iface/Jobs.h '    if (get32(in, c) != crc32(in, crc_at)) return false;' '' unit:test_jobs
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
