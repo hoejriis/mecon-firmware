@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ed_25519.h"
+#include "DepVerify.h"
 extern "C" {
 #include "ge.h"
 }
@@ -107,7 +108,7 @@ static bool verifyDomain(const char* domain, const char* text, size_t len, const
   memcpy(msg, domain, dl);
   msg[dl] = 0;
   memcpy(msg + dl + 1, text, len);
-  bool ok = ed25519_verify(sig, msg, dl + 1 + len, key) == 1;
+  bool ok = verifySig(sig, msg, dl + 1 + len, key);
   free(msg);
   return ok;
 }

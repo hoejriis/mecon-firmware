@@ -5,6 +5,7 @@
 #include "MyMesh.h"
 #include <helpers/MeconVersion.h>
 #include <helpers/MemStats.h>
+#include <helpers/NrfWorker.h>
 #include <helpers/HeapFloor.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliPolicy.h>
@@ -318,8 +319,39 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
 }
 
 // Every result of the interface is signed while a record exists (AUTHORITY.md section 3.4), whichever path produced it.
+namespace {
+struct DispatchJob {
+  MeconIface* m;
+  const Cli::Context* ctx;
+  uint8_t caller;
+  void* link;
+  const char* msg;
+  size_t len;
+  char* out;
+  size_t cap;
+  int n;
+};
+}  // namespace
+
+// The request's whole work runs on the nRF52 worker's stack (helpers/NrfWorker.h, #158); elsewhere it runs inline.
+__attribute__((noinline)) void MeconIface::dispatchJob(void* p) {
+  DispatchJob* j = static_cast<DispatchJob*>(p);
+  j->n = j->m->dispatchNow(*j->ctx, j->caller, static_cast<Link*>(j->link), j->msg, j->len, j->out, j->cap);
+}
+
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                          size_t cap) {
+  DispatchJob j = {this, &ctx, caller, link, msg, len, out, cap, -1};
+  if (NrfWorker::run(dispatchJob, &j, 15000)) return j.n;
+  // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature.
+  static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
+  if (cap <= sizeof(W)) return -1;
+  memcpy(out, W, sizeof(W));
+  return (int)sizeof(W) - 1;
+}
+
+__attribute__((noinline)) int MeconIface::dispatchNow(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg,
+                                                      size_t len, char* out, size_t cap) {
   _auth.answering().clear();
   const bool was_enrolled = _auth.enrolled();
   int n = dispatchInner(ctx, caller, link, msg, len, out, cap);

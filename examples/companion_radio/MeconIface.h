@@ -162,6 +162,8 @@ private:
   static int chanFind(void* self, const uint8_t* secret);
   Link* linkFor(const BaseSerialInterface* src, bool create);
   int dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
+  int dispatchNow(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
+  static void dispatchJob(void* job);
   int runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap,
                   Iface::ResultCache* cache);
   int dispatchInner(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);

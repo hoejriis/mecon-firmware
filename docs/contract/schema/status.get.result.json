@@ -17,6 +17,7 @@
         "largest": {"type": "integer", "minimum": 0},
         "min_free": {"type": ["integer", "null"], "description": "Lowest free since boot; null where not tracked."},
         "loop_stack_free": {"type": ["integer", "null"]},
+        "worker_stack_free": {"type": "integer", "minimum": 0, "description": "nRF52 only: the least free stack of the task that runs interface requests, once it has run."},
         "psram_free": {"type": "integer", "minimum": 0, "description": "Absent on a board without PSRAM."}
       }
     },

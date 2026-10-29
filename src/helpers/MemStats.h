@@ -38,7 +38,17 @@ struct MemStats {
   inline MemStats memStats() { MemStats m; m.free = m.largest = rp2040.getFreeHeap(); m.known = true; return m; }
 #elif defined(NRF52_PLATFORM)
   #include <Arduino.h>
-  inline MemStats memStats() { MemStats m; int f = dbgHeapFree(); m.free = m.largest = f > 0 ? (uint32_t)f : 0; m.known = true; return m; }
+  #include "NrfWorker.h"
+  // loop_stack_free: the Arduino loop task's, recorded by the interface worker once it has run (a request may itself run
+  // on the worker, where uxTaskGetStackHighWaterMark(NULL) would be the worker's own).
+  inline MemStats memStats() {
+    MemStats m;
+    int f = dbgHeapFree();
+    m.free = m.largest = f > 0 ? (uint32_t)f : 0;
+    m.loop_stack_free = NrfWorker::loopStackFree();
+    m.known = true;
+    return m;
+  }
 #else
   inline MemStats memStats() { return MemStats(); }
 #endif

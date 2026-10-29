@@ -106,6 +106,11 @@ private:
   uint32_t _reboot_at = 0;     // a revert restored a key that needs a reboot (0: none)
   static bool cliAllow(void* self, const char* line);
   void answer(Print& out);
+public:
+  // One request's work from the parse to the signed result (run on the nRF52 worker); returns the length written.
+  int compute(char* res, char* small, size_t small_cap);
+  static const size_t OUT_MAX = 1600;
+private:
   void printLine(Print& out, const char* msg, size_t len);
 
   Host _host = {};
