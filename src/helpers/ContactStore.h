@@ -132,6 +132,10 @@ public:
   // Returns the contacts kept.
   int  rebuild(int* damaged_out, int* isolated_out);
   bool flush();                                                    // writes every changed resident record; false on a write error
+  // Writes at most max_buckets of the changed buckets, starting after the last one written so a bucket that keeps
+  // failing does not hold back the others; *more says whether changed buckets remain. A caller that must not hold its
+  // loop for a whole burst calls this once per pass instead of flush().
+  bool flushSome(int max_buckets, bool* more);
 
   // --- bulk load (migration): records go straight to buckets, bypassing the cache
   void importBegin();
@@ -174,6 +178,7 @@ private:
   int _bpresent_bits;
   uint8_t* _bdirty;                // bit per bucket: needs a rewrite
   int _cap, _nslots, _count, _pinned, _pin_limit, _first_free, _nbuckets;
+  int _flush_from;                                                 // the bucket flushSome() looks at first
   uint32_t _tick;
   uint32_t _evictions, _refused_full, _refused_fav, _damaged, _write_errors, _loads, _hits;
   Refusal _refusal;

@@ -1106,7 +1106,8 @@ mutate privacy_ui_new_no_badge examples/companion_radio/ui-new/UITask.cpp '    i
 mutate ble_dfu_on_interface_builds src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return pin_chosen_by_user && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
 mutate ble_dfu_with_the_default_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin_chosen_by_user && pin != 0;' unit:test_ble_dfu_policy
 
-mutate ble_start_ota_on_nrf52_builds src/helpers/BleDfuPolicy.h 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build && !nrf52_build; }' 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build; }' unit:test_ble_dfu_policy
+mutate ble_start_ota_on_nrf52_builds src/helpers/BleDfuPolicy.h '  return opted_in && !device_interface_build && !nrf52_build;' '  return opted_in && !device_interface_build;' unit:test_ble_dfu_policy
+mutate ota_on_without_the_opt_in src/helpers/BleDfuPolicy.h '  return opted_in && !device_interface_build && !nrf52_build;' '  return !device_interface_build && !nrf52_build;' unit:test_ble_dfu_policy
 mutate start_ota_not_destructive src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE,' unit:test_cli_engine
 
 mutate start_ota_class_write src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_WRITE,' unit:test_cli_engine
@@ -1123,6 +1124,10 @@ mutate channel_put_not_saved examples/companion_radio/MeconIface.cpp '  if (ok &
 mutate channel_failed_save_keeps_the_new_slot_in_ram examples/companion_radio/MeconIface.cpp '    mesh->setChannel(slot, before);' '' sim/tests/test_channel_ops.py::test_a_failed_save_answers_write_failed_and_keeps_ram_and_flash_alike
 mutate channel_remove_skips_a_nameless_key src/helpers/iface/ChannelOps.cpp '  const bool was = h->get(h->user, slot, ch) && (ch.name[0] || ch.keyed);   // a key with no name still receives' '  const bool was = h->get(h->user, slot, ch) && ch.name[0];' unit:test_channel_ops
 mutate channel_put_is_a_read examples/companion_radio/MeconIface.cpp '  {"channel.put", opChanPut, PRIV_WRITE, true},' '  {"channel.put", opChanPut, PRIV_READ, true},' sim/tests/test_deployment_authority.py::test_an_unsigned_channel_put_is_refused_once_enrolled_and_channel_reads_work
+# the lazy contacts write after a burst takes one bucket per pass and drains to the end (#145)
+mutate contacts_flush_some_ignores_the_bound $CS '      if (written == max_buckets) { if (more) *more = true; break; }' '' unit:test_contact_store
+mutate contacts_flush_some_restarts_at_the_first_bucket $CS '      _flush_from = (b + 1) % _nbuckets;' '' unit:test_contact_store
+mutate contacts_lazy_write_stops_after_one_bucket examples/companion_radio/MyMesh.cpp '    if (!ok || !more) dirty_contacts_expiry = 0;' '    dirty_contacts_expiry = 0;' $CT_SIM::test_a_burst_of_adds_is_written_bucket_by_bucket_and_survives_a_power_cut
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi

@@ -91,7 +91,7 @@ ContactStore::ContactStore() {
   _be = NULL; _listener = NULL;
   _idx = NULL; _slots = NULL; _scratch = NULL; _bdirty = NULL; _bpresent = NULL; _bpresent_bits = 0;
   _scratch_bucket = -1;
-  _cap = _nslots = _count = _pinned = _pin_limit = _first_free = _nbuckets = 0;
+  _cap = _nslots = _count = _pinned = _pin_limit = _first_free = _nbuckets = _flush_from = 0;
   _tick = 0;
   _evictions = _refused_full = _refused_fav = _damaged = _write_errors = _loads = _hits = 0;
   _refusal = REFUSED_NONE;
@@ -113,7 +113,7 @@ void ContactStore::release() {
 void ContactStore::end() {
   release();
   _ready = false;
-  _cap = _nslots = _count = _pinned = _pin_limit = _first_free = _nbuckets = 0;
+  _cap = _nslots = _count = _pinned = _pin_limit = _first_free = _nbuckets = _flush_from = 0;
   _scratch_bucket = -1;
   _importing = false; _import_bucket = -1;
 }
@@ -414,15 +414,25 @@ bool ContactStore::flushBucket(int b) {
 }
 
 bool ContactStore::flush() {
+  return flushSome(_nbuckets, NULL);
+}
+
+bool ContactStore::flushSome(int max_buckets, bool* more) {
+  if (more) *more = false;
   if (!_ready || !_persistent) return true;
   syncAll();
   for (int i = 0; i < _nslots; i++) {
     if (_slots[i].rec >= 0 && slotDirty(_slots[i])) markBucket(bucketOf(_slots[i].rec));
   }
   bool ok = true;
-  for (int b = 0; b < _nbuckets; b++) {
+  int written = 0, from = _flush_from;
+  for (int n = 0; n < _nbuckets; n++) {
+    int b = (from + n) % _nbuckets;
     if (_bdirty[b >> 3] & (1u << (b & 7))) {
+      if (written == max_buckets) { if (more) *more = true; break; }
+      written++;
       if (!flushBucket(b)) ok = false;
+      _flush_from = (b + 1) % _nbuckets;
     }
   }
   return ok;

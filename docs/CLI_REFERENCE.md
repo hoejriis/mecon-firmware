@@ -149,7 +149,7 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | `clock` | Show the time (UTC). | stock | read | Exactly `clock`. |
 | `clock sync` | Set the clock from the sender's timestamp; the clock only moves forward. | stock | write | Meant for a remote admin. From the console the sender timestamp is 0 and the answer is `ERR: clock cannot go backwards`. |
 | `time <epoch-seconds>` | Set the clock; forward only. | stock | write | `(ERR: clock cannot go backwards)` otherwise. |
-| `start ota` | Start the board's over-the-air update mode. | stock | write | Board dependent. |
+| `start ota` | Start the board's over-the-air update mode. | stock | destructive | Off unless the build defines `ENABLE_WIFI_OTA`, and always refused on device-interface and nRF52 builds. An opted-in ESP32 build protects its Wi-Fi access point and every updater page with a credential drawn at each start and shown only in the reply. |
 | `erase` | Format the file system (factory reset). | stock, behaviour changed | destructive | Console only (the handler requires the local console, a remote caller gets `ERR: not permitted`). Now also returns the posture to Normal and writes a factory-reset audit entry after the format. |
 | `ver` | Firmware version and build date. | stock, behaviour changed | read | Stock printed `v1.18.0 (Build: <date>)`; now the full MECON identity, `v1.18.0-mecon.<tag>[+<n>.g<hash>][.dirty] (Build: <date>)`. |
 | `board` | Manufacturer / board name. | stock | read | Exactly `board`. |
