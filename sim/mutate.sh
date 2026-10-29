@@ -887,7 +887,7 @@ mutate console_sub_stop_ignored src/helpers/iface/ConsoleIface.cpp 'Status opSub
 mutate console_room_reports_repeater examples/simple_room_server/main.cpp 'ifaceBattery, "room",' 'ifaceBattery, "repeater",' sim/tests/test_device_interface_server.py::test_hello_names_the_role
 # telemetry streams (docs/contract/TELEMETRY.md)
 mutate stream_first_event_not_immediate src/helpers/iface/Streams.cpp '  if (!sub.active && !def.events()) *started = s;' '  if (false) *started = s;' sim/tests/test_telemetry_streams.py::test_a_new_subscription_after_a_stop_gets_an_event_at_once
-mutate stream_power_claims_to_tell src/helpers/iface/Streams.cpp '  const bool can_tell = b.isPwrMgtInitialised();' '  const bool can_tell = true;' sim/tests/test_telemetry_streams.py::test_each_stream_sends_its_first_event_at_once
+mutate stream_power_claims_to_tell src/helpers/iface/Streams.h '  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();' '  const bool can_tell = true;' sim/tests/test_telemetry_streams.py::test_each_stream_sends_its_first_event_at_once
 mutate stream_unknown_reset_reason_reported src/helpers/iface/Streams.cpp '  const bool known = why && strcmp(why, "Not available") != 0;' '  const bool known = why != nullptr;' sim/tests/test_telemetry_streams.py::test_each_stream_sends_its_first_event_at_once
 mutate stream_tx_flood_direct_swapped src/helpers/iface/Streams.cpp '  w.key("flood"); w.unum(d.getNumSentFlood());' '  w.key("flood"); w.unum(d.getNumSentDirect());' sim/tests/test_telemetry_streams.py::test_radio_counts_a_transmission_repeater
 mutate stream_period_unbounded src/helpers/iface/Streams.cpp '  if (pt >= 0 && !jsonGetInt(*c.doc, pt, def.min_s, def.max_s, &period)) return ST_INVALID;' '  if (pt >= 0 && !jsonGetInt(*c.doc, pt, 1, 100000, &period)) return ST_INVALID;' sim/tests/test_telemetry_streams.py::test_the_stream_table_bounds_requests
@@ -1088,6 +1088,36 @@ mutate prov_reset_result_unsigned src/helpers/iface/Provenance.cpp '  _force = w
 mutate marker_page_garbage_reads_absent src/helpers/deployment/DepMarkerPage.h '    if (ended || !markerSlotValid(s, &st)) return {MK_PRESENT, p.size(), false};   // data after the end, or not ours' '    if (ended || !markerSlotValid(s, &st)) continue;' unit:test_dep_marker_page
 mutate marker_page_write_not_read_back src/helpers/deployment/DepMarkerPage.h '  return markerPageRead(p) == (present ? MK_PRESENT : MK_ABSENT);' '  return true;' unit:test_dep_marker_page
 mutate marker_page_never_erased src/helpers/deployment/DepMarkerPage.h '  if (!sc.clean || sc.next + MARKER_SLOT > p.size()) {' '  if (false) {' unit:test_dep_marker_page
+
+# --- issue #1: the runtime stream's gnss object keeps its nulls
+mutate gnss_fix_never_null src/helpers/iface/Streams.h '  w.key("fix"); if (g.fix < 0) w.null(); else w.boolean(g.fix != 0);' '  w.key("fix"); w.boolean(g.fix != 0);' unit:test_streams
+mutate gnss_age_never_null src/helpers/iface/Streams.h '  w.key("fix_age_s"); if (g.fix_age_s < 0) w.null(); else w.unum((uint32_t)g.fix_age_s);' '  w.key("fix_age_s"); w.unum((uint32_t)g.fix_age_s);' unit:test_streams
+
+mutate power_detect_ignored src/helpers/iface/Streams.h '  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();' '  const bool can_tell = b.isPwrMgtInitialised();' unit:test_streams
+mutate gnss_written_without_a_receiver src/helpers/iface/Streams.cpp '  if (b.getGnssHealth(g)) writeGnss(w, g);' '  b.getGnssHealth(g); writeGnss(w, g);' sim/tests/test_telemetry_streams.py::test_runtime_has_no_gnss_object_without_a_receiver
+
+# --- issue #113: screen privacy per posture (src/helpers/DisplayPrivacy.h, the three UI variants)
+mutate privacy_text_always_shown src/helpers/DisplayPrivacy.h 'inline bool showsMessageText(uint8_t posture) { return !Posture::isHardened(posture); }' 'inline bool showsMessageText(uint8_t posture) { return true; }' unit:test_display_privacy
+mutate privacy_names_always_shown src/helpers/DisplayPrivacy.h 'inline bool showsNames(uint8_t posture) { return !Posture::isHardened(posture); }' 'inline bool showsNames(uint8_t posture) { return true; }' unit:test_display_privacy
+mutate privacy_pin_while_not_advertising src/helpers/DisplayPrivacy.h '  return pin != 0 && ble_enabled && !ble_connected && Posture::bleMayStart(posture, pin);' '  return pin != 0 && !ble_connected && Posture::bleMayStart(posture, pin);' unit:test_display_privacy
+mutate privacy_pin_while_connected src/helpers/DisplayPrivacy.h '  return pin != 0 && ble_enabled && !ble_connected && Posture::bleMayStart(posture, pin);' '  return pin != 0 && ble_enabled && Posture::bleMayStart(posture, pin);' unit:test_display_privacy
+mutate privacy_pin_ignores_posture src/helpers/DisplayPrivacy.h '  return pin != 0 && ble_enabled && !ble_connected && Posture::bleMayStart(posture, pin);' '  return pin != 0 && ble_enabled && !ble_connected;' unit:test_display_privacy
+mutate privacy_watch_never_fires src/helpers/DisplayPrivacy.h '    bool c = !primed || posture != last;' '    bool c = !primed;' unit:test_display_privacy
+mutate privacy_ui_new_preview_text_shown examples/companion_radio/ui-new/UITask.cpp '    display.printWordWrap(DisplayPrivacy::showsMessageText(posture) ? filtered_msg : DisplayPrivacy::HIDDEN_TEXT, display.width());' '    display.printWordWrap(filtered_msg, display.width());' sim/tests/test_screen_privacy.py
+mutate privacy_ui_new_preview_sender_shown examples/companion_radio/ui-new/UITask.cpp '    const char* who = DisplayPrivacy::showsNames(posture) ? filtered_origin : DisplayPrivacy::HIDDEN_NAME;' '    const char* who = filtered_origin;' sim/tests/test_screen_privacy.py
+mutate privacy_ui_new_no_badge examples/companion_radio/ui-new/UITask.cpp '    if (const char* badge = DisplayPrivacy::postureBadge(the_mesh.getNodePrefs()->posture)) display.print(badge);   // issue #113' '' sim/tests/test_screen_privacy.py::test_hardened_draws_no_message_text_and_no_sender
+
+# --- issue #143: BLE DFU only off the device interface, and only with a chosen PIN
+mutate ble_dfu_on_interface_builds src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return pin_chosen_by_user && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
+mutate ble_dfu_with_the_default_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin_chosen_by_user && pin != 0;' unit:test_ble_dfu_policy
+
+mutate ble_start_ota_on_nrf52_builds src/helpers/BleDfuPolicy.h 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build && !nrf52_build; }' 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build; }' unit:test_ble_dfu_policy
+mutate start_ota_not_destructive src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE,' unit:test_cli_engine
+
+mutate start_ota_class_write src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_WRITE,' unit:test_cli_engine
+
+mutate ble_dfu_with_a_session_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
