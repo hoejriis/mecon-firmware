@@ -54,6 +54,7 @@ int main(int argc, char** argv) {
     else if (a == "--heap-file") g_sim.heap_file = next();
     else if (a == "--fs-size") g_sim.fs_size = strtoul(next(), nullptr, 10);
     else if (a == "--fs-calls") g_sim.fs_calls = next();
+    else if (a == "--write-fail") g_sim.write_fail = next();
     else if (a == "--rtc") g_sim.rtc_epoch = strtoul(next(), nullptr, 10);
     else if (a == "--fault") {   // --fault /path:BYTES
       std::string v = next(); size_t c = v.rfind(':');
