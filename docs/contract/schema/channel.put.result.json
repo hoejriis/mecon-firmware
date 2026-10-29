@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/channel.put.result.json",
+  "title": "Result of channel.put",
+  "description": "Request args: {\"slot\": n, \"name\": 1 to 31 bytes, \"secret\": 32 hex digits (a 128-bit key, as the native CMD_SET_CHANNEL frame)}. A key that another slot already holds is failed with error duplicate-secret; an all-zero key is invalid. The secret is written, never read back. Companion only.",
+  "type": "object",
+  "required": [
+    "slot",
+    "name",
+    "hash",
+    "key_bits",
+    "replaced"
+  ],
+  "properties": {
+    "slot": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 31
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{2}$",
+      "description": "The channel hash on air: the first byte of SHA-256 of the key."
+    },
+    "key_bits": {
+      "enum": [
+        128,
+        256
+      ]
+    },
+    "replaced": {
+      "type": "boolean",
+      "description": "True when the slot held a channel before."
+    }
+  }
+}

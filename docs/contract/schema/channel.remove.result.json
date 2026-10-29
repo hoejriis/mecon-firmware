@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/channel.remove.result.json",
+  "title": "Result of channel.remove",
+  "description": "Request args: {\"slot\": n}. Clears the slot's name and key; removed is false when the slot was already empty. Companion only.",
+  "type": "object",
+  "required": [
+    "slot",
+    "removed"
+  ],
+  "properties": {
+    "slot": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "removed": {
+      "type": "boolean"
+    }
+  }
+}

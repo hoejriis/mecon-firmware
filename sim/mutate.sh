@@ -1091,6 +1091,15 @@ mutate gnss_age_never_null src/helpers/iface/Streams.h '  w.key("fix_age_s"); if
 mutate power_detect_ignored src/helpers/iface/Streams.h '  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();' '  const bool can_tell = b.isPwrMgtInitialised();' unit:test_streams
 mutate gnss_written_without_a_receiver src/helpers/iface/Streams.cpp '  if (b.getGnssHealth(g)) writeGnss(w, g);' '  b.getGnssHealth(g); writeGnss(w, g);' sim/tests/test_telemetry_streams.py::test_runtime_has_no_gnss_object_without_a_receiver
 
+# channel.* on the native channel table: the key as written, no duplicate or empty key, empty slots unlisted, saved,
+# and a write class that an unsigned caller of an enrolled device does not have
+mutate channel_key_nibbles_swapped src/helpers/iface/ChannelOps.cpp '    if (i & 1) out[i / 2] |= (uint8_t)v; else out[i / 2] = (uint8_t)(v << 4);' '    if (i & 1) out[i / 2] |= (uint8_t)(v << 4); else out[i / 2] = (uint8_t)v;' unit:test_channel_ops
+mutate channel_duplicate_key_allowed src/helpers/iface/ChannelOps.cpp '  if (other >= 0 && other != slot) { c.error = "duplicate-secret"; return ST_FAILED; }   // the native table matches the first' '' unit:test_channel_ops
+mutate channel_zero_key_accepted src/helpers/iface/ChannelOps.cpp '  if (!any) return ST_INVALID;   // an all-zero key is an empty slot, not a channel' '' unit:test_channel_ops
+mutate channel_list_shows_empty_slots src/helpers/iface/ChannelOps.cpp '    if (!h->get(h->user, slot, ch) || !ch.name[0]) continue;' '    if (!h->get(h->user, slot, ch)) continue;' unit:test_channel_ops
+mutate channel_put_not_saved examples/companion_radio/MeconIface.cpp '  mesh->saveChannels();' '' sim/tests/test_channel_ops.py::test_a_channel_put_through_the_interface_is_the_native_channel_and_survives_a_reboot
+mutate channel_put_is_a_read examples/companion_radio/MeconIface.cpp '  {"channel.put", opChanPut, PRIV_WRITE, true},' '  {"channel.put", opChanPut, PRIV_READ, true},' sim/tests/test_deployment_authority.py::test_an_unsigned_channel_put_is_refused_once_enrolled_and_channel_reads_work
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
