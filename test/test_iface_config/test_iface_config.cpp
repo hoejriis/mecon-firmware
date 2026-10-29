@@ -494,16 +494,18 @@ TEST(ConfigConfirm, ASnapshotOfAnotherJobIsNeverReplayed) {
   ConfirmRig r;
   r.cli.ssid[1] = "office";
   r.call(R"({"set":{"wifi.profile.1.ssid":"x"},"confirm":{}})", "own");
-  ConfigSnap other;
+  ConfigSnap other;   // a well-formed snapshot a revert could replay, but of another job
   other.begin("other");
-  ASSERT_TRUE(other.add(ConfigSnap::R_SET, 0, 0, "Evil"));
+  unsigned idx;
+  const KeyDef* tx = findKey("tx", 2, &idx);
+  ASSERT_TRUE(other.add(ConfigSnap::R_SET, (uint8_t)(tx - KEYS), 0, "5"));
   std::vector<uint8_t> img(ConfigSnap::IMAGE_MAX);
   img.resize(other.serialize(img.data(), img.size()));
   r.sf.f = img;
   bool reboot;
   EXPECT_FALSE(configRevert(r.host, *r.job("own"), &reboot));
   EXPECT_TRUE(r.ran_as.empty());
-  EXPECT_EQ("Node1", r.cli.name);
+  EXPECT_EQ(20, r.cli.tx);
   EXPECT_TRUE(r.sf.f.empty()) << "and it is removed";
 }
 
