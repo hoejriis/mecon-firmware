@@ -12,7 +12,7 @@ on:
     - cron: '17 2 * * *'
   workflow_dispatch:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
     paths:
       - '.github/workflows/all-boards.yml'
 
@@ -31,7 +31,8 @@ env:
 jobs:
   plan:
     # Draft PRs skip this; it runs once the PR is marked ready, and on every later push to it.
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    # Nightly and by hand; on a PR that edits this file only when it is ready and labelled full-ci, as the mutation matrix.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ubuntu-latest
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
@@ -91,7 +92,8 @@ jobs:
 
   verdict:
     needs: build
-    if: always()
+    # Only where the plan ran: a skipped plan skips the build, and the verdict would fail on it.
+    if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci')))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
