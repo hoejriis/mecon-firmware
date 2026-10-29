@@ -149,7 +149,21 @@ bool markerClear() {
 
 }  // namespace Dep
 
+#elif defined(NRF52_PLATFORM)
+// An nRF52 env that names no marker page: the T1000-E Companion, whose ExtraFS still covers the page (#117). It has
+// no marker store, and unsupported is the only safe answer. With no marker, a lost record would read as absent, which
+// is harmless only because such a device refuses every first provisioning and so never holds a record. Do not give
+// this branch a store without a page outside every file system: answering absent here would reopen the unsigned
+// first provisioning over the cable.
+
+namespace Dep {
+MarkerState markerRead() { return MK_UNSUPPORTED; }
+bool markerSet() { return false; }
+bool markerClear() { return false; }
+}  // namespace Dep
+
 #else
+// Any other platform: no marker store, so no unsigned first provisioning (AUTHORITY.md section 4).
 
 namespace Dep {
 MarkerState markerRead() { return MK_UNSUPPORTED; }
