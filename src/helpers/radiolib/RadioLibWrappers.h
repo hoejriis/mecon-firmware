@@ -6,6 +6,10 @@
 #ifdef USE_CC310_HW_CRYPTO
 #include <Adafruit_nRFCrypto.h>
 #endif
+#include <helpers/CryptoRNG.h>
+#if defined(ESP_PLATFORM)
+  #include <bootloader_random.h>
+#endif
 struct PacketMillis {
   uint32_t preambleMillis;  // preamble-detect -> header-valid deadline
   uint32_t payloadMillis;   // header-valid   -> rx-done deadline
@@ -89,21 +93,31 @@ public:
  * \brief  an RNG impl using the noise from the LoRa radio as entropy.
  *         NOTE: this is VERY SLOW!  Use only for things like creating new LocalIdentity
 */
+// The node identity's seed: the platform's hardware RNG, mixed with the radio's noise and Arduino random(). Radio noise
+// is real but uncertified, and random() is a PRNG seeded from one radio draw, so the hardware source is the one the key
+// rests on.
+// - ESP32: esp_fill_random() has full entropy only while Wi-Fi or BLE runs, which they do not at a first boot. Inside
+//   bootloader_random_enable() the SAR ADC's noise feeds it, as in the second-stage bootloader. That call must not be
+//   made while Wi-Fi or BLE runs: every radio_new_identity() is in setup(), before either starts.
+// - nRF52 with the CC310: its TRNG. Other nRF52 builds and the RP2040: their hardware RNG, through CryptoRNG.
 class RadioNoiseListener : public mesh::RNG {
   PhysicalLayer* _radio;
 public:
   RadioNoiseListener(PhysicalLayer& radio): _radio(&radio) { }
 
   void random(uint8_t* dest, size_t sz) override {
-#ifdef USE_CC310_HW_CRYPTO
+    memset(dest, 0, sz);   // a platform with no hardware source here leaves it to the radio's noise, as before
+#if defined(USE_CC310_HW_CRYPTO)
     nRFCrypto.Random.generate(dest, (uint16_t)sz);
+#elif defined(ESP_PLATFORM)
+    bootloader_random_enable();
+    CryptoRNG().random(dest, sz);
+    bootloader_random_disable();
+#else
+    CryptoRNG().random(dest, sz);
+#endif
     for (int i = 0; i < sz; i++) {
       dest[i] ^= _radio->randomByte() ^ (::random(0, 256) & 0xFF); // combine with Radio's entropy
     }
-#else
-    for (int i = 0; i < sz; i++) {
-      dest[i] = _radio->randomByte() ^ (::random(0, 256) & 0xFF);
-    }
-#endif
   }
 };
