@@ -1134,6 +1134,9 @@ mutate start_ota_class_write src/helpers/cli/CliRegistry.h '    {"start ota",   
 
 mutate ble_dfu_with_a_session_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
 
+# the authority layer's Ed25519 verify (DepVerify.h, #158): the Crypto library path the sim and the ESP32 builds run
+mutate dep_verify_accepts_any_signature src/helpers/deployment/DepVerify.h '  return Ed25519::verify(sig, key, msg, len);' '  return true;' sim/tests/test_deployment_authority.py::test_bad_signatures_wrong_targets_and_unknown_issuers_are_refused
+mutate dep_verify_malleable_accepted src/helpers/deployment/DepVerify.h '  if (!canonicalS(sig + 32) || !canonicalPoint(sig)) return false;' '' unit:test_dep_verify
 # channel.* on the native channel table: the key as written, no duplicate or empty key, empty slots unlisted, saved,
 # and a write class that an unsigned caller of an enrolled device does not have
 mutate channel_key_nibbles_swapped src/helpers/iface/ChannelOps.cpp '    if (i & 1) out[i / 2] |= (uint8_t)v; else out[i / 2] = (uint8_t)(v << 4);' '    if (i & 1) out[i / 2] |= (uint8_t)(v << 4); else out[i / 2] = (uint8_t)v;' unit:test_channel_ops
