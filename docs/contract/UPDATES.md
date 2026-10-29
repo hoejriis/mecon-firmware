@@ -77,7 +77,7 @@ Neither signature stands in for the other. A URL, a paired link or a broker sess
 1. **Authority.** The request is authorised (section 5): `unauthenticated`, `refused`.
 2. **Rate.** An offer that would erase the update slot again within 60 s of the last one: `busy`, `rate`.
 3. **One job.** Another state-changing job is open: `busy`, `job-open:<job>` (OPERATIONS.md 3.3). The supersede case is section 7, step 7.
-4. **The staged manifest.** A manifest is staged whose SHA-256 is the offer's `manifest_sha256`: `manifest-not-staged`. Its syntax is valid: `bad-manifest`. The offer is within its bound (section 6): `too-large`.
+4. **The staged manifest.** A manifest is staged whose SHA-256 is the offer's `manifest_sha256`: `manifest-not-staged`. Steps 5 to 7 check those exact bytes, and the job keeps its own copy of them. Its syntax is valid: `bad-manifest`. The offer is within its bound (section 6): `too-large`.
 5. **Key.** `key_id` is a compiled-in anchor, and allowed by the record if it narrows them: `untrusted-release-key`.
 6. **Signature.** `bad-release-signature`.
 7. **Target.** `line`, `hardware`, `hardware_rev`, `role`, `variant`, `layout`, `bootloader_min` and `kind` match the device and a path it supports: `wrong-target`.
@@ -153,7 +153,7 @@ Measured worst cases, each a published vector:
    - Revert when the deadline passes, or **at once on an abnormal reset**: a panic, the watchdog or a brownout, as `runtime`'s `reset_reason` reports.
    - A normal reboot or a power cycle does not revert. Otherwise anyone allowed `reboot` (a LoRa admin, a broker session) could veto a security update by rebooting.
    - Blocking every confirming path still ends in a revert at the deadline. That is the price of reverting a broken image, and the manager offers again.
-6. **Revert.** On ESP32 the previous slot boots again: `reverted`. On nRF52 there is no slot to return to: the job is `failed`, `error:"unconfirmed"`, `reverted:false`, and the new image stays installed.
+6. **Revert.** On ESP32 the previous slot boots again: `reverted`. The floor already rose when the new image booted, so the previous image may now run below it. That is expected and safe: the floor only refuses installs, never a running image. On nRF52 there is no slot to return to: the job is `failed`, `error:"unconfirmed"`, `reverted:false`, and the new image stays installed.
 7. **Supersede.** A new offer that has **passed all of preflight** supersedes an open update job:
    - one whose image attested but was not confirmed becomes `confirmed`, with `confirmed_by:"superseded"`;
    - one that never activated becomes `cancelled`, `reason:"superseded"`, and its slot is erased.
@@ -164,7 +164,7 @@ Measured worst cases, each a published vector:
 
 | Operation | Does |
 |---|---|
-| `update.manifest` | stages one manifest `{"manifest", "manifest_sig"}` in RAM, unsigned, for any caller with `read`. It changes nothing persistent. It verifies the release signature and the target at once, refusing as preflight steps 5 to 7 would. It answers the manifest's `sha256` and what preflight would say. One slot, not bound to the link that staged it: a Reader may stage over USB and a Backend offer over MQTT. A later stage replaces a manifest that no offer has taken yet. While an update job is open, a stage is refused `busy` and the job's manifest is left alone. An offer naming another hash gets `manifest-not-staged`, so a stage from someone else costs a retry, never a wrong install. The slot is RAM, so a reboot empties it. A job consumes it |
+| `update.manifest` | stages one manifest `{"manifest", "manifest_sig"}` in RAM, unsigned, for any caller with `read`. It changes nothing persistent. It verifies the release signature and the target at once, refusing as preflight steps 5 to 7 would. It answers the manifest's `sha256` and what preflight would say. Two slots, keyed by the manifest's hash and not bound to the link that staged it: a Reader may stage over USB and a Backend offer over MQTT. A third stage evicts the older slot. At most one stage a second, under the refusal budget, because each costs a signature check on unsigned input. An offer copies its manifest into the job, so staging never touches an open job, and a superseding offer (section 7) can be staged while one is open. An offer naming a hash in neither slot gets `manifest-not-staged`, so a stage from someone else costs at most a retry, never a wrong install. The slots are RAM, so a reboot empties them |
 | `update.status` | the open update job: state, bytes received, the offset expected next, the manifest's `version` and `sha256`, and the security floor |
 | `job.cancel` | before activation: stops the transfer and erases the partial slot. After activation it is the revert rule |
 | `job.confirm`, `job.get`, `job.list`, `job.ack` | as in OPERATIONS.md, with the `update` class for update jobs |
