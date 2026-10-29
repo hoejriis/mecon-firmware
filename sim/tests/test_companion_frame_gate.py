@@ -154,3 +154,66 @@ def test_untrusted_reads_carry_no_secrets(nodes):
     c = _client(n)
     assert c.get_channel(1) == ("simchan", bytes(16))               # the name serves messaging; no secret
     assert struct.unpack_from("<I", c.device_query(), 4)[0] == 0    # no PIN to pair with
+
+
+REMOTE_CLI, TELEM_LOC, FAVOURITE = 0x10, 0x04, 0x01
+UNSET_CLOCK = 1715770351            # what the clock reads at boot until it is set (VolatileRTCClock)
+
+
+def _flags_of(c, pub):
+    return {x["key"]: x["flags"] for x in c.get_contacts()[1]}[pub]
+
+
+@pytest.mark.parametrize("grant", [REMOTE_CLI, TELEM_LOC], ids=["remote-cli", "telemetry"])
+def test_granting_a_contact_flag_is_refused_over_tcp(nodes, grant):
+    """A contact flag that grants something (the remote CLI runs the key's texts as commands; telemetry releases the
+    node's position and sensors) is a setting. The rest of the record stays contact handling."""
+    n = nodes("companion_wifi", "cg%d" % grant, seed=80 + grant, rtc=RTC).start()
+    c = _client(n)
+    assert c.add_contact(PEER, "peer", ctype=ADV_TYPE_CHAT)[0] == 0
+    assert _refused(c.add_contact(PEER, "peer", flags=grant, ctype=ADV_TYPE_CHAT))         # an update granting it
+    assert _refused(c.add_contact(bytes([7]) * 32, "new", flags=grant, ctype=ADV_TYPE_CHAT))  # a new contact with it
+    assert c.add_contact(PEER, "renamed", flags=FAVOURITE, ctype=ADV_TYPE_CHAT)[0] == 0    # no grant: not gated
+    assert _flags_of(c, PEER) == FAVOURITE
+    assert bytes([7]) * 32 not in {x["key"] for x in c.get_contacts()[1]}
+    assert W_APP_FRAME in _refusal_whats(n), audit_file(n)
+
+
+def test_a_grant_held_from_the_cable_survives_tcp_edits_and_can_be_taken_away(nodes):
+    u = nodes("companion_wifi_usb", "ch", seed=95, rtc=RTC).start()
+    uc = _client(u)
+    assert uc.add_contact(PEER, "peer", flags=REMOTE_CLI, ctype=ADV_TYPE_CHAT)[0] == 0      # the cable grants it
+    uc.request_reboot()                                                                   # saves the contacts
+    assert u.wait_exit(10) == 75
+    n = nodes("companion_wifi", "ch", seed=95, rtc=RTC).start()                            # the same device over TCP
+    c = _client(n)
+    assert c.add_contact(PEER, "peer", flags=REMOTE_CLI | FAVOURITE, ctype=ADV_TYPE_CHAT)[0] == 0  # held: no new grant
+    assert _flags_of(c, PEER) == REMOTE_CLI | FAVOURITE
+    assert c.add_contact(PEER, "peer", flags=0, ctype=ADV_TYPE_CHAT)[0] == 0               # taking it away is not gated
+    assert _flags_of(c, PEER) == 0
+    assert _refused(c.add_contact(PEER, "peer", flags=REMOTE_CLI, ctype=ADV_TYPE_CHAT))     # and it cannot come back
+
+
+def _set_time(c, secs):
+    return c.request(bytes([harness.CMD_SET_DEVICE_TIME]) + struct.pack("<I", secs))
+
+
+def test_setting_a_set_clock_is_refused_over_tcp(nodes):
+    n = nodes("companion_wifi", "ct", seed=97, rtc=RTC).start()
+    c = _client(n)
+    assert _refused(_set_time(c, RTC + 86400 * 365))
+    assert W_APP_FRAME in _refusal_whats(n), audit_file(n)
+
+
+def test_an_unset_clock_is_set_over_tcp_once(nodes):
+    """Before it has been set since boot the clock reads 2024, and any caller may set it, as the app does on connecting.
+    After that it is a setting like any other."""
+    n = nodes("companion_wifi", "cu", seed=98, rtc=UNSET_CLOCK).start()
+    c = _client(n)
+    assert _set_time(c, RTC)[0] == 0
+    assert _refused(_set_time(c, RTC + 86400 * 365))
+
+
+def test_setting_a_set_clock_works_over_the_cable(nodes):
+    n = nodes("companion", "cc", seed=99, rtc=RTC).start()
+    assert _set_time(_client(n), RTC + 60)[0] == 0

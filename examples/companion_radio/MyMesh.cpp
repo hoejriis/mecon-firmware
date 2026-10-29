@@ -161,6 +161,11 @@
 #define AUTO_ADD_CHAT             (1 << 1)  // 0x02 - auto-add Chat (Companion) (ADV_TYPE_CHAT)
 #define AUTO_ADD_REPEATER         (1 << 2)  // 0x04 - auto-add Repeater (ADV_TYPE_REPEATER)
 #define AUTO_ADD_ROOM_SERVER      (1 << 3)  // 0x08 - auto-add Room Server (ADV_TYPE_ROOM)
+
+// A contact's flags that grant it something: telemetry (base, location, environment) and the remote CLI.
+#define CONTACT_GRANT_FLAGS       0x1E
+// A clock that reads before this (1 Jan 2025) has not been set since boot.
+#define CLOCK_SET_FLOOR           1735689600UL
 #define AUTO_ADD_SENSOR           (1 << 4)  // 0x10 - auto-add Sensor (ADV_TYPE_SENSOR)
 
 void MyMesh::writeOKFrame() {
@@ -1085,8 +1090,8 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   serial.enable();
 }
 
-// Which native frames the engine gates (src/helpers/cli/), and as what. Messaging, contact handling and reads are
-// not gated: the TCP port and BLE with a default PIN serve them, as the posture doc promises ("messaging only").
+// Which native frames the engine gates (src/helpers/cli/), and as what. Messaging, contact handling (short of a grant)
+// and reads are not gated: the TCP port and BLE with a default PIN serve them, as the posture doc promises ("messaging only").
 // Everything that manages the device is: settings, the radio, raw transmission, signing with the node key, reboot,
 // and the remote administration of another node under this node's identity (a CLI text, any text to a repeater,
 // which runs every text from an admin as a command, and binary requests). docs/CLI.md lists the frames.
@@ -1105,6 +1110,19 @@ uint8_t MyMesh::frameGate(size_t len) {
     case CMD_SIGN_START: case CMD_SIGN_DATA: case CMD_SIGN_FINISH:
     case CMD_SEND_BINARY_REQ:
       return Cli::FR_APP_WRITE;
+    case CMD_SET_DEVICE_TIME:
+      // The clock only moves forward here (the handler refuses an earlier time), so the app cannot undo a push ahead,
+      // and replay windows and ACLs compare against it: setting it is a setting. Until it has been set since boot any
+      // caller may set it, as the app does on connecting.
+      return getRTCClock()->getCurrentTime() < CLOCK_SET_FLOOR ? Cli::FR_NONE : Cli::FR_APP_WRITE;
+    case CMD_ADD_UPDATE_CONTACT: {
+      // Granting a contact telemetry or the remote CLI is a setting: the remote CLI runs that key's texts as commands.
+      // The rest of the record, and taking a grant away, is contact handling.
+      if (len < 1 + PUB_KEY_SIZE + 2) return Cli::FR_NONE;   // too short: the handler answers it
+      const ContactInfo* had = lookupContactByPubKey(&cmd_frame[1], PUB_KEY_SIZE);
+      const uint8_t held = had ? had->flags : 0;
+      return (cmd_frame[1 + PUB_KEY_SIZE + 1] & ~held & CONTACT_GRANT_FLAGS) ? Cli::FR_APP_WRITE : Cli::FR_NONE;
+    }
     case CMD_SEND_TXT_MSG: {
       if (len < 2) return Cli::FR_NONE;   // too short to send anything: the handler answers it
       const uint8_t txt_type = cmd_frame[1];
