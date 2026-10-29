@@ -988,7 +988,7 @@ mutate server_console_issues_no_nonce src/helpers/iface/ConsoleIface.cpp '      
 mutate server_console_is_not_the_cable src/helpers/iface/ConsoleIface.cpp '        const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));' '        const Cli::Context cable(Cli::T_TCP, Cli::A_NONE, _host.posture(_host.user));' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_repeater_erase_keeps_the_marker examples/simple_repeater/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
 mutate server_room_erase_keeps_the_marker examples/simple_room_server/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
-mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store };' '                                       nullptr, ifaceClock, &the_mesh.self_id, &job_store };' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store, &snap_store };' '                                       nullptr, ifaceClock, &the_mesh.self_id, &job_store, &snap_store };' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_format_hook_not_registered src/helpers/iface/DeployAuth.cpp '    Cli::serverCaller().on_format_user = this;' '    Cli::serverCaller().on_format_user = nullptr;' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
 
 # Local unlock (AUTHORITY.md sections 9 and 10): the handshake on the cable, what it opens, and the secret's confinement
@@ -1112,6 +1112,25 @@ mutate jobs_unsigned_ack_once_enrolled src/helpers/iface/DeployAuth.cpp '  const
 mutate svc_boot_count_unsaved src/helpers/iface/JobService.cpp '    bool changed = _t->openJob() && _t->openJob()->state == JOB_AWAITING;' '    bool changed = false;' unit:test_job_service
 mutate svc_time_left_unsaved src/helpers/iface/JobService.cpp '  if (awaiting && _unsaved_s >= SAVE_EVERY_S) changed = true;' '' unit:test_job_service
 mutate svc_signed_job_unaddressable src/helpers/iface/JobService.cpp '  return t >= 0 && jsonGetString(*c.doc, t, id, cap, CS_JOB, 1);' '  return t >= 0 && jsonGetString(*c.doc, t, id, cap, CS_ID, 1);' unit:test_job_service
+# commit-or-revert of config.apply (OPERATIONS.md 3.4)
+mutate cc_remote_needs_no_confirm src/helpers/iface/IfaceConfig.cpp '  if (needs && conf < 0 && !cable) { c.error = "confirm-required"; return ST_INVALID; }' '' unit:test_iface_config
+mutate cc_confirm_without_a_key_accepted src/helpers/iface/IfaceConfig.cpp '  if (conf >= 0 && !needs) { c.error = "confirm-not-needed"; return ST_INVALID; }' '' unit:test_iface_config
+mutate cc_value_bytes_unchecked src/helpers/iface/ConfigSnap.h '    if (vl > VALUE_MAX || !valueOk(value, vl) || _len + 4 + vl > CAP || !_job[0]) return false;' '    if (vl > VALUE_MAX || _len + 4 + vl > CAP || !_job[0]) return false;' unit:test_iface_config
+mutate cc_restore_any_key src/helpers/iface/IfaceConfig.cpp '  if (!(k.flags & KF_CONFIRM) || !(k.flags & KF_WRITABLE) || r.idx > k.idx_max) return false;' '  if (r.idx > k.idx_max) return false;' unit:test_iface_config
+mutate cc_snapshot_not_bound_to_its_job src/helpers/iface/IfaceConfig.cpp '    ok = n && s->parse(buf, n) && strcmp(s->job(), j.id) == 0;' '    ok = n && s->parse(buf, n);' unit:test_iface_config
+mutate cc_new_profile_not_cleared src/helpers/iface/IfaceConfig.cpp '    else if (strstr(reply, ": (not set)")) ok = s.add(ConfigSnap::R_CLEAR, f, ix, nullptr);' '    else if (false) ok = false;' unit:test_iface_config
+mutate cc_secret_not_captured src/helpers/iface/IfaceConfig.cpp '          ok = ch->read_secret && ch->read_secret(h->user, kk, idx, val, sizeof(val));' '          is_null = true;' unit:test_iface_config
+mutate cc_failed_apply_kept src/helpers/iface/IfaceConfig.cpp '    if (!all_ok) {   // a tentative change is all or nothing: what did apply goes back at once' '    if (false) {' unit:test_iface_config
+mutate cc_snapshot_save_ignored src/helpers/iface/IfaceConfig.cpp '    ok = n && ch->snap->save(img, n);' '    ok = n != 0; ch->snap->save(img, n);' unit:test_iface_config
+mutate cc_orphan_snapshot_kept src/helpers/iface/IfaceConfig.cpp '  if (!keep) ch->snap->discard();   // an orphan of a cut apply, or of a job that ended: it holds old secrets' '' unit:test_iface_config
+mutate cc_classes_not_recorded src/helpers/iface/IfaceConfig.cpp '      job->cls = cls;' '' unit:test_iface_config
+mutate cc_retry_runs_again src/helpers/iface/IfaceConfig.cpp '    if (l == JobTable::FOUND) { JobService::writeSummary(*c.out, *known); return ST_OK; }   // never a second run' '' unit:test_iface_config
+mutate cc_snapshot_image_unchecked src/helpers/iface/ConfigSnap.h '    if (n < 4 + 1 + 1 + 2 + 4 || get32(in, 0) != MAGIC || get32(in, n - 4) != crc32(in, n - 4)) return false;' '    if (n < 4 + 1 + 1 + 2 + 4) return false;' unit:test_iface_config
+mutate svc_cancel_any_class src/helpers/iface/JobService.cpp '  if (_cls_check && !_cls_check(_cls_user, j->cls)) { c.error = "not-permitted"; return ST_REFUSED; }   // cancel' '' unit:test_job_service
+mutate svc_confirm_any_class src/helpers/iface/JobService.cpp '  if (_cls_check && !_cls_check(_cls_user, j->cls)) { c.error = "not-permitted"; return ST_REFUSED; }   // confirm' '' unit:test_job_service
+mutate cc_cable_by_transport examples/companion_radio/MeconDeploy.cpp '  return Cli::principalOf(static_cast<MeconIface*>(user)->_ctx) == Cli::P_CABLE;' '  return static_cast<MeconIface*>(user)->_ctx.transport == Cli::T_USB;' sim/tests/test_jobs.py::test_a_signed_caller_on_the_cable_is_not_the_cable
+mutate cc_no_revert_at_boot examples/companion_radio/MeconDeploy.cpp '  _jobs.begin(&g_job_file, abnormalReset(board) == 1, jobRevert, jobConfirm, this);' '  _jobs.begin(&g_job_file, abnormalReset(board) == 1, nullptr, jobConfirm, this);' sim/tests/test_jobs.py::test_a_cancel_reverts_and_a_reboot_while_pending_reverts_at_boot
+mutate cc_console_no_revert src/helpers/iface/ConsoleIface.cpp '  _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);' '  _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, nullptr, jobConfirm, this);' sim/tests/test_jobs.py::test_the_console_reverts_an_unconfirmed_tx_at_boot
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

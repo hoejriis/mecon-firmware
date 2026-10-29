@@ -73,7 +73,7 @@ public:
 
   static bool streamAllow(void* self, uint8_t cls);   // may the caller of the request being handled use a stream of this class
   MyMesh* mesh() const { return _mesh; }
-  Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this}; }
+  Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this, nullptr, 0, &_confirm}; }
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
 
@@ -81,7 +81,8 @@ public:
   // Loads the record and its sequence marks from storage; called once from begin(). No record leaves a standalone device
   // with no DepState at all.
   void deployLoad();
-  // Loads the job table from its file and applies the boot rule; called once from begin().
+  // Loads the job table from its file and applies the boot rule, reverting a change that was not confirmed in time;
+  // called once from MyMesh::begin() after the prefs are loaded and before the radio and the links start.
   void jobsLoad();
   // The channel nonce hello reports on the current link: empty when the device holds no Deployment record.
   const char* helloNonce();
@@ -140,6 +141,16 @@ private:
   // interface request never gets more than the same caller's CLI line would.
   static bool authorize(void* mesh, const Iface::OpEntry& op, const Iface::Request& req);
   static bool cliRun(void* self, const char* line, char* reply, size_t cap);
+  // Commit-or-revert (OPERATIONS.md 3.4; MeconDeploy.cpp): the hooks config.apply and the job table call.
+  static bool confirmCable(void* self);
+  static uint8_t confirmLineClass(void* self, const char* line);
+  static bool confirmReadSecret(void* self, const Iface::KeyDef& k, unsigned idx, char* out, size_t cap);
+  static void confirmRecordCaller(void* self, Iface::Job& j);
+  static bool confirmRunAs(void* self, const Iface::Job& j, const char* line, char* reply, size_t cap);
+  static bool confirmJobId(void* self, const Iface::Request& req, char* out, size_t cap);
+  static bool jobRevert(void* self, Iface::Job& j);
+  static bool jobConfirm(void* self, Iface::Job& j);
+  static bool jobClasses(void* self, uint8_t cls);
   static bool cliAllow(void* self, const char* line);
   Link* linkFor(const BaseSerialInterface* src, bool create);
   int dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
@@ -187,7 +198,10 @@ private:
   void sendSmall(Link& l, Iface::Status st, const char* error);
   Iface::DeployAuth _auth;                  // the record, its marks and the signed-request checks (shared with the servers)
   DataStoreCopies _copies;
-  Iface::JobService _jobs;                  // nothing on the Companion creates a job yet: no revert or confirm hook
+  Iface::JobService _jobs;                  // config.apply with confirm creates the jobs (OPERATIONS.md 3.4)
+  Iface::ConfirmHost _confirm = {};         // filled by jobsLoad(); until then nothing can be applied tentatively
+  bool _jobs_booting = false;
+  uint32_t _reboot_at = 0;                  // a revert restored a key that needs a reboot (0: none)
   const char* _deny = nullptr;              // why authorize() refused, when it has a contract code for it
   char _mqtt_nonce[33] = {0};               // the MQTT session is one link
   char _id_hex[33] = {0};

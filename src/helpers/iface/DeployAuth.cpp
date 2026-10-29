@@ -382,6 +382,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     const Dep::ReplayVerdict rv = Dep::replayCheck(wm, v.job_id);
     key[0] = '#';
     hexTo(key + 1, _dep->set.members[v.member].instance_id, 6);
+    hexTo(_answering.issuer, _dep->set.members[v.member].instance_id, 6);   // the job identity (OPERATIONS.md 3.1)
     {
       uint8_t j[4] = { (uint8_t)(v.job_id >> 24), (uint8_t)(v.job_id >> 16), (uint8_t)(v.job_id >> 8), (uint8_t)v.job_id };
       hexTo(key + 13, j, 4);

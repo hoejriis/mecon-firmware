@@ -22,7 +22,12 @@ Every operation carries one class of the CLI table: `read`, `write`, `secret`, `
 
 ## 3. Jobs: results that outlive a request
 
-**What the reference firmware has today.** The table of 3.2 and 3.3 is built on the Companion, Repeater and Room server: it is kept in `/mecon_jobs` and loaded at boot, which applies the boot rules of 3.4. `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm` and `status.get`'s `jobs` member answer it. No operation creates a job yet, so the table stays empty. The `job` stream, a `config.apply` with `confirm` (3.4) and `update.offer` are planned (#109, #110). Until an operation creates jobs, `job.cancel` and `job.confirm` are decided as `write`; with jobs, they take the class of the job's own operation.
+**What the reference firmware has today.**
+- The table of 3.2 and 3.3 is built on the Companion, Repeater and Room server. It is kept in `/mecon_jobs`, and saved again at every boot and every 30 running seconds while a job awaits confirmation, so neither the boot count nor the time left starts over.
+- `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm` and `status.get`'s `jobs` member answer it.
+- `config.apply` with `confirm` (3.4) is the operation that creates jobs. `job.cancel` and `job.confirm` need every CLI class the job's lines needed, so a `write` caller cannot confirm or revert a `posture` change such as `connectivity.mode`.
+- A job's identity is the request `id`, or `#<issuer>:<job_id>` for a signed request, where `<issuer>` is the first 6 bytes of the issuer's instance id in hex.
+- The `job` event stream and `update.offer` are planned (#109, #110).
 
 ### 3.1 States
 
@@ -80,6 +85,30 @@ Rules:
 
 The bound on any pending change is therefore `within_s` plus at most one reboot. A narrow change keeps every other setting and the node identity.
 
+**How the reference firmware does it.**
+- **Which keys.** `config.schema` marks them `"confirm": true`:
+  - `radio` and `tx` on every role;
+  - on the Companion, also `connectivity.mode`, `wifi.enabled`, `mqtt.enabled` and every `wifi.profile.*` and `mqtt.profile.*` key.
+
+  This is stricter than rule 1 on one point. No controller reports which profile it is using, so a change to *any* Wi-Fi or broker profile counts, not only the one in use.
+- **Who must ask.** Only the unsigned cable may apply these keys without `confirm`; it is the principal that counts, not the wire. A signed request on USB, a paired phone, a verified broker and the network console must ask.
+  - Without it, they are refused `invalid` / `confirm-required`, with nothing written.
+  - A `confirm` on a request with no such key is refused `confirm-not-needed`.
+  - A second tentative change while one is open is `busy` / `job-open:<job>`.
+- **Snapshot.** Before any write, the previous value of every key in the request goes into `/mecon_jobsnap`, bound to the job by id and checked with a CRC.
+  - A profile key captures its whole profile. A profile that was empty is restored by clearing it.
+  - Write-only values are read natively by the role into the snapshot and nowhere else.
+  - The snapshot holds records, not CLI lines; a revert rebuilds each line from the key table.
+  - A previous value with a byte below 0x20 or 0x7F, or a snapshot that cannot be saved, refuses the request (`busy` / `storage`) with nothing written.
+  - The file goes when its job ends, and at boot when no awaiting job owns it. The flash file systems are copy-on-write, so the old blocks may keep the bytes until reused, as they do for the prefs.
+- **Apply.** If a write fails, what did apply is reverted at once, and the job ends `failed` with `reverted`. Otherwise the result carries `job`, `state:"awaiting-confirm"` and `confirm_left_s`. A key that applies only after a reboot (`radio`, `wifi.enabled`) gets that reboot as its first.
+- **Revert.** The snapshot's lines run as the caller who applied the change, under the posture in force at the time of the revert. A revert can do nothing that caller could not do, and the audit names that caller.
+  - On the Companion, a revert at boot runs before the radio and the links start, so it takes effect at once.
+  - A revert while running, of a key that needs a reboot, reboots after 1.5 s.
+  - The servers apply the radio only at boot, so a restored `radio` reboots them once more.
+  - A line that fails leaves the job `failed` with `revert-failed`, never pending.
+- **A safety net, not a boundary.** A caller who holds `write` can still change these settings with raw CLI lines over BLE or MQTT, which have no confirm step. Commit-or-revert keeps a manager from cutting its own path; it does not protect the device from a caller who already has write.
+
 ### 3.5 Reset scopes
 
 `device.reset {"scope"}` removes exactly one named scope and keeps everything else. #95 owns the Deployment-related scopes and their rules; this page lists the scopes and what each keeps.
@@ -129,13 +158,13 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `status.get` | status snapshot | | read | no | C R S | as above | built |
 | `config.schema` | settings this build has | CLI registry | read | no | C R S | as above | built |
 | `config.get` | values | CLI `get` per key | read; per key | no | C R S | as above | built |
-| `config.apply` | writes, all-or-none checked | CLI `set` per key | write; per key | yes | C R S | as above | built; `confirm` (3.4) planned #109 |
+| `config.apply` | writes, all-or-none checked | CLI `set` per key | write; per key | yes | C R S | as above | built, with `confirm` (3.4) |
 | `sub.start`, `sub.stop` | telemetry streams | | read | no | C R S | as above | built |
 | `cancel` | stop a paged operation | | as the operation | no | | | documented, not built; becomes `job.cancel` |
-| `job.get`, `job.list` | job state, owed results | | read | no | C R S | all | built (no operation creates a job yet) |
+| `job.get`, `job.list` | job state, owed results | | read | no | C R S | all | built |
 | `job.ack` | release an owed result | | read; not a plain read once enrolled | yes | C R S | all | built |
-| `job.confirm` | confirm a tentative change | | the job's class | yes | C R S | all | built; decided as `write` until jobs exist |
-| `job.cancel` | cancel, or revert if applied | | the job's class | yes | C R S | all | built; decided as `write` until jobs exist |
+| `job.confirm` | confirm a tentative change | | the job's classes | yes | C R S | all | built |
+| `job.cancel` | cancel, or revert if applied | | the job's classes | yes | C R S | all | built |
 | `device.reboot` | reboot | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | all | planned #109 |
 | `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope | planned #109, #95 |
 | `contact.list`, `contact.get` | contact table (paged) | native contact table | read | no | C | all | planned #109 |

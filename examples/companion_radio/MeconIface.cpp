@@ -270,7 +270,6 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   deployLoad();
-  jobsLoad();
   _prov.begin(&_mesh->self_id, &_auth, epoch, epoch_saved);
   observeSink().fn = onObserve;
   observeSink().user = this;
@@ -504,6 +503,7 @@ void MeconIface::drainLogs() {
 void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
   _jobs.tick(now);
+  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) board.reboot();
   streamTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;

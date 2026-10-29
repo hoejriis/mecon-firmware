@@ -40,6 +40,11 @@ struct FakeCli {
     if (l.rfind("set name ", 0) == 0) { name = l.substr(9); r = "OK"; return true; }
     if (l.rfind("set tx ", 0) == 0) { tx = atoi(l.c_str() + 7); r = "OK"; return true; }
     if (l.rfind("set wifi.enabled ", 0) == 0) { wifi_on = l.back() == '1'; r = "> wifi.enabled is now 1"; return true; }
+    if (sscanf(l.c_str(), "set wifi.profile %u %15s", &n, word) == 2 && !strcmp(word, "clear")) {
+      ssid[n].clear(); pwd[n].clear(); prio[n] = 0;
+      r = "> profile " + std::to_string(n) + " cleared";
+      return true;
+    }
     if (sscanf(l.c_str(), "set wifi.profile %u %15s", &n, word) == 2) {
       const char* v = strstr(l.c_str(), word) + strlen(word) + 1;
       if (!strcmp(word, "ssid")) ssid[n] = v;
@@ -61,6 +66,9 @@ bool runCb(void* u, const char* line, char* reply, size_t cap) {
 }
 bool allowCb(void* u, const char* line) { return !static_cast<FakeCli*>(u)->refused(line); }
 bool authAll(void*, const OpEntry&, const Request&) { return true; }
+// The tests that are not about commit-or-revert run as the unsigned cable, which applies without confirmation.
+bool cableYes(void*) { return true; }
+const ConfirmHost CABLE{nullptr, nullptr, cableYes, nullptr, nullptr, nullptr, nullptr, nullptr};
 
 const OpEntry OPS[] = {
   {"config.schema", opConfigSchema, PRIV_READ, false},
@@ -70,7 +78,7 @@ const OpEntry OPS[] = {
 
 struct Rig {
   FakeCli cli;
-  ConfigHost host{runCb, allowCb, &cli};
+  ConfigHost host{runCb, allowCb, &cli, nullptr, 0, &CABLE};
   Dispatcher d{OPS, 3, authAll, nullptr, &host};
   ResultCache cache;
   std::string call(const std::string& op, const std::string& args) {
@@ -267,7 +275,7 @@ bool serverAllow(void*, const char*) { return true; }
 
 struct ServerRig {
   ServerCli cli;
-  ConfigHost host{serverRun, serverAllow, &cli, SERVER_KEYS, N_SERVER_KEYS};
+  ConfigHost host{serverRun, serverAllow, &cli, SERVER_KEYS, N_SERVER_KEYS, &CABLE};
   Dispatcher d{OPS, 3, authAll, nullptr, &host};
   ResultCache cache;
   int n = 0;
@@ -346,4 +354,233 @@ TEST(IfaceConfig, CompanionTlsStaysOnOff) {
   }
   EXPECT_TRUE(on);
   EXPECT_FALSE(one);
+}
+
+// ---- commit-or-revert (OPERATIONS.md section 3.4): the snapshot, the job, the revert as the caller
+
+namespace {
+
+struct RamJobs : JobStore {
+  std::vector<uint8_t> f;
+  size_t load(uint8_t* b, size_t cap) override { if (f.empty() || f.size() > cap) return 0; memcpy(b, f.data(), f.size()); return f.size(); }
+  bool save(const uint8_t* b, size_t n) override { f.assign(b, b + n); return true; }
+};
+struct RamSnap : SnapStore {
+  std::vector<uint8_t> f;
+  bool fail = false;
+  int discards = 0;
+  size_t load(uint8_t* b, size_t cap) override { if (f.empty() || f.size() > cap) return 0; memcpy(b, f.data(), f.size()); return f.size(); }
+  bool save(const uint8_t* b, size_t n) override { if (fail) return false; f.assign(b, b + n); return true; }
+  void discard() override { f.clear(); discards++; }
+  std::string text() const { return std::string(f.begin(), f.end()); }
+};
+
+struct ConfirmRig {
+  FakeCli cli;
+  bool is_cable = false;
+  std::vector<std::string> ran_as;   // the lines a revert ran, as the recorded caller
+  uint8_t recorded = 0;
+  RamJobs jf;
+  RamSnap sf;
+  JobService jobs;
+  ConfirmHost ch{&jobs, &sf, cable, lineClass, readSecret, record, runAs, jobId};
+  ConfigHost host{rigRun, rigAllow, this, nullptr, 0, &ch};
+  Dispatcher d{OPS, 3, authAll, nullptr, &host};
+  int n = 0;
+  ConfirmRig() { ch.jobs = &jobs; jobs.begin(&jf, false, nullptr, nullptr, nullptr); }
+  std::string call(const std::string& args, const std::string& id = "") {
+    const std::string rid = id.empty() ? "c" + std::to_string(++n) : id;
+    std::string m = "{\"v\":1,\"id\":\"" + rid + R"(","op":"config.apply","args":)" + args + "}";
+    std::vector<char> out(2048);
+    int len = d.handle(m.data(), m.size(), out.data(), out.size(), nullptr);
+    return len < 0 ? "<overflow>" : std::string(out.data(), len);
+  }
+  static ConfirmRig* of(void* u) { return static_cast<ConfirmRig*>(u); }
+  static bool rigRun(void* u, const char* line, char* reply, size_t cap) { return runCb(&of(u)->cli, line, reply, cap); }
+  static bool rigAllow(void* u, const char* line) { return allowCb(&of(u)->cli, line); }
+  static bool cable(void* u) { return of(u)->is_cable; }
+  static uint8_t lineClass(void*, const char* line) { return strncmp(line, "set wifi.enabled", 16) == 0 ? 3 : 1; }
+  static bool readSecret(void* u, const KeyDef& k, unsigned idx, char* out, size_t cap) {
+    if (strcmp(k.key, "wifi.profile.{n}.pwd") != 0) return false;
+    snprintf(out, cap, "%s", of(u)->cli.pwd[idx].c_str());
+    return true;
+  }
+  static void record(void* u, Job& j) { j.who_audit = 7; of(u)->recorded++; }
+  static bool runAs(void* u, const Job& j, const char* line, char* reply, size_t cap) {
+    ConfirmRig* r = of(u);
+    if (j.who_audit != 7) return false;   // only as the caller the job recorded
+    r->ran_as.push_back(line);
+    return runCb(&r->cli, line, reply, cap);
+  }
+  static bool jobId(void*, const Request& req, char* out, size_t cap) { return JobService::identity(nullptr, req, out, cap); }
+  Job* job(const char* id) { Job* j = nullptr; return jobs.table()->find(id, &j) == JobTable::FOUND ? j : nullptr; }
+};
+
+bool has(const std::string& s, const std::string& p) { return s.find(p) != std::string::npos; }
+
+}  // namespace
+
+TEST(ConfigConfirm, ARemoteCallerMustAskToConfirmAPathKey) {
+  ConfirmRig r;
+  const std::string res = r.call(R"({"set":{"wifi.profile.1.ssid":"new"}})");
+  EXPECT_TRUE(has(res, R"("status":"invalid","error":"confirm-required")")) << res;
+  EXPECT_TRUE(r.cli.ran.empty()) << "nothing read or written";
+  EXPECT_TRUE(has(r.call(R"({"set":{"name":"x"}})"), R"("status":"ok")")) << "an ordinary key needs nothing";
+  EXPECT_TRUE(has(r.call(R"({"set":{"name":"y"},"confirm":{}})"), R"("error":"confirm-not-needed")"));
+  r.is_cable = true;
+  EXPECT_TRUE(has(r.call(R"({"set":{"wifi.profile.1.ssid":"cable"}})"), R"("complete":true)")) << "the cable keeps its path";
+  EXPECT_EQ("cable", r.cli.ssid[1]);
+  EXPECT_TRUE(r.sf.f.empty()) << "a plain apply leaves no snapshot";
+}
+
+TEST(ConfigConfirm, AConfirmedChangeStaysAndItsSnapshotGoes) {
+  ConfirmRig r;
+  r.cli.ssid[1] = "office"; r.cli.pwd[1] = "old-fake-pw"; r.cli.prio[1] = 40;
+  const std::string res = r.call(R"({"set":{"wifi.profile.1.ssid":"hotel","wifi.profile.1.pwd":"new-fake-pw"},"confirm":{"within_s":60}})", "a1");
+  EXPECT_TRUE(has(res, R"("complete":true,"reboot_needed":false,"restarting":false,"job":"a1","state":"awaiting-confirm","confirm_left_s":60)")) << res;
+  EXPECT_FALSE(has(res, "old-fake-pw")) << "never a previous value in a result";
+  EXPECT_EQ("hotel", r.cli.ssid[1]);
+  EXPECT_TRUE(has(r.sf.text(), "office") && has(r.sf.text(), "old-fake-pw")) << "the snapshot holds the whole profile";
+  Job* j = r.job("a1");
+  ASSERT_NE(nullptr, j);
+  EXPECT_EQ(JOB_AWAITING, j->state);
+  EXPECT_EQ(1, r.recorded);
+  EXPECT_EQ(1u << 1, j->cls) << "every class the lines needed";
+  EXPECT_FALSE(r.jf.f.empty()) << "the job is saved";
+  configConfirmed(r.host);
+  EXPECT_TRUE(r.sf.f.empty());
+  EXPECT_EQ("hotel", r.cli.ssid[1]);
+}
+
+TEST(ConfigConfirm, ARevertPutsTheWholeProfileBackAsTheCaller) {
+  ConfirmRig r;
+  r.cli.ssid[1] = "office"; r.cli.pwd[1] = "old-fake-pw"; r.cli.prio[1] = 40;
+  r.call(R"({"set":{"wifi.profile.1.ssid":"hotel","wifi.profile.1.priority":90},"confirm":{}})", "b1");
+  ASSERT_EQ("hotel", r.cli.ssid[1]);
+  bool reboot = true;
+  ASSERT_TRUE(configRevert(r.host, *r.job("b1"), &reboot));
+  EXPECT_FALSE(reboot);
+  EXPECT_EQ("office", r.cli.ssid[1]);
+  EXPECT_EQ("old-fake-pw", r.cli.pwd[1]);
+  EXPECT_EQ(40, r.cli.prio[1]);
+  ASSERT_EQ(3u, r.ran_as.size());
+  EXPECT_EQ("set wifi.profile 1 ssid office", r.ran_as[0]);
+  EXPECT_TRUE(r.sf.f.empty()) << "the snapshot goes with the revert";
+}
+
+TEST(ConfigConfirm, ANewProfileIsRevertedByClearingIt) {
+  ConfirmRig r;
+  r.call(R"({"set":{"wifi.profile.4.ssid":"guest","wifi.profile.4.pwd":"fake-pw-x"},"confirm":{}})", "n1");
+  ASSERT_EQ("guest", r.cli.ssid[4]);
+  bool reboot;
+  ASSERT_TRUE(configRevert(r.host, *r.job("n1"), &reboot));
+  ASSERT_EQ(1u, r.ran_as.size());
+  EXPECT_EQ("set wifi.profile 4 clear", r.ran_as[0]);
+  EXPECT_TRUE(r.cli.ssid[4].empty() && r.cli.pwd[4].empty());
+}
+
+TEST(ConfigConfirm, APreviousValueNoLineMayCarryRefusesTheRequest) {
+  ConfirmRig r;
+  r.cli.ssid[2] = "lab\nset posture hardened";   // set through another route
+  r.cli.prio[2] = 10;
+  const std::string res = r.call(R"({"set":{"wifi.profile.2.priority":20},"confirm":{}})");
+  EXPECT_TRUE(has(res, R"("status":"busy","error":"storage")")) << res;
+  EXPECT_EQ(10, r.cli.prio[2]) << "nothing written";
+  EXPECT_TRUE(r.sf.f.empty());
+  EXPECT_EQ(nullptr, r.jobs.table()->openJob());
+}
+
+TEST(ConfigConfirm, ASnapshotOfAnotherJobIsNeverReplayed) {
+  ConfirmRig r;
+  r.cli.ssid[1] = "office";
+  r.call(R"({"set":{"wifi.profile.1.ssid":"x"},"confirm":{}})", "own");
+  ConfigSnap other;
+  other.begin("other");
+  ASSERT_TRUE(other.add(ConfigSnap::R_SET, 0, 0, "Evil"));
+  std::vector<uint8_t> img(ConfigSnap::IMAGE_MAX);
+  img.resize(other.serialize(img.data(), img.size()));
+  r.sf.f = img;
+  bool reboot;
+  EXPECT_FALSE(configRevert(r.host, *r.job("own"), &reboot));
+  EXPECT_TRUE(r.ran_as.empty());
+  EXPECT_EQ("Node1", r.cli.name);
+  EXPECT_TRUE(r.sf.f.empty()) << "and it is removed";
+}
+
+TEST(ConfigConfirm, ARecordForAKeyARevertMayNotSetIsRefused) {
+  ConfirmRig r;
+  r.call(R"({"set":{"wifi.profile.1.ssid":"x"},"confirm":{}})", "k1");
+  ConfigSnap s;
+  s.begin("k1");
+  unsigned idx;
+  const KeyDef* name = findKey("name", 4, &idx);
+  ASSERT_TRUE(s.add(ConfigSnap::R_SET, (uint8_t)(name - KEYS), 0, "Evil"));   // name is not a path key
+  std::vector<uint8_t> img(ConfigSnap::IMAGE_MAX);
+  img.resize(s.serialize(img.data(), img.size()));
+  r.sf.f = img;
+  bool reboot;
+  EXPECT_FALSE(configRevert(r.host, *r.job("k1"), &reboot));
+  EXPECT_EQ("Node1", r.cli.name);
+}
+
+TEST(ConfigConfirm, OneOpenJobAtATimeAndARetryRunsNothing) {
+  ConfirmRig r;
+  r.cli.ssid[1] = "office";
+  r.call(R"({"set":{"wifi.profile.1.ssid":"a"},"confirm":{}})", "o1");
+  const size_t ran = r.cli.ran.size();
+  EXPECT_TRUE(has(r.call(R"({"set":{"wifi.profile.1.ssid":"a"},"confirm":{}})", "o1"), R"("job":"o1","op":"config.apply","state":"awaiting-confirm")"));
+  EXPECT_EQ(ran, r.cli.ran.size()) << "the same job, never a second run";
+  EXPECT_TRUE(has(r.call(R"({"set":{"wifi.profile.1.ssid":"b"},"confirm":{}})", "o2"), R"("status":"busy","error":"job-open:o1")"));
+}
+
+TEST(ConfigConfirm, AWriteThatFailsRevertsTheOthersAtOnce) {
+  ConfirmRig r;
+  r.cli.ssid[1] = "office"; r.cli.prio[1] = 40;
+  r.cli.fail = {"set wifi.profile 1 priority 99"};
+  const std::string res = r.call(R"({"set":{"wifi.profile.1.ssid":"hotel","wifi.profile.1.priority":99},"confirm":{}})", "f1");
+  EXPECT_TRUE(has(res, R"("complete":false)") && has(res, R"("state":"failed","reverted":true)")) << res;
+  EXPECT_EQ("office", r.cli.ssid[1]);
+  EXPECT_EQ(JOB_FAILED, r.job("f1")->state);
+  EXPECT_TRUE(r.sf.f.empty());
+}
+
+TEST(ConfigConfirm, ASnapshotThatCannotBeSavedWritesNothing) {
+  ConfirmRig r;
+  r.cli.ssid[1] = "office";
+  r.sf.fail = true;
+  EXPECT_TRUE(has(r.call(R"({"set":{"wifi.profile.1.ssid":"x"},"confirm":{}})"), R"("status":"busy","error":"storage")"));
+  EXPECT_EQ("office", r.cli.ssid[1]);
+  EXPECT_EQ(nullptr, r.jobs.table()->openJob());
+}
+
+TEST(ConfigConfirm, AtBootAnOrphanSnapshotGoes) {
+  ConfirmRig r;
+  r.sf.f = {1, 2, 3};
+  configSnapBoot(r.host);
+  EXPECT_TRUE(r.sf.f.empty());
+  r.cli.ssid[1] = "office";
+  r.call(R"({"set":{"wifi.profile.1.ssid":"x"},"confirm":{}})", "keep");
+  const auto kept = r.sf.f;
+  configSnapBoot(r.host);
+  EXPECT_EQ(kept, r.sf.f) << "the awaiting job's own snapshot stays";
+}
+
+TEST(ConfigSnapImage, ADamagedOrForeignImageReadsAsNone) {
+  ConfigSnap s;
+  s.begin("j");
+  ASSERT_TRUE(s.add(ConfigSnap::R_SET, 3, 1, "abc"));
+  EXPECT_FALSE(s.add(ConfigSnap::R_SET, 3, 1, "a\rb")) << "no control byte";
+  EXPECT_FALSE(s.add(ConfigSnap::R_SET, 3, 1, "a\x7f")) << "no DEL";
+  std::vector<uint8_t> img(ConfigSnap::IMAGE_MAX);
+  img.resize(s.serialize(img.data(), img.size()));
+  ConfigSnap t;
+  ASSERT_TRUE(t.parse(img.data(), img.size()));
+  EXPECT_STREQ("j", t.job());
+  for (size_t at : {(size_t)0, (size_t)5, img.size() / 2, img.size() - 1}) {
+    std::vector<uint8_t> bad = img;
+    bad[at] ^= 0x10;
+    EXPECT_FALSE(t.parse(bad.data(), bad.size())) << at;
+    EXPECT_EQ(0, t.count());
+  }
+  EXPECT_FALSE(t.parse(img.data(), img.size() - 1));
 }

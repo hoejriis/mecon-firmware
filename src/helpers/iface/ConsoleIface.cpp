@@ -8,6 +8,7 @@
 #include "helpers/Posture.h"
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/cli/CliRegistry.h"
+#include "helpers/cli/CliCaller.h"
 #include "Observe.h"
 
 namespace Iface {
@@ -152,7 +153,12 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
-  _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, nullptr, nullptr, nullptr);
+  if (_host.snap_store)
+    _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
+                           confirmRunAs, confirmJobId};
+  _jobs.setClassCheck(jobClasses, this);
+  _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);
+  configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
   if (_host.dep_store) {
     DeployAuth::Env env;
     env.store = _host.dep_store;
@@ -202,7 +208,65 @@ bool ConsoleIface::consoleUnlocked(void* self) {
   return s->_auth.unlocked(&s->_unlock);
 }
 
-ConfigHost ConsoleIface::configHost() { return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS}; }
+ConfigHost ConsoleIface::configHost() {
+  return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS, &_confirm};
+}
+
+// ---- commit-or-revert (OPERATIONS.md 3.4). The console is the cable: a signed request on it is a signed caller.
+
+bool ConsoleIface::confirmCable(void* user) {
+  return Cli::principalOf(static_cast<ConsoleIface*>(user)->_ctx) == Cli::P_CABLE;
+}
+
+uint8_t ConsoleIface::confirmLineClass(void*, const char* line) { return Cli::resolve(line, Cli::ROLE_REPEATER).cls; }
+
+void ConsoleIface::confirmRecordCaller(void* user, Job& j) {
+  const ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  j.who_transport = s->_ctx.transport;
+  j.who_auth = s->_ctx.auth;
+  j.who_posture = s->_ctx.posture;
+  j.who_mgmt = 0;
+  j.who_audit = 0;
+}
+
+// A revert line runs as the console did for the caller who applied it: the signed flag is set again for a signed
+// caller, so the CLI decides and audits it as that caller.
+bool ConsoleIface::confirmRunAs(void* user, const Job& j, const char* line, char* reply, size_t cap) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  const bool was = Cli::serverCaller().signed_line;
+  Cli::serverCaller().signed_line = j.who_auth == Cli::A_SIGNED;
+  const bool known = s->_host.run(s->_host.user, line, reply, cap);
+  Cli::serverCaller().signed_line = was;
+  return known;
+}
+
+bool ConsoleIface::confirmJobId(void* user, const Request& req, char* out, size_t cap) {
+  return JobService::identity(&static_cast<ConsoleIface*>(user)->_auth.answering(), req, out, cap);
+}
+
+bool ConsoleIface::jobRevert(void* user, Job& j) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (strcmp(j.op, "config.apply") != 0) return false;
+  bool reboot = false;
+  if (!configRevert(s->configHost(), j, &reboot)) return false;
+  s->_jobs.table()->setState(&j, JOB_REVERTED);
+  // The servers apply the radio only at boot, so a restored radio needs one more reboot, at boot too.
+  if (reboot) s->_reboot_at = millis() + 1500;
+  return true;
+}
+
+bool ConsoleIface::jobConfirm(void* user, Job& j) {
+  if (strcmp(j.op, "config.apply") != 0) return false;
+  configConfirmed(static_cast<ConsoleIface*>(user)->configHost());
+  return true;
+}
+
+bool ConsoleIface::jobClasses(void* user, uint8_t cls) {
+  const ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  for (uint8_t c = 0; c < Cli::C_COUNT; c++)
+    if ((cls & (1u << c)) && !Cli::decide(s->_ctx, c).allow) return false;
+  return true;
+}
 
 bool ConsoleIface::cliRun(void* user, const char* line, char* reply, size_t cap) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
@@ -354,6 +418,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
   _gap.tick(now);
   _jobs.tick(now);
+  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0 && _host.board) _host.board->reboot();
   refreshEnvironment(now);
   if (_collecting) return;   // an event never lands in the middle of a request being typed
   SubSet* sets[1] = { &_subs };

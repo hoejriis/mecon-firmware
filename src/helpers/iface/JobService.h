@@ -8,6 +8,8 @@
 // passes hooks. With no hook, an awaiting-confirm job cannot be cancelled or confirmed (nothing creates one yet).
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 #include "IfaceDispatch.h"
 #include "IfaceJson.h"
 #include "Jobs.h"
@@ -34,6 +36,11 @@ public:
   // reset was a panic, the watchdog or a brownout).
   void begin(JobStore* store, bool abnormal_boot, Hook revert, Hook confirm, void* user);
 
+  // job.confirm and job.cancel take the classes of the job's own change (Job.cls, a bit per CLI class): the role decides
+  // whether the caller holds every one. Unset, they need only the write class the operation table gives them.
+  typedef bool (*ClassCheck)(void* user, uint8_t cls);
+  void setClassCheck(ClassCheck f, void* user) { _cls_check = f; _cls_user = user; }
+
   JobTable* table();   // allocated on first use; null when the heap cannot hold it
   bool persist();      // saves the table; false (and the caller answers busy) when the save fails
 
@@ -51,6 +58,15 @@ public:
   void tick(uint32_t now_ms);
   static constexpr uint32_t SAVE_EVERY_S = 30;
 
+  // A job's identity (OPERATIONS.md 3.1): "#<issuer>:<job_id>" for a signed request with a job id (the issuer's
+  // instance id, its first 6 bytes in hex), else the request id. False when the request has no usable id.
+  static bool identity(const Answering* a, const Request& req, char* out, size_t cap) {
+    if (a && a->has_job && a->issuer[0]) return snprintf(out, cap, "#%s:%lu", a->issuer, (unsigned long)a->job) < (int)cap;
+    if (!req.has_id || !req.id[0] || strlen(req.id) >= cap) return false;
+    strcpy(out, req.id);
+    return true;
+  }
+
   // One job's summary members (job, op, state, owed), as job.get and job.list write them.
   static void writeSummary(JsonWriter& w, const Job& j);
 
@@ -59,6 +75,8 @@ private:
   JobStore* _store = nullptr;
   Hook _revert = nullptr, _confirm = nullptr;
   void* _user = nullptr;
+  ClassCheck _cls_check = nullptr;
+  void* _cls_user = nullptr;
   uint32_t _tick_ms = 0;
   bool _tick_init = false;
   uint32_t _unsaved_s = 0;

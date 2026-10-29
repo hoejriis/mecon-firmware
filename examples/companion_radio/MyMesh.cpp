@@ -1029,6 +1029,7 @@ void MyMesh::begin() {
   _store->loadChannels(this);
 #ifdef ENABLE_MECON_IFACE
   recoverRotation();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop
+  _iface.jobsLoad();   // after the prefs, before the radio and the links: a revert at boot takes effect at once
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);

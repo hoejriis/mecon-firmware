@@ -254,6 +254,25 @@ TEST(JobService, TheTimeLeftIsSavedSoARebootDoesNotStartItOver) {
   EXPECT_EQ(69u, j->confirm_left_s);
 }
 
+static bool noPosture(void*, uint8_t cls) { return !(cls & (1u << 3)); }   // this caller lacks class 3
+
+TEST(JobService, ConfirmAndCancelNeedEveryClassTheJobChanged) {
+  JobService s;
+  Hooks h;
+  h.svc = &s;
+  RamStore st;
+  s.begin(&st, false, revertHook, confirmHook, &h);
+  s.setClassCheck(noPosture, nullptr);
+  Job* j = s.table()->open("p", "config.apply");
+  j->cls = (1u << 1) | (1u << 3);
+  ASSERT_TRUE(s.table()->awaitConfirm(j, 300, true));
+  EXPECT_TRUE(has(call(s, "job.confirm", R"({"job":"p"})"), R"("status":"refused","error":"not-permitted")"));
+  EXPECT_TRUE(has(call(s, "job.cancel", R"({"job":"p"})"), R"("status":"refused","error":"not-permitted")"));
+  EXPECT_EQ(0, h.confirms + h.reverts) << "neither hook ran";
+  j->cls = 1u << 1;
+  EXPECT_TRUE(has(call(s, "job.confirm", R"({"job":"p"})"), R"("state":"confirmed")"));
+}
+
 TEST(JobService, ASignedJobIsNamedByItsIdentity) {
   JobService s;
   ASSERT_NE(nullptr, s.table()->open("#a1b2:7", "config.apply"));

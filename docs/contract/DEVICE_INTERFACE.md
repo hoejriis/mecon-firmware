@@ -52,16 +52,16 @@ UTF-8 JSON objects. Three shapes:
 | `status.get` | the current status snapshot (the same document MQTT publishes as `status`) | read |
 | `config.schema` | settings this build has: key, type, range or enum, writable, write-only, whether a reboot is needed (paged) | read |
 | `config.get` | values of the requested keys (write-only keys report `"set"` or `"unset"`) | read; secret keys as the CLI decides |
-| `config.apply` | a list of key/value writes, checked as a whole before any is applied; one result per key | write, per key |
+| `config.apply` | a list of key/value writes, checked as a whole before any is applied; one result per key. With `"confirm":{"within_s":N}` (N 30 to 900, default 300) it is applied tentatively and reverted unless confirmed; any caller but the unsigned cable must send it for a key the schema marks `confirm` ([operations contract](OPERATIONS.md) section 3.4) | write, per key |
 | `sub.start` / `sub.stop` | start or stop a telemetry stream on this transport, with a requested rate and lifetime | read, per stream |
 | `deployment.get` | the stored authority set and its signature, the epochs and revisions, the fallback flag and each member's sequence mark ([authority contract](AUTHORITY.md) section 6.3). Companion only | open read |
 | `deployment.provision` | first provisioning into a Deployment, or a signed re-enrolment ([authority contract](AUTHORITY.md) section 6.1). Companion only | write; unsigned only from the cable or BLE with a PIN of the device's own, and only for a first provisioning |
 | `deployment.authority_update` | a newer DAK-signed authority set with any rotations before it ([authority contract](AUTHORITY.md) section 6.2). Companion only | any caller (it carries its own signature); rate limited |
 | `identity.rotation` | the rotation statement the old node key signed, `{"rotation":{"statement":"<signed text>","sig":"<base64>"}}`, or an empty result when the key was never rotated; `deployment.get` carries the same member ([authority contract](AUTHORITY.md) section 11). Companion only | open read (a plain read when signed) |
 | `identity.rotate` | a new node key for a new owner; drops contacts and the message queue, keeps configuration, channels, the record and `device_id` ([authority contract](AUTHORITY.md) section 11). Companion only | signed and sensitive; refused without a readable record |
-| `job.get`, `job.list` | one job, `{"job","op","state","owed","result"}` (and `confirm_left_s` while awaiting confirmation), or every job with the table's `open` and `owed` counts ([operations contract](OPERATIONS.md) section 3). No operation creates a job yet | read; plain reads when signed |
+| `job.get`, `job.list` | one job, `{"job","op","state","owed","result"}` (and `confirm_left_s` while awaiting confirmation), or every job with the table's `open` and `owed` counts ([operations contract](OPERATIONS.md) section 3) | read; plain reads when signed |
 | `job.ack` | releases an owed terminal result, `{"acked":true}` | read; once a device holds a Deployment record, signed with a `job_id` |
-| `job.cancel`, `job.confirm` | cancel a job, or revert it if it has applied; confirm a change awaiting confirmation | write (the class of the job's operation once jobs exist) |
+| `job.cancel`, `job.confirm` | cancel a job, or revert it if it has applied; confirm a change awaiting confirmation | every CLI class the job's change needed |
 | `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 
 Native operations stay native: messaging, contacts, channels, adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.

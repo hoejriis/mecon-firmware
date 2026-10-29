@@ -38,6 +38,7 @@ static char command[MAX_POST_TEXT_LEN+1];
   static Iface::ConsoleIface the_iface;
   static Dep::FsStore dep_store;   // the Deployment record's files, on the role's own file system
   static Iface::JobFsStore job_store;   // the job table (OPERATIONS.md section 3), on the same file system
+  static Iface::SnapFsStore snap_store; // the commit-or-revert snapshot (OPERATIONS.md 3.4)
   static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
     char cmd[160], out[160];
     snprintf(cmd, sizeof(cmd), "%s", line);
@@ -140,9 +141,10 @@ void setup() {
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "room", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
                                        &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
-                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store };
+                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store, &snap_store };
     dep_store.setFs(fs);
     job_store.setFs(fs);
+    snap_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
   }
 #endif

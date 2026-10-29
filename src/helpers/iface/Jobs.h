@@ -55,6 +55,11 @@ struct Job {
                                // abnormal reset reverts (firmware updates, UPDATES.md section 7)
   uint32_t seq;                // creation order, for eviction
   uint32_t confirm_left_s;     // running seconds left to confirm, while awaiting-confirm
+  // Who started the job and what it needs, as the role records them: the CLI classes a job.confirm or job.cancel caller
+  // must hold (a bit per class, 1 << class, for every line the job ran), and the caller's CLI context, which a revert
+  // runs as, so that a revert grants nothing the caller did not have and is audited to them.
+  uint8_t cls;
+  uint8_t who_transport, who_auth, who_posture, who_mgmt, who_audit;
   uint16_t result_len;
   char result[RESULT_CAP];     // the latest result or state data, as JSON members (the role's choice); never a value
                                // read back from the device, which a CLI reply can echo
