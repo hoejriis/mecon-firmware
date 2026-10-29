@@ -187,7 +187,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `ble.pin.get` | the BLE PIN | device info, CLI | secret | no | C (BLE builds) | USB, MQTT (SECURITY_AND_AUTHORITY) | planned #109 |
 | `posture.get`, `posture.set` | posture (controlled reboot) | CLI `get/set posture` | read / posture | `set` | C R S | per table (raising: cable, paired BLE; lowering: cable) | planned #109 |
 | `deployment.*` | provisioning, authority updates, record | | per #95 | | C R S | per #95 | planned #95 |
-| `update.*` | firmware update lifecycle | | per #110 | | C R S | per #110 | planned #110 |
+| `update.*` | firmware update lifecycle ([UPDATES.md](UPDATES.md)) | | per #110 | | C R S | per #110 | planned #110 |
 | `rf.request` | administer another node over LoRa from this one | | per #115 | | C | per #115 | planned #115 |
 
 **Keys `config.*` reaches.**

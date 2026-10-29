@@ -1135,6 +1135,29 @@ mutate cc_console_no_revert src/helpers/iface/ConsoleIface.cpp '  _jobs.begin(_h
 mutate svc_change_never_told src/helpers/iface/JobService.cpp '    if (tell && _on_change) _on_change(_change_user, *j);' '' unit:test_job_service
 mutate svc_change_told_twice src/helpers/iface/JobService.cpp '    if (j->seq == _seen_seq[i] && j->state == _seen_state[i]) continue;' '' unit:test_job_service
 mutate job_event_only_to_the_requester examples/companion_radio/MeconDeploy.cpp '      if (!l.src || !l.may_read || !l.src->isConnected() || !m->ensureQueue(l)) continue;' '      if (&l != m->_cur_link || !m->ensureQueue(l)) continue;' sim/tests/test_jobs.py::test_every_transport_that_may_read_hears_a_job_change
+
+# --- issue #113: screen privacy per posture (src/helpers/DisplayPrivacy.h, the three UI variants)
+mutate privacy_text_always_shown src/helpers/DisplayPrivacy.h 'inline bool showsMessageText(uint8_t posture) { return !Posture::isHardened(posture); }' 'inline bool showsMessageText(uint8_t posture) { return true; }' unit:test_display_privacy
+mutate privacy_names_always_shown src/helpers/DisplayPrivacy.h 'inline bool showsNames(uint8_t posture) { return !Posture::isHardened(posture); }' 'inline bool showsNames(uint8_t posture) { return true; }' unit:test_display_privacy
+mutate privacy_pin_while_not_advertising src/helpers/DisplayPrivacy.h '  return pin != 0 && ble_enabled && !ble_connected && Posture::bleMayStart(posture, pin);' '  return pin != 0 && !ble_connected && Posture::bleMayStart(posture, pin);' unit:test_display_privacy
+mutate privacy_pin_while_connected src/helpers/DisplayPrivacy.h '  return pin != 0 && ble_enabled && !ble_connected && Posture::bleMayStart(posture, pin);' '  return pin != 0 && ble_enabled && Posture::bleMayStart(posture, pin);' unit:test_display_privacy
+mutate privacy_pin_ignores_posture src/helpers/DisplayPrivacy.h '  return pin != 0 && ble_enabled && !ble_connected && Posture::bleMayStart(posture, pin);' '  return pin != 0 && ble_enabled && !ble_connected;' unit:test_display_privacy
+mutate privacy_watch_never_fires src/helpers/DisplayPrivacy.h '    bool c = !primed || posture != last;' '    bool c = !primed;' unit:test_display_privacy
+mutate privacy_ui_new_preview_text_shown examples/companion_radio/ui-new/UITask.cpp '    display.printWordWrap(DisplayPrivacy::showsMessageText(posture) ? filtered_msg : DisplayPrivacy::HIDDEN_TEXT, display.width());' '    display.printWordWrap(filtered_msg, display.width());' sim/tests/test_screen_privacy.py
+mutate privacy_ui_new_preview_sender_shown examples/companion_radio/ui-new/UITask.cpp '    const char* who = DisplayPrivacy::showsNames(posture) ? filtered_origin : DisplayPrivacy::HIDDEN_NAME;' '    const char* who = filtered_origin;' sim/tests/test_screen_privacy.py
+mutate privacy_ui_new_no_badge examples/companion_radio/ui-new/UITask.cpp '    if (const char* badge = DisplayPrivacy::postureBadge(the_mesh.getNodePrefs()->posture)) display.print(badge);   // issue #113' '' sim/tests/test_screen_privacy.py::test_hardened_draws_no_message_text_and_no_sender
+
+# --- issue #143: BLE DFU only off the device interface, and only with a chosen PIN
+mutate ble_dfu_on_interface_builds src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return pin_chosen_by_user && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
+mutate ble_dfu_with_the_default_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin_chosen_by_user && pin != 0;' unit:test_ble_dfu_policy
+
+mutate ble_start_ota_on_nrf52_builds src/helpers/BleDfuPolicy.h 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build && !nrf52_build; }' 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build; }' unit:test_ble_dfu_policy
+mutate start_ota_not_destructive src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE,' unit:test_cli_engine
+
+mutate start_ota_class_write src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_WRITE,' unit:test_cli_engine
+
+mutate ble_dfu_with_a_session_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

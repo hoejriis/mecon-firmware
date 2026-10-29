@@ -335,6 +335,9 @@ void setup() {
   } else
 #endif
   if (Posture::bleMayStart(posture, the_mesh.getBLEPin())) {
+#if defined(NRF52_PLATFORM)
+    bluetooth_interface.setPinChosenByUser(the_mesh.getNodePrefs()->ble_pin != 0);   // issue #143: BLE DFU only then
+#endif
     bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
     interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
   } else {
