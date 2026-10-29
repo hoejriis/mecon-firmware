@@ -29,7 +29,9 @@ int Dispatcher::handleWith(JsonDoc& doc, const char* msg, size_t len, char* out,
 
   if (st == ST_OK && cache) {
     const char* data; size_t dl;
-    ResultCache::Lookup l = cache->find(req.id, &data, &dl);
+    ResultCache::Lookup l = cache->find(req.id, req.op, &data, &dl);
+    // The id holds another operation's result: never hand it to this one, and never run this one under it.
+    if (l == ResultCache::CONFLICT) return writeResult(out, cap, id, ST_INVALID, nullptr, "id-in-use");
     if (l != ResultCache::MISS) {
       // A duplicate runs nothing; it is checked against the caller's authority as it is now, so withdrawn
       // authority is not bypassed by replaying an id. Roster or authority changes do not clear the cache.
@@ -73,7 +75,7 @@ int Dispatcher::handleWith(JsonDoc& doc, const char* msg, size_t len, char* out,
   }
   if (n < 0) n = writeResult(out, cap, id, st, nullptr, err);
   if (n > 0 && cache && op && op->mutating && (st == ST_OK || st == ST_FAILED))
-    cache->store(req.id, out, (size_t)n);
+    cache->store(req.id, req.op, out, (size_t)n);
   return n;
 }
 

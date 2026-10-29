@@ -1,4 +1,5 @@
 #include "MeconIface.h"
+#include <helpers/iface/DevIdHello.h>
 #include <helpers/iface/Wipe.h>
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
@@ -79,6 +80,8 @@ Status opHello(OpContext& c) {
   w.key("interface"); w.str("1.0");
   w.key("device_id"); w.str(m->deviceIdHex());
   w.key("node_key"); w.str(key);
+  const Status ds = writeDeviceIdSig(c, mesh->self_id, m->deviceIdHex());
+  if (ds != ST_OK) return ds;
   w.key("role"); w.str("companion");
   w.key("hardware"); w.str(mesh->hardwareName());
   w.key("firmware"); w.str(mecon::versionFull());
@@ -188,9 +191,9 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   MeconIface* self = static_cast<MeconIface*>(user);
   self->_deny = nullptr;
   // Open to any caller that can reach the interface: the read of the stored set (it reveals nothing secret), and the
-  // DAK-signed authority update (it carries its own proof; AUTHORITY.md sections 6.2 and 6.3).
-  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "identity.rotation") == 0 ||
-      strcmp(op.name, "deployment.authority_update") == 0) return true;
+  // DAK-signed authority update (it carries its own proof; AUTHORITY.md sections 6.2 and 6.3). identity.rotation is not:
+  // the rotation statement names device_id, which an untrusted link must not learn (section 3.5).
+  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).

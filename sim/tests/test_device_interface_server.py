@@ -190,4 +190,4 @@ def test_the_hardware_runner_passes_against_the_simulated_console(nodes):
 def test_get_device_id_on_the_console_matches_hello(nodes, kind, role):
     n, (cli, i) = start(nodes, kind, "did" + role)
     h = ok(i.request("hello"), "hello.result.json")
-    assert cli.command("get device.id") == "> " + h["device_id"]
+    assert cli.command("get device.id").split(" ")[:2] == [">", h["device_id"]]   # the signature: test_device_id_binding.py
