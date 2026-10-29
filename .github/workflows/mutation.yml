@@ -5,6 +5,7 @@ name: Mutation check
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
     paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', '.github/workflows/mutation.yml']
   push:
     branches: [main]
@@ -20,6 +21,9 @@ permissions:
 
 jobs:
   list:
+    # On main (after a merge) and by hand. A PR runs it only when it is ready and labelled full-ci (owner's
+    # choice, 2026-10-29: the matrix is most of the repo's Actions minutes); adding the label starts it.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ubuntu-latest
     outputs:
       mutants: ${{ steps.list.outputs.mutants }}

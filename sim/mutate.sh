@@ -1102,6 +1102,17 @@ mutate privacy_ui_new_preview_text_shown examples/companion_radio/ui-new/UITask.
 mutate privacy_ui_new_preview_sender_shown examples/companion_radio/ui-new/UITask.cpp '    const char* who = DisplayPrivacy::showsNames(posture) ? filtered_origin : DisplayPrivacy::HIDDEN_NAME;' '    const char* who = filtered_origin;' sim/tests/test_screen_privacy.py
 mutate privacy_ui_new_no_badge examples/companion_radio/ui-new/UITask.cpp '    if (const char* badge = DisplayPrivacy::postureBadge(the_mesh.getNodePrefs()->posture)) display.print(badge);   // issue #113' '' sim/tests/test_screen_privacy.py::test_hardened_draws_no_message_text_and_no_sender
 
+# --- issue #143: BLE DFU only off the device interface, and only with a chosen PIN
+mutate ble_dfu_on_interface_builds src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return pin_chosen_by_user && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
+mutate ble_dfu_with_the_default_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin_chosen_by_user && pin != 0;' unit:test_ble_dfu_policy
+
+mutate ble_start_ota_on_nrf52_builds src/helpers/BleDfuPolicy.h 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build && !nrf52_build; }' 'inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build; }' unit:test_ble_dfu_policy
+mutate start_ota_not_destructive src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE,' unit:test_cli_engine
+
+mutate start_ota_class_write src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_WRITE,' unit:test_cli_engine
+
+mutate ble_dfu_with_a_session_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
+
 # the lazy contacts write after a burst takes one bucket per pass and drains to the end (#145)
 mutate contacts_flush_some_ignores_the_bound $CS '      if (written == max_buckets) { if (more) *more = true; break; }' '' unit:test_contact_store
 mutate contacts_flush_some_restarts_at_the_first_bucket $CS '      _flush_from = (b + 1) % _nbuckets;' '' unit:test_contact_store
