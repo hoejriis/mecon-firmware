@@ -9,6 +9,7 @@ public:
   CustomLR1110Wrapper(CustomLR1110& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
   void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    idleIfReceiving();   // never retune the chip while it listens
     ((CustomLR1110 *)_radio)->setFrequency(freq);
     ((CustomLR1110 *)_radio)->setSpreadingFactor(sf);
     ((CustomLR1110 *)_radio)->setBandwidth(bw);

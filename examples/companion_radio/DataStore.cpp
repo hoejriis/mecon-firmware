@@ -496,9 +496,9 @@ void DataStore::loadChannels(DataStoreHost* host) {
     }
 }
 
-void DataStore::saveChannels(DataStoreHost* host) {
+bool DataStore::saveChannels(DataStoreHost* host) {
   // temp file + verify + swap: a power cut keeps the previous complete channel table
-  AtomicFile::save(_getContactsChannelsFS(), "/channels2", [host](Stream& file) {
+  return AtomicFile::save(_getContactsChannelsFS(), "/channels2", [host](Stream& file) {
     uint8_t channel_idx = 0;
     ChannelDetails ch;
     uint8_t unused[4];

@@ -35,7 +35,11 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
-                                    "job.get", "job.list", "job.ack", "job.cancel", "job.confirm"};
+                                    "job.get", "job.list", "job.ack", "job.cancel", "job.confirm"
+#ifdef MAX_GROUP_CHANNELS
+                                    , "channel.list", "channel.get", "channel.put", "channel.remove"
+#endif
+                                    };
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -49,6 +53,10 @@ Status opJobList(OpContext& c) { return self(c)->jobs().opList(c); }
 Status opJobAck(OpContext& c) { return self(c)->jobs().opAck(c); }
 Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
 Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
+Status opChanList(OpContext& c);
+Status opChanGet(OpContext& c);
+Status opChanPut(OpContext& c);
+Status opChanRemove(OpContext& c);
 
 // The operation's class is the least it needs; each config key is decided again by its own CLI line (IfaceConfig).
 const OpEntry OPS[] = {
@@ -76,6 +84,13 @@ const OpEntry OPS[] = {
   {"job.ack", opJobAck, PRIV_READ, true},
   {"job.cancel", opJobCancel, PRIV_WRITE, true},
   {"job.confirm", opJobConfirm, PRIV_WRITE, true},
+#ifdef MAX_GROUP_CHANNELS
+  // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
+  {"channel.list", opChanList, PRIV_READ, false},
+  {"channel.get", opChanGet, PRIV_READ, false},
+  {"channel.put", opChanPut, PRIV_WRITE, true},
+  {"channel.remove", opChanRemove, PRIV_WRITE, true},
+#endif
 };
 
 }  // namespace
@@ -176,7 +191,72 @@ Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
 
+Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
+  ChannelHost host = self(c)->channelHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opChanList(OpContext& c) { return withChannels(c, opChannelList); }
+Status opChanGet(OpContext& c) { return withChannels(c, opChannelGet); }
+Status opChanPut(OpContext& c) { return withChannels(c, opChannelPut); }
+Status opChanRemove(OpContext& c) { return withChannels(c, opChannelRemove); }
+
 }  // namespace
+
+// ---- channels: the native table
+
+ChannelHost MeconIface::channelHost() {
+#ifdef MAX_GROUP_CHANNELS
+  return ChannelHost{MAX_GROUP_CHANNELS, chanGet, chanSet, chanFind, this};
+#else
+  return ChannelHost{0, chanGet, chanSet, chanFind, this};
+#endif
+}
+
+bool MeconIface::chanGet(void* user, int slot, ChannelInfo& out) {
+  ChannelDetails ch;
+  if (!static_cast<MeconIface*>(user)->_mesh->getChannel(slot, ch)) return false;
+  memcpy(out.name, ch.name, CHANNEL_NAME_MAX);
+  out.name[CHANNEL_NAME_MAX] = 0;
+  out.hash = ch.channel.hash[0];
+  static const uint8_t ZERO[16] = {0};
+  out.key_bytes = memcmp(&ch.channel.secret[16], ZERO, 16) == 0 ? 16 : 32;   // as setChannel() hashes it
+  out.keyed = memcmp(ch.channel.secret, ZERO, 16) != 0 || out.key_bytes == 32;
+  wipe(&ch, sizeof(ch));
+  return true;
+}
+
+// Writes the slot and saves the table, as the native CMD_SET_CHANNEL frame does. When the save fails, the slot's
+// previous contents go back into RAM, so RAM and flash agree and a removed key cannot return after a reboot. An
+// empty name with an all-zero key is how the app clears a slot.
+bool MeconIface::chanSet(void* user, int slot, const char* name, const uint8_t* secret) {
+  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
+  ChannelDetails ch, before;
+  if (!mesh->getChannel(slot, before)) return false;
+  memset(&ch, 0, sizeof(ch));
+  StrHelper::strncpy(ch.name, name, sizeof(ch.name));
+  memcpy(ch.channel.secret, secret, CHANNEL_SECRET_BYTES);
+  bool ok = mesh->setChannel(slot, ch);
+  if (ok && !mesh->saveChannels()) {
+    mesh->setChannel(slot, before);
+    ok = false;
+  }
+  wipe(&ch, sizeof(ch));
+  wipe(&before, sizeof(before));
+  return ok;
+}
+
+int MeconIface::chanFind(void* user, const uint8_t* secret) {
+  mesh::GroupChannel g;
+  memset(&g, 0, sizeof(g));
+  memcpy(g.secret, secret, CHANNEL_SECRET_BYTES);
+  const int slot = static_cast<MeconIface*>(user)->_mesh->findChannelIdx(g);
+  wipe(&g, sizeof(g));
+  return slot;
+}
 
 // ---- settings: the caller's CLI
 

@@ -62,9 +62,11 @@ UTF-8 JSON objects. Three shapes:
 | `job.get`, `job.list` | one job, `{"job","op","state","owed","result"}` (and `confirm_left_s` while awaiting confirmation), or every job with the table's `open` and `owed` counts ([operations contract](OPERATIONS.md) section 3) | read; plain reads when signed |
 | `job.ack` | releases an owed terminal result, `{"acked":true}` | read; once a device holds a Deployment record, signed with a `job_id` |
 | `job.cancel`, `job.confirm` | cancel a job, or revert it if it has applied; confirm a change awaiting confirmation | every CLI class the job's change needed |
+| `channel.list` / `channel.get` | the native channel table: per used slot its name, the one-byte channel hash and the key size, never the secret; `list` is paged by 8 used slots (`cursor` in, `next` out). Companion only | read |
+| `channel.put` / `channel.remove` | write or clear a slot of the native channel table, as the app's `CMD_SET_CHANNEL` does: a name of 1 to 31 bytes and a 128-bit key as 32 hex digits; a key another slot holds is `failed` `duplicate-secret`; a table that cannot be saved is `failed` `write-failed` with the slot unchanged, in RAM and on flash. A slot holding a key under an empty name counts as present for `remove`. Companion only | write |
 | `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 
-Native operations stay native: messaging, contacts, channels, adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.
+Native operations stay native: messaging, contacts, channels (which `channel.*` also reaches, on the same table), adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.
 
 ### 5. Settings: one store, the CLI's
 

@@ -27,6 +27,7 @@ struct SimConfig {
   long fault_after = -1;      // ... and bytes after which the process is killed
   std::string fault_op;       // power cut just BEFORE a filesystem operation: "rename" or "remove" ...
   std::string fault_op_path;  // ... on this path (the source path for a rename)
+  std::string write_fail;     // file holding a path prefix: while it exists, writes to matching files fail (--write-fail)
 };
 // Function-local static so it is safe to touch from other translation units' static
 // initialisers (the examples build their global mesh object before main()).

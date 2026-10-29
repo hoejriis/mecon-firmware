@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <helpers/iface/IfaceDispatch.h>
 #include <helpers/iface/IfaceConfig.h>
+#include <helpers/iface/ChannelOps.h>
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
@@ -74,6 +75,7 @@ public:
   static bool streamAllow(void* self, uint8_t cls);   // may the caller of the request being handled use a stream of this class
   MyMesh* mesh() const { return _mesh; }
   Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this, nullptr, 0, &_confirm}; }
+  Iface::ChannelHost channelHost();   // the native channel table (channel.* operations)
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
 
@@ -155,6 +157,9 @@ private:
   static void jobChanged(void* self, const Iface::Job& j);
   bool _mqtt_may_read = false;
   static bool cliAllow(void* self, const char* line);
+  static bool chanGet(void* self, int slot, Iface::ChannelInfo& out);
+  static bool chanSet(void* self, int slot, const char* name, const uint8_t* secret);
+  static int chanFind(void* self, const uint8_t* secret);
   Link* linkFor(const BaseSerialInterface* src, bool create);
   int dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
   int runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap,
