@@ -273,6 +273,9 @@ private:
   // Boot: a statement whose new key is not the current key never took effect and is deleted; one that is the current key
   // and still marked drop-pending finishes the drop of the old key's contacts and queue.
   void recoverRotation();
+  void recoverRotationAtBoot();                 // on nRF52 on the worker (#172)
+  static void recoverRotationJob(void* self);
+  void recoverRotationOnLoop();
   bool dropOldKeyState();
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);

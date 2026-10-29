@@ -7,6 +7,7 @@
 #include <helpers/AuditStore.h>
 #include <helpers/LazySaveRetry.h>
 #include <helpers/CryptoRNG.h>
+#include <helpers/NrfWorker.h>
 
 #include <Arduino.h> // needed for PlatformIO
 #ifdef ENABLE_WIFI_INTERFACE
@@ -1031,7 +1032,7 @@ void MyMesh::begin() {
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure public channel
   _store->loadChannels(this);
 #ifdef ENABLE_MECON_IFACE
-  recoverRotation();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop
+  recoverRotationAtBoot();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
@@ -2338,6 +2339,18 @@ bool MyMesh::dropOldKeyState() {
   if (_listener) _listener->onQueueSizeChanged(0);
   return dropped;
 }
+
+// On nRF52 on the worker: two 512 B statement buffers and a save through LittleFS are deeper than the loop task's 4 KB
+// has room for (#172). Kept out of line so the stack gate can check the hand-off (stack-gate.yml).
+__attribute__((noinline)) void MyMesh::recoverRotationAtBoot() {
+  if (!NrfWorker::run(recoverRotationJob, this, 30000)) recoverRotationOnLoop();
+}
+
+__attribute__((noinline)) void MyMesh::recoverRotationJob(void* self) { static_cast<MyMesh*>(self)->recoverRotation(); }
+
+// No worker (no memory at boot): the recovery runs on the loop task's small stack, as before #172. A degraded mode, as
+// for received packets (Dispatcher::recvOnLoop); the stack gate does not count it (stack-gate.yml).
+__attribute__((noinline)) void MyMesh::recoverRotationOnLoop() { recoverRotation(); }
 
 void MyMesh::recoverRotation() {
   char file[ROT_FILE_MAX + 1];
