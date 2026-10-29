@@ -1109,6 +1109,9 @@ mutate svc_deadline_too_fast src/helpers/iface/JobService.cpp '  const uint32_t 
 mutate jobs_status_missing_companion examples/companion_radio/MeconIface.cpp '  m->jobs().writeStatus(w);' '' sim/tests/test_jobs.py::test_the_companion_answers_an_empty_table_and_keeps_it_over_a_reboot
 mutate jobs_status_missing_console src/helpers/iface/ConsoleIface.cpp '  m->jobs().writeStatus(w);' '' sim/tests/test_jobs.py::test_the_console_answers_an_empty_table_and_keeps_it_over_a_reboot
 mutate jobs_unsigned_ack_once_enrolled src/helpers/iface/DeployAuth.cpp '  const bool plain_read = op.priv == PRIV_READ && strcmp(op.name, "job.ack") != 0;' '  const bool plain_read = op.priv == PRIV_READ;' sim/tests/test_jobs.py::test_once_enrolled_an_unsigned_caller_may_read_jobs_but_not_release_or_change_them
+mutate svc_boot_count_unsaved src/helpers/iface/JobService.cpp '    bool changed = _t->openJob() && _t->openJob()->state == JOB_AWAITING;' '    bool changed = false;' unit:test_job_service
+mutate svc_time_left_unsaved src/helpers/iface/JobService.cpp '  if (awaiting && _unsaved_s >= SAVE_EVERY_S) changed = true;' '' unit:test_job_service
+mutate svc_signed_job_unaddressable src/helpers/iface/JobService.cpp '  return t >= 0 && jsonGetString(*c.doc, t, id, cap, CS_JOB, 1);' '  return t >= 0 && jsonGetString(*c.doc, t, id, cap, CS_ID, 1);' unit:test_job_service
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

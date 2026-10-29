@@ -19,7 +19,8 @@ void JobService::begin(JobStore* store, bool abnormal_boot, Hook revert, Hook co
   const size_t n = _store->load(buf, cap);
   if (n && table()) {
     if (!_t->deserialize(buf, n)) persist();   // a damaged table is forgotten (and replaced), never half trusted
-    bool changed = false;
+    // The boot is counted in the saved table, so a device that keeps rebooting still reaches its second boot.
+    bool changed = _t->openJob() && _t->openJob()->state == JOB_AWAITING;
     _t->booted(abnormal_boot, [&](Job* j) {
       changed = true;
       if (!_revert || !_revert(_user, *j)) _t->setState(j, JOB_FAILED, REVERT_FAILED, sizeof(REVERT_FAILED) - 1);
@@ -47,7 +48,7 @@ bool JobService::persist() {
 
 bool JobService::jobArg(OpContext& c, char* id, size_t cap) {
   const int t = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "job") : -1;
-  return t >= 0 && jsonGetString(*c.doc, t, id, cap, CS_ID, 1);
+  return t >= 0 && jsonGetString(*c.doc, t, id, cap, CS_JOB, 1);
 }
 
 void JobService::writeSummary(JsonWriter& w, const Job& j) {
@@ -149,12 +150,16 @@ void JobService::tick(uint32_t now_ms) {
   if (!secs) return;
   _tick_ms += secs * 1000;
   if (!_t) return;
+  const bool awaiting = _t->openJob() && _t->openJob()->state == JOB_AWAITING;
   bool changed = false;
   _t->tick(secs, [&](Job* j) {
     changed = true;
     if (!_revert || !_revert(_user, *j)) _t->setState(j, JOB_FAILED, REVERT_FAILED, sizeof(REVERT_FAILED) - 1);
   });
-  if (changed) persist();
+  // The time left is saved every SAVE_EVERY_S running seconds, so a reboot does not start the deadline over.
+  _unsaved_s += secs;
+  if (awaiting && _unsaved_s >= SAVE_EVERY_S) changed = true;
+  if (changed) { persist(); _unsaved_s = 0; }
 }
 
 }  // namespace Iface

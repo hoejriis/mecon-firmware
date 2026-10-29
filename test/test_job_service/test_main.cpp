@@ -215,6 +215,52 @@ TEST(JobService, AFailedSaveAnswersBusy) {
   EXPECT_TRUE(has(call(s, "job.ack", R"({"job":"b"})"), R"("status":"busy","error":"storage")"));
 }
 
+TEST(JobService, TheBootCountIsSavedSoARebootLoopStillReverts) {
+  RamStore st;
+  Hooks h;
+  {
+    JobService a;
+    a.begin(&st, false, nullptr, nullptr, nullptr);
+    Job* j = a.table()->open("loop", "config.apply");
+    ASSERT_TRUE(a.table()->awaitConfirm(j, 300, false));   // takes effect after its reboot: that one boot is expected
+    ASSERT_TRUE(a.persist());
+  }
+  for (int boot = 1; boot <= 2; boot++) {   // two boots, each well inside the deadline, with no tick in between
+    JobService b;
+    h.svc = &b;
+    b.begin(&st, false, revertHook, confirmHook, &h);
+    EXPECT_EQ(boot == 2 ? 1 : 0, h.reverts) << "boot " << boot;
+  }
+}
+
+TEST(JobService, TheTimeLeftIsSavedSoARebootDoesNotStartItOver) {
+  RamStore st;
+  {
+    JobService a;
+    a.begin(&st, false, nullptr, nullptr, nullptr);
+    Job* j = a.table()->open("slow", "config.apply");
+    ASSERT_TRUE(a.table()->awaitConfirm(j, 100, true));
+    ASSERT_TRUE(a.persist());
+    a.tick(0);
+    a.tick(29000);
+    const int saves = st.saves;
+    a.tick(31000);
+    EXPECT_EQ(saves + 1, st.saves) << "saved once SAVE_EVERY_S had passed";
+  }
+  JobTable t;
+  ASSERT_TRUE(t.deserialize(st.file.data(), st.file.size()));
+  Job* j = nullptr;
+  ASSERT_EQ(JobTable::FOUND, t.find("slow", &j));
+  EXPECT_EQ(69u, j->confirm_left_s);
+}
+
+TEST(JobService, ASignedJobIsNamedByItsIdentity) {
+  JobService s;
+  ASSERT_NE(nullptr, s.table()->open("#a1b2:7", "config.apply"));
+  EXPECT_TRUE(has(call(s, "job.get", R"({"job":"#a1b2:7"})"), R"("job":"#a1b2:7")"));
+  EXPECT_TRUE(has(call(s, "job.get", R"({"job":"a b"})"), R"("error":"bad-args")")) << "still a narrow charset";
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

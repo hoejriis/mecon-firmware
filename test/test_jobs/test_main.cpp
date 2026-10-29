@@ -148,8 +148,6 @@ TEST(Jobs, TheImageRoundTripsAndKeepsTheRing) {
   openTerminal(t, "k");                           // evicts j0 into the ring
   Job* a = t.open("await", "config.apply");
   ASSERT_NE(nullptr, a) << "slot freed by evicting another terminal";
-  const uint8_t snap[3] = {1, 2, 3};
-  ASSERT_TRUE(t.setSnapshot(a, snap, sizeof(snap)));
   ASSERT_TRUE(t.awaitConfirm(a, 77, false));
   std::vector<uint8_t> img(JobTable::imageSize());
   ASSERT_EQ(img.size(), t.serialize(img.data(), img.size()));
@@ -159,7 +157,6 @@ TEST(Jobs, TheImageRoundTripsAndKeepsTheRing) {
   ASSERT_EQ(JobTable::FOUND, u.find("await", &j));
   EXPECT_EQ(JOB_AWAITING, j->state);
   EXPECT_EQ(77u, j->confirm_left_s);
-  EXPECT_EQ(3, j->snap_len);
   EXPECT_EQ(JobTable::EXPIRED, u.find("j0", &j)) << "the never-twice ring survives the reboot";
   EXPECT_EQ(nullptr, u.open("x", "config.apply")) << "and so does the open job";
 }

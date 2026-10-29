@@ -46,8 +46,10 @@ public:
   // "jobs":{"open","owed"}: a manager that reconnects over any path learns there is something to collect (3.2).
   void writeStatus(JsonWriter& w);
 
-  // Running time, for the confirm deadline: call from the loop; it counts whole seconds.
+  // Running time, for the confirm deadline: call from the loop; it counts whole seconds, and saves the time left every
+  // SAVE_EVERY_S while a job awaits confirmation (at most 30 writes for the longest deadline).
   void tick(uint32_t now_ms);
+  static constexpr uint32_t SAVE_EVERY_S = 30;
 
   // One job's summary members (job, op, state, owed), as job.get and job.list write them.
   static void writeSummary(JsonWriter& w, const Job& j);
@@ -59,6 +61,7 @@ private:
   void* _user = nullptr;
   uint32_t _tick_ms = 0;
   bool _tick_init = false;
+  uint32_t _unsaved_s = 0;
   static bool jobArg(OpContext& c, char* id, size_t cap);
 };
 

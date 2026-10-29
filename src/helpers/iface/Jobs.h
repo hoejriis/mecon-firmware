@@ -45,7 +45,7 @@ inline const char* jobStateName(uint8_t s) {
 }
 
 struct Job {
-  static constexpr size_t ID_CAP = 32, OP_CAP = 32, RESULT_CAP = 384, SNAP_CAP = 128;
+  static constexpr size_t ID_CAP = 32, OP_CAP = 32, RESULT_CAP = 384;
   char id[ID_CAP + 1];         // the request id, or "#<issuer>:<job_id>" for a signed request (the job's identity)
   char op[OP_CAP + 1];
   uint8_t state;
@@ -56,9 +56,8 @@ struct Job {
   uint32_t seq;                // creation order, for eviction
   uint32_t confirm_left_s;     // running seconds left to confirm, while awaiting-confirm
   uint16_t result_len;
-  char result[RESULT_CAP];     // the latest result or state data, as JSON members (the role's choice)
-  uint16_t snap_len;
-  uint8_t snap[SNAP_CAP];      // the commit-or-revert snapshot: device-internal, never reported
+  char result[RESULT_CAP];     // the latest result or state data, as JSON members (the role's choice); never a value
+                               // read back from the device, which a CLI reply can echo
 };
 
 enum BootRule : uint8_t { BOOT_SECOND = 0, BOOT_ABNORMAL = 1 };
@@ -136,12 +135,6 @@ public:
     return true;
   }
 
-  bool setSnapshot(Job* j, const uint8_t* snap, size_t len) {
-    if (!j || len > Job::SNAP_CAP) return false;
-    memcpy(j->snap, snap, len);
-    j->snap_len = (uint16_t)len;
-    return true;
-  }
 
   // job.ack: only a terminal result can be acknowledged.
   bool ack(const char* id) {
@@ -218,7 +211,7 @@ public:
     for (Job& j : _j) {   // a damaged entry is dropped, never half trusted
       j.id[Job::ID_CAP] = 0;
       j.op[Job::OP_CAP] = 0;
-      if (j.state > JOB_CANCELLED || j.boot_rule > BOOT_ABNORMAL || j.result_len > Job::RESULT_CAP || j.snap_len > Job::SNAP_CAP)
+      if (j.state > JOB_CANCELLED || j.boot_rule > BOOT_ABNORMAL || j.result_len > Job::RESULT_CAP)
         memset(&j, 0, sizeof(j));
     }
     return true;
