@@ -287,8 +287,10 @@ DeployAuth::Pre DeployAuth::preAuthorize(const OpEntry& op, const char** deny) {
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).
-  // identity.rotate likewise: rotateGate() answers with the contract's code for each state.
-  if (_dep_ls != Dep::LS_ABSENT && !_signed && op.priv != PRIV_READ && strcmp(op.name, "deployment.provision") != 0 &&
+  // identity.rotate likewise: rotateGate() answers with the contract's code for each state. job.ack is of the read class
+  // but releases a result, so it is not a plain read (section 7): unsigned, it would let any link discard what is owed.
+  const bool plain_read = op.priv == PRIV_READ && strcmp(op.name, "job.ack") != 0;
+  if (_dep_ls != Dep::LS_ABSENT && !_signed && !plain_read && strcmp(op.name, "deployment.provision") != 0 &&
       strcmp(op.name, "deployment.reset") != 0 && strcmp(op.name, "identity.rotate") != 0) {
     *deny = _dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";
     if (_dep) _dep->auth_rejections++;

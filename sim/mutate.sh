@@ -1099,6 +1099,16 @@ mutate jobs_terminal_moves src/helpers/iface/Jobs.h '    if (!j || !j->state || 
 mutate jobs_deadline_never_fires src/helpers/iface/Jobs.h '    if (!j->confirm_left_s) expired(j);' '' unit:test_jobs
 mutate jobs_any_boot_reverts_an_update src/helpers/iface/Jobs.h '      if (abnormal) revert(j);' '      revert(j);' unit:test_jobs
 mutate jobs_image_crc_unchecked src/helpers/iface/Jobs.h '    if (get32(in, c) != crc32(in, crc_at)) return false;' '' unit:test_jobs
+# the job operations (JobService.h) and their wiring in the Companion and the console
+mutate svc_damaged_table_kept src/helpers/iface/JobService.cpp '    if (!_t->deserialize(buf, n)) persist();' '    _t->deserialize(buf, n);' unit:test_job_service
+mutate svc_revert_failure_left_pending src/helpers/iface/JobService.cpp '      if (!_revert || !_revert(_user, *j)) _t->setState(j, JOB_FAILED, REVERT_FAILED, sizeof(REVERT_FAILED) - 1);' '      if (!_revert || !_revert(_user, *j)) {}' unit:test_job_service
+mutate svc_ack_save_failure_ignored src/helpers/iface/JobService.cpp '    if (!persist()) { c.error = "storage"; return ST_BUSY; }' '    persist();' unit:test_job_service
+mutate svc_confirm_without_the_role src/helpers/iface/JobService.cpp '  if (!_confirm || !_confirm(_user, *j)) { c.error = "confirm-failed"; return ST_FAILED; }' '' unit:test_job_service
+mutate svc_cancel_never_reverts src/helpers/iface/JobService.cpp '  if (j->state == JOB_AWAITING) {' '  if (false) {' unit:test_job_service
+mutate svc_deadline_too_fast src/helpers/iface/JobService.cpp '  const uint32_t secs = (now_ms - _tick_ms) / 1000;' '  const uint32_t secs = (now_ms - _tick_ms) / 100;' unit:test_job_service
+mutate jobs_status_missing_companion examples/companion_radio/MeconIface.cpp '  m->jobs().writeStatus(w);' '' sim/tests/test_jobs.py::test_the_companion_answers_an_empty_table_and_keeps_it_over_a_reboot
+mutate jobs_status_missing_console src/helpers/iface/ConsoleIface.cpp '  m->jobs().writeStatus(w);' '' sim/tests/test_jobs.py::test_the_console_answers_an_empty_table_and_keeps_it_over_a_reboot
+mutate jobs_unsigned_ack_once_enrolled src/helpers/iface/DeployAuth.cpp '  const bool plain_read = op.priv == PRIV_READ && strcmp(op.name, "job.ack") != 0;' '  const bool plain_read = op.priv == PRIV_READ;' sim/tests/test_jobs.py::test_once_enrolled_an_unsigned_caller_may_read_jobs_but_not_release_or_change_them
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

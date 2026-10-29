@@ -28,7 +28,8 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock"};
+                                    "deployment.unlock_challenge", "deployment.unlock", "job.get", "job.list",
+                                    "job.ack", "job.cancel", "job.confirm"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -81,6 +82,7 @@ Status opStatus(OpContext& c) {
   const bool hardened = Posture::isHardened(m->host().posture(m->host().user));
   w.key("posture"); w.str(hardened ? "hardened" : "normal");
   m->auth().writeStatus(w, hardened);
+  m->jobs().writeStatus(w);
   return ST_OK;
 }
 
@@ -113,6 +115,11 @@ Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
 Status opDeploySetUnlock(OpContext& c) { return self(c)->auth().opSetUnlock(c); }
 Status opDeployUnlockChallenge(OpContext& c) { return self(c)->auth().opUnlockChallenge(c); }
 Status opDeployUnlock(OpContext& c) { return self(c)->auth().opUnlock(c); }
+Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
+Status opJobList(OpContext& c) { return self(c)->jobs().opList(c); }
+Status opJobAck(OpContext& c) { return self(c)->jobs().opAck(c); }
+Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
+Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
 
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
@@ -130,6 +137,12 @@ const OpEntry OPS[] = {
   // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
   {"deployment.unlock_challenge", opDeployUnlockChallenge, PRIV_WRITE, false},
   {"deployment.unlock", opDeployUnlock, PRIV_WRITE, false},
+  // As on the Companion: ack is of the read class, cancel and confirm write; the three keep their result.
+  {"job.get", opJobGet, PRIV_READ, false},
+  {"job.list", opJobList, PRIV_READ, false},
+  {"job.ack", opJobAck, PRIV_READ, true},
+  {"job.cancel", opJobCancel, PRIV_WRITE, true},
+  {"job.confirm", opJobConfirm, PRIV_WRITE, true},
 };
 
 }  // namespace
@@ -139,6 +152,7 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
+  _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, nullptr, nullptr, nullptr);
   if (_host.dep_store) {
     DeployAuth::Env env;
     env.store = _host.dep_store;
@@ -339,6 +353,7 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
   _gap.tick(now);
+  _jobs.tick(now);
   refreshEnvironment(now);
   if (_collecting) return;   // an event never lands in the middle of a request being typed
   SubSet* sets[1] = { &_subs };

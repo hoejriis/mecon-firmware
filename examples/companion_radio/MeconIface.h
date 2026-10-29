@@ -12,6 +12,7 @@
 #include <helpers/AuditLog.h>
 #include <helpers/iface/DeployAuth.h>
 #include <helpers/iface/Provenance.h>
+#include <helpers/iface/JobService.h>
 
 class MyMesh;
 class BaseSerialInterface;
@@ -80,6 +81,8 @@ public:
   // Loads the record and its sequence marks from storage; called once from begin(). No record leaves a standalone device
   // with no DepState at all.
   void deployLoad();
+  // Loads the job table from its file and applies the boot rule; called once from begin().
+  void jobsLoad();
   // The channel nonce hello reports on the current link: empty when the device holds no Deployment record.
   const char* helloNonce();
   // status.deployment: nothing for a device with no record.
@@ -95,6 +98,8 @@ public:
   static Iface::Status opIdentityRotate(Iface::OpContext& c);
   // identity.rotation: a plain read of the rotation statement the old key signed.
   static Iface::Status opIdentityRotation(Iface::OpContext& c);
+  // The job operations (OPERATIONS.md section 3): job.get, job.list, job.ack, job.cancel, job.confirm.
+  Iface::JobService& jobs() { return _jobs; }
   // Whether the link of this serial interface holds a valid local unlock (AUTHORITY.md section 10); the CLI privilege
   // table takes it as Context.unlocked, for the cable link only.
   bool unlockedFor(const BaseSerialInterface* src);
@@ -182,6 +187,7 @@ private:
   void sendSmall(Link& l, Iface::Status st, const char* error);
   Iface::DeployAuth _auth;                  // the record, its marks and the signed-request checks (shared with the servers)
   DataStoreCopies _copies;
+  Iface::JobService _jobs;                  // nothing on the Companion creates a job yet: no revert or confirm hook
   const char* _deny = nullptr;              // why authorize() refused, when it has a contract code for it
   char _mqtt_nonce[33] = {0};               // the MQTT session is one link
   char _id_hex[33] = {0};

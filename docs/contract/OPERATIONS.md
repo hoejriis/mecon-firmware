@@ -22,6 +22,8 @@ Every operation carries one class of the CLI table: `read`, `write`, `secret`, `
 
 ## 3. Jobs: results that outlive a request
 
+**What the reference firmware has today.** The table of 3.2 and 3.3 is built on the Companion, Repeater and Room server: it is kept in `/mecon_jobs` and loaded at boot, which applies the boot rules of 3.4. `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm` and `status.get`'s `jobs` member answer it. No operation creates a job yet, so the table stays empty. The `job` stream, a `config.apply` with `confirm` (3.4) and `update.offer` are planned (#109, #110). Until an operation creates jobs, `job.cancel` and `job.confirm` are decided as `write`; with jobs, they take the class of the job's own operation.
+
 ### 3.1 States
 
 A request that finishes at once answers its result as in v1.0. A request that cannot finish within its own exchange answers `status:"ok"` with `result.job` and `result.state:"accepted"`. That covers waiting for a confirmation, needing a reboot, or taking longer than the 5 s a transport waits. From then on it is a job, and it moves through these states:
@@ -130,10 +132,10 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `config.apply` | writes, all-or-none checked | CLI `set` per key | write; per key | yes | C R S | as above | built; `confirm` (3.4) planned #109 |
 | `sub.start`, `sub.stop` | telemetry streams | | read | no | C R S | as above | built |
 | `cancel` | stop a paged operation | | as the operation | no | | | documented, not built; becomes `job.cancel` |
-| `job.get`, `job.list` | job state, owed results | | read | no | C R S | all | planned #109 |
-| `job.ack` | release an owed result | | read | yes | C R S | all | planned #109 |
-| `job.confirm` | confirm a tentative change | | the job's class | yes | C R S | all | planned #109 |
-| `job.cancel` | cancel, or revert if applied | | the job's class | yes | C R S | all | planned #109 |
+| `job.get`, `job.list` | job state, owed results | | read | no | C R S | all | built (no operation creates a job yet) |
+| `job.ack` | release an owed result | | read; not a plain read once enrolled | yes | C R S | all | built |
+| `job.confirm` | confirm a tentative change | | the job's class | yes | C R S | all | built; decided as `write` until jobs exist |
+| `job.cancel` | cancel, or revert if applied | | the job's class | yes | C R S | all | built; decided as `write` until jobs exist |
 | `device.reboot` | reboot | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | all | planned #109 |
 | `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope | planned #109, #95 |
 | `contact.list`, `contact.get` | contact table (paged) | native contact table | read | no | C | all | planned #109 |

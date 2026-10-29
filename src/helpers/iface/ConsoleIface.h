@@ -13,6 +13,7 @@
 #include "DeployAuth.h"
 #include "IfaceConfig.h"
 #include "IfaceDispatch.h"
+#include "JobService.h"
 #include "Provenance.h"
 #include "Streams.h"
 
@@ -47,6 +48,8 @@ public:
     uint32_t (*clock_s)(void* user);
     // The node identity, to sign results and events with (AUTHORITY.md section 3.4); null: nothing is signed.
     const mesh::LocalIdentity* identity;
+    // The job table's file (OPERATIONS.md section 3); null keeps the table in RAM only.
+    JobStore* job_store;
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |
@@ -66,6 +69,7 @@ public:
   // For the operations.
   const Host& host() const { return _host; }
   DeployAuth& auth() { return _auth; }
+  JobService& jobs() { return _jobs; }
   // The channel nonce hello reports: the console is one link, and holds its own.
   const char* helloNonce() { return _auth.helloNonce(_nonce); }
   const char* deviceIdHex() const { return _id_hex; }
@@ -99,6 +103,7 @@ private:
   ResultCache* _cache = nullptr;
   Provenance _prov;            // signs every result and event while a record exists
   DeployAuth _auth;            // the Deployment record and the signed-request checks (shared with the Companion)
+  JobService _jobs;            // nothing on the console creates a job yet: no revert or confirm hook
   Cli::Context _ctx;           // the caller of the request being handled: the cable, or the signed principal on it
   const char* _deny = nullptr; // why authorize() refused, when it has a contract code for it
   char _nonce[33] = {0};       // the console's channel nonce (AUTHORITY.md section 7.1)

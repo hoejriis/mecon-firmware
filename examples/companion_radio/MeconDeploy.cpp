@@ -7,6 +7,7 @@
 #include "MyMesh.h"
 #include <new>
 #include <helpers/iface/Wipe.h>
+#include <helpers/iface/JobFsStore.h>
 
 using namespace Iface;
 
@@ -22,6 +23,12 @@ bool DataStoreCopies::write(int slot, const uint8_t* frame, size_t len, Dep::Sto
 
 bool DataStoreCopies::removeBoth(int newer_slot, Dep::StoreFile which) {
   return _s->removeDeploymentCopies(newer_slot, which == Dep::SF_MARKS ? DataStore::DEP_MARKS : DataStore::DEP_RECORD);
+}
+
+void MeconIface::jobsLoad() {
+  static Iface::JobFsStore file;   // the DataStore's file system
+  file.setFs(_mesh->_store->getPrimaryFS());
+  _jobs.begin(&file, abnormalReset(board) == 1, nullptr, nullptr, nullptr);
 }
 
 namespace {

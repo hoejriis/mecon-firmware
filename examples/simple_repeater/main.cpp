@@ -36,8 +36,10 @@ static char command[160];
   #include <helpers/iface/DeviceMeta.h>
   #include <helpers/CryptoRNG.h>
   #include <helpers/deployment/DepFsStore.h>
+  #include <helpers/iface/JobFsStore.h>
   static Iface::ConsoleIface the_iface;
   static Dep::FsStore dep_store;   // the Deployment record's files, on the role's own file system
+  static Iface::JobFsStore job_store;   // the job table (OPERATIONS.md section 3), on the same file system
   static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
     char cmd[160], out[160];
     snprintf(cmd, sizeof(cmd), "%s", line);
@@ -162,8 +164,9 @@ void setup() {
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "repeater", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
                                        &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
-                                       &dep_store, ifaceClock, &the_mesh.self_id };
+                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store };
     dep_store.setFs(fs);
+    job_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
   }
 #endif

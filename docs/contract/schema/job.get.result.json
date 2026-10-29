@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/job.get.result.json",
+  "title": "Result of job.get: one job",
+  "type": "object",
+  "required": [
+    "job",
+    "op",
+    "state",
+    "owed",
+    "result"
+  ],
+  "properties": {
+    "job": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "op": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "progress",
+        "applied",
+        "awaiting-confirm",
+        "confirmed",
+        "reverted",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "owed": {
+      "type": "boolean",
+      "description": "Terminal and not yet acknowledged with job.ack."
+    },
+    "confirm_left_s": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Present while awaiting-confirm: running seconds before the change reverts."
+    },
+    "result": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "The terminal result the operation recorded, or null."
+    }
+  }
+}

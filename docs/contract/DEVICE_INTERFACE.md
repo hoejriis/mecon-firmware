@@ -59,6 +59,9 @@ UTF-8 JSON objects. Three shapes:
 | `deployment.authority_update` | a newer DAK-signed authority set with any rotations before it ([authority contract](AUTHORITY.md) section 6.2). Companion only | any caller (it carries its own signature); rate limited |
 | `identity.rotation` | the rotation statement the old node key signed, `{"rotation":{"statement":"<signed text>","sig":"<base64>"}}`, or an empty result when the key was never rotated; `deployment.get` carries the same member ([authority contract](AUTHORITY.md) section 11). Companion only | open read (a plain read when signed) |
 | `identity.rotate` | a new node key for a new owner; drops contacts and the message queue, keeps configuration, channels, the record and `device_id` ([authority contract](AUTHORITY.md) section 11). Companion only | signed and sensitive; refused without a readable record |
+| `job.get`, `job.list` | one job, `{"job","op","state","owed","result"}` (and `confirm_left_s` while awaiting confirmation), or every job with the table's `open` and `owed` counts ([operations contract](OPERATIONS.md) section 3). No operation creates a job yet | read; plain reads when signed |
+| `job.ack` | releases an owed terminal result, `{"acked":true}` | read; once a device holds a Deployment record, signed with a `job_id` |
+| `job.cancel`, `job.confirm` | cancel a job, or revert it if it has applied; confirm a change awaiting confirmation | write (the class of the job's operation once jobs exist) |
 | `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 
 Native operations stay native: messaging, contacts, channels, adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.

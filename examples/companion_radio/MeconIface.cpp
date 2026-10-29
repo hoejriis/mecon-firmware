@@ -33,7 +33,8 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation"};
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
+                                    "job.get", "job.list", "job.ack", "job.cancel", "job.confirm"};
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -42,6 +43,11 @@ Status opGet(OpContext& c);
 Status opApply(OpContext& c);
 Status opSubStart(OpContext& c);
 Status opSubStop(OpContext& c);
+Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
+Status opJobList(OpContext& c) { return self(c)->jobs().opList(c); }
+Status opJobAck(OpContext& c) { return self(c)->jobs().opAck(c); }
+Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
+Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
 
 // The operation's class is the least it needs; each config key is decided again by its own CLI line (IfaceConfig).
 const OpEntry OPS[] = {
@@ -62,6 +68,13 @@ const OpEntry OPS[] = {
   {"deployment.unlock", MeconIface::opDeployUnlock, PRIV_WRITE, false},
   {"identity.rotate", MeconIface::opIdentityRotate, PRIV_WRITE, false},   // never answered from the cache: it must run once
   {"identity.rotation", MeconIface::opIdentityRotation, PRIV_READ, false},
+  // Reading a job and acknowledging its result are of the read class (the result belongs to whoever may read it);
+  // cancelling and confirming change the device. The three that change something keep their result (OPERATIONS.md 5.1).
+  {"job.get", opJobGet, PRIV_READ, false},
+  {"job.list", opJobList, PRIV_READ, false},
+  {"job.ack", opJobAck, PRIV_READ, true},
+  {"job.cancel", opJobCancel, PRIV_WRITE, true},
+  {"job.confirm", opJobConfirm, PRIV_WRITE, true},
 };
 
 }  // namespace
@@ -129,6 +142,7 @@ Status opStatus(OpContext& c) {
 #endif
   w.key("posture"); w.str(Posture::isHardened(mesh->postureValue()) ? "hardened" : "normal");
   m->writeDeploymentStatus(w, Posture::isHardened(mesh->postureValue()));
+  m->jobs().writeStatus(w);
   return ST_OK;
 }
 
@@ -256,6 +270,7 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   deployLoad();
+  jobsLoad();
   _prov.begin(&_mesh->self_id, &_auth, epoch, epoch_saved);
   observeSink().fn = onObserve;
   observeSink().user = this;
@@ -488,6 +503,7 @@ void MeconIface::drainLogs() {
 
 void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
+  _jobs.tick(now);
   streamTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
