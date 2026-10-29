@@ -4,6 +4,7 @@
 #include "target.h"
 #include <time.h>
 #include <helpers/connmode/ConnStatus.h>   // ConnMode::homeLink
+#include <helpers/DisplayPrivacy.h>      // issue #113: what the screen shows per posture
 #ifdef ENABLE_WIFI_INTERFACE
   #include <WiFi.h>
 #endif
@@ -273,6 +274,7 @@ public:
     char filtered_name[sizeof(_node_prefs->node_name)];
     display.translateUTF8ToBlocks(filtered_name, _node_prefs->node_name, sizeof(filtered_name));
     display.setCursor(0, 2);
+    if (const char* badge = DisplayPrivacy::postureBadge(the_mesh.getNodePrefs()->posture)) display.print(badge);   // issue #113
     display.print(filtered_name);
 
     // battery voltage
@@ -343,7 +345,9 @@ public:
       #endif
       const ConnMode::HomeLink link =
         ConnMode::homeLink(the_mesh.getBLEPin(), ble_mode, _task->isBleConnected(), _task->hasConnection());
-      if (link == ConnMode::LINK_PIN) { // BT pin
+      // Issue #113: the PIN is drawn only while BLE advertises and the posture let BLE start with it.
+      if (link == ConnMode::LINK_PIN && DisplayPrivacy::showsPairingPin(the_mesh.getNodePrefs()->posture, the_mesh.getBLEPin(),
+                                                                         _task->isBluetoothEnabled(), _task->isBleConnected())) { // BT pin
         display.setColor(UIColor::warning_txt);
         sprintf(tmp, "Pin:%d", the_mesh.getBLEPin());
         #ifdef UI_SHOW_CLOCK
@@ -383,7 +387,8 @@ public:
 
         char filtered_recent_name[sizeof(a->name)];
         display.translateUTF8ToBlocks(filtered_recent_name, a->name, sizeof(filtered_recent_name));
-        display.drawTextEllipsized(0, y, max_name_width, filtered_recent_name);
+        display.drawTextEllipsized(0, y, max_name_width,
+                                   DisplayPrivacy::showsNames(the_mesh.getNodePrefs()->posture) ? filtered_recent_name : DisplayPrivacy::HIDDEN_NAME);
         display.setCursor(display.width() - timestamp_width - 1, y);
         display.print(tmp);
       }
@@ -577,7 +582,7 @@ public:
       for (int i = 0; i < count; i++, y += 11) {
         char name[32];
         auto a = &discovered[i];
-        if ((a->name[0] == 0) || !discovery_disp_names) {
+        if ((a->name[0] == 0) || !discovery_disp_names || !DisplayPrivacy::showsNames(the_mesh.getNodePrefs()->posture)) {
           mesh::Utils::toHex(name, a->pubkey_prefix, 4);
         } else {
           strncpy(name, a->name, 32);
@@ -723,7 +728,8 @@ class MsgPreviewScreen : public UIScreen {
 
   struct MsgEntry {
     uint32_t timestamp;
-    char origin[62];
+    uint8_t path_len;
+    char origin[62];   // the sender or channel name; the "(n) name:" header is built when drawn (issue #113)
     char msg[UI_MSG_PREVIEW_SIZE];
   };
   #define MAX_UNREAD_MSGS   32
@@ -740,11 +746,8 @@ public:
 
     auto p = &unread[head];
     p->timestamp = _rtc->getCurrentTime();
-    if (path_len == 0xFF) {
-      sprintf(p->origin, "(D) %s:", from_name);
-    } else {
-      sprintf(p->origin, "(%d) %s:", (uint32_t) path_len, from_name);
-    }
+    p->path_len = path_len;
+    StrHelper::strncpy(p->origin, from_name, sizeof(p->origin));
     StrHelper::strncpy(p->msg, msg, sizeof(p->msg));
   }
 
@@ -773,15 +776,21 @@ public:
 
     display.setCursor(0, 14);
     display.setColor(UIColor::secondary_txt);
+    // Issue #113: decided when drawn, so a preview captured in Normal is hidden once the device is Hardened.
+    const uint8_t posture = the_mesh.getNodePrefs()->posture;
     char filtered_origin[sizeof(p->origin)];
     display.translateUTF8ToBlocks(filtered_origin, p->origin, sizeof(filtered_origin));
-    display.print(filtered_origin);
+    const char* who = DisplayPrivacy::showsNames(posture) ? filtered_origin : DisplayPrivacy::HIDDEN_NAME;
+    char header[sizeof(p->origin) + 8];
+    if (p->path_len == 0xFF) snprintf(header, sizeof(header), "(D) %s:", who);
+    else snprintf(header, sizeof(header), "(%d) %s:", (uint32_t) p->path_len, who);
+    display.print(header);
 
     display.setCursor(0, 25);
     display.setColor(UIColor::primary_txt);
     char filtered_msg[sizeof(p->msg)];
     display.translateUTF8ToBlocks(filtered_msg, p->msg, sizeof(filtered_msg));
-    display.printWordWrap(filtered_msg, display.width());
+    display.printWordWrap(DisplayPrivacy::showsMessageText(posture) ? filtered_msg : DisplayPrivacy::HIDDEN_TEXT, display.width());
 
 #if AUTO_OFF_MILLIS==0 // probably e-ink
     return 10000; // 10 s
@@ -1105,6 +1114,12 @@ void UITask::loop() {
 #endif
 
   if (curr) curr->poll();
+
+  // Issue #113: on a posture change, redraw now; on e-ink the full refresh also clears the retained image.
+  if (_display != NULL && _posture_watch.changed(the_mesh.getNodePrefs()->posture)) {
+    _display->forceFullRefresh();
+    _next_refresh = 0;
+  }
 
   if (_display != NULL && _display->isOn()) {
     if (millis() >= _next_refresh && curr) {

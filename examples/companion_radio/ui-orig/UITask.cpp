@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
+#include <helpers/DisplayPrivacy.h>   // issue #113: what the screen shows per posture
 
 #define AUTO_OFF_MILLIS     15000   // 15 seconds
 #define BOOT_SCREEN_MILLIS   3000   // 3 seconds
@@ -148,11 +149,8 @@ void UITask::onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t t
 #endif
 
   uint8_t path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
-  if (path_len == 0xFF) {
-    sprintf(_origin, "(F) %s", from.name);
-  } else {
-    sprintf(_origin, "(%d) %s", (uint32_t) path_len, from.name);
-  }
+  _origin_path = path_len;   // issue #113: the "(n) name" header is built when drawn
+  StrHelper::strncpy(_origin, from.name, sizeof(_origin));
   StrHelper::strncpy(_msg, text, sizeof(_msg));
 
   if (_display != NULL) {
@@ -175,11 +173,8 @@ void UITask::onChannelMessageRecv(mesh::Packet *pkt, ChannelDetails& channel_det
 #endif
 
   uint8_t path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
-  if (path_len == 0xFF) {
-    sprintf(_origin, "(F) %s", channel_details.name);
-  } else {
-    sprintf(_origin, "(%d) %s", (uint32_t) path_len, channel_details.name);
-  }
+  _origin_path = path_len;
+  StrHelper::strncpy(_origin, channel_details.name, sizeof(_origin));
   StrHelper::strncpy(_msg, text, sizeof(_msg));
 
   if (_display != NULL) {
@@ -252,13 +247,20 @@ void UITask::renderCurrScreen() {
     _display->setCursor(0, 0);
     _display->setTextSize(1);
     _display->setColor(UIColor::primary_txt);
+    const uint8_t posture = the_mesh.getNodePrefs()->posture;
+    if (const char* badge = DisplayPrivacy::postureBadge(posture)) _display->print(badge);
     _display->print(_node_prefs->node_name);
 
+    // Issue #113: decided when drawn, so a preview captured in Normal is hidden once the device is Hardened.
+    char header[sizeof(_origin) + 8];
+    const char* who = DisplayPrivacy::showsNames(posture) ? _origin : DisplayPrivacy::HIDDEN_NAME;
+    if (_origin_path == 0xFF) snprintf(header, sizeof(header), "(F) %s", who);
+    else snprintf(header, sizeof(header), "(%d) %s", (uint32_t) _origin_path, who);
     _display->setCursor(0, 12);
     _display->setColor(UIColor::secondary_txt);
-    _display->print(_origin);
+    _display->print(header);
     _display->setCursor(0, 24);
-    _display->print(_msg);
+    _display->print(DisplayPrivacy::showsMessageText(posture) ? _msg : DisplayPrivacy::HIDDEN_TEXT);
 
     _display->setCursor(_display->width() - 28, 9);
     _display->setTextSize(2);
@@ -283,6 +285,7 @@ void UITask::renderCurrScreen() {
     _display->setCursor(0, 0);
     _display->setTextSize(1);
     _display->setColor(UIColor::primary_txt);
+    if (const char* badge = DisplayPrivacy::postureBadge(the_mesh.getNodePrefs()->posture)) _display->print(badge);   // issue #113
     _display->print(_node_prefs->node_name);
 
     // battery voltage
@@ -299,8 +302,9 @@ void UITask::renderCurrScreen() {
     sprintf(tmp, "BW: %03.2f CR: %d", _node_prefs->bw, _node_prefs->cr);
     _display->print(tmp);
 
-    // BT pin
-    if (!hasConnection() && the_mesh.getBLEPin() != 0) {
+    // BT pin: issue #113, only while BLE advertises and the posture let BLE start with this PIN
+    if (!hasConnection() && DisplayPrivacy::showsPairingPin(the_mesh.getNodePrefs()->posture, the_mesh.getBLEPin(),
+                                                            isBluetoothEnabled(), isBleConnected())) {
       _display->setColor(UIColor::warning_txt);
       _display->setTextSize(2);
       _display->setCursor(0, 43);
@@ -487,6 +491,13 @@ void UITask::loop() {
 #ifdef PIN_BUZZER
   if (buzzer.isPlaying())  buzzer.loop();
 #endif
+
+  // Issue #113: on a posture change, redraw now; on e-ink the full refresh also clears the retained image.
+  if (_display != NULL && _posture_watch.changed(the_mesh.getNodePrefs()->posture)) {
+    _display->forceFullRefresh();
+    _need_refresh = true;
+    _next_refresh = 0;
+  }
 
   if (_display != NULL && _display->isOn()) {
     static bool _firstBoot = true;
