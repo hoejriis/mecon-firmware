@@ -80,6 +80,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Feature | Result | Date, build |
 |---|---|---|
 | Adaptive contacts capacity | 1000 (the store ceiling): the Companion keeps contacts on the 2 MB QSPI flash | 2026-10-21, dd5c9c44 |
+| nRF52 interface worker (#158) | A test-only Repeater build with the device interface, the #157 marker and this worker, over the console with the public test keys: a first `deployment.provision` answered and signed with no reset (it reset the board before the worker); a signed `config.apply` and a signed `deployment.reset` verified on the CC310 and ran. `loop_stack_free` 1,176 B both before and after (the boot's peak); the worker's least free stack 4,864 B of 8 KB. The board was restored to stock 1.17.1 afterwards | 2026-10-29, test build of fix/158 + feat/nrf52-marker-117 |
 
 ## SenseCAP T1000-E
 

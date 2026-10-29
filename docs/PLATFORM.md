@@ -72,6 +72,15 @@ Measured on v3test and v4test on 2026-10-24, each board first on main (2.0.17) a
 | Wi-Fi joined after reset | not timed | about 9 s | about 7–9 s | about 6 s |
 | Loop task stack free: BLE idle / after BLE pairing + CLI / Wi-Fi + TLS MQTT | 5,492 / 5,476 / 5,540 B | 5,472 / 5,424 / 5,496 B | 5,520 / 5,488 / not captured | 5,516 / 5,500 / 5,516 B |
 
+### nRF52 interface worker
+
+The Adafruit nRF52 core runs `loop()` on a fixed 4 KB stack (`LOOP_STACK_SZ`). A first `deployment.provision` overflowed it on hardware (#158): the parse, the authority-set verify and the signing of the result came to about 4.8 KB of frames. Every device-interface request on nRF52 now runs on an 8 KB worker task (`src/helpers/NrfWorker.h`).
+- **The hand-off.** The loop task hands one request to the worker and waits until it is answered, up to 15 s, so the request sees the same single-threaded world.
+- **A job that overruns** retires the worker for the rest of the boot, and later requests are answered `busy`, error `worker`, unsigned: nothing then runs on the small stack.
+- **The verify.** The authority layer verifies Ed25519 on the nRF52840's CC310 (`src/helpers/deployment/DepVerify.h`), as `mesh::Identity::verify` does; other firmware uses the Crypto library's verifier.
+- **Measured.** `status.get` reports the loop task's `loop_stack_free` and the worker's `worker_stack_free`.
+- **The gate.** The `stack-gate` workflow (`tools/stack_callgraph.py`) builds the T1000-E interface envs with GCC's call-graph files. It fails a change whose worst static path is over 3,840 B on the loop task or 7,936 B on the worker.
+
 The stack figures are the least free stack of the Arduino loop task (8 KB, where every CLI command and the radio and app paths run) since boot, from `get mecon.mem` (`loop_stack_free`); both runtimes leave about 5.4 KB of it unused in every state measured. On 2.0.17 the BLE pairing step's CLI over BLE was not answered, so that baseline reading covers pairing and USB CLI only; the V4's 2.0.17 Wi-Fi reading was lost to an MQTT reconnect on that build and is not captured.
 
 What carried over unchanged: identity, name, PIN, contacts (50 of 50) and settings through the upgrade; PIN and default-PIN BLE pairing, re-pairing after a forgotten bond, CLI over BLE and its refusals; Wi-Fi profile priority; MQTT with a CA anchor (`tls=verified`); LoRa direct messages between the two boards; the battery reading (within 20 mV).
