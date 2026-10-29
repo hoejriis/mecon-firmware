@@ -8,6 +8,7 @@
 #include "helpers/Posture.h"
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/cli/CliRegistry.h"
+#include "helpers/NrfWorker.h"
 #include "Observe.h"
 #include "Wipe.h"
 
@@ -66,6 +67,7 @@ void writeHealth(JsonWriter& w, ConsoleIface* m) {
     w.key("largest"); w.unum(ms.largest);
     w.key("min_free"); if (ms.min_free) w.unum(ms.min_free); else w.null();
     w.key("loop_stack_free"); if (ms.loop_stack_free) w.unum(ms.loop_stack_free); else w.null();
+    if (const uint32_t ws = NrfWorker::workerStackFree()) { w.key("worker_stack_free"); w.unum(ws); }   // nRF52 (#158)
     if (ms.psram) { w.key("psram_free"); w.unum(ms.psram); }
     w.endObject();
   }
@@ -268,20 +270,18 @@ void ConsoleIface::refreshEnvironment(uint32_t now) {
   _env_at = now;
 }
 
-void ConsoleIface::answer(Print& out) {
-  _collecting = false;
-  if (!_env_checked) refreshEnvironment(millis());
-  out.print("\r\n");   // ends the console's echo of the prefix, as the stock console ends an echoed line
-  static const size_t OUT_MAX = 1600;
-  char* res = static_cast<char*>(malloc(OUT_MAX));
+// The request's whole work, from the parse to the signed result, on the nRF52 worker's stack (NrfWorker.h, #158): the
+// loop task only prints the line. res is OUT_MAX bytes, or null when it could not be allocated (then the small
+// no-memory answer is written into small).
+__attribute__((noinline)) int ConsoleIface::compute(char* res, char* small, size_t small_cap) {
   bool was_enrolled = false;   // whether a record existed when the request began
   int n;
   if (!res) {
-    char small[320];
-    n = writeResult(small, sizeof(small), "", ST_BUSY, nullptr, "no-memory");
-    if (n > 0) n = _prov.signResult(small, (size_t)n, sizeof(small));
-    if (n > 0) printLine(out, small, (size_t)n);
-  } else {
+    n = writeResult(small, small_cap, "", ST_BUSY, nullptr, "no-memory");
+    if (n > 0) n = _prov.signResult(small, (size_t)n, small_cap);
+    return n;
+  }
+  {
     if (_overflow) {
       n = writeResult(res, OUT_MAX, "", ST_BUSY, nullptr, _line ? "line-too-long" : "no-memory");
     } else {
@@ -301,9 +301,40 @@ void ConsoleIface::answer(Print& out) {
     }
     if (n > 0) n = _prov.signResult(res, (size_t)n, OUT_MAX, nullptr, &_auth.answering(), was_enrolled);
     _auth.answering().clear();
-    if (n > 0) printLine(out, res, (size_t)n);
-    free(res);
   }
+  return n;
+}
+
+namespace {
+struct AnswerJob {
+  ConsoleIface* s;
+  char* res;
+  char* small;
+  size_t small_cap;
+  int n;
+};
+__attribute__((noinline)) void answerJob(void* p) {
+  AnswerJob* j = static_cast<AnswerJob*>(p);
+  j->n = j->s->compute(j->res, j->small, j->small_cap);
+}
+}  // namespace
+
+void ConsoleIface::answer(Print& out) {
+  _collecting = false;
+  if (!_env_checked) refreshEnvironment(millis());
+  out.print("\r\n");   // ends the console's echo of the prefix, as the stock console ends an echoed line
+  char* res = static_cast<char*>(malloc(OUT_MAX));
+  static char small[320];
+  AnswerJob job = {this, res, small, sizeof(small), -1};
+  if (NrfWorker::run(answerJob, &job, 15000)) {
+    if (job.n > 0) printLine(out, res ? res : small, (size_t)job.n);
+  } else {
+    // The worker is gone (it overran once and is retired for this boot): nothing runs on the small loop stack, not
+    // even a signature, so the refusal goes out unsigned and says why.
+    static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
+    printLine(out, W, sizeof(W) - 1);
+  }
+  free(res);
   if (_line) {
     wipe(_line, MAX_LINE + 1);   // a write may have carried a secret; a plain memset before free can be dropped
     free(_line);
