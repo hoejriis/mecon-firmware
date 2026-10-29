@@ -1111,6 +1111,17 @@ mutate gnss_age_never_null src/helpers/iface/Streams.h '  w.key("fix_age_s"); if
 mutate power_detect_ignored src/helpers/iface/Streams.h '  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();' '  const bool can_tell = b.isPwrMgtInitialised();' unit:test_streams
 mutate gnss_written_without_a_receiver src/helpers/iface/Streams.cpp '  if (b.getGnssHealth(g)) writeGnss(w, g);' '  b.getGnssHealth(g); writeGnss(w, g);' sim/tests/test_telemetry_streams.py::test_runtime_has_no_gnss_object_without_a_receiver
 
+# --- issue #113: screen privacy per posture (src/helpers/DisplayPrivacy.h, the three UI variants)
+mutate privacy_text_always_shown src/helpers/DisplayPrivacy.h 'inline bool showsMessageText(uint8_t posture) { return !Posture::isHardened(posture); }' 'inline bool showsMessageText(uint8_t posture) { return true; }' unit:test_display_privacy
+mutate privacy_names_always_shown src/helpers/DisplayPrivacy.h 'inline bool showsNames(uint8_t posture) { return !Posture::isHardened(posture); }' 'inline bool showsNames(uint8_t posture) { return true; }' unit:test_display_privacy
+mutate privacy_pin_while_not_advertising src/helpers/DisplayPrivacy.h '  return pin != 0 && ble_enabled && !ble_connected && Posture::bleMayStart(posture, pin);' '  return pin != 0 && !ble_connected && Posture::bleMayStart(posture, pin);' unit:test_display_privacy
+mutate privacy_pin_while_connected src/helpers/DisplayPrivacy.h '  return pin != 0 && ble_enabled && !ble_connected && Posture::bleMayStart(posture, pin);' '  return pin != 0 && ble_enabled && Posture::bleMayStart(posture, pin);' unit:test_display_privacy
+mutate privacy_pin_ignores_posture src/helpers/DisplayPrivacy.h '  return pin != 0 && ble_enabled && !ble_connected && Posture::bleMayStart(posture, pin);' '  return pin != 0 && ble_enabled && !ble_connected;' unit:test_display_privacy
+mutate privacy_watch_never_fires src/helpers/DisplayPrivacy.h '    bool c = !primed || posture != last;' '    bool c = !primed;' unit:test_display_privacy
+mutate privacy_ui_new_preview_text_shown examples/companion_radio/ui-new/UITask.cpp '    display.printWordWrap(DisplayPrivacy::showsMessageText(posture) ? filtered_msg : DisplayPrivacy::HIDDEN_TEXT, display.width());' '    display.printWordWrap(filtered_msg, display.width());' sim/tests/test_screen_privacy.py
+mutate privacy_ui_new_preview_sender_shown examples/companion_radio/ui-new/UITask.cpp '    const char* who = DisplayPrivacy::showsNames(posture) ? filtered_origin : DisplayPrivacy::HIDDEN_NAME;' '    const char* who = filtered_origin;' sim/tests/test_screen_privacy.py
+mutate privacy_ui_new_no_badge examples/companion_radio/ui-new/UITask.cpp '    if (const char* badge = DisplayPrivacy::postureBadge(the_mesh.getNodePrefs()->posture)) display.print(badge);   // issue #113' '' sim/tests/test_screen_privacy.py::test_hardened_draws_no_message_text_and_no_sender
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

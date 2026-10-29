@@ -1,6 +1,6 @@
 # Connectivity page, Wi-Fi mode, Hardened, no MQTT profile Hardened permits
 +---------------------+
-|ExampleNode          |
+|[H] ExampleNode      |
 |                     |
 |Mode: Wi-Fi, Hardened|
 |Wi-Fi: off           |
