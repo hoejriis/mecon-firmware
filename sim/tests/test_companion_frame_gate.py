@@ -199,19 +199,46 @@ def _set_time(c, secs):
 
 
 def test_setting_a_set_clock_is_refused_over_tcp(nodes):
+    """The first time set since boot is open to any caller, as the app does on connecting. After that it is a setting
+    like any other, whatever the clock read at boot."""
     n = nodes("companion_wifi", "ct", seed=97, rtc=RTC).start()
     c = _client(n)
+    assert _set_time(c, RTC + 60)[0] == 0
     assert _refused(_set_time(c, RTC + 86400 * 365))
     assert W_APP_FRAME in _refusal_whats(n), audit_file(n)
 
 
-def test_an_unset_clock_is_set_over_tcp_once(nodes):
-    """Before it has been set since boot the clock reads 2024, and any caller may set it, as the app does on connecting.
-    After that it is a setting like any other."""
-    n = nodes("companion_wifi", "cu", seed=98, rtc=UNSET_CLOCK).start()
+def test_the_first_set_after_a_reboot_with_contacts_is_open(nodes):
+    """Contacts set the clock at boot (their newest modification time), which is not a set by the app: a phone that
+    connects over TCP after a reboot still sets the time once."""
+    u = nodes("companion_wifi_usb", "cr", seed=96, rtc=UNSET_CLOCK).start()
+    uc = _client(u)
+    assert _set_time(uc, RTC)[0] == 0
+    assert uc.add_contact(PEER, "peer", ctype=ADV_TYPE_CHAT)[0] == 0
+    uc.request_reboot()                                                                   # saves the contacts
+    assert u.wait_exit(10) == 75
+    n = nodes("companion_wifi", "cr", seed=96, rtc=UNSET_CLOCK).start()                  # the same device over TCP
     c = _client(n)
-    assert _set_time(c, RTC)[0] == 0
+    assert _set_time(c, RTC + 600)[0] == 0
     assert _refused(_set_time(c, RTC + 86400 * 365))
+
+
+def test_an_untrusted_contact_time_is_held_at_the_clock(nodes):
+    """The newest contact modification time sets the clock at boot, so one from an untrusted caller is not ahead of it."""
+    n = nodes("companion_wifi", "cm", seed=94, rtc=RTC).start()
+    c = _client(n)
+    assert c.add_contact_full(PEER, "peer", lastmod=0xFFFFFFF0)[0] == 0
+    assert c.add_contact_full(bytes([9]) * 32, "past", lastmod=RTC - 1000)[0] == 0
+    got = {x["key"]: x["lastmod"] for x in c.get_contacts()[1]}
+    assert RTC <= got[PEER] < RTC + 600, got[PEER]
+    assert got[bytes([9]) * 32] == RTC - 1000                                             # an older time is kept
+
+
+def test_a_cable_contact_time_is_kept(nodes):
+    n = nodes("companion", "ck", seed=93, rtc=RTC).start()
+    c = _client(n)
+    assert c.add_contact_full(PEER, "peer", lastmod=RTC + 86400)[0] == 0
+    assert {x["key"]: x["lastmod"] for x in c.get_contacts()[1]}[PEER] == RTC + 86400
 
 
 def test_setting_a_set_clock_works_over_the_cable(nodes):

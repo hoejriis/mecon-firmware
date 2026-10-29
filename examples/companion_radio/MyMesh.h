@@ -336,6 +336,7 @@ private:
   char reply_buf[166];
   float _radio_freq = 0, _radio_bw = 0;
   uint8_t app_target_ver;
+  bool _clock_set = false;        // CMD_SET_DEVICE_TIME has set the clock since boot (frameGate)
   uint8_t *sign_data;
   uint32_t sign_data_len;
   unsigned long dirty_contacts_expiry;

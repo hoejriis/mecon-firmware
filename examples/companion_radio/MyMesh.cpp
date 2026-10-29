@@ -164,8 +164,6 @@
 
 // A contact's flags that grant it something: telemetry (base, location, environment) and the remote CLI.
 #define CONTACT_GRANT_FLAGS       0x1E
-// A clock that reads before this (1 Jan 2025) has not been set since boot.
-#define CLOCK_SET_FLOOR           1735689600UL
 #define AUTO_ADD_SENSOR           (1 << 4)  // 0x10 - auto-add Sensor (ADV_TYPE_SENSOR)
 
 void MyMesh::writeOKFrame() {
@@ -1112,9 +1110,10 @@ uint8_t MyMesh::frameGate(size_t len) {
       return Cli::FR_APP_WRITE;
     case CMD_SET_DEVICE_TIME:
       // The clock only moves forward here (the handler refuses an earlier time), so the app cannot undo a push ahead,
-      // and replay windows and ACLs compare against it: setting it is a setting. Until it has been set since boot any
-      // caller may set it, as the app does on connecting.
-      return getRTCClock()->getCurrentTime() < CLOCK_SET_FLOOR ? Cli::FR_NONE : Cli::FR_APP_WRITE;
+      // and replay windows and ACLs compare against it: setting it is a setting. The first set since boot is open to
+      // any caller, as the app does on connecting; what the clock reads at boot (a contact's time, a stale RTC) may be
+      // far behind.
+      return _clock_set ? Cli::FR_APP_WRITE : Cli::FR_NONE;
     case CMD_ADD_UPDATE_CONTACT: {
       // Granting a contact telemetry or the remote CLI is a setting: the remote CLI runs that key's texts as commands.
       // The rest of the record, and taking a grant away, is contact handling.
@@ -1436,6 +1435,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint32_t curr = getRTCClock()->getCurrentTime();
     if (secs >= curr) {
       getRTCClock()->setCurrentTime(secs);
+      _clock_set = true;
       writeOKFrame();
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
@@ -1474,15 +1474,21 @@ void MyMesh::handleCmdFrame(size_t len) {
   } else if (cmd_frame[0] == CMD_ADD_UPDATE_CONTACT && len >= 1 + 32 + 2 + 1) {
     uint8_t *pub_key = &cmd_frame[1];
     ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
-    uint32_t last_mod = getRTCClock()->getCurrentTime();  // fallback value if not present in cmd_frame
+    const uint32_t curr = getRTCClock()->getCurrentTime();
+    uint32_t last_mod = curr;  // fallback value if not present in cmd_frame
+    // The newest lastmod sets the clock at boot (bootstrapRTCfromContacts): a caller that may not set the clock does
+    // not set one ahead of it here either.
+    const bool clamp = !serialTrusted();
     if (recipient) {
       updateContactFromFrame(*recipient, last_mod, cmd_frame, len);
+      if (clamp && last_mod > curr) last_mod = curr;
       recipient->lastmod = last_mod;
       dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
       writeOKFrame();
     } else {
       ContactInfo contact;
       updateContactFromFrame(contact, last_mod, cmd_frame, len);
+      if (clamp && last_mod > curr) last_mod = curr;
       contact.lastmod = last_mod;
       contact.sync_since = 0;
       if (addContact(contact)) {
