@@ -149,7 +149,7 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | `clock` | Show the time (UTC). | stock | read | Exactly `clock`. |
 | `clock sync` | Set the clock from the sender's timestamp; the clock only moves forward. | stock | write | Meant for a remote admin. From the console the sender timestamp is 0 and the answer is `ERR: clock cannot go backwards`. |
 | `time <epoch-seconds>` | Set the clock; forward only. | stock | write | `(ERR: clock cannot go backwards)` otherwise. |
-| `start ota` | Start the board's over-the-air update mode. | stock | write | Board dependent. |
+| `start ota` | Start the board's over-the-air update mode. | stock | destructive | Off unless the build defines `ENABLE_WIFI_OTA`, and always refused on device-interface and nRF52 builds. An opted-in ESP32 build protects its Wi-Fi access point and every updater page with a credential drawn at each start and shown only in the reply. |
 | `erase` | Format the file system (factory reset). | stock, behaviour changed | destructive | Console only (the handler requires the local console, a remote caller gets `ERR: not permitted`). Now also returns the posture to Normal and writes a factory-reset audit entry after the format. |
 | `ver` | Firmware version and build date. | stock, behaviour changed | read | Stock printed `v1.18.0 (Build: <date>)`; now the full MECON identity, `v1.18.0-mecon.<tag>[+<n>.g<hash>][.dirty] (Build: <date>)`. |
 | `board` | Manufacturer / board name. | stock | read | Exactly `board`. |
@@ -170,7 +170,7 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | `get acl` | Print the ACL to the serial console. | stock | read | Console only; the output goes to the serial port, the reply is empty. |
 | `get public.key` | This node's public key (hex). | stock | read |  |
 | `get role` | The firmware role (repeater, room_server, sensor). | stock | read |  |
-| `get device.id` | The device interface's `device_id` (32 hex), the same value `hello` reports. | MECON | read | Every role, every CLI path, including MQTT `cli/req`. `Error: unsupported` on a build without the device interface. |
+| `get device.id [nonce]` | The device interface's `device_id` (32 hex), the same value `hello` reports, and the node key's signature binding it: `> <device_id> <sig>`, or `> <device_id> <sig> <nonce>` with a nonce of 1 to 32 `[0-9A-Za-z._-]` ([authority contract](contract/AUTHORITY.md) section 3.5). | MECON | read | Every role and CLI path: the console, BLE and USB, remote admin, and on the Companion the MQTT `cli/req` topic. `Error: bad nonce` for any other nonce, or a space with none; refused to untrusted callers (the TCP port, BLE on a default PIN); `Error: unsupported` on a build without the device interface. |
 | `get prv.key` | Print the private key (hex). | stock, behaviour changed | secret | Console only. Stock already restricted it to the console; now also refused for every caller in Hardened (`ERR: key export is refused in hardened posture`), the cable included. A remote admin: `ERR: not permitted`. |
 | `set prv.key <hex>` | Replace the node identity; reboot to apply. | stock, behaviour changed | secret | Local console, Normal posture only. Stock let a remote admin do this. Remote: `ERR: prv.key can only be set from the local console` (explained, not audited); Hardened: `ERR: key import is refused in hardened posture`. |
 | `get name` / `set name <name>` | Node name. | stock | read / write | `Error, bad chars` for names with characters the advert format does not allow. |

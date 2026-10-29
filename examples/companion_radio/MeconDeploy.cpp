@@ -228,9 +228,11 @@ Status MeconIface::opIdentityRotation(OpContext& c) {
   return ST_OK;
 }
 
+// The stored set is an open read; the rotation statement in it names device_id, so only a caller the table lets read
+// gets it (AUTHORITY.md section 3.5: an untrusted link never learns device_id).
 Status MeconIface::opDeployGet(OpContext& c) {
   const Status st = self(c)->_auth.opGet(c);
-  if (st == ST_OK) writeRotationMember(*c.out, self(c)->_mesh, "rotation");
+  if (st == ST_OK && Cli::decide(self(c)->_ctx, Cli::C_READ).allow) writeRotationMember(*c.out, self(c)->_mesh, "rotation");
   return st;
 }
 
