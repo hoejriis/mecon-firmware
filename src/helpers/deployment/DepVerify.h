@@ -23,7 +23,31 @@
 
 namespace Dep {
 
+// Strict encodings (RFC 8032 section 5.1.7), checked before any verifier: S below the group order L, and R a
+// canonical point encoding (its y below p). The verifiers differ here: the reference implementation refused only
+// S >= 2^253 and compared R as bytes; the Crypto library bounds neither; the CC310 is closed. Each is a malleation of a
+// valid signature, never a forgery, and replay protection keys on the job id, not the signature. But which signatures
+// the device accepts must not depend on the build.
+inline bool canonicalS(const uint8_t s[32]) {
+  static const uint8_t L[32] = {0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14,
+                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10};
+  for (int i = 31; i >= 0; i--) {
+    if (s[i] < L[i]) return true;
+    if (s[i] > L[i]) return false;
+  }
+  return false;   // S == L
+}
+
+inline bool canonicalPoint(const uint8_t r[32]) {
+  // y is the low 255 bits; p = 2^255 - 19, so y >= p only when bits 8..254 are all ones and the low byte is >= 0xed.
+  if ((r[31] & 0x7f) != 0x7f) return true;
+  for (int i = 30; i >= 1; i--)
+    if (r[i] != 0xff) return true;
+  return r[0] < 0xed;
+}
+
 inline bool verifySig(const uint8_t sig[64], const uint8_t* msg, size_t len, const uint8_t key[32]) {
+  if (!canonicalS(sig + 32) || !canonicalPoint(sig)) return false;
 #if defined(USE_CC310_HW_CRYPTO)
   static CRYS_ECEDW_TempBuff_t tmp;   // the CC310 workspace: static, as in Identity::verify (one caller at a time)
   return CRYS_ECEDW_Verify(const_cast<uint8_t*>(sig), CRYS_ECEDW_SIGNATURE_BYTES, const_cast<uint8_t*>(key),

@@ -329,8 +329,8 @@ void ConsoleIface::answer(Print& out) {
   if (NrfWorker::run(answerJob, &job, 15000)) {
     if (job.n > 0) printLine(out, res ? res : small, (size_t)job.n);
   } else {
-    // The worker is gone (it overran once and is retired for this boot): nothing runs on the small loop stack, not
-    // even a signature, so the refusal goes out unsigned and says why.
+    // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature, so the
+    // refusal goes out unsigned and says why. (A job that overran would have reset the device instead.)
     static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
     printLine(out, W, sizeof(W) - 1);
   }

@@ -1115,6 +1115,7 @@ mutate ble_dfu_with_a_session_pin src/helpers/BleDfuPolicy.h '  return !device_i
 
 # the authority layer's Ed25519 verify (DepVerify.h, #158): the Crypto library path the sim and the ESP32 builds run
 mutate dep_verify_accepts_any_signature src/helpers/deployment/DepVerify.h '  return Ed25519::verify(sig, key, msg, len);' '  return true;' sim/tests/test_deployment_authority.py::test_bad_signatures_wrong_targets_and_unknown_issuers_are_refused
+mutate dep_verify_malleable_accepted src/helpers/deployment/DepVerify.h '  if (!canonicalS(sig + 32) || !canonicalPoint(sig)) return false;' '' unit:test_dep_verify
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

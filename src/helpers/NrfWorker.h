@@ -6,10 +6,10 @@
 // world (prefs, the file system and the radio queue are not touched meanwhile) on a stack that has room.
 //
 // The rules:
-// - A job that overruns its wait retires the worker for the rest of the boot: a late completion must never stand in for
-//   the next job's, and it may still be using the caller's buffers. Every later run() then returns false, and the caller
-//   refuses its request rather than run it on the small stack.
-// - A run() from the worker itself runs the job inline (waiting on itself would time out and retire the worker).
+// - A job that overruns its wait resets the device. It is still running, on the caller's buffers and on state the loop
+//   would touch next, so no reply and no free of those buffers is safe; a reset is what a watchdog would do.
+// - One caller: run() is called only from the Arduino loop task (and from the worker itself, inline).
+// - A run() from the worker itself runs the job inline (waiting on itself would time out).
 // - The task is created on the first run(); if it cannot be, run() returns false.
 // - Jobs must be noinline: folded into the caller, their frames would count against the loop task in the stack gate
 //   (tools/stack_callgraph.py) and in fact.
@@ -23,8 +23,8 @@ typedef void (*Job)(void* ctx);
 
 static const uint32_t STACK_BYTES = 8192;
 
-// Runs job(ctx) on the worker and returns once it has finished; false when it could not (no task, the worker retired,
-// or the job overran wait_ms, which retires it).
+// Runs job(ctx) on the worker and returns once it has finished; false when the worker could not be created (the caller
+// then refuses the request). A job that overruns wait_ms resets the device and does not return.
 bool run(Job job, void* ctx, uint32_t wait_ms);
 
 // The least free stack, in bytes, since boot: of the Arduino loop task (recorded on the first run()), and of the worker.

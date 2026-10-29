@@ -245,7 +245,7 @@ int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, co
                          size_t cap) {
   DispatchJob j = {this, &ctx, caller, link, msg, len, out, cap, -1};
   if (NrfWorker::run(dispatchJob, &j, 15000)) return j.n;
-  // The worker is gone for this boot: nothing runs on the small loop stack, not even a signature.
+  // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature.
   static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
   if (cap <= sizeof(W)) return -1;
   memcpy(out, W, sizeof(W));

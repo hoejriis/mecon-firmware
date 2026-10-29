@@ -50,7 +50,10 @@ __attribute__((noinline)) bool run(Job job, void* ctx, uint32_t wait_ms) {
   g_job = job;
   xSemaphoreGive(g_req);
   if (xSemaphoreTake(g_done, pdMS_TO_TICKS(wait_ms)) == pdTRUE) return true;
-  g_retired = true;   // it may finish later, on buffers the caller no longer owns: never trust the worker again
+  // The job overran and is still running, on the caller's buffers and on state the loop would now touch too. Nothing
+  // safe can follow: not a reply, not freeing those buffers. The device resets (a fault, as a watchdog would).
+  g_retired = true;
+  NVIC_SystemReset();
   return false;
 }
 

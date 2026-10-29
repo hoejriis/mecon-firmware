@@ -76,7 +76,8 @@ Measured on v3test and v4test on 2026-10-24, each board first on main (2.0.17) a
 
 The Adafruit nRF52 core runs `loop()` on a fixed 4 KB stack (`LOOP_STACK_SZ`). A first `deployment.provision` overflowed it on hardware (#158): the parse, the authority-set verify and the signing of the result came to about 4.8 KB of frames. Every device-interface request on nRF52 now runs on an 8 KB worker task (`src/helpers/NrfWorker.h`).
 - **The hand-off.** The loop task hands one request to the worker and waits until it is answered, up to 15 s, so the request sees the same single-threaded world.
-- **A job that overruns** retires the worker for the rest of the boot, and later requests are answered `busy`, error `worker`, unsigned: nothing then runs on the small stack.
+- **A job that overruns** resets the device: it is still running on the caller's buffers, so no reply is safe. If the worker task cannot be created (no memory), the request is answered `busy`, error `worker`, unsigned, and nothing runs on the small stack.
+- **Strict encodings.** A signature whose S is not below the group order, or whose R is not a canonical point, is refused before any verifier runs, so every build accepts the same signatures.
 - **The verify.** The authority layer verifies Ed25519 on the nRF52840's CC310 (`src/helpers/deployment/DepVerify.h`), as `mesh::Identity::verify` does; other firmware uses the Crypto library's verifier.
 - **Measured.** `status.get` reports the loop task's `loop_stack_free` and the worker's `worker_stack_free`.
 - **The gate.** The `stack-gate` workflow (`tools/stack_callgraph.py`) builds the T1000-E interface envs with GCC's call-graph files. It fails a change whose worst static path is over 3,840 B on the loop task or 7,936 B on the worker.
