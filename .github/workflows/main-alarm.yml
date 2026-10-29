@@ -1,8 +1,9 @@
 name: Main alarm
 
 # A failed or cancelled run on main that nobody watches is silent: it shows in the Actions tab and in an e-mail. This
-# reusable step puts it in the Issue list instead (#146). It opens one tracking Issue per title, labelled bug and P2,
-# or comments on it while it is open. It never closes it: whoever fixes the cause closes it after a green run.
+# reusable step puts it in the Issue list instead (#146). It opens one tracking Issue per title, labelled bug, P2 and
+# Ready for Devel (so an idle coder picks it up), or comments on it while it is open. It never closes it: whoever fixes
+# the cause closes it after a green run.
 #
 # Called as the last job of a workflow, with `if:` limited to runs on main that matter (the nightly, a merge) and to a
 # failed or cancelled result, so a green run and a pull request write nothing. Its own failure (an API error) shows as
@@ -43,12 +44,13 @@ jobs:
             "- commit: ${{ github.sha }}" \
             "- attempt: ${{ github.run_attempt }}" \
             "${jobs:-(no job reported failed or cancelled; see the run)}")
-          # An exact title match among the open Issues: the search alone matches words, not the whole title.
-          n=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title --limit 50 \
+          # An exact title match among the open bug Issues, listed rather than searched: the search index lags a new
+          # Issue, so two alarms in quick succession would each open one.
+          n=$(gh issue list --state open --label bug --json number,title --limit 200 \
             --jq "map(select(.title == env.TITLE)) | .[0].number // empty")
           if [ -n "$n" ]; then
             gh issue comment "$n" --body "$body"
             echo "commented on #$n"
           else
-            gh issue create --title "$TITLE" --label bug --label P2 --body "$body"
+            gh issue create --title "$TITLE" --label bug --label P2 --label "Ready for Devel" --body "$body"
           fi
