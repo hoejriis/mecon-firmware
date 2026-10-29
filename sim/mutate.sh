@@ -1084,6 +1084,26 @@ mutate prov_result_names_no_job src/helpers/iface/Provenance.cpp '    const int 
 mutate prov_refusal_budget_unlimited src/helpers/iface/Provenance.cpp '  if (_tokens < 1000) return false;' '  if (_tokens < 1000) return true;' $PV::test_refusals_are_signed_within_a_budget_and_everything_else_always
 mutate prov_reset_result_unsigned src/helpers/iface/Provenance.cpp '  _force = was_enrolled;' '  _force = false;' $PV::test_the_result_of_the_reset_that_removes_the_record_is_still_signed
 
+# the signed device_id binding (docs/contract/AUTHORITY.md section 3.5)
+DB=sim/tests/test_device_id_binding.py
+mutate devid_domain_wrong src/helpers/iface/DevIdSig.h 'const char DEVID_DOMAIN[] = "MECON-DEVID-v1";' 'const char DEVID_DOMAIN[] = "MECON-DEVID-v0";' unit:test_deployment_vectors
+mutate devid_key_not_signed src/helpers/iface/DevIdSig.h '  memcpy(out + n, node_key, 32);' '  memset(out + n, 0, 32);' unit:test_deployment_vectors
+mutate devid_nonce_not_signed src/helpers/iface/DevIdSig.h '  return n + nl;' '  return n;' unit:test_deployment_vectors
+mutate devid_nonce_unchecked src/helpers/iface/DevIdSig.h '  if (nl && !devIdNonceValid(nonce, nl)) return 0;' '  if (false) return 0;' unit:test_deployment_vectors
+mutate devid_nonce_one_too_long src/helpers/iface/DevIdSig.h 'len > DEVID_NONCE_MAX) return false;' 'len > DEVID_NONCE_MAX + 1) return false;' unit:test_deployment_vectors
+mutate devid_hello_companion_unsigned examples/companion_radio/MeconIface.cpp '  const Status ds = writeDeviceIdSig(c, mesh->self_id, m->deviceIdHex());' '  const Status ds = ST_OK;' $DB::test_companion_hello_and_cli_sign_the_device_id
+mutate devid_hello_console_unsigned src/helpers/iface/ConsoleIface.cpp '    const Status ds = writeDeviceIdSig(c, *m->host().identity, m->deviceIdHex());' '    const Status ds = ST_OK;' $DB::test_console_hello_and_cli_sign_the_device_id
+mutate devid_hello_bad_nonce_accepted src/helpers/iface/DevIdHello.h '  if (t >= 0 && !jsonGetString(*c.doc, t, nonce, sizeof(nonce), CS_NAME, 1)) return ST_INVALID;' '  if (false) return ST_INVALID;' $DB::test_companion_hello_and_cli_sign_the_device_id
+mutate devid_cli_server_any_suffix src/helpers/CommonCLI.cpp '(config[9] == 0 || config[9] == '"' '"')) {' 'true) {' $DB::test_console_hello_and_cli_sign_the_device_id
+mutate devid_cli_companion_nonce_ignored examples/companion_radio/MyMesh.cpp '    const char* nonce = has_arg ? &command[14] : "";' '    const char* nonce = "";' $DB::test_companion_hello_and_cli_sign_the_device_id
+mutate devid_readback_without_pair src/helpers/iface/DeployAuth.cpp '  if (bind_key) {' '  if (false) {' $DB::test_companion_provisioning_read_back_carries_the_pair
+mutate devid_duplicate_readback_without_pair src/helpers/iface/DeployAuth.cpp '      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false, _env.node_key);' '      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false);' $DB::test_companion_provisioning_read_back_carries_the_pair
+
+mutate devid_rotation_read_open examples/companion_radio/MeconIface.cpp '  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;' '  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "identity.rotation") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;' $DB::test_after_a_rotation_hello_signs_with_the_new_key_and_untrusted_links_never_see_the_id
+mutate devid_get_carries_rotation_to_anyone examples/companion_radio/MeconDeploy.cpp '  if (st == ST_OK && Cli::decide(self(c)->_ctx, Cli::C_READ).allow) writeRotationMember' '  if (st == ST_OK) writeRotationMember' $DB::test_after_a_rotation_hello_signs_with_the_new_key_and_untrusted_links_never_see_the_id
+mutate devid_cli_empty_nonce_fixed_form src/helpers/CommonCLI.cpp '    else if (has_arg && !*nonce) strcpy(reply, "Error: bad nonce");' '    else if (false) strcpy(reply, "Error: bad nonce");' $DB::test_console_hello_and_cli_sign_the_device_id
+mutate cache_hit_under_another_op src/helpers/iface/IfaceCache.h '      if (strcmp(_e[i].op, op) != 0) return CONFLICT;' '      if (false) return CONFLICT;' $DB::test_a_stored_write_result_cannot_be_fetched_under_another_operation
+
 # --- issue #1: the runtime stream's gnss object keeps its nulls
 mutate gnss_fix_never_null src/helpers/iface/Streams.h '  w.key("fix"); if (g.fix < 0) w.null(); else w.boolean(g.fix != 0);' '  w.key("fix"); w.boolean(g.fix != 0);' unit:test_streams
 mutate gnss_age_never_null src/helpers/iface/Streams.h '  w.key("fix_age_s"); if (g.fix_age_s < 0) w.null(); else w.unum((uint32_t)g.fix_age_s);' '  w.key("fix_age_s"); w.unum((uint32_t)g.fix_age_s);' unit:test_streams

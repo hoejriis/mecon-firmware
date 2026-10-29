@@ -6,6 +6,7 @@
 #include <vector>
 #include "ed_25519.h"
 #include "vectors.h"
+#include "helpers/iface/DevIdSig.h"
 
 static std::vector<uint8_t> hex(const char* s) {
   std::vector<uint8_t> out;
@@ -95,6 +96,60 @@ TEST(DeploymentVectors, UplinkSignatureRecoversFromTheWire) {
   auto signed_bytes = hex(UPLINK_HEALTH_SIGNED_HEX);
   EXPECT_EQ(std::vector<uint8_t>(expect.begin(), expect.end()), signed_bytes);
   EXPECT_TRUE(verify(sig.c_str(), UPLINK_HEALTH_SIGNED_HEX, PUB_DEVICE_NODE));
+}
+
+// A signer with the LocalIdentity shape signDeviceId() needs (pub_key and sign()), from a vector seed.
+struct SeedId {
+  uint8_t pub_key[32], prv[64];
+  explicit SeedId(const char* seed_hex) { ed25519_create_keypair(pub_key, prv, hex(seed_hex).data()); }
+  void sign(uint8_t* sig, const uint8_t* msg, int n) const { ed25519_sign(sig, msg, (size_t)n, pub_key, prv); }
+};
+
+TEST(DeploymentVectors, DeviceIdBindingBytesMatchTheVector) {
+  uint8_t out[Iface::DEVID_MSG_MAX];
+  auto key = hex(PUB_DEVICE_NODE);
+  size_t n = Iface::devIdSignedBytes(out, DEVICE_ID_BINDING_DEVICE_ID, key.data(), "");
+  EXPECT_EQ(hex(DEVICE_ID_BINDING_SIGNED_HEX), std::vector<uint8_t>(out, out + n));
+  n = Iface::devIdSignedBytes(out, DEVICE_ID_BINDING_NONCE_DEVICE_ID, key.data(), DEVICE_ID_BINDING_NONCE_NONCE);
+  EXPECT_EQ(hex(DEVICE_ID_BINDING_NONCE_SIGNED_HEX), std::vector<uint8_t>(out, out + n));
+  // Upper-case hex is the same id.
+  n = Iface::devIdSignedBytes(out, "00112233445566778899AABBCCDDEEFF", key.data(), nullptr);
+  EXPECT_EQ(hex(DEVICE_ID_BINDING_SIGNED_HEX), std::vector<uint8_t>(out, out + n));
+}
+
+TEST(DeploymentVectors, DeviceIdBindingSignsAsTheVectorAndBindsTheKey) {
+  SeedId node(SEED_DEVICE_NODE), other(SEED_INSTANCE_A);
+  char sig[89];
+  ASSERT_TRUE(Iface::signDeviceId(sig, node, DEVICE_ID_BINDING_DEVICE_ID, ""));
+  EXPECT_STREQ(DEVICE_ID_BINDING_SIG, sig);
+  ASSERT_TRUE(Iface::signDeviceId(sig, node, DEVICE_ID_BINDING_DEVICE_ID, DEVICE_ID_BINDING_NONCE_NONCE));
+  EXPECT_STREQ(DEVICE_ID_BINDING_NONCE_SIG, sig);
+  EXPECT_TRUE(verify(DEVICE_ID_BINDING_SIG, DEVICE_ID_BINDING_SIGNED_HEX, PUB_DEVICE_NODE));
+  // Another key signing the same id produces bytes that carry its own key: the vector's signature does not verify them,
+  // and its own signature does not verify the vector's bytes.
+  ASSERT_TRUE(Iface::signDeviceId(sig, other, DEVICE_ID_BINDING_DEVICE_ID, ""));
+  EXPECT_FALSE(verify(sig, DEVICE_ID_BINDING_SIGNED_HEX, PUB_INSTANCE_A));
+  EXPECT_FALSE(verify(DEVICE_ID_BINDING_SIG, DEVICE_ID_BINDING_SIGNED_HEX, PUB_INSTANCE_A));
+  // The nonce form is a different message.
+  EXPECT_FALSE(verify(DEVICE_ID_BINDING_SIG, DEVICE_ID_BINDING_NONCE_SIGNED_HEX, PUB_DEVICE_NODE));
+}
+
+TEST(DeploymentVectors, DeviceIdBindingRefusesBadInput) {
+  SeedId node(SEED_DEVICE_NODE);
+  char sig[89] = "x";
+  EXPECT_FALSE(Iface::signDeviceId(sig, node, "", ""));
+  EXPECT_EQ(0, sig[0]);
+  EXPECT_FALSE(Iface::signDeviceId(sig, node, "00112233445566778899aabbccddeef", ""));     // 31 characters
+  EXPECT_FALSE(Iface::signDeviceId(sig, node, "00112233445566778899aabbccddeeff0", ""));   // 33
+  EXPECT_FALSE(Iface::signDeviceId(sig, node, "00112233445566778899aabbccddeefg", ""));    // not hex
+  const std::string n32(32, 'a'), n33(33, 'a');
+  EXPECT_TRUE(Iface::signDeviceId(sig, node, DEVICE_ID_BINDING_DEVICE_ID, "a"));
+  EXPECT_TRUE(Iface::signDeviceId(sig, node, DEVICE_ID_BINDING_DEVICE_ID, n32.c_str()));
+  EXPECT_FALSE(Iface::signDeviceId(sig, node, DEVICE_ID_BINDING_DEVICE_ID, n33.c_str()));
+  for (const char* bad : {"a b", "a:b", "a/b", "a\"b", "\x01", "\xc3\xa5"})
+    EXPECT_FALSE(Iface::signDeviceId(sig, node, DEVICE_ID_BINDING_DEVICE_ID, bad)) << bad;
+  for (const char* ok : {"Z", "0", ".", "_", "-", "Az09._-"})
+    EXPECT_TRUE(Iface::signDeviceId(sig, node, DEVICE_ID_BINDING_DEVICE_ID, ok)) << ok;
 }
 
 int main(int argc, char** argv) {

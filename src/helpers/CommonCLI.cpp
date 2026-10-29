@@ -2,6 +2,7 @@
 #include "BleDfuPolicy.h"   // Issue #143
 #include "CommonCLI.h"
 #include "helpers/iface/DeviceId.h"
+#include "helpers/iface/DevIdSig.h"
 #include "AtomicFile.h"
 #include "AuditStore.h"
 #include "cli/CliEngine.h"
@@ -780,9 +781,17 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (memcmp(config, "public.key", 10) == 0) {
     strcpy(reply, "> ");
     mesh::Utils::toHex(&reply[2], _callbacks->getSelfId().pub_key, PUB_KEY_SIZE);
-  } else if (memcmp(config, "device.id", 9) == 0) {   // the device interface's device_id (DEVICE_INTERFACE.md section 1)
-    if (*Iface::deviceIdHex()) sprintf(reply, "> %s", Iface::deviceIdHex());
-    else strcpy(reply, "Error: unsupported");
+  } else if (memcmp(config, "device.id", 9) == 0 && (config[9] == 0 || config[9] == ' ')) {
+    // The device interface's device_id (DEVICE_INTERFACE.md section 1) and the node key's signature binding it
+    // (AUTHORITY.md section 3.5): "> <device_id> <sig>", or "> <device_id> <sig> <nonce>" for `get device.id <nonce>`.
+    const bool has_arg = config[9] == ' ';
+    const char* nonce = has_arg ? &config[10] : "";
+    char sig[89];
+    if (!*Iface::deviceIdHex()) strcpy(reply, "Error: unsupported");
+    else if (has_arg && !*nonce) strcpy(reply, "Error: bad nonce");   // a space and no nonce is not the fixed form
+    else if (!Iface::signDeviceId(sig, _callbacks->getSelfId(), Iface::deviceIdHex(), nonce)) strcpy(reply, "Error: bad nonce");
+    else if (*nonce) snprintf(reply, Iface::DEVID_REPLY_CAP, "> %s %s %s", Iface::deviceIdHex(), sig, nonce);
+    else snprintf(reply, Iface::DEVID_REPLY_CAP, "> %s %s", Iface::deviceIdHex(), sig);
   } else if (memcmp(config, "role", 4) == 0) {
     sprintf(reply, "> %s", _callbacks->getRole());
   } else if (memcmp(config, "bridge.type", 11) == 0) {
