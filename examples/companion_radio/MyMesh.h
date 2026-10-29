@@ -295,7 +295,7 @@ private:
   bool isValidClientRepeatFreq(uint32_t f) const;
 
   // helpers, short-cuts
-  void saveChannels() { _store->saveChannels(this); }
+  bool saveChannels() { return _store->saveChannels(this); }
   void saveContacts();
 
   DataStore* _store;

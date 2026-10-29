@@ -346,6 +346,38 @@
         "status": "ok",
         "schema": "sub.stop.result.json"
       }
+    },
+    {
+      "name": "channel list",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-ch-list",
+        "op": "channel.list"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "channel.list.result.json"
+      }
+    },
+    {
+      "name": "channel get of a slot outside the table",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-ch-get-out",
+        "op": "channel.get",
+        "args": {
+          "slot": 4096
+        }
+      },
+      "expect": {
+        "status": "invalid"
+      }
     }
   ],
   "transport_cases": [
