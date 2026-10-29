@@ -426,7 +426,9 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[]) {
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
 
-  // To be consistent OTA DFU should be added first if it exists
+  // To be consistent OTA DFU should be added first if it exists. Issue #143: `start ota` no longer reaches this on any
+  // nRF52 build (BleDfuPolicy::otaStartAllowed); should another caller ever start it, the link is still not left open.
+  bledfu.setPermission(SECMODE_ENC_WITH_MITM, SECMODE_ENC_WITH_MITM);
   bledfu.begin();
 
   // Set up and start advertising
