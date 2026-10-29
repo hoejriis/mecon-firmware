@@ -23,6 +23,10 @@ protected:
   uint8_t _preamble_sf;
 
   void idle();
+  // Before a retune: a chip reconfigured in continuous receive can stay deaf until the next transmit. From a plain
+  // receive it is put in standby, and the next recvRaw() starts the receive again on the new settings. A transmit in
+  // progress, or a packet waiting to be read, is left alone.
+  void idleIfReceiving();
   void startRecv();
   float packetScoreInt(float snr, int sf, int packet_len);
   virtual bool isReceivingPacket() =0;
