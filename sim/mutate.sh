@@ -887,7 +887,7 @@ mutate console_sub_stop_ignored src/helpers/iface/ConsoleIface.cpp 'Status opSub
 mutate console_room_reports_repeater examples/simple_room_server/main.cpp 'ifaceBattery, "room",' 'ifaceBattery, "repeater",' sim/tests/test_device_interface_server.py::test_hello_names_the_role
 # telemetry streams (docs/contract/TELEMETRY.md)
 mutate stream_first_event_not_immediate src/helpers/iface/Streams.cpp '  if (!sub.active && !def.events()) *started = s;' '  if (false) *started = s;' sim/tests/test_telemetry_streams.py::test_a_new_subscription_after_a_stop_gets_an_event_at_once
-mutate stream_power_claims_to_tell src/helpers/iface/Streams.cpp '  const bool can_tell = b.isPwrMgtInitialised();' '  const bool can_tell = true;' sim/tests/test_telemetry_streams.py::test_each_stream_sends_its_first_event_at_once
+mutate stream_power_claims_to_tell src/helpers/iface/Streams.h '  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();' '  const bool can_tell = true;' sim/tests/test_telemetry_streams.py::test_each_stream_sends_its_first_event_at_once
 mutate stream_unknown_reset_reason_reported src/helpers/iface/Streams.cpp '  const bool known = why && strcmp(why, "Not available") != 0;' '  const bool known = why != nullptr;' sim/tests/test_telemetry_streams.py::test_each_stream_sends_its_first_event_at_once
 mutate stream_tx_flood_direct_swapped src/helpers/iface/Streams.cpp '  w.key("flood"); w.unum(d.getNumSentFlood());' '  w.key("flood"); w.unum(d.getNumSentDirect());' sim/tests/test_telemetry_streams.py::test_radio_counts_a_transmission_repeater
 mutate stream_period_unbounded src/helpers/iface/Streams.cpp '  if (pt >= 0 && !jsonGetInt(*c.doc, pt, def.min_s, def.max_s, &period)) return ST_INVALID;' '  if (pt >= 0 && !jsonGetInt(*c.doc, pt, 1, 100000, &period)) return ST_INVALID;' sim/tests/test_telemetry_streams.py::test_the_stream_table_bounds_requests
@@ -1103,6 +1103,14 @@ mutate devid_rotation_read_open examples/companion_radio/MeconIface.cpp '  if (s
 mutate devid_get_carries_rotation_to_anyone examples/companion_radio/MeconDeploy.cpp '  if (st == ST_OK && Cli::decide(self(c)->_ctx, Cli::C_READ).allow) writeRotationMember' '  if (st == ST_OK) writeRotationMember' $DB::test_after_a_rotation_hello_signs_with_the_new_key_and_untrusted_links_never_see_the_id
 mutate devid_cli_empty_nonce_fixed_form src/helpers/CommonCLI.cpp '    else if (has_arg && !*nonce) strcpy(reply, "Error: bad nonce");' '    else if (false) strcpy(reply, "Error: bad nonce");' $DB::test_console_hello_and_cli_sign_the_device_id
 mutate cache_hit_under_another_op src/helpers/iface/IfaceCache.h '      if (strcmp(_e[i].op, op) != 0) return CONFLICT;' '      if (false) return CONFLICT;' $DB::test_a_stored_write_result_cannot_be_fetched_under_another_operation
+
+# --- issue #1: the runtime stream's gnss object keeps its nulls
+mutate gnss_fix_never_null src/helpers/iface/Streams.h '  w.key("fix"); if (g.fix < 0) w.null(); else w.boolean(g.fix != 0);' '  w.key("fix"); w.boolean(g.fix != 0);' unit:test_streams
+mutate gnss_age_never_null src/helpers/iface/Streams.h '  w.key("fix_age_s"); if (g.fix_age_s < 0) w.null(); else w.unum((uint32_t)g.fix_age_s);' '  w.key("fix_age_s"); w.unum((uint32_t)g.fix_age_s);' unit:test_streams
+
+mutate power_detect_ignored src/helpers/iface/Streams.h '  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();' '  const bool can_tell = b.isPwrMgtInitialised();' unit:test_streams
+mutate gnss_written_without_a_receiver src/helpers/iface/Streams.cpp '  if (b.getGnssHealth(g)) writeGnss(w, g);' '  b.getGnssHealth(g); writeGnss(w, g);' sim/tests/test_telemetry_streams.py::test_runtime_has_no_gnss_object_without_a_receiver
+
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"

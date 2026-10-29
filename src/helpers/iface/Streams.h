@@ -8,6 +8,7 @@
 #include "IfaceDispatch.h"
 #include "../AuditRing.h"
 #include "IfaceJson.h"
+#include "../GnssHealth.h"
 
 namespace mesh { class Dispatcher; class Radio; class MainBoard; }
 class SensorManager;
@@ -168,6 +169,32 @@ void writeCount(JsonWriter& w, const char* key, int count, int capacity);
 // Reset reason, boot times, and the loop's longest gap since the previous runtime event.
 // heap_low: 1 or 0 where the build checks the heap floor (the Companion), -1 to leave the field out.
 void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low = -1);
+
+// The power stream's fields from any board type (mesh::MainBoard in the firmware, a fake one in the native test).
+// The defaults answer false whether or not the board can tell, so external and charging are reported only by an
+// initialised power manager or a board with its own detect pins (hasPowerDetect); otherwise they are null.
+template <class Board> void writePowerOf(JsonWriter& w, Board& b) {
+  const uint16_t mv = b.getBattMilliVolts();
+  w.key("battery_mv"); if (mv) w.unum(mv); else w.null();
+  const bool can_tell = b.isPwrMgtInitialised() || b.hasPowerDetect();
+  w.key("external"); if (can_tell) w.boolean(b.isExternalPowered()); else w.null();
+  w.key("charging"); if (can_tell) w.boolean(b.isChargerActive()); else w.null();
+  if (b.hasUsbPowerDetect()) { w.key("usb_power"); w.boolean(b.isUsbPowered()); }
+  if (b.hasSolarChargerDetect()) { w.key("solar"); w.boolean(b.isSolarChargerActive()); }
+  const uint16_t boot_mv = b.getBootVoltage();
+  if (boot_mv) { w.key("boot_mv"); w.unum(boot_mv); }
+}
+
+// The runtime stream's `gnss` object. Called only for a board that has a receiver, so it is absent
+// otherwise. `fix` is null while the receiver is off; `fix_age_s` is null before the first fix of the boot.
+inline void writeGnss(JsonWriter& w, const GnssHealth& g) {
+  w.key("gnss"); w.beginObject();
+  w.key("powered"); w.boolean(g.powered);
+  w.key("fix"); if (g.fix < 0) w.null(); else w.boolean(g.fix != 0);
+  w.key("sats"); w.unum(g.sats);
+  w.key("fix_age_s"); if (g.fix_age_s < 0) w.null(); else w.unum((uint32_t)g.fix_age_s);
+  w.endObject();
+}
 
 // The boot event of a runtime subscription: sent once per epoch, right after the first snapshot, so a consumer learns
 // what is running without a hello. The members are the ones hello carries, plus the reset reason.
