@@ -90,3 +90,25 @@ def test_an_untrusted_link_cannot_put_a_channel(nodes):
     b.close()
     u, _ = client(n)
     assert u.get_channel(3) is None, "nothing was written"
+
+
+def test_a_failed_save_answers_write_failed_and_keeps_ram_and_flash_alike(nodes, tmp_path):
+    # A save that fails must not answer ok, and must not leave RAM holding a slot that flash does not: a key that
+    # "removal" left on flash would come back after a reboot.
+    fail = tmp_path / "write-fail"
+    n = nodes("companion_standalone", "ch5", seed=16, rtc=RTC, extra=["--write-fail", str(fail)]).start()
+    c, i = client(n)
+    assert c.set_channel(4, "keep", KEY)[0] == harness.RESP_OK
+    fail.write_text("/channels2\n")
+    r = i.request("channel.remove", {"slot": 4})
+    assert r["status"] == "failed" and r.get("error") == "write-failed", r
+    assert c.get_channel(4) == ("keep", KEY), "RAM still holds what flash holds"
+    other = bytes(range(0x30, 0x40))
+    r = put(i, 9, "new", other)
+    assert r["status"] == "failed" and r.get("error") == "write-failed", r
+    assert c.get_channel(9) is None, "a put that was not saved is not in RAM either"
+    fail.unlink()
+    c.close()
+    n.restart()
+    c, i = client(n)
+    assert c.get_channel(4) == ("keep", KEY) and c.get_channel(9) is None, "flash agrees after a reboot"

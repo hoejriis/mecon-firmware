@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/channel.remove.result.json",
   "title": "Result of channel.remove",
-  "description": "Request args: {\"slot\": n}. Clears the slot's name and key; removed is false when the slot was already empty. Companion only.",
+  "description": "Request args: {\"slot\": n}. Clears the slot's name and key; removed is false when the slot was already empty (a slot holding a key under an empty name is not empty); a table that cannot be saved is failed with error write-failed and the slot is left as it was. Companion only.",
   "type": "object",
   "required": [
     "slot",

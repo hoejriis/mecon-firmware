@@ -1,5 +1,6 @@
 #include "ChannelOps.h"
 #include <string.h>
+#include "Wipe.h"
 
 namespace Iface {
 
@@ -78,15 +79,19 @@ Status opChannelPut(OpContext& c) {
   uint8_t key[CHANNEL_SECRET_BYTES];
   if (!slotArg(c, &slot)) return ST_INVALID;
   if (!jsonGetString(*c.doc, argOf(c, "name"), name, sizeof(name), CS_ANY, 1)) return ST_INVALID;
-  if (!jsonGetString(*c.doc, argOf(c, "secret"), hex, sizeof(hex), CS_NAME, 1) || !hexKey(hex, key)) return ST_INVALID;
+  const bool parsed = jsonGetString(*c.doc, argOf(c, "secret"), hex, sizeof(hex), CS_NAME, 1) && hexKey(hex, key);
+  wipe(hex, sizeof(hex));
+  if (!parsed) { wipe(key, sizeof(key)); return ST_INVALID; }
   uint8_t any = 0;
   for (unsigned i = 0; i < CHANNEL_SECRET_BYTES; i++) any |= key[i];
   if (!any) return ST_INVALID;   // an all-zero key is an empty slot, not a channel
   const int other = h->find(h->user, key);
-  if (other >= 0 && other != slot) { c.error = "duplicate-secret"; return ST_FAILED; }   // the native table matches the first
+  if (other >= 0 && other != slot) { wipe(key, sizeof(key)); c.error = "duplicate-secret"; return ST_FAILED; }   // the native table matches the first
   ChannelInfo before;
-  const bool replaced = h->get(h->user, slot, before) && before.name[0];
-  if (!h->set(h->user, slot, name, key)) { c.error = "write-failed"; return ST_FAILED; }
+  const bool replaced = h->get(h->user, slot, before) && (before.name[0] || before.keyed);
+  const bool written = h->set(h->user, slot, name, key);
+  wipe(key, sizeof(key));
+  if (!written) { c.error = "write-failed"; return ST_FAILED; }
   ChannelInfo ch;
   if (!h->get(h->user, slot, ch)) { c.error = "write-failed"; return ST_FAILED; }
   JsonWriter& w = *c.out;
@@ -100,7 +105,7 @@ Status opChannelRemove(OpContext& c) {
   int slot;
   if (!slotArg(c, &slot)) return ST_INVALID;
   ChannelInfo ch;
-  const bool was = h->get(h->user, slot, ch) && ch.name[0];
+  const bool was = h->get(h->user, slot, ch) && (ch.name[0] || ch.keyed);   // a key with no name still receives
   static const uint8_t ZERO[CHANNEL_SECRET_BYTES] = {0};
   if (was && !h->set(h->user, slot, "", ZERO)) { c.error = "write-failed"; return ST_FAILED; }
   JsonWriter& w = *c.out;

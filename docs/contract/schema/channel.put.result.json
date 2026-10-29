@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/channel.put.result.json",
   "title": "Result of channel.put",
-  "description": "Request args: {\"slot\": n, \"name\": 1 to 31 bytes, \"secret\": 32 hex digits (a 128-bit key, as the native CMD_SET_CHANNEL frame)}. A key that another slot already holds is failed with error duplicate-secret; an all-zero key is invalid. The secret is written, never read back. Companion only.",
+  "description": "Request args: {\"slot\": n, \"name\": 1 to 31 bytes, \"secret\": 32 hex digits (a 128-bit key, as the native CMD_SET_CHANNEL frame)}. A key that another slot already holds is failed with error duplicate-secret; an all-zero key is invalid; a table that cannot be saved is failed with error write-failed and the slot is left as it was. The secret is written, never read back. Companion only.",
   "type": "object",
   "required": [
     "slot",

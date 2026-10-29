@@ -24,6 +24,8 @@ bool getCb(void* u, int slot, ChannelInfo& out) {
   snprintf(out.name, sizeof(out.name), "%s", t->name[slot].c_str());
   out.hash = (uint8_t)(t->key[slot][0] ^ 0x5A);   // stands in for the SHA-256 byte
   out.key_bytes = CHANNEL_SECRET_BYTES;
+  out.keyed = false;
+  for (unsigned i = 0; i < CHANNEL_SECRET_BYTES; i++) out.keyed |= t->key[slot][i] != 0;
   return true;
 }
 bool setCb(void* u, int slot, const char* name, const uint8_t* key) {
@@ -158,6 +160,16 @@ TEST(ChannelOps, RemoveClearsTheSlotAndSaysWhetherThereWasOne) {
   EXPECT_EQ(before, r.t.writes) << "an empty slot is not written again";
   res = r.call("channel.get", "{\"slot\":4}");
   EXPECT_TRUE(has(res, "empty-slot")) << res;
+}
+
+TEST(ChannelOps, ASlotWithAKeyButNoNameIsRemovedToo) {
+  Rig r;
+  const uint8_t k[CHANNEL_SECRET_BYTES] = {9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7};
+  memcpy(r.t.key[6], k, CHANNEL_SECRET_BYTES);   // the native table can hold a key under an empty name
+  std::string res = r.call("channel.remove", "{\"slot\":6}");
+  EXPECT_TRUE(has(res, "\"removed\":true")) << res;
+  uint8_t zero[CHANNEL_SECRET_BYTES] = {0};
+  EXPECT_EQ(0, memcmp(zero, r.t.key[6], CHANNEL_SECRET_BYTES)) << "a nameless key still receives; remove must clear it";
 }
 
 TEST(ChannelOps, ListSkipsEmptySlotsAndPagesByUsedSlot) {

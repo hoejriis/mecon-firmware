@@ -17,6 +17,7 @@ struct ChannelInfo {
   char name[CHANNEL_NAME_MAX + 1];   // "" for an empty slot
   uint8_t hash;                      // the channel hash on air (first byte of SHA-256 of the key)
   uint8_t key_bytes;                 // 16 or 32
+  bool keyed;                        // a non-zero key is set (a slot can hold a key with an empty name)
 };
 
 struct ChannelHost {
