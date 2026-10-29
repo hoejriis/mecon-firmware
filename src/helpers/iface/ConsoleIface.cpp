@@ -9,6 +9,7 @@
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/cli/CliRegistry.h"
 #include "Observe.h"
+#include "Wipe.h"
 
 namespace Iface {
 
@@ -304,7 +305,7 @@ void ConsoleIface::answer(Print& out) {
     free(res);
   }
   if (_line) {
-    memset(_line, 0, _len);   // a write may have carried a secret
+    wipe(_line, MAX_LINE + 1);   // a write may have carried a secret; a plain memset before free can be dropped
     free(_line);
     _line = nullptr;
   }

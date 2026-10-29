@@ -23,6 +23,7 @@ RxResult Reassembler::feed(const uint8_t* f, size_t len, uint32_t now_ms) {
     release();                          // a completed message the caller did not release
     _buf = (uint8_t*)malloc((size_t)count * FRAME_PAYLOAD);
     if (!_buf) return RX_NOMEM;
+    _cap = (size_t)count * FRAME_PAYLOAD;
     _active = true; _xid = xid; _count = count; _start = now_ms; _mask = 0; _have_last = false; _total = 0;
   }
   uint32_t bit = (uint32_t)1 << index;
