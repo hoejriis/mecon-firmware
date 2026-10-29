@@ -523,7 +523,7 @@ def test_a_platform_with_no_marker_store_never_provisions_unsigned(nodes):
 
 
 def test_a_platform_with_no_marker_store_refuses_ble_and_signed_first_provisioning_too(nodes):
-    # An nRF52 build has no marker store yet, so no first provisioning succeeds there, whatever the path. The cable
+    # Until #117's marker store, an nRF52 build has none, so no first provisioning succeeds there, whatever the path. The cable
     # case is the test above; over BLE the transport check comes first, and a signed wrapper has no member key to
     # verify against. Each is refused with the code the device actually gives, and nothing is written.
     n = nodes("companion_standalone", "mk4", seed=36, rtc=RTC).start()
