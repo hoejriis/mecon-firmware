@@ -120,6 +120,10 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
 
     client = acl.putClient(sender, 0);  // add to contacts (if not already known)
     if (sender_timestamp <= client->last_timestamp) {
+      // Issue #112: audited, so a client locked out by a clock that once ran ahead is visible. The watermark is
+      // RAM only (ClientACL never saves it): a reboot clears it. Neither timestamp is logged.
+      Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_LOGIN_FAILED, Posture::CALLER_REMOTE_ADMIN,
+                           Posture::W_STALE_LOGIN);
       MESH_DEBUG_PRINTLN("Possible login replay attack!");
       return 0;  // FATAL: client table is full -OR- replay attack
     }

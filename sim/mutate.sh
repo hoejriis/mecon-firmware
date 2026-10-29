@@ -1144,6 +1144,9 @@ mutate channel_put_not_saved examples/companion_radio/MeconIface.cpp '  if (ok &
 mutate channel_failed_save_keeps_the_new_slot_in_ram examples/companion_radio/MeconIface.cpp '    mesh->setChannel(slot, before);' '' sim/tests/test_channel_ops.py::test_a_failed_save_answers_write_failed_and_keeps_ram_and_flash_alike
 mutate channel_remove_skips_a_nameless_key src/helpers/iface/ChannelOps.cpp '  const bool was = h->get(h->user, slot, ch) && (ch.name[0] || ch.keyed);   // a key with no name still receives' '  const bool was = h->get(h->user, slot, ch) && ch.name[0];' unit:test_channel_ops
 mutate channel_put_is_a_read examples/companion_radio/MeconIface.cpp '  {"channel.put", opChanPut, PRIV_WRITE, true},' '  {"channel.put", opChanPut, PRIV_READ, true},' sim/tests/test_deployment_authority.py::test_an_unsigned_channel_put_is_refused_once_enrolled_and_channel_reads_work
+# --- issue #112: a stale login (right password, older timestamp) is audited as stale-login
+mutate stale_login_not_named_repeater examples/simple_repeater/MyMesh.cpp '                           Posture::W_STALE_LOGIN);' '                           Posture::W_BAD_PASSWORD);' sim/tests/test_stale_login.py::test_a_stale_login_is_refused_and_audited
+mutate stale_login_not_named_room examples/simple_room_server/MyMesh.cpp '                             Posture::W_STALE_LOGIN);' '                             Posture::W_BAD_PASSWORD);' sim/tests/test_stale_login.py::test_a_stale_login_is_refused_and_audited
 # the lazy contacts write after a burst takes one bucket per pass and drains to the end (#145)
 mutate contacts_flush_some_ignores_the_bound $CS '      if (written == max_buckets) { if (more) *more = true; break; }' '' unit:test_contact_store
 mutate contacts_flush_some_restarts_at_the_first_bucket $CS '      _flush_from = (b + 1) % _nbuckets;' '' unit:test_contact_store
