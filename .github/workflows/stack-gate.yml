@@ -2,15 +2,17 @@ name: Stack gate
 
 # The worst-case static stack depth of the nRF52 builds that run the device interface (#158). The Adafruit core runs
 # loop() on a fixed 4 KB stack; a first deployment.provision overflowed it on hardware. Interface requests now run on an
-# 8 KB worker (src/helpers/NrfWorker.h). This gate builds each env with GCC's call-graph files and fails when the loop
-# task's worst path is over 4,096 B less a 256 B margin, or the worker's over 8,192 B less 256 B
-# (tools/stack_callgraph.py). Indirect calls are followed only where --indirect names their targets; the tool lists the
-# rest, so the number is a lower bound on what it cannot see.
+# 8 KB worker (src/helpers/NrfWorker.h), and so does the handling of every received packet (#162: a remote CLI `set`
+# down to a prefs save, an advert down to the advert-blob table, each through LittleFS). This gate builds each env with
+# GCC's call-graph files and fails when the loop task's worst path is over 4,096 B less a 256 B margin, or the worker's
+# over 8,192 B less 256 B (tools/stack_callgraph.py). Indirect calls are followed only where --indirect names their
+# targets; the tool lists the rest, so the number is a lower bound on what it cannot see. The worker root follows the
+# receive job and, through NrfWorker::run's inline call, any job nested in it, so the gate checks their combined depth.
 
 on:
   pull_request:
-    paths: ['src/**', 'examples/**', 'lib/**', 'variants/t1000-e/**', 'platformio.ini', 'tools/stack_callgraph.py',
-            '.github/workflows/stack-gate.yml']
+    paths: ['src/**', 'examples/**', 'lib/**', 'variants/t1000-e/**', 'variants/wio-tracker-l1/**', 'platformio.ini',
+            'tools/stack_callgraph.py', '.github/workflows/stack-gate.yml']
   push:
     branches: [main]
   workflow_dispatch:
@@ -28,7 +30,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [t1000e_repeater, t1000e_companion_radio_ble, t1000e_companion_radio_usb]
+        env: [t1000e_repeater, t1000e_room_server, t1000e_companion_radio_ble, t1000e_companion_radio_usb,
+              WioTrackerL1_repeater, WioTrackerL1_room_server, WioTrackerL1_companion_radio_usb]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
@@ -47,12 +50,45 @@ jobs:
           set -o pipefail
           pio run -e ${{ matrix.env }} | tail -5
       - name: Worst-case stack depth
+        # The --indirect pairs name the targets of the virtual and function-pointer calls on the paths that matter:
+        # the jobs, the interface ops, the receive chain down to the prefs and advert-blob saves, the Stream writes of
+        # those saves (through AtomicFile's TeeStream into a LittleFS File), LittleFS's flash callbacks (internal flash,
+        # the T1000-E's ExtraFS, the Wio's QSPI) and the flash cache's.
+        # Each --no-reentry pair rules out a path that cannot happen, and says why:
+        # - loop_task=...Job: a job reached from the loop task runs on the worker (NrfWorker::run hands it over and
+        #   waits); only a run() on the worker itself runs a job inline, and the worker root counts that.
+        #   Dispatcher::recvOnLoop and MyMesh::recoverRotationOnLoop are the degraded mode for a worker that could not
+        #   be created at boot (no memory): receive (flagged by ERR_EVENT_WORKER) and the boot's identity-rotation
+        #   recovery then run on the loop as before #162 and #172, and the gate does not count them.
+        # --require ...=NrfWorker::run: received packets, and on a Companion the loopback of an imported contact's
+        #   advert, are handed to the worker (Dispatcher::recvOnWorker). The
+        #   receive chain fits the loop task by only a few bytes before LittleFS's relocation recursion, so the depth
+        #   limit alone would not catch receive moved back onto the loop.
+        # - ^lfs_=File/TeeStream/Adafruit_LittleFS: LittleFS holds the file-system lock for the whole call and is not
+        #   re-entrant, and its flash drivers' debug output goes to Serial, never to a file.
         run: |
           set -o pipefail   # an over-limit exit must fail the step, not be hidden by tee
+          W='Adafruit_LittleFS_Namespace::File::(write|read|flush)\('
+          LOOPBACK=()   # a Companion also feeds an imported contact's advert in as if received (BaseChatMesh::feedLoopback)
+          case "${{ matrix.env }}" in *companion*) LOOPBACK=(--require 'BaseChatMesh::feedLoopback=NrfWorker::run') ;; esac
+          # a Companion with the device interface recovers a cut identity rotation at boot on the worker (#172)
+          case "${{ matrix.env }}" in t1000e_companion*) LOOPBACK+=(--require 'MyMesh::recoverRotationAtBoot=NrfWorker::run') ;; esac
           python3 tools/stack_callgraph.py .pio/build/${{ matrix.env }} \
             --root 'loop_task\(void\*\)=3840' \
             --root 'NrfWorker::.*body=7936' \
-            --indirect 'NrfWorker::.*body=answerJob|dispatchJob' \
+            --indirect 'NrfWorker::.*body|NrfWorker::run=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob' \
             --indirect 'Dispatcher::handleWith=Iface::.*::op[A-Z][A-Za-z]*\(Iface::OpContext&\)|MeconIface::op[A-Z]|Iface::DeployAuth::op[A-Z]' \
             --indirect 'DeployAuth::dispatchSigned=ConsoleIface::runSigned|MeconIface::runSigned' \
+            --indirect 'recvJob|Dispatcher::recvOnLoop=MyMesh::onRecvPacket|mesh::Mesh::onRecvPacket' \
+            --indirect 'mesh::Mesh::onRecvPacket=MyMesh::on[A-Za-z]*Recv|BaseChatMesh::on[A-Za-z]*Recv' \
+            --indirect 'CommonCLI::savePrefs\(\)=MyMesh::savePrefs\(\)' \
+            --indirect 'BaseChatMesh::onAdvertRecv=MyMesh::putBlobByKey' \
+            --indirect "AtomicFile::TeeStream::=$W" \
+            --indirect "ConfigSerializer::saveSerial|DataStore::|AtomicFile::save|File::write\(uint8_t\)=AtomicFile::TeeStream::write|$W" \
+            --indirect 'Print::=Adafruit_USBD_CDC::write|AtomicFile::TeeStream::write' \
+            --indirect '^lfs_|lfs_cache=_internal_flash_(read|prog|erase|sync)|CustomLFS::_flash_|CustomLFS_QSPIFlash::_qspi_' \
+            --indirect 'flash_cache_=^fal_(read|program|erase|verify)$' \
+            --no-reentry 'loop_task=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|Dispatcher::recvOnLoop|MyMesh::recoverRotationOnLoop' \
+            --require 'Dispatcher::processRecvPacket=NrfWorker::run' "${LOOPBACK[@]}" \
+            --no-reentry '^lfs_=AtomicFile::TeeStream::|Adafruit_LittleFS_Namespace::File::|Adafruit_LittleFS::' \
             | tee -a "$GITHUB_STEP_SUMMARY"

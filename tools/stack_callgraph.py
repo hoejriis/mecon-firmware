@@ -9,7 +9,12 @@ and its calls. A root is a regex over function names (the demangled label, or th
 depth of a function is its own frame plus the deepest of its callees. An indirect call (a function pointer or a virtual
 call) cannot be followed statically: --indirect names the functions a caller may reach that way (both regexes over
 names), and every other indirect call counts as 0 and is listed, so a reader can see what the number leaves out.
-Recursion is reported and counted once.
+Recursion is reported and counted once. --no-reentry 'OUTER=INNER' says a function matching INNER is never entered
+beneath one matching OUTER (both regexes over names): a library that holds a lock for the whole call, such as
+LittleFS, cannot be re-entered from its own driver callbacks, so a mapped indirect call that would do so is not a path.
+Callees are walked in sorted order, so the result does not depend on Python's hash seed.
+--require 'FROM=TO' fails (exit 1) unless a function matching FROM reaches one matching TO, under the same --indirect
+and --no-reentry rules: for a hand-off that must stay in place however much room the task would have without it.
 
 Exits 1 when a root is over its limit, 2 when a root matches nothing (a renamed function must not pass the gate by
 vanishing), 0 otherwise. Prints each root's worst path.
@@ -55,6 +60,8 @@ def main():
     ap.add_argument("build")
     ap.add_argument("--root", action="append", default=[])
     ap.add_argument("--indirect", action="append", default=[])
+    ap.add_argument("--no-reentry", action="append", default=[])
+    ap.add_argument("--require", action="append", default=[])
     ap.add_argument("--show", type=int, default=12)
     a = ap.parse_args()
     files, frames, names, edges, dynamic, by_symbol = load(a.build)
@@ -64,7 +71,11 @@ def main():
     for spec in a.indirect:
         c, t = spec.split("=", 1)
         targets = [f for f in frames if re.search(t, names.get(f, f)) or re.search(t, f)]
-        indirect.append((re.compile(c), targets))
+        indirect.append((re.compile(c), sorted(targets)))
+    no_reentry = [tuple(re.compile(x) for x in spec.split("=", 1)) for spec in a.no_reentry]
+
+    def matches(rx, f):
+        return rx.search(names.get(f, f)) or rx.search(f)
 
     def resolve(t):
         if t in frames:
@@ -73,41 +84,49 @@ def main():
 
     memo, unfollowed, cycles = {}, {}, set()
 
-    def depth(f, stack):
-        if f in memo:
-            return memo[f]
+    def depth(f, stack, inside=frozenset()):
+        # inside: the --no-reentry rules whose OUTER is on the current path
+        inside = inside | frozenset(i for i, (o, _) in enumerate(no_reentry) if matches(o, f))
+        key = (f, inside)
+        if key in memo:
+            return memo[key]
         if f in stack:
             cycles.add(names.get(f, f))
             return (0, [])
         stack.add(f)
         best, path = 0, []
-        for t in edges.get(f, ()):
+
+        def visit(g):
+            nonlocal best, path
+            if any(matches(no_reentry[i][1], g) for i in inside):
+                return
+            d, p = depth(g, stack, inside)
+            if d > best:
+                best, path = d, p
+
+        for t in sorted(edges.get(f, ())):
             if t == "__indirect_call":
                 hit = False
                 for c, targets in indirect:
-                    if c.search(names.get(f, f)) or c.search(f):
+                    if matches(c, f):
                         hit = True
                         for g in targets:
-                            d, p = depth(g, stack)
-                            if d > best:
-                                best, path = d, p
+                            visit(g)
                 if not hit:
                     unfollowed[names.get(f, f)] = unfollowed.get(names.get(f, f), 0) + 1
                 continue
-            for g in resolve(t):
-                d, p = depth(g, stack)
-                if d > best:
-                    best, path = d, p
+            for g in sorted(resolve(t)):
+                visit(g)
         stack.discard(f)
         r = (frames.get(f, 0) + best, [f] + path)
-        memo[f] = r
+        memo[key] = r
         return r
 
     status = 0
     for spec in a.root:
         rx, limit = spec.rsplit("=", 1)
         limit = int(limit)
-        roots = [f for f in frames if re.search(rx, names.get(f, f)) or re.search(rx, f)]
+        roots = sorted(f for f in frames if re.search(rx, names.get(f, f)) or re.search(rx, f))
         if not roots:
             print("ROOT NOT FOUND: %s" % rx)
             status = max(status, 2)
@@ -120,6 +139,44 @@ def main():
         if len(worst[1]) > a.show:
             print("    ... %d more" % (len(worst[1]) - a.show))
         if worst[0] > limit:
+            status = max(status, 1)
+    def callees(f, inside):
+        out = []
+        for t in sorted(edges.get(f, ())):
+            gs = []
+            if t == "__indirect_call":
+                for c, targets in indirect:
+                    if matches(c, f):
+                        gs += targets
+            else:
+                gs = sorted(resolve(t))
+            out += [g for g in gs if not any(matches(no_reentry[i][1], g) for i in inside)]
+        return out
+
+    for spec in a.require:
+        rx, target = (re.compile(x) for x in spec.split("=", 1))
+        roots = sorted(f for f in frames if matches(rx, f))
+        if not roots:
+            print("ROOT NOT FOUND: %s" % rx.pattern)
+            status = max(status, 2)
+            continue
+        found, seen = None, set()
+        todo = [(r, frozenset(), [r]) for r in roots]
+        while todo and not found:
+            f, inside, path = todo.pop()
+            inside = inside | frozenset(i for i, (o, _) in enumerate(no_reentry) if matches(o, f))
+            if (f, inside) in seen:
+                continue
+            seen.add((f, inside))
+            for g in callees(f, inside):
+                if matches(target, g):
+                    found = path + [g]
+                    break
+                todo.append((g, inside, path + [g]))
+        if found:
+            print("ok  %s reaches %s" % (rx.pattern, target.pattern))
+        else:
+            print("MISSING  %s does not reach %s" % (rx.pattern, target.pattern))
             status = max(status, 1)
     if cycles:
         print("recursion, counted once: " + "; ".join(sorted(cycles))[:400])
