@@ -43,6 +43,11 @@ On a Hardened Companion that is Wi-Fi-only (no USB, no BLE), the app has no tran
 
 Factory reset over USB / UART works in both postures: the Companion's `CMD_FACTORY_RESET` frame over the cable, and the console `erase` on a Repeater or Room server (the rescue console `erase` on a Companion). It returns the device to Normal. In Hardened a factory reset from BLE is refused, so a paired phone cannot strip the posture.
 
+**A client locked out by its clock (Repeater, Room server).** A login is accepted only when its timestamp, taken from the client's own clock, is newer than the last one accepted from that client. That rule is stock MeshCore's replay protection. A client whose clock once ran ahead (a phone set to the wrong day, say) leaves a watermark in the future, and after its clock is corrected every login is refused until real time passes that watermark.
+- **Visibility:** each refusal is audited as `stale-login`, so it reads differently from a wrong password.
+- **Recovery is a restart of the device.** The watermark is held in RAM only, never saved with the client list, so a restart clears every client's watermark. Use the local console or a power cycle. Over the air, a device with no Deployment record also takes `reboot` from a remote admin whose own clock is right. An enrolled device refuses an unsigned remote `reboot`, so its remote recovery is a signed reboot from a member of its Deployment ([Management authority contract](contract/AUTHORITY.md)). A restart changes no setting: the passwords, the client list and the audit log stay as they were. A caller without an admin session cannot clear it, because it cannot reboot the device.
+- **The same watermark** guards the requests of a logged-in client (its replay protection), and a restart clears it there too. The device's signed-management sequence numbers are a different mechanism, not affected by this.
+
 ## Audit log
 
 A persistent ring of 32 security events, readable with `get audit` on a trusted local transport. It records:
@@ -50,6 +55,7 @@ A persistent ring of 32 security events, readable with `get audit` on a trusted 
 - posture changes (the new posture),
 - refused commands: the command class and who asked (cable, BLE, network, remote admin, remote CLI, MQTT),
 - failed admin logins (wrong password, or the default password) and logins refused because the password is the default,
+- stale logins on a Repeater or Room server: the right password, refused because the login timestamp is not newer than that client's last accepted one (`login-fail remote-admin stale-login`, see [Recovery](#recovery)),
 - factory resets,
 - a transport that Hardened did not start (BLE, TCP server),
 - every attempt at the local unlock of an enrolled device ([Management authority contract](contract/AUTHORITY.md), section 10): `unlock` for an unlock, `login-fail` for a wrong answer, `refused` for an attempt over another transport, with no secret set, or during the lockout, all with the command class `unlock`; the response, the challenge and the secret are never recorded,
