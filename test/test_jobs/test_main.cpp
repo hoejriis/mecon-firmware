@@ -149,6 +149,21 @@ TEST(Jobs, AChangeThatNeedsARebootGetsItsWholeWindowInThatBoot) {
   EXPECT_EQ(2, reverted) << "a change nobody activates still ends";
 }
 
+TEST(Jobs, AJobCutWhileItRanIsRevertedAtBoot) {
+  JobTable t;
+  int reverted = 0;
+  auto revert = [&](Job* x) { reverted++; t.setState(x, JOB_REVERTED); };
+  Job* a = t.open("cut", "config.apply");   // accepted: snapshot saved, writes under way, then the power went
+  t.booted(false, revert);
+  EXPECT_EQ(1, reverted);
+  EXPECT_EQ(JOB_REVERTED, a->state);
+  EXPECT_EQ(nullptr, t.openJob()) << "never left open to block the next job";
+  Job* p = t.open("prog", "config.apply");
+  ASSERT_TRUE(t.setState(p, JOB_PROGRESS));
+  t.booted(true, revert);
+  EXPECT_EQ(2, reverted);
+}
+
 TEST(Jobs, AnUpdateRevertsOnlyOnAnAbnormalReset) {
   JobTable t;
   int reverted = 0;

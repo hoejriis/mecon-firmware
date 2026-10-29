@@ -1098,6 +1098,7 @@ mutate jobs_evicted_id_forgotten src/helpers/iface/Jobs.h '      _h[_hnext] = ha
 mutate jobs_terminal_moves src/helpers/iface/Jobs.h '    if (!j || !j->state || jobTerminal(j->state) || state < JOB_ACCEPTED || state > JOB_CANCELLED || state == JOB_AWAITING)' '    if (!j || !j->state || state < JOB_ACCEPTED || state > JOB_CANCELLED || state == JOB_AWAITING)' unit:test_jobs
 mutate jobs_deadline_never_fires src/helpers/iface/Jobs.h '    if (!j->confirm_left_s) expired(j);' '' unit:test_jobs
 mutate jobs_window_not_restarted_at_activation src/helpers/iface/Jobs.h '      j->confirm_left_s = j->within_s;' '' unit:test_jobs
+mutate jobs_cut_job_left_open src/helpers/iface/Jobs.h '    if (j->state == JOB_ACCEPTED || j->state == JOB_PROGRESS) {' '    if (false) {' unit:test_jobs
 mutate jobs_any_boot_reverts_an_update src/helpers/iface/Jobs.h '      if (abnormal) revert(j);' '      revert(j);' unit:test_jobs
 mutate jobs_image_crc_unchecked src/helpers/iface/Jobs.h '    if (get32(in, c) != crc32(in, crc_at)) return false;' '' unit:test_jobs
 # the job operations (JobService.h) and their wiring in the Companion and the console

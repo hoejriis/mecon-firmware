@@ -21,7 +21,7 @@ void JobService::begin(JobStore* store, bool abnormal_boot, Hook revert, Hook co
   if (n && table()) {
     if (!_t->deserialize(buf, n)) persist();   // a damaged table is forgotten (and replaced), never half trusted
     // The boot is counted in the saved table, so a device that keeps rebooting still reaches its second boot.
-    bool changed = _t->openJob() && _t->openJob()->state == JOB_AWAITING;
+    bool changed = _t->openJob() != nullptr;
     _t->booted(abnormal_boot, [&](Job* j) {
       changed = true;
       if (!_revert || !_revert(_user, *j)) _t->setState(j, JOB_FAILED, REVERT_FAILED, sizeof(REVERT_FAILED) - 1);

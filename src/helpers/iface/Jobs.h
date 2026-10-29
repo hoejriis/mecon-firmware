@@ -172,7 +172,15 @@ public:
   // pending is handed to revert(); under BOOT_ABNORMAL only an abnormal reset is.
   template <class F> void booted(bool abnormal, F revert) {
     Job* j = openJob();
-    if (!j || j->state != JOB_AWAITING) return;
+    if (!j) return;
+    // Still accepted or in progress at a boot: the device was cut while the job ran, between its snapshot and its
+    // awaiting-confirm state, so part of the change may have applied with nobody to confirm it. It is reverted, and
+    // never left open, where it would block every later job.
+    if (j->state == JOB_ACCEPTED || j->state == JOB_PROGRESS) {
+      revert(j);
+      return;
+    }
+    if (j->state != JOB_AWAITING) return;
     if (j->boot_rule == BOOT_ABNORMAL) {
       if (abnormal) revert(j);
       return;

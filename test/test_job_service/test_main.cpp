@@ -141,6 +141,39 @@ TEST(JobService, ASecondBootRevertsAPendingChangeAtLoad) {
   EXPECT_TRUE(has(call(b, "job.get", R"({"job":"pend"})"), R"("state":"reverted")"));
 }
 
+TEST(JobService, AJobCutWhileItRanEndsAtTheNextBootWithOrWithoutAHook) {
+  RamStore st;
+  {
+    JobService a;
+    a.begin(&st, false, nullptr, nullptr, nullptr);
+    ASSERT_NE(nullptr, a.table()->open("cut", "config.apply"));
+    ASSERT_TRUE(a.persist());   // saved as accepted; the power goes before awaiting-confirm
+  }
+  Hooks h;
+  {
+    JobService b;
+    h.svc = &b;
+    b.begin(&st, false, revertHook, confirmHook, &h);
+    EXPECT_EQ(1, h.reverts);
+    EXPECT_TRUE(has(call(b, "job.get", R"({"job":"cut"})"), R"("state":"reverted")"));
+    EXPECT_EQ(nullptr, b.table()->openJob());
+  }
+  JobService c;   // the saved table was updated: a third boot finds nothing open
+  c.begin(&st, false, revertHook, confirmHook, &h);
+  EXPECT_EQ(1, h.reverts);
+  RamStore st2;
+  {
+    JobService d;
+    d.begin(&st2, false, nullptr, nullptr, nullptr);
+    d.table()->open("cut2", "config.apply");
+    d.persist();
+  }
+  JobService e;
+  e.begin(&st2, false, nullptr, nullptr, nullptr);   // no role to revert with: failed, still never open
+  EXPECT_TRUE(has(call(e, "job.get", R"({"job":"cut2"})"), "revert-failed"));
+  EXPECT_EQ(nullptr, e.table()->openJob());
+}
+
 TEST(JobService, ARevertTheRoleCannotDoEndsFailed) {
   RamStore st;
   Hooks h;

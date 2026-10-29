@@ -110,6 +110,7 @@ The bound on any pending change is therefore `within_s` plus at most one reboot.
   - A revert while running, of a key that needs a reboot, reboots after 1.5 s.
   - The servers apply the radio only at boot, so a restored `radio` reboots them once more.
   - A line that fails leaves the job `failed` with `revert-failed`, never pending.
+  - **A job cut while it ran.** A job found `accepted` or `progress` at a boot was interrupted between its snapshot and `awaiting-confirm`, so part of the change may stand with nobody to confirm it. It is reverted at that boot, or ends `failed` with `revert-failed`, and is never left open to block the next job.
 - **A safety net, not a boundary.** A caller who holds `write` can still change these settings with raw CLI lines over BLE or MQTT, which have no confirm step. Commit-or-revert keeps a manager from cutting its own path; it does not protect the device from a caller who already has write.
 
 ### 3.5 Reset scopes
