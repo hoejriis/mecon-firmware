@@ -3,7 +3,8 @@
 // stack (LOOP_STACK_SZ, 256 words of 4 bytes, times 4), and a first deployment.provision overflowed it: parse, the
 // authority-set verify (ge_double_scalarmult_vartime alone is 2,352 bytes) and the signing of the result. Here the loop
 // hands one job to a task with an 8 KB stack and blocks until it is done, so the job sees the same single-threaded
-// world (prefs, the file system and the radio queue are not touched meanwhile) on a stack that has room.
+// world (prefs, the file system and the radio queue are not touched meanwhile) on a stack that has room. The handling
+// of each received packet runs here too (#162, Dispatcher::processRecvPacket).
 //
 // The rules:
 // - A job that overruns its wait resets the device. It is still running, on the caller's buffers and on state the loop
@@ -26,6 +27,10 @@ static const uint32_t STACK_BYTES = 8192;
 // Runs job(ctx) on the worker and returns once it has finished; false when the worker could not be created (the caller
 // then refuses the request). A job that overruns wait_ms resets the device and does not return.
 bool run(Job job, void* ctx, uint32_t wait_ms);
+
+// Creates the worker now, from the loop task at boot, so a failure (no memory) is known before the first job rather
+// than on it. run() still creates it on first use if this was never called. false: it could not be created.
+bool prepare();
 
 // The least free stack, in bytes, since boot: of the Arduino loop task (recorded on the first run()), and of the worker.
 // 0 when not known (not yet run, or not an nRF52 build).

@@ -57,6 +57,11 @@ __attribute__((noinline)) bool run(Job job, void* ctx, uint32_t wait_ms) {
   return false;
 }
 
+bool prepare() {
+  if (!g_loop) g_loop = xTaskGetCurrentTaskHandle();
+  return start();
+}
+
 uint32_t loopStackFree() { return g_loop ? (uint32_t)uxTaskGetStackHighWaterMark(g_loop) * sizeof(StackType_t) : 0; }
 uint32_t workerStackFree() { return g_task ? (uint32_t)uxTaskGetStackHighWaterMark(g_task) * sizeof(StackType_t) : 0; }
 bool retired() { return g_retired; }
@@ -70,6 +75,7 @@ bool run(Job job, void* ctx, uint32_t) {
   job(ctx);
   return true;
 }
+bool prepare() { return true; }
 uint32_t loopStackFree() { return 0; }
 uint32_t workerStackFree() { return 0; }
 bool retired() { return false; }
