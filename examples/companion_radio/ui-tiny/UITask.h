@@ -1,6 +1,7 @@
 #pragma once
 
 #include <MeshCore.h>
+#include <helpers/DisplayPrivacy.h>
 #include <helpers/ui/DisplayDriver.h>
 #include <helpers/ui/UIScreen.h>
 #include <helpers/SensorManager.h>
@@ -36,6 +37,7 @@ class UITask : public AbstractUITask {
   GenericVibration vibration;
 #endif
   unsigned long _next_refresh, _auto_off;
+  DisplayPrivacy::Watch _posture_watch;   // issue #113
   NodePrefs* _node_prefs;
   char _alert[80];
   unsigned long _alert_expiry;
