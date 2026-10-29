@@ -1036,9 +1036,14 @@ void BaseChatMesh::loop() {
     txt_send_timeout = 0;
   }
 
-  if (_pendingLoopback) {
-    onRecvPacket(_pendingLoopback);  // loop-back, as if received over radio
-    releasePacket(_pendingLoopback);   // undo the obtainNewPacket()
-    _pendingLoopback = NULL;
-  }
+  if (_pendingLoopback) feedLoopback();
+}
+
+// An imported contact's advert, fed in as if received over radio. On a Companion it runs down to the advert-blob save,
+// so it goes through the same hand-off as a received packet (on nRF52 on the worker, #162). Kept out of line so the
+// stack gate can check that it does (stack-gate.yml).
+__attribute__((noinline)) void BaseChatMesh::feedLoopback() {
+  recvOnWorker(_pendingLoopback);
+  releasePacket(_pendingLoopback);   // undo the obtainNewPacket()
+  _pendingLoopback = NULL;
 }

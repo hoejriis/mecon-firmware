@@ -112,6 +112,7 @@ typedef uint32_t  DispatcherAction;
 #define ERR_EVENT_FULL              (1 << 0)
 #define ERR_EVENT_CAD_TIMEOUT       (1 << 1)
 #define ERR_EVENT_STARTRX_TIMEOUT   (1 << 2)
+#define ERR_EVENT_WORKER            (1 << 3)   // nRF52: the receive worker could not be created; packets are handled on the loop task
 
 /**
  * \brief  The low-level task that manages detecting incoming Packets, and the queueing
@@ -131,10 +132,20 @@ class Dispatcher {
   uint32_t outbound_est_ms;            // estimated airtime of the packet being transmitted
 
   void processRecvPacket(Packet* pkt);
+#if defined(NRF52_PLATFORM)
+  DispatcherAction recvOnLoop(Packet* pkt);
+#endif
+public:
+  DispatcherAction handleRecv(Packet* pkt) { return onRecvPacket(pkt); }   // for the nRF52 worker job (#162)
+private:
   void dutyAdvance(unsigned long now);
   void dutyRecord(unsigned long now, uint32_t air_ms);
 
 protected:
+  // Handles one packet as received (onRecvPacket): on nRF52 on the worker (#162). Every caller that feeds a packet in
+  // as if received goes through here, not onRecvPacket directly.
+  DispatcherAction recvOnWorker(Packet* pkt);
+
   PacketManager* _mgr;
   Radio* _radio;
   MillisecondClock* _ms;

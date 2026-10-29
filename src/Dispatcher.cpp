@@ -7,6 +7,10 @@
 #include <math.h>
 #include <stdio.h>
 #include <helpers/RegulatoryDutyCycle.h>
+#if defined(NRF52_PLATFORM)
+  #include <Arduino.h>   // NVIC_SystemReset
+  #include <helpers/NrfWorker.h>
+#endif
 
 namespace mesh {
 
@@ -27,6 +31,9 @@ void Dispatcher::begin() {
 
   _radio->begin();
   prev_isrecv_mode = _radio->isInRecvMode();
+#if defined(NRF52_PLATFORM)
+  if (!NrfWorker::prepare()) _err_flags |= ERR_EVENT_WORKER;   // known at boot, not on the first packet
+#endif
 }
 
 float Dispatcher::getAirtimeBudgetFactor() const {
@@ -307,8 +314,50 @@ void Dispatcher::checkRecv() {
   }
 }
 
+#if defined(NRF52_PLATFORM)
+namespace {
+struct RecvJob { Dispatcher* d; Packet* pkt; DispatcherAction action; volatile bool done; };
+// A received packet's handling can run a remote CLI `set` down to a prefs save, or rewrite the advert-blob table, each
+// through LittleFS (whose bad-block relocation recurses): together deeper than the Arduino loop task's 4 KB stack has
+// room for (#162). It runs on the 8 KB worker instead, with the loop blocked meanwhile, as for interface requests.
+__attribute__((noinline)) void recvJob(void* c) {
+  RecvJob* j = (RecvJob*)c;
+  j->action = j->d->handleRecv(j->pkt);
+  j->done = true;
+}
+}  // namespace
+#endif
+
+#if defined(NRF52_PLATFORM)
+// No worker (no memory at boot): the packet is handled here, on the loop task's small stack, as before #162. A degraded
+// mode, flagged by ERR_EVENT_WORKER; the stack gate does not count it (stack-gate.yml).
+__attribute__((noinline)) DispatcherAction Dispatcher::recvOnLoop(Packet* pkt) {
+  _err_flags |= ERR_EVENT_WORKER;
+  return onRecvPacket(pkt);
+}
+#endif
+
+DispatcherAction Dispatcher::recvOnWorker(Packet* pkt) {
+#if defined(NRF52_PLATFORM)
+  // The hand-off is synchronous: run() returns only once the job has finished, and the loop task waits meanwhile, so
+  // mesh state (tables, queues, prefs, the file system) still has one runner at a time. A run() that returned with the
+  // job unfinished would break that, and with it every assumption below: reset rather than carry on.
+  // The wait bounds a handler that never ends: an overrun resets the device (NrfWorker.h). There is no hardware
+  // watchdog on these builds; one added later needs a timeout longer than this wait.
+  RecvJob job = {this, pkt, ACTION_RELEASE, false};
+  if (NrfWorker::run(recvJob, &job, 30000)) {
+    if (!job.done) NVIC_SystemReset();
+  } else {
+    job.action = recvOnLoop(pkt);
+  }
+  return job.action;
+#else
+  return onRecvPacket(pkt);
+#endif
+}
+
 void Dispatcher::processRecvPacket(Packet* pkt) {
-  DispatcherAction action = onRecvPacket(pkt);
+  DispatcherAction action = recvOnWorker(pkt);
   if (action == ACTION_RELEASE) {
     _mgr->free(pkt);
   } else if (action == ACTION_MANUAL_HOLD) {
