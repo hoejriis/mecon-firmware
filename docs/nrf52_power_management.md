@@ -197,7 +197,10 @@ compiled out at all and answers on every board: `getResetReason()` and
 `getShutdownReason()` are virtuals on the base board class, so a board that
 does not override them reports `Not available` rather than an error. ESP32
 boards override the reset half with `esp_reset_reason()`, so they return a real
-reset reason and `Not available` for the shutdown reason.
+reset reason and `Not available` for the shutdown reason. Every nRF52 board
+reads RESETREAS at boot, with or without power management, and clears it so the
+next boot sees only its own cause; without power management the shutdown half
+is `Not available`.
 
 ## Debug Output
 
