@@ -130,6 +130,25 @@ TEST(Jobs, ASecondBootRevertsAPendingSetting) {
   EXPECT_EQ(2, reverted) << "never two";
 }
 
+TEST(Jobs, AChangeThatNeedsARebootGetsItsWholeWindowInThatBoot) {
+  JobTable t;
+  int reverted = 0;
+  auto revert = [&](Job* x) { reverted++; t.setState(x, JOB_REVERTED); };
+  Job* j = t.open("r", "config.apply");
+  ASSERT_TRUE(t.awaitConfirm(j, 100, false));
+  t.tick(60, revert);   // a minute before the manager asks for the reboot
+  EXPECT_EQ(40u, j->confirm_left_s);
+  t.booted(false, revert);
+  EXPECT_EQ(100u, j->confirm_left_s) << "the window is for the boot where the change took effect";
+  EXPECT_EQ(0, reverted);
+  t.tick(100, revert);
+  EXPECT_EQ(1, reverted);
+  Job* k = t.open("never", "config.apply");
+  ASSERT_TRUE(t.awaitConfirm(k, 30, false));
+  t.tick(30, revert);
+  EXPECT_EQ(2, reverted) << "a change nobody activates still ends";
+}
+
 TEST(Jobs, AnUpdateRevertsOnlyOnAnAbnormalReset) {
   JobTable t;
   int reverted = 0;

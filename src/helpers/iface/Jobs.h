@@ -55,6 +55,7 @@ struct Job {
                                // abnormal reset reverts (firmware updates, UPDATES.md section 7)
   uint32_t seq;                // creation order, for eviction
   uint32_t confirm_left_s;     // running seconds left to confirm, while awaiting-confirm
+  uint32_t within_s;           // the window asked for: it starts again at the boot that activates a reboot-to-apply change
   // Who started the job and what it needs, as the role records them: the CLI classes a job.confirm or job.cancel caller
   // must hold (a bit per class, 1 << class, for every line the job ran), and the caller's CLI context, which a revert
   // runs as, so that a revert grants nothing the caller did not have and is audited to them.
@@ -135,6 +136,7 @@ public:
     if (!j || !j->state || jobTerminal(j->state) || j->state == JOB_AWAITING || !within_s) return false;
     j->state = JOB_AWAITING;
     j->confirm_left_s = within_s;
+    j->within_s = within_s;
     j->boots_pending = applied_live ? 1 : 0;
     j->boot_rule = rule;
     return true;
@@ -173,6 +175,14 @@ public:
     if (!j || j->state != JOB_AWAITING) return;
     if (j->boot_rule == BOOT_ABNORMAL) {
       if (abnormal) revert(j);
+      return;
+    }
+    // A change that takes effect only after a reboot: until that boot the window bounds the wait for it (so a change
+    // nobody activates still ends), and at that boot it starts again in full, since the window is for the boot where
+    // the change took effect (OPERATIONS 3.4 rule 5).
+    if (j->boots_pending == 0) {
+      j->boots_pending = 1;
+      j->confirm_left_s = j->within_s;
       return;
     }
     if (++j->boots_pending >= 2) revert(j);
