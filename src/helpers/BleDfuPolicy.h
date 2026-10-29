@@ -21,10 +21,14 @@ inline bool mayRegister(bool device_interface_build, uint32_t pin, bool pin_chos
   return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;
 }
 
-// The Repeater / Room server CLI's `start ota` restarts the radio stack in an OTA-only mode. A device-interface build
-// refuses it outright and starts nothing. So does every nRF52 build: it would put the BLE DFU service up, and these
-// roles have no BLE PIN, so the link could be neither paired with a passkey nor protected (an MITM requirement with no
-// PIN would make it a silent no-op). Stock-like ESP32 builds keep upstream's behaviour.
-inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build) { return !device_interface_build && !nrf52_build; }
+// The Repeater / Room server CLI's `start ota` opens the board's own updater, and no updater checks a signature. It is
+// off unless the build opts in (ENABLE_WIFI_OTA). Even then a device-interface build refuses it outright and starts
+// nothing, and so does every nRF52 build: it would put the BLE DFU service up, and these roles have no BLE PIN, so the
+// link could be neither paired with a passkey nor protected (an MITM requirement with no PIN would make it a silent
+// no-op). On ESP32 the updater is a Wi-Fi access point with an HTTP upload; stock opens it with no passphrase and no
+// login, so an opted-in ESP32 build draws a credential at each start for both (ESP32Board::startOTAUpdate).
+inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build, bool opted_in) {
+  return opted_in && !device_interface_build && !nrf52_build;
+}
 
 }  // namespace BleDfuPolicy
