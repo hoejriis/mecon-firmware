@@ -30,6 +30,7 @@ A broker login, a TLS session, a paired BLE link, a USB cable, a LoRa route and 
 | signed result | `MECON-UPLINK-v1` | the literal `result` |
 | node rotation statement | `MECON-NODEROT-v1` | none (section 11) |
 | release manifest (*planned*, [UPDATES](UPDATES.md)) | `MECON-RELEASE-v1` | none |
+| device_id binding | `MECON-DEVID-v1` | none; raw bytes follow (section 3.5) |
 
 - A key a device would trust is checked first: a member's key, a rotation's new DAK, and the DAK of a first provisioning. A key that is not a valid curve point, or whose point has small order, is refused (`bad_authority_set`, or `untrusted_authority_key` for a DAK). A signature against such a key proves nothing.
 
@@ -99,6 +100,28 @@ While the device holds a record (healthy or corrupt), it signs every interface e
 - The native signing command of the Companion (`CMD_SIGN_*`) refuses data that starts with `MECON-`, so no native signature can be a protocol signature, enrolled or not.
 - Signing cost: about 12 µs per signature of a 250-byte message on the simulated board's host (aarch64, gcc -O2, the firmware's own `lib/ed25519`, 20,000 signatures, measured 2026-10-28; see Review 3 in [AUTHORITY_REVIEW_2.md](AUTHORITY_REVIEW_2.md)). It has not been measured on a target MCU.
 
+### 3.5 Signed device_id binding
+
+A Backend records a device's `device_id` from `hello` or from `get device.id`, and both are self-reported. So the device also sends the node key's signature binding the two:
+
+- Ed25519 with the node key over `MECON-DEVID-v1` 0x00 `<device_id>` `<node_key>` `[<nonce>]`. Unlike the other objects, these are raw bytes, not text: `device_id` is its 16 bytes and `node_key` its 32, with no separator between them or before the nonce.
+- **Where it is sent.** Always, enrolled or not:
+  - `get device.id` answers `> <device_id> <sig>` on every CLI path. For `get device.id <nonce>` it answers `> <device_id> <sig> <nonce>`, signed over the nonce form.
+  - `hello` carries `device_id_sig`. With `args.nonce`, it also carries `nonce` (echoed) and `device_id_sig_nonce`.
+  - A nonce is 1 to 32 characters of `[0-9A-Za-z._-]`. Anything else is refused, including a space with no nonce after it: `Error: bad nonce` on the CLI, `invalid` from `hello`.
+- **What it proves.** Only that the holder of that node key asserts this `device_id`. It binds the key, so a signature replayed under another login fails against that login's key. The fixed form can be replayed for the same key, which is harmless, because `device_id` changes only with the key, at a factory reset. A Backend that wants proof that the key is held now sends a nonce. The nonce proves that the key is held, not who asked for it: a caller with read access can obtain a signature over any nonce, so a relay with such access can answer another Backend's challenge. It can only ever certify the device's true pair. The native signing command of the MECON roles refuses data that starts with `MECON-` (section 3.4), so a host cannot have a device sign one. That holds for this firmware only: the KISS modem firmware signs whatever its host sends, so a board reflashed with it, which needs physical access, signs any MECON object.
+- **What it does not prove.** A device could sign another device's `device_id` with its own key. So the signature is necessary but not sufficient, and three rules complete it:
+  1. **The Backend binds one `device_id` to one enrolled key and refuses a re-bind.** It never resolves a conflict first-come: two verified claims for one `device_id` are both refused and alerted. Pre-emption then gives at most a visible denial of service, never a takeover.
+  2. **The firmware discloses `device_id` to no caller it has not authenticated.** It goes only to:
+     - callers the privilege table lets read: the cable, BLE paired with the device's own PIN, an MQTT session to a TLS-verified broker, a signed request, a logged-in remote admin, a contact granted remote CLI, and the logged-in Ethernet console. They get it in `hello`, status, results and `get device.id`, including the legacy MQTT CLI topic;
+     - the same callers in the rotation statement (section 11). `identity.rotation` is table-gated, and `deployment.get`, which stays open, includes the statement only for them;
+     - the provisioning read-back (section 6.1);
+     - the broker, as part of the device's topic names (`mecon/<device_id>/...`). With a verified TLS profile only the broker sees them. On a plain-TCP profile anyone on the network path does too. Plain profiles exist only in Normal posture, and Hardened refuses them (MQTT.md).
+
+     Untrusted callers are refused `hello`, `get device.id` and `identity.rotation`, and get no rotation statement in `deployment.get`. Those are the open TCP port, BLE on a default PIN, an MQTT session whose broker is not TLS-verified, the Ethernet console before a login, and guest logins. `device_id` is not in adverts, on the display or in logs. A topic name on a plain profile is the one path an unauthenticated observer can see, and rule 1 bounds what it gives: a visible denial of service, never a takeover.
+  3. **Enrolment binds at the trusted moment.** The read-back of `deployment.provision` (section 6.1) carries `device_id` and `node_key`, and the Backend records them together.
+- Public vectors: `device_id_binding` and `device_id_binding_nonce` (nonce `r-7.nonce_A`), and `device_id_binding_foreign`: a valid signature by another key over the same `device_id`, which a Backend that bound the id to the device's key must refuse.
+
 ## 4. The record on the device
 
 - **Two copies.** The device keeps two copies, A and B. Each is framed as `"MDR1" | u32 generation | u16 length | payload | u32 CRC-32`.
@@ -160,7 +183,7 @@ A provisioning carries no rotations. A device whose DAK has rotated gets `deploy
 - **First provisioning** (no record, no marker) is trust on first use: it pins the DAK. It is accepted unsigned from the USB cable only. Never over BLE (a device cannot tell its own random PIN from one a user or a build chose), the TCP port, a broker of any kind (a broker would gain first-use trust over every reset or unenrolled device it can reach) or LoRa. *(Narrowed 2026-10-28 by the second security review; this section earlier also allowed BLE with the device's own random PIN.)*
 - A platform with no store for the provisioned marker (section 4) refuses an unsigned first provisioning.
 - **A device that holds a record** accepts `deployment.provision` only when signed by a current member. An unsigned re-send of a byte-identical `deployment` object returns the stored read-back; anything else unsigned is `unauthenticated`.
-- **Order and commit.** Checks run in the order above, then section 5 on the set. One commit, and the answer is read back from storage. An equal `provision_revision` with identical content is `duplicate`; a lower one is `stale_revision`.
+- **Order and commit.** Checks run in the order above, then section 5 on the set. One commit, and the answer is read back from storage. That read-back, and the one an unsigned duplicate gets, carries `device_id` and `node_key` (section 3.5). An equal `provision_revision` with identical content is `duplicate`; a lower one is `stale_revision`.
 
 ### 6.2 `deployment.authority_update`
 
@@ -262,7 +285,7 @@ Rules:
 - Moving to a different Deployment is unenrollment followed by a first provisioning, which needs physical presence again.
 - Rotation runs in this order: generate the new key, write the rotation statement, save the new key, swap, drop contacts and queue, clear the statement's pending mark, then one self-advert. The device reports the old and the new public key.
   - **The rotation statement** is what lets a manager that lost the result trust the new key. Before anything changes, the old key signs `MECON-NODEROT-v1` 0x00 `<text>`, where `<text>` is `{"v":1,"old":"<hex>","new":"<hex>","device_id":"<hex>","job_id":<n>}` (that member order, no spaces). It is stored atomically with its signature in a file of its own, marked drop-pending (the mark is not part of the signed text: the old key is gone by the time it is cleared).
-  - `identity.rotation` (a plain read, in `hello`'s capabilities) returns `{"rotation":{"statement":"<the text, as a string>","sig":"<base64>"}}`, or an empty result when there is none; `deployment.get` carries the same `rotation` member. A statement stays until a later rotation replaces it.
+  - `identity.rotation` (a plain read, in `hello`'s capabilities) returns `{"rotation":{"statement":"<the text, as a string>","sig":"<base64>"}}`, or an empty result when there is none; `deployment.get` carries the same `rotation` member. Both serve it only to a caller the privilege table lets read, because the statement names `device_id` (section 3.5). A statement stays until a later rotation replaces it.
   - **A manager that lost the result** (the link, the bridge or the broker dropped it, or the device lost power after the key save) cannot repeat the request: a request aimed at the old key is `wrong_device`. It reads `hello`, whose `node_key` is the new key but is signed by that same new key and so proves nothing, and `identity.rotation`. It trusts the new key only if the statement's `old` is the key it enrolled, the signature verifies against that old key over the domain and the text, `device_id` is the one it enrolled, and `new` equals the `hello` key. A `hello` forged by a party on the path fails the last check or has no statement the old key signed.
   - A power cut at each step: before the key save, the statement's `new` is not the node key at boot, the statement is deleted and the key is unchanged; after the key save and before the drop ends, the statement is still drop-pending, and the boot finishes the drop (contacts, their cached blobs, the queue) and clears the mark. A drop that cannot finish stays pending for the next boot. The old owner's contacts are therefore never left to the new key.
   - The new key comes from the platform's cryptographic RNG (section 12), redrawn if it is the current key or starts with a reserved id hash (`00`, `FF`); a source that delivers only zeros is a refusal (`rng`), never a fixed key. It is saved atomically (a failed save is `storage`, the old key stays), and only then swapped in.
@@ -312,7 +335,7 @@ The review also changed: the size limits (2,048-byte set, 16 revoked ids, no rot
 
 ## 16. Conformance
 
-- Public test vectors: `test/fixtures/deployment_authority_public_v1.json`, generated by `tools/mecon_auth_vectors.py` from this page. Both land with the implementation branch. Every key is derived from a public label, so these are test keys and valid nowhere. The vectors cover two authority sets, a rotation, a signed request, a signed event and a signed result. `--check` fails if the fixture drifts from the generator.
+- Public test vectors: `test/fixtures/deployment_authority_public_v1.json`, generated by `tools/mecon_auth_vectors.py` from this page. Both land with the implementation branch. Every key is derived from a public label, so these are test keys and valid nowhere. The vectors cover two authority sets, a rotation, a signed request, a signed event, a signed result, the node rotation statement and the signed device_id binding with and without a nonce, and a foreign claim (another key signing the same device_id) that only the Backend rule refuses. `--check` fails if the fixture drifts from the generator.
 - Unit tests cover:
   - every check of sections 5 and 7, in order;
   - the record framing under damage of either copy and a power cut at each step;

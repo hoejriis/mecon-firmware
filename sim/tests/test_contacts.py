@@ -731,3 +731,27 @@ def test_the_stock_array_build_migrates_nothing_and_reads_a_stock_file(nodes):
     count, got = c.get_contacts()
     assert count == 30 and by_key(got)[key(5)]["name"] == "contact-5"
     assert os.path.exists(p(node, "/contacts3"))
+
+
+# ------------------------------------------------------------------------------------------------ lazy write after a burst
+
+def test_a_burst_of_adds_is_written_bucket_by_bucket_and_survives_a_power_cut(nodes):
+    # A flush of every changed bucket in one pass held the loop for ~5.6 s on hardware after 100 adds. The lazy write
+    # now takes one bucket per pass and keeps going until the last one is written, with no reboot to force it.
+    node = start(nodes).start()
+    c = connect(node)
+    for i in range(40):                               # records 0..39: buckets 0..4
+        assert c.add_contact_full(key(i), "burst-%d" % i, lastmod=RTC + i)[0] == 0, i
+    buckets = [p(node, "/ct%d" % b) for b in range(5)]
+    end = time.time() + 20
+    while time.time() < end and not all(os.path.exists(f) for f in buckets):
+        time.sleep(0.2)
+    assert all(os.path.exists(f) for f in buckets), [os.path.exists(f) for f in buckets]
+    time.sleep(0.5)
+    c.close()
+    node.proc.kill()                                  # a power cut: no reboot command, nothing flushed on the way out
+    node.proc.wait()
+    node.start()
+    c = connect(node)
+    count, got = c.get_contacts()
+    assert count == 40 and sorted(x["name"] for x in got) == sorted("burst-%d" % i for i in range(40))
