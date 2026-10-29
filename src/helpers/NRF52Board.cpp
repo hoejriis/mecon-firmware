@@ -32,50 +32,20 @@ void NRF52Board::begin() {
   #endif
 }
 
+#ifdef NRF52_POWER_MANAGEMENT
 #include "nrf.h"
 
-// This boot's RESETREAS, on every nRF52 board: the reset cause is reported whether or not the board uses power
-// management. Read by an early constructor: priority 101 runs before SystemInit (102) and before any C++ static
-// constructor (default 65535), while the SoftDevice is not yet running.
+// Power Management global variables
 uint32_t g_nrf52_reset_reason = 0;     // Reset/Startup reason
-#ifdef NRF52_POWER_MANAGEMENT
 uint8_t g_nrf52_shutdown_reason = 0;   // Shutdown reason
-#endif
 
+// Early constructor - runs before SystemInit() clears the registers
+// Priority 101 ensures this runs before SystemInit (102) and before
+// any C++ static constructors (default 65535)
 static void __attribute__((constructor(101))) nrf52_early_reset_capture() {
   g_nrf52_reset_reason = NRF_POWER->RESETREAS;
-#ifdef NRF52_POWER_MANAGEMENT
-  g_nrf52_shutdown_reason = NRF_POWER->GPREGRET2;   // pwrmgtInit() clears both
-#else
-  // The register's bits accumulate until written: clear it now, so the next boot sees only its own cause. The
-  // SoftDevice is not running yet, so it is written directly.
-  NRF_POWER->RESETREAS = 0xFFFFFFFF;
-#endif
+  g_nrf52_shutdown_reason = NRF_POWER->GPREGRET2;
 }
-
-uint32_t NRF52Board::getResetReason() const { return g_nrf52_reset_reason; }
-
-const char* NRF52Board::getResetReasonString(uint32_t reason) {
-  if (reason & POWER_RESETREAS_RESETPIN_Msk) return "Reset Pin";
-  if (reason & POWER_RESETREAS_DOG_Msk) return "Watchdog";
-  if (reason & POWER_RESETREAS_SREQ_Msk) return "Soft Reset";
-  if (reason & POWER_RESETREAS_LOCKUP_Msk) return "CPU Lockup";
-  #ifdef POWER_RESETREAS_LPCOMP_Msk
-    if (reason & POWER_RESETREAS_LPCOMP_Msk) return "Wake from LPCOMP";
-  #endif
-  #ifdef POWER_RESETREAS_VBUS_Msk
-    if (reason & POWER_RESETREAS_VBUS_Msk) return "Wake from VBUS";
-  #endif
-  #ifdef POWER_RESETREAS_OFF_Msk
-    if (reason & POWER_RESETREAS_OFF_Msk) return "Wake from GPIO";
-  #endif
-  #ifdef POWER_RESETREAS_DIF_Msk
-    if (reason & POWER_RESETREAS_DIF_Msk) return "Debug Interface";
-  #endif
-  return "Cold Boot";
-}
-
-#ifdef NRF52_POWER_MANAGEMENT
 
 void NRF52Board::pwrmgtInit() {
   if (pwrmgt_initialised) return;
@@ -108,6 +78,25 @@ void NRF52Board::pwrmgtInit() {
   pwrmgt_initialised = true;
 }
 
+const char* NRF52Board::getResetReasonString(uint32_t reason) {
+  if (reason & POWER_RESETREAS_RESETPIN_Msk) return "Reset Pin";
+  if (reason & POWER_RESETREAS_DOG_Msk) return "Watchdog";
+  if (reason & POWER_RESETREAS_SREQ_Msk) return "Soft Reset";
+  if (reason & POWER_RESETREAS_LOCKUP_Msk) return "CPU Lockup";
+  #ifdef POWER_RESETREAS_LPCOMP_Msk
+    if (reason & POWER_RESETREAS_LPCOMP_Msk) return "Wake from LPCOMP";
+  #endif
+  #ifdef POWER_RESETREAS_VBUS_Msk
+    if (reason & POWER_RESETREAS_VBUS_Msk) return "Wake from VBUS";
+  #endif
+  #ifdef POWER_RESETREAS_OFF_Msk
+    if (reason & POWER_RESETREAS_OFF_Msk) return "Wake from GPIO";
+  #endif
+  #ifdef POWER_RESETREAS_DIF_Msk
+    if (reason & POWER_RESETREAS_DIF_Msk) return "Debug Interface";
+  #endif
+  return "Cold Boot";
+}
 
 const char* NRF52Board::getShutdownReasonString(uint8_t reason) {
   switch (reason) {

@@ -60,13 +60,12 @@ public:
   bool isExternalPowered() override;
 
   void attachDynamicPrefs(KeyValueStore* prefs) { }  // no-op
-  // The cause of this boot (RESETREAS, read before SystemInit), on every nRF52 board.
-  uint32_t getResetReason() const override;
-  const char* getResetReasonString(uint32_t reason) override;
 
 #ifdef NRF52_POWER_MANAGEMENT
   uint16_t getBootVoltage() override { return boot_voltage_mv; }
+  virtual uint32_t getResetReason() const override { return reset_reason; }
   uint8_t getShutdownReason() const override { return shutdown_reason; }
+  const char* getResetReasonString(uint32_t reason) override;
   const char* getShutdownReasonString(uint8_t reason) override;
   bool isPwrMgtInitialised() const override { return pwrmgt_initialised; }
   #ifdef PWRMGT_LPCOMP_AIN
