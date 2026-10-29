@@ -227,6 +227,7 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
   _auth.setContext(_ctx);
   _caller = caller;
   _cur_link = link;
+  (link ? link->may_read : _mqtt_may_read) = Cli::decide(ctx, Cli::C_READ).allow;
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
@@ -510,6 +511,7 @@ void MeconIface::loop(uint32_t now) {
     if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it
       l.nonce[0] = 0;
       l.unlock.clear();
+      l.may_read = false;
     }
     if (l.rx.tick(now)) {
       uint8_t xid;

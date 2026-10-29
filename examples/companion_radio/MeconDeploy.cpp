@@ -39,6 +39,7 @@ void MeconIface::jobsLoad() {
   _confirm = Iface::ConfirmHost{&_jobs, &g_snap_file, confirmCable, confirmLineClass, confirmReadSecret,
                                 confirmRecordCaller, confirmRunAs, confirmJobId};
   _jobs.setClassCheck(jobClasses, this);
+  _jobs.setOnChange(jobChanged, this);
   _jobs_booting = true;   // a revert at boot needs no reboot: the links start after this, with the restored prefs
   _jobs.begin(&g_job_file, abnormalReset(board) == 1, jobRevert, jobConfirm, this);
   _jobs_booting = false;
@@ -114,6 +115,25 @@ bool MeconIface::jobConfirm(void* user, Iface::Job& j) {
   if (strcmp(j.op, "config.apply") != 0) return false;
   Iface::configConfirmed(static_cast<MeconIface*>(user)->configHost());
   return true;
+}
+
+// A job event goes to every connected transport whose last caller may read, and over the broker session, not only to
+// the transport that started the job: a result goes out over whichever path works (OPERATIONS.md 3.2).
+void MeconIface::jobChanged(void* user, const Iface::Job& j) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  char* ev = static_cast<char*>(malloc(RESULT_MAX));
+  if (!ev) return;   // the state is still in job.get and job.list
+  const uint32_t ts = m->_mesh->getRTCClock()->getCurrentTime();
+  int n = m->_jobs.writeEvent(ev, RESULT_MAX, m->_epoch, ts >= 1704067200, ts, j);
+  if (n > 0) n = m->_prov.sign("job", ev, (size_t)n, RESULT_MAX);
+  if (n > 0) {
+    for (Link& l : m->_links) {
+      if (!l.src || !l.may_read || !l.src->isConnected() || !m->ensureQueue(l)) continue;
+      l.q->push(Iface::OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
+    }
+    if (m->_mqtt_may_read && m->_ev_publish && m->_ev_up && m->_ev_up()) m->_ev_publish("job", ev, (size_t)n);
+  }
+  free(ev);
 }
 
 bool MeconIface::jobClasses(void* user, uint8_t cls) {

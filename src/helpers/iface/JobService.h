@@ -41,6 +41,14 @@ public:
   typedef bool (*ClassCheck)(void* user, uint8_t cls);
   void setClassCheck(ClassCheck f, void* user) { _cls_check = f; _cls_user = user; }
 
+  // Each change of a job's state, for the job event (OPERATIONS.md 3.1), which the role sends to every transport whose
+  // caller may read. Noticed when the table is saved, which every change ends with, so no change is missed or told
+  // twice.
+  typedef void (*ChangeFn)(void* user, const Job& j);
+  void setOnChange(ChangeFn f, void* user) { _on_change = f; _change_user = user; }
+  // The job event: {"job","op","state","result"} as an event envelope "job", with the service's own sequence.
+  int writeEvent(char* buf, size_t cap, uint32_t epoch, bool ts_known, int64_t ts, const Job& j);
+
   JobTable* table();   // allocated on first use; null when the heap cannot hold it
   bool persist();      // saves the table; false (and the caller answers busy) when the save fails
 
@@ -77,6 +85,12 @@ private:
   void* _user = nullptr;
   ClassCheck _cls_check = nullptr;
   void* _cls_user = nullptr;
+  ChangeFn _on_change = nullptr;
+  void* _change_user = nullptr;
+  uint32_t _seen_seq[JobTable::SLOTS] = {0};   // what was last told for each slot: its occupant and its state
+  uint8_t _seen_state[JobTable::SLOTS] = {0};
+  uint32_t _ev_seq = 0;
+  void noticeChanges(bool tell);
   uint32_t _tick_ms = 0;
   bool _tick_init = false;
   uint32_t _unsaved_s = 0;

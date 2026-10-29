@@ -1,4 +1,5 @@
 #include "JobService.h"
+#include "IfaceEnvelope.h"
 #include <new>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +29,31 @@ void JobService::begin(JobStore* store, bool abnormal_boot, Hook revert, Hook co
     if (changed) persist();
   }
   free(buf);
+  noticeChanges(false);   // what the table held at boot is the baseline; a revert at boot was told by persist()
+}
+
+void JobService::noticeChanges(bool tell) {
+  if (!_t) return;
+  for (int i = 0; i < JobTable::SLOTS; i++) {
+    const Job* j = _t->slot(i);
+    if (!j) { _seen_seq[i] = 0; _seen_state[i] = 0; continue; }
+    if (j->seq == _seen_seq[i] && j->state == _seen_state[i]) continue;
+    _seen_seq[i] = j->seq;
+    _seen_state[i] = j->state;
+    if (tell && _on_change) _on_change(_change_user, *j);
+  }
+}
+
+int JobService::writeEvent(char* buf, size_t cap, uint32_t epoch, bool ts_known, int64_t ts, const Job& j) {
+  char data[64 + Job::ID_CAP + Job::OP_CAP + Job::RESULT_CAP];
+  JsonWriter w(data, sizeof(data));
+  w.beginObject();
+  writeSummary(w, j);
+  w.key("result");
+  if (j.result_len) w.raw(j.result, j.result_len); else w.null();
+  w.endObject();
+  if (!w.ok()) return -1;
+  return Iface::writeEvent(buf, cap, "job", ++_ev_seq, epoch, ts_known, ts, data);
 }
 
 JobTable* JobService::table() {
@@ -36,13 +62,15 @@ JobTable* JobService::table() {
 }
 
 bool JobService::persist() {
-  if (!_t || !_store) return _t != nullptr;   // RAM only when the role gave no store
-  const size_t cap = JobTable::imageSize();
-  uint8_t* buf = static_cast<uint8_t*>(malloc(cap));
-  if (!buf) return false;
-  const size_t n = _t->serialize(buf, cap);
-  const bool ok = n && _store->save(buf, n);
-  free(buf);
+  bool ok = _t != nullptr;   // RAM only when the role gave no store
+  if (_t && _store) {
+    const size_t cap = JobTable::imageSize();
+    uint8_t* buf = static_cast<uint8_t*>(malloc(cap));
+    const size_t n = buf ? _t->serialize(buf, cap) : 0;
+    ok = n && _store->save(buf, n);
+    free(buf);
+  }
+  noticeChanges(true);   // told whether or not the save worked: the device is in that state now
   return ok;
 }
 

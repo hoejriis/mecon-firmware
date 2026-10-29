@@ -101,6 +101,7 @@ private:
   static bool jobRevert(void* self, Job& j);
   static bool jobConfirm(void* self, Job& j);
   static bool jobClasses(void* self, uint8_t cls);
+  static void jobChanged(void* self, const Job& j);
   ConfirmHost _confirm = {};
   uint32_t _reboot_at = 0;     // a revert restored a key that needs a reboot (0: none)
   static bool cliAllow(void* self, const char* line);

@@ -172,3 +172,35 @@ def test_the_console_reverts_an_unconfirmed_tx_at_boot(nodes, kind):
     cli, i = server_client(n)
     assert tx_of(i) == before - 1
     assert ok(i.request("job.get", {"job": job}), "job.get.result.json")["state"] == "reverted"
+
+
+def job_events(i, timeout=10.0):
+    """The job events client i has seen so far, waiting up to timeout for at least one more message."""
+    end = time.time() + timeout
+    while time.time() < end:
+        m = i.read_message(timeout=0.5)
+        if m is not None and m.get("ev") == "job":
+            i.events.append(m)
+        elif m is None and any(e.get("ev") == "job" for e in i.events):
+            break
+    got = [e for e in i.events if e.get("ev") == "job"]
+    i.events = [e for e in i.events if e.get("ev") != "job"]
+    return got
+
+
+@pytest.mark.timescale(10)
+def test_every_transport_that_may_read_hears_a_job_change(nodes):
+    n = ble_boot(nodes, "je", PIN)
+    usb = companion_client(n)[1]
+    assert usb.request("hello")["status"] == "ok"   # the cable has spoken, so it may read
+    b, i = ble(n)
+    before = tx_of(i)
+    job = i.request("config.apply", {"set": {"tx": before - 1}, "confirm": {}})["result"]["job"]
+    i.request("job.confirm", {"job": job})
+    for client in (i, usb):
+        evs = job_events(client)
+        states = [e["data"]["state"] for e in evs if e["data"]["job"] == job]
+        assert states == ["accepted", "awaiting-confirm", "confirmed"], states
+        assert all(e["data"]["op"] == "config.apply" for e in evs)
+        seqs = [e["seq"] for e in evs]
+        assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs), seqs

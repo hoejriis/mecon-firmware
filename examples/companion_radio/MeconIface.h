@@ -134,6 +134,7 @@ private:
     Iface::SubSet subs;
     char nonce[33] = {0};                   // the channel nonce issued for this link (AUTHORITY.md section 7.1)
     Iface::LinkUnlock unlock;               // its local unlock challenge and state (section 10); cleared when the link drops
+    bool may_read = false;                  // its last caller may read: it gets job events (OPERATIONS.md 3.1)
   };
   static const int LINKS = 4;               // USB, BLE, TCP and one spare
 
@@ -151,6 +152,8 @@ private:
   static bool jobRevert(void* self, Iface::Job& j);
   static bool jobConfirm(void* self, Iface::Job& j);
   static bool jobClasses(void* self, uint8_t cls);
+  static void jobChanged(void* self, const Iface::Job& j);
+  bool _mqtt_may_read = false;
   static bool cliAllow(void* self, const char* line);
   Link* linkFor(const BaseSerialInterface* src, bool create);
   int dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);

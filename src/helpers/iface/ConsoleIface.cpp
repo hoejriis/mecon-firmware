@@ -157,6 +157,7 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
     _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
                            confirmRunAs, confirmJobId};
   _jobs.setClassCheck(jobClasses, this);
+  _jobs.setOnChange(jobChanged, this);
   _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);
   configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
   if (_host.dep_store) {
@@ -259,6 +260,18 @@ bool ConsoleIface::jobConfirm(void* user, Job& j) {
   if (strcmp(j.op, "config.apply") != 0) return false;
   configConfirmed(static_cast<ConsoleIface*>(user)->configHost());
   return true;
+}
+
+// The console is one link, and its caller may always read: each change of a job's state is a line on it, unless a
+// request is being typed (then it is still in job.get and job.list).
+void ConsoleIface::jobChanged(void* user, const Job& j) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (!s->_out || s->_collecting) return;
+  char ev[512 + Job::RESULT_CAP];
+  const uint32_t ts = s->_host.clock_s ? s->_host.clock_s(s->_host.user) : 0;
+  int n = s->_jobs.writeEvent(ev, sizeof(ev), s->_epoch, ts >= 1704067200, ts, j);
+  if (n > 0) n = s->_prov.sign("job", ev, (size_t)n, sizeof(ev));
+  if (n > 0) s->printLine(*s->_out, ev, (size_t)n);
 }
 
 bool ConsoleIface::jobClasses(void* user, uint8_t cls) {

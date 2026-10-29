@@ -254,6 +254,33 @@ TEST(JobService, TheTimeLeftIsSavedSoARebootDoesNotStartItOver) {
   EXPECT_EQ(69u, j->confirm_left_s);
 }
 
+struct Told { std::vector<std::string> states; };
+static void told(void* u, const Job& j) { static_cast<Told*>(u)->states.push_back(std::string(j.id) + "=" + jobStateName(j.state)); }
+
+TEST(JobService, EveryChangeOfStateIsToldOnce) {
+  JobService s;
+  RamStore st;
+  Hooks h;
+  h.svc = &s;
+  s.begin(&st, false, revertHook, confirmHook, &h);
+  Told t;
+  s.setOnChange(told, &t);
+  Job* j = s.table()->open("e", "config.apply");
+  ASSERT_TRUE(s.table()->awaitConfirm(j, 300, true));
+  s.persist();
+  s.persist();
+  call(s, "job.confirm", R"({"job":"e"})");
+  call(s, "job.ack", R"({"job":"e"})");   // acknowledging is not a change of state
+  ASSERT_EQ(2u, t.states.size());
+  EXPECT_EQ("e=awaiting-confirm", t.states[0]);
+  EXPECT_EQ("e=confirmed", t.states[1]);
+  char ev[600];
+  const int n = s.writeEvent(ev, sizeof(ev), 3, false, 0, *j);
+  ASSERT_GT(n, 0);
+  EXPECT_TRUE(has(std::string(ev, n), R"("ev":"job")")) << std::string(ev, n);
+  EXPECT_TRUE(has(std::string(ev, n), R"("job":"e","op":"config.apply","state":"confirmed","owed":false,"result":null)")) << std::string(ev, n);
+}
+
 static bool noPosture(void*, uint8_t cls) { return !(cls & (1u << 3)); }   // this caller lacks class 3
 
 TEST(JobService, ConfirmAndCancelNeedEveryClassTheJobChanged) {

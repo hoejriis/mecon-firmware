@@ -1132,6 +1132,9 @@ mutate svc_confirm_any_class src/helpers/iface/JobService.cpp '  if (_cls_check 
 mutate cc_cable_by_transport examples/companion_radio/MeconDeploy.cpp '  return Cli::principalOf(static_cast<MeconIface*>(user)->_ctx) == Cli::P_CABLE;' '  return static_cast<MeconIface*>(user)->_ctx.transport == Cli::T_USB;' sim/tests/test_jobs.py::test_a_signed_caller_on_the_cable_is_not_the_cable
 mutate cc_companion_no_revert_hook examples/companion_radio/MeconDeploy.cpp '  _jobs.begin(&g_job_file, abnormalReset(board) == 1, jobRevert, jobConfirm, this);' '  _jobs.begin(&g_job_file, abnormalReset(board) == 1, nullptr, jobConfirm, this);' sim/tests/test_jobs.py::test_a_cancel_reverts_and_a_reboot_while_pending_reverts_at_boot
 mutate cc_console_no_revert src/helpers/iface/ConsoleIface.cpp '  _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);' '  _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, nullptr, jobConfirm, this);' sim/tests/test_jobs.py::test_the_console_reverts_an_unconfirmed_tx_at_boot
+mutate svc_change_never_told src/helpers/iface/JobService.cpp '    if (tell && _on_change) _on_change(_change_user, *j);' '' unit:test_job_service
+mutate svc_change_told_twice src/helpers/iface/JobService.cpp '    if (j->seq == _seen_seq[i] && j->state == _seen_state[i]) continue;' '' unit:test_job_service
+mutate job_event_only_to_the_requester examples/companion_radio/MeconDeploy.cpp '      if (!l.src || !l.may_read || !l.src->isConnected() || !m->ensureQueue(l)) continue;' '      if (&l != m->_cur_link || !m->ensureQueue(l)) continue;' sim/tests/test_jobs.py::test_every_transport_that_may_read_hears_a_job_change
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
