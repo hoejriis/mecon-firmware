@@ -18,6 +18,11 @@ on:
       - 'platformio.ini'
       - '.github/workflows/pr-build-check.yml'
 
+# A newer push to the same branch makes this run obsolete: cancel it rather than queue behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
