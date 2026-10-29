@@ -111,7 +111,7 @@ Status JobService::opCancel(OpContext& c) {
   Job* j = nullptr;
   if (!_t || _t->find(id, &j) != JobTable::FOUND) { c.error = "unknown-job"; return ST_INVALID; }
   if (jobTerminal(j->state)) { c.error = "not-cancellable"; return ST_INVALID; }
-  if (j->state == JOB_AWAITING) {
+  if (j->state == JOB_AWAITING) {   // applied: cancelling is the revert
     if (!_revert || !_revert(_user, *j)) { c.error = "revert-failed"; return ST_FAILED; }
   } else {
     _t->setState(j, JOB_CANCELLED);

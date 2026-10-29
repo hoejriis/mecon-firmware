@@ -949,7 +949,7 @@ mutate deploy_channel_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.c
 mutate deploy_mqtt_provisions_unsigned src/helpers/iface/DeployAuth.cpp '  if (!has && !_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after
 mutate deploy_duplicate_runs_again src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_DUPLICATE) {' '    if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
 mutate deploy_replay_runs src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_TOO_OLD) {' '    if (false) {' $DA::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
-mutate deploy_unsigned_write_after_enrolment src/helpers/iface/DeployAuth.cpp '  if (_dep_ls != Dep::LS_ABSENT && !_signed && op.priv != PRIV_READ &&' '  if (false && !_signed && op.priv != PRIV_READ &&' $DA::test_unsigned_writes_are_refused_once_enrolled_but_reads_work
+mutate deploy_unsigned_write_after_enrolment src/helpers/iface/DeployAuth.cpp '  if (_dep_ls != Dep::LS_ABSENT && !_signed && !plain_read &&' '  if (false && !_signed && !plain_read &&' $DA::test_unsigned_writes_are_refused_once_enrolled_but_reads_work
 mutate deploy_signed_principal_may_erase src/helpers/cli/CliPolicy.h '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW),' '    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           ALLOW,           ALLOW),' unit:test_cli_engine
 mutate deploy_signed_context_follows_the_signature_not_the_transport src/helpers/cli/CliPolicy.h '  if (c.remote != wire_remote) return P_UNTRUSTED;   // a local-looking remote caller, or the reverse: fail closed' '' unit:test_cli_engine
 # --- the second slice (AUTHORITY.md sections 4, 9, 11): the provisioned marker, deployment.reset, the recovery paths
@@ -988,7 +988,7 @@ mutate server_console_issues_no_nonce src/helpers/iface/ConsoleIface.cpp '      
 mutate server_console_is_not_the_cable src/helpers/iface/ConsoleIface.cpp '        const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));' '        const Cli::Context cable(Cli::T_TCP, Cli::A_NONE, _host.posture(_host.user));' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_repeater_erase_keeps_the_marker examples/simple_repeater/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
 mutate server_room_erase_keeps_the_marker examples/simple_room_server/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
-mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock, &the_mesh.self_id };' '                                       nullptr, ifaceClock, &the_mesh.self_id };' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store };' '                                       nullptr, ifaceClock, &the_mesh.self_id, &job_store };' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_format_hook_not_registered src/helpers/iface/DeployAuth.cpp '    Cli::serverCaller().on_format_user = this;' '    Cli::serverCaller().on_format_user = nullptr;' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
 
 # Local unlock (AUTHORITY.md sections 9 and 10): the handshake on the cable, what it opens, and the secret's confinement
@@ -1104,7 +1104,7 @@ mutate svc_damaged_table_kept src/helpers/iface/JobService.cpp '    if (!_t->des
 mutate svc_revert_failure_left_pending src/helpers/iface/JobService.cpp '      if (!_revert || !_revert(_user, *j)) _t->setState(j, JOB_FAILED, REVERT_FAILED, sizeof(REVERT_FAILED) - 1);' '      if (!_revert || !_revert(_user, *j)) {}' unit:test_job_service
 mutate svc_ack_save_failure_ignored src/helpers/iface/JobService.cpp '    if (!persist()) { c.error = "storage"; return ST_BUSY; }' '    persist();' unit:test_job_service
 mutate svc_confirm_without_the_role src/helpers/iface/JobService.cpp '  if (!_confirm || !_confirm(_user, *j)) { c.error = "confirm-failed"; return ST_FAILED; }' '' unit:test_job_service
-mutate svc_cancel_never_reverts src/helpers/iface/JobService.cpp '  if (j->state == JOB_AWAITING) {' '  if (false) {' unit:test_job_service
+mutate svc_cancel_never_reverts src/helpers/iface/JobService.cpp '  if (j->state == JOB_AWAITING) {   // applied: cancelling is the revert' '  if (false) {' unit:test_job_service
 mutate svc_deadline_too_fast src/helpers/iface/JobService.cpp '  const uint32_t secs = (now_ms - _tick_ms) / 1000;' '  const uint32_t secs = (now_ms - _tick_ms) / 100;' unit:test_job_service
 mutate jobs_status_missing_companion examples/companion_radio/MeconIface.cpp '  m->jobs().writeStatus(w);' '' sim/tests/test_jobs.py::test_the_companion_answers_an_empty_table_and_keeps_it_over_a_reboot
 mutate jobs_status_missing_console src/helpers/iface/ConsoleIface.cpp '  m->jobs().writeStatus(w);' '' sim/tests/test_jobs.py::test_the_console_answers_an_empty_table_and_keeps_it_over_a_reboot
