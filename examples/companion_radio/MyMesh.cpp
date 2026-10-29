@@ -1,6 +1,7 @@
 #include "MyMesh.h"
 #include <helpers/iface/Observe.h>
 #include <helpers/iface/DeviceId.h>
+#include <helpers/iface/DevIdSig.h>
 #include <helpers/iface/Provenance.h>
 #include <helpers/iface/Wipe.h>
 #include <helpers/AuditStore.h>
@@ -2575,9 +2576,17 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     sprintf(reply, "> %s", _prefs.node_name);
     return true;
   }
-  if (strcmp(command, "get device.id") == 0) {   // the device interface's device_id (DEVICE_INTERFACE.md section 1)
-    if (*Iface::deviceIdHex()) sprintf(reply, "> %s", Iface::deviceIdHex());
-    else strcpy(reply, "Error: unsupported");
+  if (strcmp(command, "get device.id") == 0 || memcmp(command, "get device.id ", 14) == 0) {
+    // The device interface's device_id (DEVICE_INTERFACE.md section 1) and the node key's signature binding it
+    // (AUTHORITY.md section 3.5): "> <device_id> <sig>", or "> <device_id> <sig> <nonce>" for `get device.id <nonce>`.
+    const bool has_arg = command[13] == ' ';
+    const char* nonce = has_arg ? &command[14] : "";
+    char sig[89];
+    if (!*Iface::deviceIdHex()) strcpy(reply, "Error: unsupported");
+    else if (has_arg && !*nonce) strcpy(reply, "Error: bad nonce");   // a space and no nonce is not the fixed form
+    else if (!Iface::signDeviceId(sig, self_id, Iface::deviceIdHex(), nonce)) strcpy(reply, "Error: bad nonce");
+    else if (*nonce) snprintf(reply, Iface::DEVID_REPLY_CAP, "> %s %s %s", Iface::deviceIdHex(), sig, nonce);
+    else snprintf(reply, Iface::DEVID_REPLY_CAP, "> %s %s", Iface::deviceIdHex(), sig);
     return true;
   }
 
@@ -3017,8 +3026,16 @@ void MyMesh::loop() {
 
   // is there are pending dirty contacts write needed?
   if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
+#ifdef CONTACTS_STOCK_ARRAY
     saveContacts();
     dirty_contacts_expiry = 0;
+#else
+    // One bucket per pass: after a burst of adds, a flush of every bucket at once held the loop for seconds.
+    // The timer stays due until the last changed bucket is written; a write error ends the pass as before.
+    bool more = false;
+    bool ok = contactStore().flushSome(1, &more);
+    if (!ok || !more) dirty_contacts_expiry = 0;
+#endif
   }
 }
 

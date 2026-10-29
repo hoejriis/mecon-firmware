@@ -73,6 +73,29 @@
     "signed_bytes_hex": "4d45434f4e2d4e4f4445524f542d7631007b2276223a312c226f6c64223a2263373861643166343266663634396537383061616138336233633965623136306536373066313333633933313039353934333335623930363966356234366665222c226e6577223a2264326165396337343966616135346338633732333465383036613264306335616366613732623138366639383630393437636631316664383835373361363062222c226465766963655f6964223a223030313132323333343435353636373738383939616162626363646465656666222c226a6f625f6964223a357d",
     "signer": "device node"
   },
+  "device_id_binding": {
+    "status": "stable",
+    "device_id": "00112233445566778899aabbccddeeff",
+    "sig": "hN4eFwJ7cydkeovXkHWB9wo9nu7bYNbDAd67ugTgz9HqoBUDqTQaNe/98am/dGBheZvqLyqmqmUBWQGWHZlKBw==",
+    "signed_bytes_hex": "4d45434f4e2d44455649442d76310000112233445566778899aabbccddeeffc78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe",
+    "signer": "device node"
+  },
+  "device_id_binding_nonce": {
+    "status": "stable",
+    "device_id": "00112233445566778899aabbccddeeff",
+    "nonce": "r-7.nonce_A",
+    "sig": "6wfM1vPbP0d986+f+WnvrYDUaoBl69qpJKZm9DLTTREC8vz9AilKH4Ox3T1NSU1Nj8GHNiDx/zVo/2+99FNRDw==",
+    "signed_bytes_hex": "4d45434f4e2d44455649442d76310000112233445566778899aabbccddeeffc78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe722d372e6e6f6e63655f41",
+    "signer": "device node"
+  },
+  "device_id_binding_foreign": {
+    "status": "stable",
+    "device_id": "00112233445566778899aabbccddeeff",
+    "sig": "hm1lYTpb990NmpETs6fu/zTUC0HkmbI5Efpv9+yfMEmoqcShH1veuII1VUwcvb51PBxHJDwCeMXJtwwEVdK1Bg==",
+    "signed_bytes_hex": "4d45434f4e2d44455649442d76310000112233445566778899aabbccddeeff0a4fd2193efbe65b1de067cfe0f653f1c7172d897dd9741de055779963397ea6",
+    "signer": "instance a",
+    "note": "a valid signature by another key over this device_id: a Backend that has bound device_id to 'device node' must refuse it"
+  },
   "uplink_result": {
     "status": "stable",
     "stream": "result",
