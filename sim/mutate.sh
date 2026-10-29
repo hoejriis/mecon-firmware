@@ -1084,6 +1084,26 @@ mutate prov_result_names_no_job src/helpers/iface/Provenance.cpp '    const int 
 mutate prov_refusal_budget_unlimited src/helpers/iface/Provenance.cpp '  if (_tokens < 1000) return false;' '  if (_tokens < 1000) return true;' $PV::test_refusals_are_signed_within_a_budget_and_everything_else_always
 mutate prov_reset_result_unsigned src/helpers/iface/Provenance.cpp '  _force = was_enrolled;' '  _force = false;' $PV::test_the_result_of_the_reset_that_removes_the_record_is_still_signed
 
+# the signed device_id binding (docs/contract/AUTHORITY.md section 3.5)
+DB=sim/tests/test_device_id_binding.py
+mutate devid_domain_wrong src/helpers/iface/DevIdSig.h 'const char DEVID_DOMAIN[] = "MECON-DEVID-v1";' 'const char DEVID_DOMAIN[] = "MECON-DEVID-v0";' unit:test_deployment_vectors
+mutate devid_key_not_signed src/helpers/iface/DevIdSig.h '  memcpy(out + n, node_key, 32);' '  memset(out + n, 0, 32);' unit:test_deployment_vectors
+mutate devid_nonce_not_signed src/helpers/iface/DevIdSig.h '  return n + nl;' '  return n;' unit:test_deployment_vectors
+mutate devid_nonce_unchecked src/helpers/iface/DevIdSig.h '  if (nl && !devIdNonceValid(nonce, nl)) return 0;' '  if (false) return 0;' unit:test_deployment_vectors
+mutate devid_nonce_one_too_long src/helpers/iface/DevIdSig.h 'len > DEVID_NONCE_MAX) return false;' 'len > DEVID_NONCE_MAX + 1) return false;' unit:test_deployment_vectors
+mutate devid_hello_companion_unsigned examples/companion_radio/MeconIface.cpp '  const Status ds = writeDeviceIdSig(c, mesh->self_id, m->deviceIdHex());' '  const Status ds = ST_OK;' $DB::test_companion_hello_and_cli_sign_the_device_id
+mutate devid_hello_console_unsigned src/helpers/iface/ConsoleIface.cpp '    const Status ds = writeDeviceIdSig(c, *m->host().identity, m->deviceIdHex());' '    const Status ds = ST_OK;' $DB::test_console_hello_and_cli_sign_the_device_id
+mutate devid_hello_bad_nonce_accepted src/helpers/iface/DevIdHello.h '  if (t >= 0 && !jsonGetString(*c.doc, t, nonce, sizeof(nonce), CS_NAME, 1)) return ST_INVALID;' '  if (false) return ST_INVALID;' $DB::test_companion_hello_and_cli_sign_the_device_id
+mutate devid_cli_server_any_suffix src/helpers/CommonCLI.cpp '(config[9] == 0 || config[9] == '"' '"')) {' 'true) {' $DB::test_console_hello_and_cli_sign_the_device_id
+mutate devid_cli_companion_nonce_ignored examples/companion_radio/MyMesh.cpp '    const char* nonce = has_arg ? &command[14] : "";' '    const char* nonce = "";' $DB::test_companion_hello_and_cli_sign_the_device_id
+mutate devid_readback_without_pair src/helpers/iface/DeployAuth.cpp '  if (bind_key) {' '  if (false) {' $DB::test_companion_provisioning_read_back_carries_the_pair
+mutate devid_duplicate_readback_without_pair src/helpers/iface/DeployAuth.cpp '      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false, _env.node_key);' '      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false);' $DB::test_companion_provisioning_read_back_carries_the_pair
+
+mutate devid_rotation_read_open examples/companion_radio/MeconIface.cpp '  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;' '  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "identity.rotation") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;' $DB::test_after_a_rotation_hello_signs_with_the_new_key_and_untrusted_links_never_see_the_id
+mutate devid_get_carries_rotation_to_anyone examples/companion_radio/MeconDeploy.cpp '  if (st == ST_OK && Cli::decide(self(c)->_ctx, Cli::C_READ).allow) writeRotationMember' '  if (st == ST_OK) writeRotationMember' $DB::test_after_a_rotation_hello_signs_with_the_new_key_and_untrusted_links_never_see_the_id
+mutate devid_cli_empty_nonce_fixed_form src/helpers/CommonCLI.cpp '    else if (has_arg && !*nonce) strcpy(reply, "Error: bad nonce");' '    else if (false) strcpy(reply, "Error: bad nonce");' $DB::test_console_hello_and_cli_sign_the_device_id
+mutate cache_hit_under_another_op src/helpers/iface/IfaceCache.h '      if (strcmp(_e[i].op, op) != 0) return CONFLICT;' '      if (false) return CONFLICT;' $DB::test_a_stored_write_result_cannot_be_fetched_under_another_operation
+
 # --- issue #1: the runtime stream's gnss object keeps its nulls
 mutate gnss_fix_never_null src/helpers/iface/Streams.h '  w.key("fix"); if (g.fix < 0) w.null(); else w.boolean(g.fix != 0);' '  w.key("fix"); w.boolean(g.fix != 0);' unit:test_streams
 mutate gnss_age_never_null src/helpers/iface/Streams.h '  w.key("fix_age_s"); if (g.fix_age_s < 0) w.null(); else w.unum((uint32_t)g.fix_age_s);' '  w.key("fix_age_s"); w.unum((uint32_t)g.fix_age_s);' unit:test_streams
@@ -1114,6 +1134,16 @@ mutate start_ota_class_write src/helpers/cli/CliRegistry.h '    {"start ota",   
 
 mutate ble_dfu_with_a_session_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
 
+# channel.* on the native channel table: the key as written, no duplicate or empty key, empty slots unlisted, saved,
+# and a write class that an unsigned caller of an enrolled device does not have
+mutate channel_key_nibbles_swapped src/helpers/iface/ChannelOps.cpp '    if (i & 1) out[i / 2] |= (uint8_t)v; else out[i / 2] = (uint8_t)(v << 4);' '    if (i & 1) out[i / 2] |= (uint8_t)(v << 4); else out[i / 2] = (uint8_t)v;' unit:test_channel_ops
+mutate channel_duplicate_key_allowed src/helpers/iface/ChannelOps.cpp '  if (other >= 0 && other != slot) { wipe(key, sizeof(key)); c.error = "duplicate-secret"; return ST_FAILED; }   // the native table matches the first' '' unit:test_channel_ops
+mutate channel_zero_key_accepted src/helpers/iface/ChannelOps.cpp '  if (!any) return ST_INVALID;   // an all-zero key is an empty slot, not a channel' '' unit:test_channel_ops
+mutate channel_list_shows_empty_slots src/helpers/iface/ChannelOps.cpp '    if (!h->get(h->user, slot, ch) || !ch.name[0]) continue;' '    if (!h->get(h->user, slot, ch)) continue;' unit:test_channel_ops
+mutate channel_put_not_saved examples/companion_radio/MeconIface.cpp '  if (ok && !mesh->saveChannels()) {' '  if (ok && false) {' sim/tests/test_channel_ops.py::test_a_channel_put_through_the_interface_is_the_native_channel_and_survives_a_reboot
+mutate channel_failed_save_keeps_the_new_slot_in_ram examples/companion_radio/MeconIface.cpp '    mesh->setChannel(slot, before);' '' sim/tests/test_channel_ops.py::test_a_failed_save_answers_write_failed_and_keeps_ram_and_flash_alike
+mutate channel_remove_skips_a_nameless_key src/helpers/iface/ChannelOps.cpp '  const bool was = h->get(h->user, slot, ch) && (ch.name[0] || ch.keyed);   // a key with no name still receives' '  const bool was = h->get(h->user, slot, ch) && ch.name[0];' unit:test_channel_ops
+mutate channel_put_is_a_read examples/companion_radio/MeconIface.cpp '  {"channel.put", opChanPut, PRIV_WRITE, true},' '  {"channel.put", opChanPut, PRIV_READ, true},' sim/tests/test_deployment_authority.py::test_an_unsigned_channel_put_is_refused_once_enrolled_and_channel_reads_work
 # the lazy contacts write after a burst takes one bucket per pass and drains to the end (#145)
 mutate contacts_flush_some_ignores_the_bound $CS '      if (written == max_buckets) { if (more) *more = true; break; }' '' unit:test_contact_store
 mutate contacts_flush_some_restarts_at_the_first_bucket $CS '      _flush_from = (b + 1) % _nbuckets;' '' unit:test_contact_store

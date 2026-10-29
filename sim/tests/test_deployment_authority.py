@@ -269,6 +269,16 @@ def test_unsigned_writes_are_refused_once_enrolled_but_reads_work(nodes):
     assert d.i.request("status.get")["status"] == "ok"
 
 
+def test_an_unsigned_channel_put_is_refused_once_enrolled_and_channel_reads_work(nodes):
+    d = boot(nodes, "uc")
+    d.provision()
+    r = d.i.request("channel.put", {"slot": 3, "name": "x", "secret": "00112233445566778899aabbccddeeff"})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    assert d.c.get_channel(3) is None, "nothing was written"
+    assert d.i.request("channel.remove", {"slot": 0})["status"] == "refused"
+    assert d.i.request("channel.list")["status"] == "ok"
+
+
 def test_signed_requests_never_erase(nodes):
     d = boot(nodes, "ne")
     d.provision()

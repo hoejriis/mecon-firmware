@@ -1,4 +1,5 @@
 #include "ConsoleIface.h"
+#include "DevIdHello.h"
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,6 +40,10 @@ Status opHello(OpContext& c) {
   w.key("interface"); w.str("1.0");
   w.key("device_id"); w.str(m->deviceIdHex());
   w.key("node_key"); w.str(key);
+  if (m->host().identity) {
+    const Status ds = writeDeviceIdSig(c, *m->host().identity, m->deviceIdHex());
+    if (ds != ST_OK) return ds;
+  }
   w.key("role"); w.str(m->host().role);
   w.key("hardware"); w.str(m->host().hardware);
   w.key("firmware"); w.str(mecon::versionFull());
