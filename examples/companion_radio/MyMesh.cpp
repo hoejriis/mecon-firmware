@@ -5,6 +5,7 @@
 #include <helpers/iface/Provenance.h>
 #include <helpers/iface/Wipe.h>
 #include <helpers/AuditStore.h>
+#include <helpers/LazySaveRetry.h>
 #include <helpers/CryptoRNG.h>
 
 #include <Arduino.h> // needed for PlatformIO
@@ -927,6 +928,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   next_ack_idx = 0;
   sign_data = NULL;
   dirty_contacts_expiry = 0;
+  _contacts_retries = 0;
   memset(advert_paths, 0, sizeof(advert_paths));
   memset(send_scope.key, 0, sizeof(send_scope.key));
   send_unscoped = false;
@@ -3031,10 +3033,18 @@ void MyMesh::loop() {
     dirty_contacts_expiry = 0;
 #else
     // One bucket per pass: after a burst of adds, a flush of every bucket at once held the loop for seconds.
-    // The timer stays due until the last changed bucket is written; a write error ends the pass as before.
+    // The timer stays due until the last changed bucket is written. After a write error it is set again a few
+    // times, further apart each time (LazySaveRetry); then the save waits for the next change.
     bool more = false;
     bool ok = contactStore().flushSome(1, &more);
-    if (!ok || !more) dirty_contacts_expiry = 0;
+    if (ok) _contacts_retries = 0;
+    uint32_t retry = ok ? 0 : LazySaveRetry::delayMs(++_contacts_retries);
+    if (retry) {
+      dirty_contacts_expiry = futureMillis((int)retry);
+    } else if (!ok || !more) {
+      dirty_contacts_expiry = 0;
+      _contacts_retries = 0;
+    }
 #endif
   }
 }

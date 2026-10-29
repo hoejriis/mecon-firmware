@@ -1147,7 +1147,13 @@ mutate channel_put_is_a_read examples/companion_radio/MeconIface.cpp '  {"channe
 # the lazy contacts write after a burst takes one bucket per pass and drains to the end (#145)
 mutate contacts_flush_some_ignores_the_bound $CS '      if (written == max_buckets) { if (more) *more = true; break; }' '' unit:test_contact_store
 mutate contacts_flush_some_restarts_at_the_first_bucket $CS '      _flush_from = (b + 1) % _nbuckets;' '' unit:test_contact_store
-mutate contacts_lazy_write_stops_after_one_bucket examples/companion_radio/MyMesh.cpp '    if (!ok || !more) dirty_contacts_expiry = 0;' '    dirty_contacts_expiry = 0;' $CT_SIM::test_a_burst_of_adds_is_written_bucket_by_bucket_and_survives_a_power_cut
+mutate contacts_lazy_write_stops_after_one_bucket examples/companion_radio/MyMesh.cpp '    } else if (!ok || !more) {' '    } else {' $CT_SIM::test_a_burst_of_adds_is_written_bucket_by_bucket_and_survives_a_power_cut
+
+# the delayed contacts save retries a write error a bounded number of times (#148)
+mutate lazy_save_never_retries examples/companion_radio/MyMesh.cpp '    uint32_t retry = ok ? 0 : LazySaveRetry::delayMs(++_contacts_retries);' '    uint32_t retry = 0;' $CT_SIM::test_a_save_that_fails_once_is_retried_without_another_change
+mutate lazy_save_retries_forever src/helpers/LazySaveRetry.h '  return (attempt >= 1 && attempt <= ATTEMPTS) ? delays[attempt - 1] : 0;' '  return delays[0];' unit:test_lazy_save_retry
+mutate lazy_save_count_not_reset_by_a_good_write examples/companion_radio/MyMesh.cpp '    if (ok) _contacts_retries = 0;' '' $CT_SIM::test_a_good_write_resets_the_retry_count
+mutate lazy_save_ignores_the_give_up examples/companion_radio/MyMesh.cpp '    if (retry) {' '    if (true) {' $CT_SIM::test_a_save_that_keeps_failing_gives_up_after_three_retries
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
