@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/Posture.h>
+#include "Wipe.h"
 #include <helpers/cli/CliCaller.h>
 #include <helpers/deployment/DepHmac.h>
 #include <helpers/deployment/DepMarker.h>
@@ -337,6 +338,12 @@ bool DeployAuth::isWrapper(const char* m, size_t n) {
   delete d;
   return w;
 }
+// The verified body of a signed request, freed wiped: a config.apply carries passwords in clear.
+static void freeBody(char* body) {
+  if (body) Iface::wipe(body, Dep::MAX_WRAPPED + 1);
+  free(body);
+}
+
 
 int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], const char* msg, size_t len,
                                ResultCache* cache, RunFn run, void* run_user, char* out, size_t cap) {
@@ -356,7 +363,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   if (e != Dep::WR_OK) {
     _dep->auth_rejections++;
     n = writeResult(out, cap, "", ST_REFUSED, nullptr, Dep::wrapErrCode(e));
-    free(body);
+    freeBody(body);
     return n;
   }
   strncpy(_answering.op, v.op, sizeof(_answering.op) - 1);   // the verified request: its result names it
@@ -372,13 +379,13 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     // Marks that could not be written back at boot, or after a set change, are retried before anything is accepted.
     if (_dep->marks_dirty && !persistMarks()) {
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
-      free(body);
+      freeBody(body);
       return n;
     }
     if (v.member < 0 || v.member >= _dep->marks.n ||
         memcmp(_dep->marks.m[v.member].instance_id, _dep->set.members[v.member].instance_id, Dep::ID_LEN) != 0) {
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "marks");   // marks and set disagree: run nothing
-      free(body);
+      freeBody(body);
       return n;
     }
     Dep::Watermark& wm = _dep->marks.m[v.member].wm;
@@ -392,7 +399,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (rv == Dep::RV_TOO_OLD) {
       _dep->auth_rejections++;
       n = writeResult(out, cap, id, ST_REFUSED, nullptr, "replay");
-      free(body);
+      freeBody(body);
       return n;
     }
     if (rv == Dep::RV_DUPLICATE) {
@@ -405,7 +412,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
       } else {
         n = writeResult(out, cap, id, ST_FAILED, nullptr, "duplicate");   // it ran (or a cut lost it); read the state
       }
-      free(body);
+      freeBody(body);
       return n;
     }
     // New: the mark is persisted BEFORE the request runs, so a redelivery after a power cut cannot run it twice. A write
@@ -415,7 +422,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (!persistMarks()) {
       wm.mark = old;
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
-      free(body);
+      freeBody(body);
       return n;
     }
   }
@@ -429,7 +436,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   _signed = false;
   if (n > 0 && key[0] && cache) cache->store(key, SIGNED_OP, out, (size_t)n);
   if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);   // used once
-  free(body);
+  freeBody(body);
   return n;
 }
 

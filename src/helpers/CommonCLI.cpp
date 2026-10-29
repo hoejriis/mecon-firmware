@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "BleDfuPolicy.h"   // Issue #143
 #include "CommonCLI.h"
 #include "helpers/iface/DeviceId.h"
 #include "helpers/iface/DevIdSig.h"
@@ -227,7 +228,19 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "ERR: clock cannot go backwards");
       }
     } else if (memcmp(command, "start ota", 9) == 0) {
-      if (!_board->startOTAUpdate(_prefs->node_name, reply)) {
+#ifdef ENABLE_MECON_IFACE
+      const bool device_interface_build = true;
+#else
+      const bool device_interface_build = false;
+#endif
+#ifdef NRF52_PLATFORM
+      const bool nrf52_build = true;
+#else
+      const bool nrf52_build = false;
+#endif
+      if (!BleDfuPolicy::otaStartAllowed(device_interface_build, nrf52_build)) {   // Issue #143: an unsigned image
+        strcpy(reply, "ERR: start ota is off on this build; update over the signed path or the USB cable");
+      } else if (!_board->startOTAUpdate(_prefs->node_name, reply)) {
         strcpy(reply, "Error");
       }
     } else if (memcmp(command, "clock", 5) == 0) {
