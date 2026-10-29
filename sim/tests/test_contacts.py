@@ -803,3 +803,19 @@ def test_a_save_that_keeps_failing_gives_up_after_three_retries(nodes, tmp_path)
     assert _werr(c) == 4, "the save kept retrying a file system that keeps failing"
     assert c.add_contact_full(key(2), "next", lastmod=RTC)[0] == 0   # the next change starts a new save
     assert _wait(lambda: _werr(c) >= 5, 12), _werr(c)
+
+
+def test_a_good_write_resets_the_retry_count(nodes, tmp_path):
+    # Buckets 0, 1 and 2 are changed and only bucket 0 fails. Pass 1 fails bucket 0 (retry 1, 5 s). The retry writes
+    # bucket 1 and the next pass bucket 2, both good with work left, so the count goes back to 0; bucket 0 then fails
+    # again and its retry is the first one again, 5 s later. Without the reset it would be the second one, 15 s later.
+    fail = tmp_path / "write-fail"
+    fail.write_text("/ct0\n")
+    node = start(nodes, extra=["--write-fail", str(fail)]).start()
+    c = connect(node)
+    for i in range(24):
+        assert c.add_contact_full(key(i), "reset-%d" % i, lastmod=RTC + i)[0] == 0, i
+    assert _wait(lambda: _werr(c) >= 2, 20), _werr(c)
+    assert os.path.exists(p(node, "/ct1")) and os.path.exists(p(node, "/ct2"))
+    fail.unlink()
+    assert _wait(lambda: os.path.exists(p(node, "/ct0")), 10), "bucket 0 waited for a later retry than the first"
