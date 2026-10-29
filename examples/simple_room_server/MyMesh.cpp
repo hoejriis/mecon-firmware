@@ -369,6 +369,9 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
 
       client = acl.putClient(sender, 0);  // add to known clients (if not already known)
       if (sender_timestamp <= client->last_timestamp) {
+        // Issue #112: audited as on the repeater; the watermark is RAM only, so a reboot clears it.
+        Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_LOGIN_FAILED, Posture::CALLER_REMOTE_ADMIN,
+                             Posture::W_STALE_LOGIN);
         MESH_DEBUG_PRINTLN("possible replay attack!");
         return;
       }
