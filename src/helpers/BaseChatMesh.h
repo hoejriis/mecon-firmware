@@ -84,6 +84,7 @@ class BaseChatMesh : public mesh::Mesh {
   int num_channels;  // only for addChannel()
 #endif
   mesh::Packet* _pendingLoopback;
+  void feedLoopback();
   uint8_t temp_buf[MAX_TRANS_UNIT];
   ConnectionInfo connections[MAX_CONNECTIONS];
 
