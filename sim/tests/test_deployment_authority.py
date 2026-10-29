@@ -532,6 +532,33 @@ def test_a_platform_with_no_marker_store_never_provisions_unsigned(nodes):
     assert not os.path.exists(marker_path(d)) and record_files(d) == []
 
 
+def test_a_platform_with_no_marker_store_refuses_ble_and_signed_first_provisioning_too(nodes):
+    # Until #117's marker store, an nRF52 build has none, so no first provisioning succeeds there, whatever the path. The cable
+    # case is the test above; over BLE the transport check comes first, and a signed wrapper has no member key to
+    # verify against. Each is refused with the code the device actually gives, and nothing is written.
+    n = nodes("companion_standalone", "mk4", seed=36, rtc=RTC).start()
+    u = CompanionClient(n)
+    u.device_query()
+    u.app_start()
+    assert u.cli("set pin %d" % PIN).startswith("> pin is now")
+    u.close()
+    n.restart()
+    d = Dev(n)
+    d.n.stop()
+    open(marker_path(d) + ".unsupported", "wb").close()   # the simulated board behaving like an nRF52 build
+    revive(d)
+    r = d.send(wrap(d.node_key, "deployment.provision", provision_args(d.node_key), job=1))
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    b = n.connect_ble(PIN)
+    b.app_start()
+    bi = mecon_iface.IfaceClient(b._send, b._read_frame)
+    r = bi.request("deployment.provision", provision_args(d.node_key))
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    b.close()
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}, "nothing was written"
+    assert not os.path.exists(marker_path(d)) and record_files(d) == []
+
+
 def test_a_signed_reset_over_usb_unenrols_and_keeps_the_rest(nodes):
     d = boot(nodes, "rs")
     assert d.c.cli("set name Kept") == "OK"

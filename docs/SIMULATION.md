@@ -244,6 +244,8 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
 
 ## Mutation check
 
+In CI the mutation workflow runs on pushes to `main` and on pull requests that are ready (not drafts) and labelled `full-ci`. Adding the label starts it, and every later push re-runs it. Use the label on authority and security changes, where the mutants should pass before the merge. Elsewhere they are checked on `main` straight after it, and a red run there is fixed at once.
+
 `sim/mutate.sh` breaks one thing per test group (a time-on-air constant, SimRadio dropping
 every packet, SimFS discarding writes, the fault hook disabled), rebuilds, expects that
 group to go red, restores the file with `git checkout` and finishes with a clean full run.
