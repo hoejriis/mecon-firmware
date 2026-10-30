@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Mesh.h"
+#include "Uptime.h"
 
 class StatsFormatHelper {
 public:
@@ -12,7 +13,7 @@ public:
     sprintf(reply, 
       "{\"battery_mv\":%u,\"uptime_secs\":%u,\"errors\":%u,\"queue_len\":%u}",
       board.getBattMilliVolts(),
-      ms.getMillis() / 1000,
+      (unsigned)Uptime::secs(ms.getMillis()),   // not millis()/1000, which wraps after 49.7 days (#165)
       err_flags,
       mgr->getOutboundTotal()
     );

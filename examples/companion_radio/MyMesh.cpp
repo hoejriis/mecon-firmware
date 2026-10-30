@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/Uptime.h>
 #include <helpers/iface/Observe.h>
 #include <helpers/iface/DeviceId.h>
 #include <helpers/iface/DevIdSig.h>
@@ -2078,7 +2079,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       out_frame[i++] = RESP_CODE_STATS;
       out_frame[i++] = STATS_TYPE_CORE;
       uint16_t battery_mv = board.getBattMilliVolts();
-      uint32_t uptime_secs = _ms->getMillis() / 1000;
+      uint32_t uptime_secs = (uint32_t)Uptime::secs(_ms->getMillis());
       uint8_t queue_len = (uint8_t)_mgr->getOutboundTotal();
       memcpy(&out_frame[i], &battery_mv, 2); i += 2;
       memcpy(&out_frame[i], &uptime_secs, 4); i += 4;
@@ -3040,6 +3041,7 @@ bool MyMesh::requestConnectivityMode(uint8_t want, uint8_t caller) {
 #endif
 
 void MyMesh::loop() {
+  Uptime::ms(millis());   // every pass, so the 64-bit uptime never misses a wrap of millis() (#165)
   BaseChatMesh::loop();
   auditStore().service(millis());
 #ifdef ENABLE_CONNMODE

@@ -1,4 +1,5 @@
 #include "SensorMesh.h"
+#include <helpers/Uptime.h>
 #include <helpers/RoutingPolicy.h>
 #include <helpers/sensors/LPPDataHelpers.h>
 
@@ -1000,6 +1001,7 @@ bool  SensorMesh::getGPS(uint8_t channel, float& lat, float& lon, float& alt) {
 }
 
 void SensorMesh::loop() {
+  Uptime::ms(millis());   // every pass, so the 64-bit uptime never misses a wrap of millis() (#165)
   mesh::Mesh::loop();
 
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
