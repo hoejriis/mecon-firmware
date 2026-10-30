@@ -43,6 +43,17 @@ Neither signature stands in for the other. A URL, a paired link or a broker sess
   - **A compromised key** can sign a high `version` (version squatting). Once that key is narrowed out, the genuine fix is a downgrade by version number. It installs with `downgrade:true` and a Deployment-signed offer. It cannot inflate the security floor: the floor follows the version compiled into the running image, never the manifest's claim (section 4).
   - **If every production key is lost,** no device can be updated remotely again. Recovery is physical (section 1). A new release with new anchors then goes on by cable.
 
+### 3.1 How a release publishes its update set
+
+A public release on GitHub carries its update set as release assets, so any manager can find the right image for a device without parsing every manifest:
+- **One index per release, `update-set.json`:** `{"set": 1, "line", "version", "variants": [...]}`. Each entry is `{"variant", "hardware", "role", "kind", "manifest", "image", "image_sha256", "image_size", "manifest_sha256"}`, where `manifest` and `image` are asset names in the same release. A release lists every variant it was built for.
+- **Per variant, two assets:**
+  - `<variant>-<version>.manifest.json`: exactly the argument object of `update.manifest` (section 8), `{"manifest": "<the signed text>", "manifest_sig": "<base64>"}`, so a manager passes it through unchanged.
+  - the image: `<variant>-<version>.bin` for an ESP32 app image, or `<variant>-<version>.zip` for an nRF52 serial-DFU package, as the manifest's `kind` says.
+- **The index is not trusted.** It only finds the assets. A manager checks `manifest_sig` against `release-keys.json`, then the image's SHA-256 against the manifest's, before offering anything. A wrong or stale index can make a manager offer nothing, never something unsigned.
+- **The device never sees a GitHub URL.** A manager serves the image from its own `source.url` (at most 256 bytes, section 6).
+- No release carries an update set yet. Publishing one needs the production release keys of section 3, and the update code of this page.
+
 ## 4. The release manifest, and preflight
 
 **The manifest** is one JSON object, signed as text: Ed25519 over `MECON-RELEASE-v1` 0x00 `<text>`, under AUTHORITY.md section 2's rules (the bytes verified are the bytes sent; strict Ed25519, small-order keys refused). It is at most 600 bytes. At version 1 a manifest with a duplicate key, or a key not listed here, is refused (`bad-manifest`).
