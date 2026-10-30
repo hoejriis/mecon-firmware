@@ -25,6 +25,7 @@ The contract set is intended to be **implementation-complete**: a firmware devel
 - [Direct USB/BLE protocol](DIRECT_READER_PROTOCOL.md)
 - [Device settings](DEVICE_SETTINGS.md)
 - [Security and authority](SECURITY_AND_AUTHORITY.md)
+- [Management channel](MANAGEMENT_CHANNEL.md): **built for the Companion.** One native channel slot bound as the management channel; confirm-or-revert for remote changes
 - [Management authority contract v1](AUTHORITY.md): Deployment, authority sets, signed requests and events, replay, record, reset scopes (design under review)
 - [Signed firmware updates](UPDATES.md): release manifest and anchors, the install request, one lifecycle over IP, USB and BLE, and what each target verifies (contract, not built)
 - [Management over LoRa](LORA_MANAGEMENT.md): the device interface over point-to-point LoRa and the management channel, signed requests only, framing, correlation, replay, airtime and deadlines (draft contract, not built)

@@ -36,6 +36,7 @@ Iface::SnapFsStore g_snap_file;
 void MeconIface::jobsLoad() {
   g_job_file.setFs(_mesh->_store->getPrimaryFS());
   g_snap_file.setFs(_mesh->_store->getPrimaryFS());
+  mgmtLoad();   // before the boot rule below, which may revert a management channel change
   _confirm = Iface::ConfirmHost{&_jobs, &g_snap_file, confirmCable, confirmLineClass, confirmReadSecret,
                                 confirmRecordCaller, confirmRunAs, confirmJobId};
   _jobs.setClassCheck(jobClasses, this);
@@ -44,6 +45,7 @@ void MeconIface::jobsLoad() {
   _jobs.begin(&g_job_file, abnormalReset(board) == 1, jobRevert, jobConfirm, this);
   _jobs_booting = false;
   Iface::configSnapBoot(configHost());   // a snapshot no awaiting job owns goes: it holds old secrets
+  Iface::mgmtSnapBoot(mgmtHost());       // likewise the management channel's: it holds an old key
 }
 
 // The unsigned cable keeps its path whatever it changes. A signed request on the cable is a signed caller.
@@ -103,6 +105,11 @@ bool MeconIface::confirmJobId(void* user, const Iface::Request& req, char* out, 
 
 bool MeconIface::jobRevert(void* user, Iface::Job& j) {
   MeconIface* m = static_cast<MeconIface*>(user);
+  if (Iface::mgmtOwnsJob(j)) {   // the management channel's ops, by exact name (MgmtChannel.cpp)
+    if (!Iface::mgmtRevert(m->mgmtHost(), j)) return false;
+    m->_jobs.table()->setState(&j, Iface::JOB_REVERTED);
+    return true;
+  }
   if (strcmp(j.op, "config.apply") != 0) return false;
   bool reboot = false;
   if (!Iface::configRevert(m->configHost(), j, &reboot)) return false;   // the job ends failed, revert-failed
@@ -112,6 +119,10 @@ bool MeconIface::jobRevert(void* user, Iface::Job& j) {
 }
 
 bool MeconIface::jobConfirm(void* user, Iface::Job& j) {
+  if (Iface::mgmtOwnsJob(j)) {
+    Iface::mgmtConfirmed(static_cast<MeconIface*>(user)->mgmtHost());
+    return true;
+  }
   if (strcmp(j.op, "config.apply") != 0) return false;
   Iface::configConfirmed(static_cast<MeconIface*>(user)->configHost());
   return true;

@@ -1473,6 +1473,10 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeErrFrame(ERR_CODE_NOT_FOUND); // unknown contact
     }
+  } else if (cmd_frame[0] == CMD_ADD_UPDATE_CONTACT && len >= 1 + 32 + 2 + 1 && cmd_frame[1 + PUB_KEY_SIZE] == ADV_TYPE_NONE) {
+    // Type 0 is the anonymous slot's (BaseChatMesh::addContact): a contact added with it is unlisted and overwritten
+    // by the next unknown sender, and an update to it would turn a stored contact into one. Refused, as stock did not.
+    writeErrFrame(ERR_CODE_ILLEGAL_ARG);
   } else if (cmd_frame[0] == CMD_ADD_UPDATE_CONTACT && len >= 1 + 32 + 2 + 1) {
     uint8_t *pub_key = &cmd_frame[1];
     ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
@@ -2777,15 +2781,22 @@ void MyMesh::checkCLIRescueCmd() {
   }
   while (Serial.available() && len < sizeof(cli_command)-1) {
     char c = Serial.read();
+    if (cli_command_dropping) {   // inside an over-long line: discarded up to its end, never run (#165)
+      if (c == '\r') { cli_command_dropping = false; Serial.println("\n  -> ERR: line too long"); }
+      continue;
+    }
     if (c != '\n') {
       cli_command[len++] = c;
       cli_command[len] = 0;
     }
     Serial.print(c);  // echo
   }
-  if (len == sizeof(cli_command)-1) {  // buffer full: treat as a completed line
-    cli_command[sizeof(cli_command)-2] = '\r';  // place end-of-line marker inside the buffer
-    cli_command[sizeof(cli_command)-1] = 0;     // keep the buffer NUL-terminated
+  if (len == sizeof(cli_command)-1 && cli_command[len - 1] != '\r') {  // buffer full with no end of line: an over-long line
+    // Stock ran the first part as a line and then the rest as a new command. The line is dropped up to its end
+    // instead, and answered once there (#165).
+    cli_command[0] = 0;
+    len = 0;
+    cli_command_dropping = true;
   }
 
   if (len > 0 && cli_command[len - 1] == '\r') {  // received complete line

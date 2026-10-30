@@ -38,7 +38,8 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm"
 #ifdef MAX_GROUP_CHANNELS
-                                    , "channel.list", "channel.get", "channel.put", "channel.remove"
+                                    , "channel.list", "channel.get", "channel.put", "channel.remove",
+                                    "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
 #endif
                                     };
 
@@ -58,6 +59,10 @@ Status opChanList(OpContext& c);
 Status opChanGet(OpContext& c);
 Status opChanPut(OpContext& c);
 Status opChanRemove(OpContext& c);
+Status opMgmtGetW(OpContext& c);
+Status opMgmtBindW(OpContext& c);
+Status opMgmtRotateW(OpContext& c);
+Status opMgmtUnbindW(OpContext& c);
 
 // The operation's class is the least it needs; each config key is decided again by its own CLI line (IfaceConfig).
 const OpEntry OPS[] = {
@@ -91,6 +96,11 @@ const OpEntry OPS[] = {
   {"channel.get", opChanGet, PRIV_READ, false},
   {"channel.put", opChanPut, PRIV_WRITE, true},
   {"channel.remove", opChanRemove, PRIV_WRITE, true},
+  // The management channel binding (MANAGEMENT_CHANNEL.md); bind, rotate and unbind confirm-or-revert for a remote caller.
+  {"mgmt.channel.get", opMgmtGetW, PRIV_READ, false},
+  {"mgmt.channel.bind", opMgmtBindW, PRIV_WRITE, true},
+  {"mgmt.channel.rotate", opMgmtRotateW, PRIV_WRITE, true},
+  {"mgmt.channel.unbind", opMgmtUnbindW, PRIV_WRITE, true},
 #endif
 };
 
@@ -202,8 +212,28 @@ Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
 }
 Status opChanList(OpContext& c) { return withChannels(c, opChannelList); }
 Status opChanGet(OpContext& c) { return withChannels(c, opChannelGet); }
-Status opChanPut(OpContext& c) { return withChannels(c, opChannelPut); }
-Status opChanRemove(OpContext& c) { return withChannels(c, opChannelRemove); }
+// A write to the management channel's own slot goes through the binding: confirm-or-revert for a remote caller.
+Status opChanPut(OpContext& c) {
+  MgmtHost h = self(c)->mgmtHost();
+  return mgmtGuardChannel(c, h, opChannelPut, "channel.put");
+}
+Status opChanRemove(OpContext& c) {
+  MgmtHost h = self(c)->mgmtHost();
+  return mgmtGuardChannel(c, h, opChannelRemove, "channel.remove");
+}
+
+Status withMgmt(OpContext& c, Status (*op)(OpContext&)) {
+  MgmtHost host = self(c)->mgmtHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opMgmtGetW(OpContext& c) { return withMgmt(c, opMgmtGet); }
+Status opMgmtBindW(OpContext& c) { return withMgmt(c, opMgmtBind); }
+Status opMgmtRotateW(OpContext& c) { return withMgmt(c, opMgmtRotate); }
+Status opMgmtUnbindW(OpContext& c) { return withMgmt(c, opMgmtUnbind); }
 
 }  // namespace
 

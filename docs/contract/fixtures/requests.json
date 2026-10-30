@@ -378,6 +378,36 @@
       "expect": {
         "status": "invalid"
       }
+    },
+    {
+      "name": "management channel state",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-mgmt-get",
+        "op": "mgmt.channel.get"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "mgmt.channel.get.result.json"
+      }
+    },
+    {
+      "name": "management channel bind without a slot",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-mgmt-bind-none",
+        "op": "mgmt.channel.bind",
+        "args": {}
+      },
+      "expect": {
+        "status": "invalid"
+      }
     }
   ],
   "transport_cases": [

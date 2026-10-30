@@ -2,7 +2,7 @@
 
 Who may command a device, and how the device knows. This page is the public, generic contract: a device and any conforming manager can implement it from this page, the [device interface](DEVICE_INTERFACE.md), and the test vectors in this repository. It needs no particular Backend, broker, domain or product workflow. How MECON maps its own Deployments, ownership and federation onto it is [#118](https://github.com/hoejriis/mecon-firmware/issues/118). Checking conformance with any existing Backend is done there too, not here.
 
-> **Status: design under review ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)), not shipped.** The authority-set, rotation, record, replay and signed-request checks are implemented on a development branch with unit tests and public test vectors. None of it is in a release, and no role enforces it yet. The first security review is folded in (section 15). The implementation is being brought in line with it, and the wire objects marked *provisional* may still change.
+> **Status: on main, not yet in a release ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)).** The authority-set, rotation, record, replay and signed-request checks are enforced by the Companion (over MQTT, USB and BLE) and by the Repeater and Room server console. They are covered by unit tests, simulated-board tests, mutants and the public test vectors (`test/fixtures/deployment_authority_public_v1.json`), and a first provisioning, a signed `config.apply` and a signed `deployment.reset` have run on an nRF52 board. The first security review is folded in (section 15). The wire objects of this page are version 1 and fixed: a change to one is a new version (a new domain string, or `mecon_auth` 2), never an edit of version 1. The release manifest is still *planned* ([UPDATES](UPDATES.md)).
 
 ## 1. Terms
 
@@ -25,7 +25,7 @@ A broker login, a TLS session, a paired BLE link, a USB cable, a LoRa route and 
 |---|---|---|
 | authority set | `MECON-AUTHSET-v1` | none |
 | rotation statement | `MECON-DAKROT-v1` | none |
-| signed request (*provisional*) | `MECON-DEVMSG-v1` | `iface` |
+| signed request | `MECON-DEVMSG-v1` | `iface` |
 | signed event | `MECON-UPLINK-v1` | the stream name, e.g. `health` |
 | signed result | `MECON-UPLINK-v1` | the literal `result` |
 | node rotation statement | `MECON-NODEROT-v1` | none (section 11) |
@@ -60,7 +60,7 @@ Carried as a string beside its signature (`authority_set`, `authority_set_sig`).
 
 Signed by the DAK of `from_epoch`, and `to_epoch` is `from_epoch + 1`. A device applies a chain of up to 8 in order, stopping at the first that fails (`untrusted_authority_key` for the whole message).
 
-### 3.3 Signed request (*provisional*)
+### 3.3 Signed request
 
 A v1.0 device-interface request travels as the exact `body` string of a wrapper:
 
