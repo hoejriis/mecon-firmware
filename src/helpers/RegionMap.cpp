@@ -1,5 +1,6 @@
 #include "RegionMap.h"
 #include <helpers/TxtDataHelpers.h>
+#include <helpers/AtomicFile.h>
 #include <SHA256.h>
 
 // helper class for region map exporter, we emulate Stream with a safe buffer writer.
@@ -58,18 +59,8 @@ static const char* skip_hash(const char* name) {
   return *name == '#' ? name + 1 : name;
 }
 
-static File openWrite(FILESYSTEM* _fs, const char* filename) {
-  #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-    _fs->remove(filename);
-    return _fs->open(filename, FILE_O_WRITE);
-  #elif defined(RP2040_PLATFORM)
-    return _fs->open(filename, "w");
-  #else
-    return _fs->open(filename, "w", true);
-  #endif
-}
-
 bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
+  AtomicFile::recover(_fs, path ? path : "/regions2");   // finish or drop a save that was cut by a power loss
   if (_fs->exists(path ? path : "/regions2")) {
   #if defined(RP2040_PLATFORM)
     File file = _fs->open(path ? path : "/regions2", "r");
@@ -117,8 +108,8 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
 }
 
 bool RegionMap::save(FILESYSTEM* _fs, const char* path) {
-  File file = openWrite(_fs, path ? path : "/regions2");
-  if (file) {
+  // temp file, read-back check, swap: a power cut keeps the previous complete table (stock removed it, then rewrote it)
+  return AtomicFile::save(_fs, path ? path : "/regions2", [this](Stream& file) {
     uint8_t pad[128];
     memset(pad, 0, sizeof(pad));
 
@@ -128,22 +119,17 @@ bool RegionMap::save(FILESYSTEM* _fs, const char* path) {
     success = success && file.write((uint8_t *) &wildcard.flags, sizeof(wildcard.flags)) == sizeof(wildcard.flags);
     success = success && file.write((uint8_t *) &next_id, sizeof(next_id)) == sizeof(next_id);
 
-    if (success) {
-      for (int i = 0; i < num_regions; i++) {
-        auto r = &regions[i];
+    for (int i = 0; success && i < num_regions; i++) {
+      auto r = &regions[i];
 
-        success = file.write((uint8_t *) &r->id, sizeof(r->id)) == sizeof(r->id);
-        success = success && file.write((uint8_t *) &r->parent, sizeof(r->parent)) == sizeof(r->parent);
-        success = success && file.write((uint8_t *) r->name, sizeof(r->name)) == sizeof(r->name);
-        success = success && file.write((uint8_t *) &r->flags, sizeof(r->flags)) == sizeof(r->flags);
-        success = success && file.write(pad, sizeof(pad)) == sizeof(pad);
-        if (!success) break; // write failed
-      }
+      success = file.write((uint8_t *) &r->id, sizeof(r->id)) == sizeof(r->id);
+      success = success && file.write((uint8_t *) &r->parent, sizeof(r->parent)) == sizeof(r->parent);
+      success = success && file.write((uint8_t *) r->name, sizeof(r->name)) == sizeof(r->name);
+      success = success && file.write((uint8_t *) &r->flags, sizeof(r->flags)) == sizeof(r->flags);
+      success = success && file.write(pad, sizeof(pad)) == sizeof(pad);
     }
-    file.close();
     return success;
-  }
-  return false;  // failed
+  });
 }
 
 RegionEntry* RegionMap::putRegion(const char* name, uint16_t parent_id, uint16_t id) {
@@ -285,22 +271,40 @@ bool RegionMap::clear() {
   return true;  // success
 }
 
-void RegionMap::printChildRegions(int indent, const RegionEntry* parent, Stream& out) const {
+static void printRegion(int indent, const RegionEntry* r, uint16_t home_id, Stream& out) {
   for (int i = 0; i < indent; i++) {
     out.print(' ');
   }
-
-  if (parent->flags & REGION_DENY_FLOOD) {
-    out.printf("%s%s\n", skip_hash(parent->name), parent->id == home_id ? "^" : "");
+  if (r->flags & REGION_DENY_FLOOD) {
+    out.printf("%s%s\n", skip_hash(r->name), r->id == home_id ? "^" : "");
   } else {
-    out.printf("%s%s F\n", skip_hash(parent->name), parent->id == home_id ? "^" : "");
+    out.printf("%s%s F\n", skip_hash(r->name), r->id == home_id ? "^" : "");
   }
+}
 
-  for (int i = 0; i < num_regions; i++) {
-    auto r = &regions[i];
-    if (r->parent == parent->id) {
-      printChildRegions(indent + 1, r, out);
-    }
+// The tree in pre-order, as the recursive listing printed it, but walked with an explicit stack: the serial console runs
+// it on the nRF52's 4 KB loop task, where one frame per level would not fit a deep or damaged table. A valid tree is at
+// most MAX_REGION_ENTRIES deep below the wildcard; anything deeper is a cycle in a damaged /regions2 (a duplicated id
+// whose parent chain leads back to itself) and is not followed further. A valid tree lists each region once, so the
+// walk also ends after num_regions lines: duplicated ids that branch at every level would otherwise keep a bounded-depth
+// walk going for an effectively endless time.
+void RegionMap::printChildRegions(int indent, const RegionEntry* parent, Stream& out) const {
+  struct Level { const RegionEntry* node; int next; };   // the region at this depth, and where its child scan resumes
+  Level stack[MAX_REGION_ENTRIES + 1];
+  int depth = 0, listed = 0;
+  stack[0] = {parent, 0};
+  printRegion(indent, parent, home_id, out);
+  while (depth >= 0 && listed < num_regions) {
+    Level& lv = stack[depth];
+    int i = lv.next;
+    // id 0 is the wildcard's alone: a stored region with id 0, or one that is its own parent, is damage, not a child
+    while (i < num_regions && !(regions[i].parent == lv.node->id && regions[i].id != 0 && regions[i].id != lv.node->id)) i++;
+    if (i >= num_regions) { depth--; continue; }
+    lv.next = i + 1;
+    if (depth + 1 > MAX_REGION_ENTRIES) continue;   // deeper than a valid tree: a cycle
+    printRegion(indent + depth + 1, &regions[i], home_id, out);
+    listed++;
+    stack[++depth] = {&regions[i], 0};
   }
 }
 

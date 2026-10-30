@@ -1,4 +1,5 @@
 #include "IfaceConfig.h"
+#include <new>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,33 +9,33 @@ namespace Iface {
 // The keys of the interface's settings profile config/1.0. Indexes are 0-based, as in the CLI.
 const KeyDef KEYS[] = {
   {"name", K_STRING, 1, 31, nullptr, KF_WRITABLE, 0, "get name", F_WHOLE, "set name %s"},
-  {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE, 0, "get tx", F_WHOLE, "set tx %s"},
-  {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
-  {"connectivity.mode", K_ENUM, 0, 0, "ble|wifi", KF_WRITABLE | KF_RESTARTS, 0, "get connectivity.mode", F_WHOLE,
+  {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get tx", F_WHOLE, "set tx %s"},
+  {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
+  {"connectivity.mode", K_ENUM, 0, 0, "ble|wifi", KF_WRITABLE | KF_CONFIRM | KF_RESTARTS, 0, "get connectivity.mode", F_WHOLE,
    "set connectivity.mode %s"},
-  {"wifi.enabled", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_REBOOT, 0, "get wifi.enabled", F_WHOLE, "set wifi.enabled %s"},
-  {"wifi.profile.{n}.ssid", K_STRING, 0, 32, nullptr, KF_WRITABLE, 9, "get wifi.profile %u", F_WIFI_SSID,
+  {"wifi.enabled", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get wifi.enabled", F_WHOLE, "set wifi.enabled %s"},
+  {"wifi.profile.{n}.ssid", K_STRING, 0, 32, nullptr, KF_WRITABLE | KF_CONFIRM, 9, "get wifi.profile %u", F_WIFI_SSID,
    "set wifi.profile %u ssid %s"},
-  {"wifi.profile.{n}.pwd", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_WRITE_ONLY, 9, "get wifi.profile %u", F_WIFI_PWD,
+  {"wifi.profile.{n}.pwd", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_CONFIRM | KF_WRITE_ONLY, 9, "get wifi.profile %u", F_WIFI_PWD,
    "set wifi.profile %u pwd %s"},
-  {"wifi.profile.{n}.priority", K_INT, 0, 255, nullptr, KF_WRITABLE, 9, "get wifi.profile %u", F_WIFI_PRIO,
+  {"wifi.profile.{n}.priority", K_INT, 0, 255, nullptr, KF_WRITABLE | KF_CONFIRM, 9, "get wifi.profile %u", F_WIFI_PRIO,
    "set wifi.profile %u priority %s"},
-  {"mqtt.enabled", K_BOOL, 0, 1, nullptr, KF_WRITABLE, 0, "get mqtt.enabled", F_WHOLE, "set mqtt.enabled %s"},
-  {"mqtt.profile.{n}.type", K_ENUM, 0, 0, "static|discovery", KF_WRITABLE, 5, "get mqtt.profile %u", F_MQTT_TYPE,
+  {"mqtt.enabled", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get mqtt.enabled", F_WHOLE, "set mqtt.enabled %s"},
+  {"mqtt.profile.{n}.type", K_ENUM, 0, 0, "static|discovery", KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_TYPE,
    "set mqtt.profile %u type %s"},
-  {"mqtt.profile.{n}.host", K_STRING, 1, 63, nullptr, KF_WRITABLE, 5, "get mqtt.profile %u", F_MQTT_HOST,
+  {"mqtt.profile.{n}.host", K_STRING, 1, 63, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_HOST,
    "set mqtt.profile %u host %s"},
-  {"mqtt.profile.{n}.port", K_INT, 0, 65535, nullptr, KF_WRITABLE, 5, "get mqtt.profile %u", F_MQTT_PORT,
+  {"mqtt.profile.{n}.port", K_INT, 0, 65535, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_PORT,
    "set mqtt.profile %u port %s"},
-  {"mqtt.profile.{n}.tls", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 5, "get mqtt.profile %u", F_MQTT_TLS,
+  {"mqtt.profile.{n}.tls", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_CONFIRM | KF_ONOFF, 5, "get mqtt.profile %u", F_MQTT_TLS,
    "set mqtt.profile %u tls %s"},
-  {"mqtt.profile.{n}.site", K_STRING, 1, 23, nullptr, KF_WRITABLE, 5, "get mqtt.profile %u", F_MQTT_SITE,
+  {"mqtt.profile.{n}.site", K_STRING, 1, 23, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_SITE,
    "set mqtt.profile %u site %s"},
-  {"mqtt.profile.{n}.user", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_WRITE_ONLY, 5, "get mqtt.profile %u", F_MQTT_USER,
+  {"mqtt.profile.{n}.user", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_CONFIRM | KF_WRITE_ONLY, 5, "get mqtt.profile %u", F_MQTT_USER,
    "set mqtt.profile %u user %s"},
-  {"mqtt.profile.{n}.pwd", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_WRITE_ONLY, 5, "get mqtt.profile %u", F_MQTT_PWD,
+  {"mqtt.profile.{n}.pwd", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_CONFIRM | KF_WRITE_ONLY, 5, "get mqtt.profile %u", F_MQTT_PWD,
    "set mqtt.profile %u pwd %s"},
-  {"mqtt.profile.{n}.priority", K_INT, 0, 255, nullptr, KF_WRITABLE, 5, "get mqtt.profile %u", F_MQTT_PRIO,
+  {"mqtt.profile.{n}.priority", K_INT, 0, 255, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_PRIO,
    "set mqtt.profile %u priority %s"},
 };
 const size_t NKEYS = sizeof(KEYS) / sizeof(KEYS[0]);
@@ -43,8 +44,8 @@ const size_t NKEYS = sizeof(KEYS) / sizeof(KEYS[0]);
 // advert.interval is kept in 2-minute steps: an odd value reads back one lower.
 const KeyDef SERVER_KEYS[] = {
   {"name", K_STRING, 1, 31, nullptr, KF_WRITABLE, 0, "get name", F_WHOLE, "set name %s"},
-  {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE, 0, "get tx", F_WHOLE, "set tx %s"},
-  {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
+  {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get tx", F_WHOLE, "set tx %s"},
+  {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
   {"lat", K_STRING, 1, 12, nullptr, KF_WRITABLE, 0, "get lat", F_WHOLE, "set lat %s", "latitude"},
   {"lon", K_STRING, 1, 12, nullptr, KF_WRITABLE, 0, "get lon", F_WHOLE, "set lon %s", "longitude"},
   {"repeat", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get repeat", F_WHOLE, "set repeat %s"},
@@ -191,6 +192,7 @@ void writeDef(JsonWriter& w, const KeyDef& k) {
   w.key("write_only"); w.boolean((k.flags & KF_WRITE_ONLY) != 0);
   w.key("reboot"); w.boolean((k.flags & KF_REBOOT) != 0);
   w.key("restarts"); w.boolean((k.flags & KF_RESTARTS) != 0);
+  w.key("confirm"); w.boolean((k.flags & KF_CONFIRM) != 0);   // a caller other than the cable must ask to confirm
   w.endObject();
 }
 
@@ -242,6 +244,171 @@ void lineFor(char* out, size_t cap, const char* fmt, unsigned idx, const char* v
 }
 
 bool cliOk(const char* reply) { return strncmp(reply, "OK", 2) == 0 || strncmp(reply, "> ", 2) == 0; }
+
+// ---- commit-or-revert (OPERATIONS.md section 3.4)
+
+// Every key of one profile is read from the same get line ("get wifi.profile %u").
+bool sameProfile(const KeyDef& a, const KeyDef& b) { return a.idx_max && b.idx_max && strcmp(a.get_line, b.get_line) == 0; }
+
+// A value read back from the CLI, in the form the key's set line takes.
+bool setForm(const KeyDef& k, const char* text, char* out, size_t cap) {
+  if (k.type == K_BOOL) {
+    const bool b = strcmp(text, "1") == 0 || strcmp(text, "on") == 0;
+    if (!b && strcmp(text, "0") != 0 && strcmp(text, "off") != 0) return false;
+    snprintf(out, cap, "%s", (k.flags & KF_ONOFF) ? (b ? "on" : "off") : (b ? "1" : "0"));
+    return true;
+  }
+  if (strlen(text) >= cap) return false;
+  strcpy(out, text);
+  return true;
+}
+
+// Whether a snapshot value is one the key's set line may take: the checks a request's value gets, short of the
+// minimum length (a previous value may be empty, as an unset password is).
+bool restorable(const KeyDef& k, const char* v) {
+  if (!ConfigSnap::valueOk(v, strlen(v))) return false;
+  switch (k.type) {
+    case K_INT: {
+      char* end = nullptr;
+      const long n = strtol(v, &end, 10);
+      return *v && end && !*end && n >= k.min && n <= k.max;
+    }
+    case K_BOOL:
+      return (k.flags & KF_ONOFF) ? (strcmp(v, "on") == 0 || strcmp(v, "off") == 0) : (strcmp(v, "1") == 0 || strcmp(v, "0") == 0);
+    case K_ENUM: {
+      const size_t n = strlen(v);
+      for (const char* s = k.choices; *s;) {
+        const char* e = strchr(s, '|');
+        const size_t cn = e ? (size_t)(e - s) : strlen(s);
+        if (cn == n && memcmp(s, v, n) == 0) return true;
+        s += cn + (e ? 1 : 0);
+      }
+      return false;
+    }
+    default:
+      return strlen(v) <= (size_t)k.max && (!k.format || checkFormat(k.format, v));
+  }
+}
+
+// The previous value of one key of a request, into the snapshot. A profile key captures its whole profile, once: every
+// field it has (the write-only ones through the role), or the profile's removal when the slot was empty.
+bool capture(const ConfigHost* h, const KeyDef* tk, size_t nk, const KeyDef& k, unsigned idx, ConfigSnap& s) {
+  char line[LINE_MAX], reply[LINE_MAX], val[VALUE_MAX], form[VALUE_MAX];
+  bool ok = false;
+  lineFor(line, sizeof(line), k.get_line, idx, nullptr);
+  if (!k.idx_max) {
+    bool is_null = false;
+    ok = h->run(h->user, line, reply, sizeof(reply)) && parseField(k.field, reply, val, sizeof(val), &is_null) &&
+         (is_null || (setForm(k, val, form, sizeof(form)) && s.add(ConfigSnap::R_SET, (uint8_t)(&k - tk), 0, form)));
+  } else {
+    size_t first = 0;   // the profile's first key in the table stands for the profile
+    while (first < nk && !sameProfile(tk[first], k)) first++;
+    const uint8_t f = (uint8_t)first, ix = (uint8_t)idx;
+    if (s.has(ConfigSnap::R_CLEAR, f, ix) || s.has(ConfigSnap::R_SET, f, ix)) return true;   // already captured
+    if (!h->run(h->user, line, reply, sizeof(reply)) || strncmp(reply, "> ", 2) != 0) ok = false;
+    else if (strstr(reply, ": (not set)")) ok = s.add(ConfigSnap::R_CLEAR, f, ix, nullptr);
+    else {
+      ok = true;
+      for (size_t i = first; ok && i < nk; i++) {
+        const KeyDef& kk = tk[i];
+        if (!sameProfile(kk, k) || !(kk.flags & KF_WRITABLE)) continue;
+        bool is_null = false;
+        if (kk.flags & KF_WRITE_ONLY) {
+          const ConfirmHost* ch = h->confirm;
+          ok = ch->read_secret && ch->read_secret(h->user, kk, idx, val, sizeof(val));
+        } else {
+          ok = parseField(kk.field, reply, val, sizeof(val), &is_null);
+        }
+        if (ok && !is_null) ok = setForm(kk, val, form, sizeof(form)) && s.add(ConfigSnap::R_SET, (uint8_t)i, ix, form);
+      }
+    }
+  }
+  wipe(val, sizeof(val));
+  wipe(form, sizeof(form));
+  wipe(reply, sizeof(reply));
+  return ok;
+}
+
+// The CLI line that puts one snapshot record back, rebuilt from the key table; false for a record that names no key a
+// revert may set, or a value its line may not take.
+bool restoreLine(const KeyDef* tk, size_t nk, const ConfigSnap::Rec& r, char* line, size_t cap) {
+  if (r.key >= nk) return false;
+  const KeyDef& k = tk[r.key];
+  if (!(k.flags & KF_CONFIRM) || !(k.flags & KF_WRITABLE) || r.idx > k.idx_max) return false;
+  if (r.kind == ConfigSnap::R_CLEAR) {
+    if (!k.idx_max || strncmp(k.get_line, "get ", 4) != 0) return false;
+    char fmt[48];
+    snprintf(fmt, sizeof(fmt), "set %s clear", k.get_line + 4);   // "set wifi.profile %u clear"
+    lineFor(line, cap, fmt, r.idx, nullptr);
+    return true;
+  }
+  char v[ConfigSnap::VALUE_MAX + 1];
+  memcpy(v, r.value, r.len);
+  v[r.len] = 0;
+  const bool ok = restorable(k, v);
+  if (ok) lineFor(line, cap, k.set_line, r.idx, v);
+  wipe(v, sizeof(v));
+  return ok;
+}
+
+const char APPLY_FAILED_REVERTED[] = "{\"error\":\"apply-failed\",\"reverted\":true}";
+const char APPLY_FAILED_KEPT[] = "{\"error\":\"apply-failed\",\"reverted\":false}";
+
+}  // namespace
+
+bool configRevert(const ConfigHost& h, const Job& j, bool* reboot) {
+  *reboot = false;
+  const ConfirmHost* ch = h.confirm;
+  if (!ch || !ch->snap || !ch->run_as) return false;
+  size_t nk;
+  const KeyDef* tk = tableOf(&h, &nk);
+  uint8_t* buf = static_cast<uint8_t*>(malloc(ConfigSnap::IMAGE_MAX));
+  ConfigSnap* s = new (std::nothrow) ConfigSnap();
+  bool ok = buf && s;
+  if (ok) {
+    const size_t n = ch->snap->load(buf, ConfigSnap::IMAGE_MAX);
+    ok = n && s->parse(buf, n) && strcmp(s->job(), j.id) == 0;
+  }
+  ConfigSnap::Rec r;
+  char line[LINE_MAX], reply[LINE_MAX];
+  for (int i = 0; ok && s->rec(i, &r); i++) {
+    // Every record is tried; one that fails leaves the job failed, never pending.
+    const bool line_ok = restoreLine(tk, nk, r, line, sizeof(line));
+    if (!line_ok || !ch->run_as(h.user, j, line, reply, sizeof(reply)) || !cliOk(reply)) ok = false;
+    if (line_ok && (tk[r.key].flags & (KF_REBOOT | KF_RESTARTS))) *reboot = true;
+    wipe(line, sizeof(line));
+    wipe(reply, sizeof(reply));
+  }
+  if (buf) { wipe(buf, ConfigSnap::IMAGE_MAX); free(buf); }
+  delete s;
+  ch->snap->discard();
+  return ok;
+}
+
+void configConfirmed(const ConfigHost& h) {
+  if (h.confirm && h.confirm->snap) h.confirm->snap->discard();
+}
+
+void configSnapBoot(const ConfigHost& h) {
+  const ConfirmHost* ch = h.confirm;
+  if (!ch || !ch->snap) return;
+  JobTable* t = ch->jobs ? ch->jobs->table() : nullptr;
+  const Job* open = t ? t->openJob() : nullptr;
+  bool keep = false;
+  if (open && open->state == JOB_AWAITING && strcmp(open->op, "config.apply") == 0) {
+    uint8_t* buf = static_cast<uint8_t*>(malloc(ConfigSnap::IMAGE_MAX));
+    ConfigSnap* s = new (std::nothrow) ConfigSnap();
+    if (buf && s) {
+      const size_t n = ch->snap->load(buf, ConfigSnap::IMAGE_MAX);
+      keep = n && s->parse(buf, n) && strcmp(s->job(), open->id) == 0;
+    }
+    if (buf) { wipe(buf, ConfigSnap::IMAGE_MAX); free(buf); }
+    delete s;
+  }
+  if (!keep) ch->snap->discard();   // an orphan of a cut apply, or of a job that ended: it holds old secrets
+}
+
+namespace {
 
 }  // namespace
 
@@ -365,6 +532,17 @@ Status opConfigApply(OpContext& c) {
   const int set = c.req->args >= 0 ? jsonFind(d, c.req->args, "set") : -1;
   if (!isObject(d, set) || d.tok[set].size < 1 || (unsigned)d.tok[set].size > GET_MAX_KEYS) return ST_INVALID;
   char key[48], val[VALUE_MAX], line[LINE_MAX], reply[LINE_MAX];
+  // "confirm":{"within_s":N} asks for commit-or-revert (OPERATIONS.md 3.4); N from 30 to 900, 300 when absent.
+  const ConfirmHost* ch = h->confirm;
+  const int conf = jsonFind(d, c.req->args, "confirm");
+  int64_t within = 300;
+  if (conf >= 0) {
+    if (!isObject(d, conf)) return ST_INVALID;
+    const int wt = jsonFind(d, conf, "within_s");
+    if (wt >= 0 && !jsonGetInt(d, wt, 30, 900, &within)) return ST_INVALID;
+  }
+  bool needs = false;   // a key that can cut the caller's path
+  uint8_t cls = 0;      // every CLI class among the lines, a bit each
   // Checked as a whole first: every key known and writable, every value of its type and range, every line allowed for
   // this caller. Nothing is written unless all of them pass.
   for (int i = 0, t = set + 1; i < d.tok[set].size; i++, t = jsonSkip(d, t + 1)) {
@@ -379,9 +557,68 @@ Status opConfigApply(OpContext& c) {
     if (!cliValue(d, t + 1, *k, val, sizeof(val), &why)) { c.error = keyError(why, key); return ST_INVALID; }
     lineFor(line, sizeof(line), k->set_line, idx, val);
     const bool allowed = h->allow(h->user, line);
+    if (ch && ch->line_class) cls |= (uint8_t)(1u << ch->line_class(h->user, line));
+    if (k->flags & KF_CONFIRM) needs = true;
     memset(val, 0, sizeof(val));
     memset(line, 0, sizeof(line));
     if (!allowed) { c.error = keyError("refused", key); return ST_REFUSED; }
+  }
+  // Only the unsigned cable keeps its path whatever it changes; anyone else asks for confirmation, and a confirmation
+  // that protects nothing is refused rather than ignored.
+  const bool cable = ch && ch->cable && ch->cable(h->user);
+  if (needs && conf < 0 && !cable) { c.error = "confirm-required"; return ST_INVALID; }
+  if (conf >= 0 && !needs) { c.error = "confirm-not-needed"; return ST_INVALID; }
+  Job* job = nullptr;
+  JobTable* table = nullptr;
+  if (conf >= 0) {
+    if (!ch || !ch->jobs || !ch->snap || !ch->run_as || !ch->job_id || !ch->record_caller) {
+      c.error = "confirm-unsupported";
+      return ST_INVALID;
+    }
+    char jid[Job::ID_CAP + 1];
+    if (!ch->job_id(h->user, *c.req, jid, sizeof(jid))) return ST_INVALID;
+    table = ch->jobs->table();
+    if (!table) { c.error = "no-memory"; return ST_BUSY; }
+    Job* known = nullptr;
+    const JobTable::Lookup l = table->find(jid, &known);
+    if (l == JobTable::FOUND) { JobService::writeSummary(*c.out, *known); return ST_OK; }   // never a second run
+    if (l == JobTable::EXPIRED) { c.error = "result-expired"; return ST_FAILED; }
+    if (const Job* open = table->openJob()) {
+      snprintf(g_error, sizeof(g_error), "job-open:%s", open->id);
+      c.error = g_error;
+      return ST_BUSY;
+    }
+    // The snapshot first, then the job, then the writes: a cut anywhere leaves either nothing applied or a job that
+    // reverts, and an orphan snapshot is removed at the next boot.
+    ConfigSnap* snap = new (std::nothrow) ConfigSnap();
+    uint8_t* img = static_cast<uint8_t*>(malloc(ConfigSnap::IMAGE_MAX));
+    bool ok = snap && img;
+    if (ok) {
+      snap->begin(jid);
+      for (int i = 0, t = set + 1; ok && i < d.tok[set].size; i++, t = jsonSkip(d, t + 1)) {
+        jsonGetString(d, t, key, sizeof(key), CS_NAME, 1);
+        unsigned idx;
+        size_t nk;
+        const KeyDef* tk = tableOf(h, &nk);
+        const KeyDef* k = findKey(tk, nk, key, strlen(key), &idx);
+        ok = capture(h, tk, nk, *k, idx, *snap);
+      }
+    }
+    const size_t n = ok ? snap->serialize(img, ConfigSnap::IMAGE_MAX) : 0;
+    ok = n && ch->snap->save(img, n);
+    if (img) { wipe(img, ConfigSnap::IMAGE_MAX); free(img); }
+    delete snap;
+    if (ok) {
+      job = table->open(jid, "config.apply");
+      ok = job != nullptr;
+    }
+    if (ok) {
+      job->cls = cls;
+      ch->record_caller(h->user, *job);
+      ok = ch->jobs->persist();
+      if (!ok) table->setState(job, JOB_FAILED);
+    }
+    if (!ok) { ch->snap->discard(); c.error = "storage"; return ST_BUSY; }
   }
   JsonWriter& w = *c.out;
   bool reboot = false, restarts = false, all_ok = true;   // what the writes did
@@ -412,6 +649,23 @@ Status opConfigApply(OpContext& c) {
   w.key("complete"); w.boolean(all_ok);   // false: a write the checks allowed still failed; the others stand
   w.key("reboot_needed"); w.boolean(reboot);
   w.key("restarting"); w.boolean(restarts);
+  if (job) {
+    w.key("job"); w.str(job->id);
+    if (!all_ok) {   // a tentative change is all or nothing: what did apply goes back at once
+      bool rb;
+      const bool back = configRevert(*h, *job, &rb);
+      const char* r = back ? APPLY_FAILED_REVERTED : APPLY_FAILED_KEPT;
+      table->setState(job, JOB_FAILED, r, strlen(r));
+      w.key("state"); w.str("failed");
+      w.key("reverted"); w.boolean(back);
+    } else {
+      // A change that takes effect only after a reboot gets that reboot as its first boot.
+      table->awaitConfirm(job, (uint32_t)within, !(reboot || restarts));
+      w.key("state"); w.str("awaiting-confirm");
+      w.key("confirm_left_s"); w.unum((uint32_t)within);
+    }
+    ch->jobs->persist();
+  }
   return ST_OK;
 }
 

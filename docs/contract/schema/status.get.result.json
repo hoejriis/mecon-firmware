@@ -3,7 +3,7 @@
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/status.get.result.json",
   "title": "Result of status.get (v1.0, first cut: the telemetry catalogue extends it)",
   "type": "object",
-  "required": ["device_id", "epoch", "uptime_s", "heap", "battery_mv", "posture"],
+  "required": ["device_id", "epoch", "uptime_s", "heap", "battery_mv", "posture", "jobs"],
   "properties": {
     "device_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
     "epoch": {"type": "integer", "minimum": 1},
@@ -29,6 +29,12 @@
       "properties": {"count": {"type": "integer", "minimum": 0}, "capacity": {"type": "integer", "minimum": 0}}
     },
     "connectivity": {"type": "string", "enum": ["ble", "wifi"], "description": "Absent on a build without connectivity modes."},
-    "posture": {"type": "string", "enum": ["normal", "hardened"]}
+    "posture": {"type": "string", "enum": ["normal", "hardened"]},
+    "jobs": {
+      "description": "The job table (OPERATIONS.md section 3.2): the job open, and terminal results not yet acknowledged.",
+      "type": "object",
+      "required": ["open", "owed"],
+      "properties": {"open": {"type": "integer", "minimum": 0, "maximum": 1}, "owed": {"type": "integer", "minimum": 0}}
+    }
   }
 }

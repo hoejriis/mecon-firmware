@@ -31,6 +31,7 @@ enum JsonErr {
 enum Charset {
   CS_ANY,   // any decoded byte >= 0x20 except 0x7F
   CS_ID,    // [0-9A-Za-z._:-]  request ids
+  CS_JOB,   // CS_ID and '#'     job identities: a request id, or "#<issuer>:<job_id>" for a signed one
   CS_NAME   // [0-9A-Za-z._-]   operation names and keys
 };
 
