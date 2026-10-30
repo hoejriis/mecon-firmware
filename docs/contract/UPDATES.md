@@ -1,6 +1,6 @@
 # Signed firmware updates (contract)
 
-> **Status: contract recorded before the code ([#110](https://github.com/hoejriis/mecon-firmware/issues/110)), revised after its security review.** Nothing on this page is built yet. It defines one update lifecycle that a Backend, a Reader bridge or any conforming manager drives over IP, USB and BLE, and says honestly, per target, what each delivery path can and cannot protect against. LoRa delivery of image bytes is [#123](https://github.com/hoejriis/mecon-firmware/issues/123) and is out of scope here. It will reuse this lifecycle.
+> **Status: partly built ([#110](https://github.com/hoejriis/mecon-firmware/issues/110)), revised after its security review.** Built on `main`: the release anchors (section 3), the manifest and its signature, preflight's checks on the manifest (section 4), the security floor on ESP32 and the simulated boards, and `update.manifest` and `update.status` (section 8), with the public update vectors. Nothing installs an update yet: `update.offer`, delivery and confirmation (sections 5 to 7) are the next stages, and so is the nRF52 floor. It defines one update lifecycle that a Backend, a Reader bridge or any conforming manager drives over IP, USB and BLE, and says honestly, per target, what each delivery path can and cannot protect against. LoRa delivery of image bytes is [#123](https://github.com/hoejriis/mecon-firmware/issues/123) and is out of scope here. It will reuse this lifecycle.
 
 It builds on three pages:
 - the [device interface](DEVICE_INTERFACE.md) carries every request, result and event;
@@ -56,7 +56,7 @@ A public release on GitHub carries its update set as release assets, so any mana
 
 ## 4. The release manifest, and preflight
 
-**The manifest** is one JSON object, signed as text: Ed25519 over `MECON-RELEASE-v1` 0x00 `<text>`, under AUTHORITY.md section 2's rules (the bytes verified are the bytes sent; strict Ed25519, small-order keys refused). It is at most 600 bytes. At version 1 a manifest with a duplicate key, or a key not listed here, is refused (`bad-manifest`).
+**The manifest** is one JSON object, signed as text: Ed25519 over `MECON-RELEASE-v1` 0x00 `<text>`, under AUTHORITY.md section 2's rules (the bytes verified are the bytes sent; strict Ed25519, small-order keys refused). It is at most 640 bytes. At version 1 a manifest with a duplicate key, or a key not listed here (in the manifest or in `image`), is refused (`bad-manifest`). Every key is required; `bootloader_min` may be `null`. Strings are at most: `line` 16, `version` and `min_from` 24, `upstream` 15, `interface` 7, `hardware` 24, each `hardware_rev` entry 8 (one or two entries), `role` 12, `variant` 48, `build` 40. Hex (`key_id`, `image.sha256`) is lowercase.
 
 | Field | Meaning |
 |---|---|
@@ -65,7 +65,7 @@ A public release on GitHub carries its update set as release assets, so any mana
 | `line` | `public` for this repository. A device installs only its own line, because versions do not order across lines ([VERSIONING_AND_RELEASES](../VERSIONING_AND_RELEASES.md)) |
 | `version`, `build` | the firmware version (as `hello`'s `firmware`), and the commit it was built from |
 | `upstream`, `interface` | the MeshCore base, and the device-interface version. Both informational; the device does not refuse on them |
-| `hardware`, `hardware_rev`, `role`, `variant` | the device's own `hello` `hardware` and `role`, the board revisions the image supports (a list), and the build environment name |
+| `hardware`, `hardware_rev`, `role`, `variant` | the device's own `hello` `hardware` and `role`, the board revisions the image supports (a list; a device's revision is a build setting, `1` unless its environment says otherwise), and the build environment name |
 | `layout` | the partition or flash-layout version the image was built for. An image for another layout could overwrite a file system or the record |
 | `bootloader_min` | the lowest bootloader version the image needs, where the target reports one |
 | `data_format` | the version of the on-flash data the image reads and writes (section 9) |
@@ -77,7 +77,10 @@ A public release on GitHub carries its update set as release assets, so any mana
 | `issued_at` | for the record only; freshness is the authority layer's job |
 
 **The security floor.**
-- **Where it lives.** It is kept in the same protected store as the provisioned marker, outside every file system and outside any region a DFU writes (AUTHORITY.md section 4; on nRF52 a slot of the marker page). Unlike the marker, **a factory reset keeps it**. It is never lowered.
+- **Where it lives.** Outside every file system and any region a DFU writes, and **a factory reset keeps it**. It is never lowered.
+  - ESP32: NVS (namespace `mecon`, key `secfloor`). The Companion's factory reset erases all of NVS, so it reads the floor first and raises it back after the erase. A power cut between the two leaves the floor at the running image's compiled version from the next boot on (below).
+  - The simulated boards: a file beside the data directory, as for the provisioned marker.
+  - nRF52: not built yet. It comes with the nRF52 update path, in its own preserved store rather than the marker page, so that an older image reading the marker page is not misled.
 - **What raises it.** Only the security version **compiled into the running image**, never a manifest's claim. A manifest's `security_version` is checked before install (refused below the floor), but it does not move the floor.
   - At every boot the floor rises to the running image's compiled version. That covers a cable install, an nRF52 job left unconfirmed but installed, and a job confirmed by supersede.
   - A compromised release key that signs a manifest with an inflated `security_version` over a genuine image therefore raises the floor only to what that genuine image carries.
@@ -120,11 +123,11 @@ BLE is refused even with the device's own PIN, for the reason AUTHORITY.md secti
 **Bounds:**
 - an `update.offer` or an `update.manifest` is at most **1,400 bytes over MQTT** (the device's client buffer is 1,600 bytes with the topic), and at most 4,096 over USB and BLE;
 - `source.url` is at most 256 bytes;
-- a manifest is at most 600 bytes. Every field filled in, with the longest variant name, measures 492 bytes.
+- a manifest is at most 640 bytes. Every field filled in at its longest measures 637 bytes (the `longest` vector).
 
-Measured worst cases, each a published vector:
-- a signed offer with a 256-byte URL is 977 bytes;
-- an unsigned `update.manifest` with a 600-byte manifest is 851 bytes.
+Measured worst cases:
+- an unsigned `update.manifest` with a 640-byte manifest is 882 bytes (`test/fixtures/updates_public_v1.json`);
+- a signed offer with a 256-byte URL: published with `update.offer`.
 
 | Target | `kind` | IP | USB | BLE | Image check before activation | Rollback |
 |---|---|---|---|---|---|---|
@@ -175,8 +178,8 @@ Measured worst cases, each a published vector:
 
 | Operation | Does |
 |---|---|
-| `update.manifest` | stages one manifest `{"manifest", "manifest_sig"}` in RAM, unsigned, for any caller with `read`. It changes nothing persistent. It verifies the release signature and the target at once, refusing as preflight steps 5 to 7 would. It answers the manifest's `sha256` and what preflight would say. Two slots, keyed by the manifest's hash and not bound to the link that staged it: a Reader may stage over USB and a Backend offer over MQTT. A third stage evicts the older slot. At most one stage a second, under the refusal budget, because each costs a signature check on unsigned input. An offer copies its manifest into the job, so staging never touches an open job, and a superseding offer (section 7) can be staged while one is open. An offer naming a hash in neither slot gets `manifest-not-staged`, so a stage from someone else costs at most a retry, never a wrong install. The slots are RAM, so a reboot empties them |
-| `update.status` | the open update job: state, bytes received, the offset expected next, the manifest's `version` and `sha256`, and the security floor |
+| `update.manifest` | stages one manifest `{"manifest", "manifest_sig"}` in RAM, unsigned, for any caller with `read`. It changes nothing persistent. It verifies the release signature and the target at once, refusing as preflight steps 5 to 7 would. It answers the manifest's `sha256` and what preflight would say. Two slots, keyed by the manifest's hash and not bound to the link that staged it: a Reader may stage over USB and a Backend offer over MQTT. A third stage evicts the older slot. At most one stage a second (`busy`, `rate`), refused stages included, because each costs a signature check on unsigned input. An offer copies its manifest into the job, so staging never touches an open job, and a superseding offer (section 7) can be staged while one is open. An offer naming a hash in neither slot gets `manifest-not-staged`, so a stage from someone else costs at most a retry, never a wrong install. The slots are RAM, so a reboot empties them |
+| `update.status` | the open update job (state, bytes received, the offset expected next, the manifest's `version` and `sha256`), the security floor, and the staged manifests (`sha256`, `version`). Until `update.offer` is built, `job` is `null` |
 | `job.cancel` | before activation: stops the transfer and erases the partial slot. After activation it is the revert rule |
 | `job.confirm`, `job.get`, `job.list`, `job.ack` | as in OPERATIONS.md, with the `update` class for update jobs |
 

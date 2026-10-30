@@ -15,6 +15,7 @@
 #include <helpers/iface/DeployAuth.h>
 #include <helpers/iface/Provenance.h>
 #include <helpers/iface/JobService.h>
+#include <helpers/updates/UpdService.h>
 
 class MyMesh;
 class BaseSerialInterface;
@@ -106,6 +107,7 @@ public:
   static Iface::Status opIdentityRotation(Iface::OpContext& c);
   // The job operations (OPERATIONS.md section 3): job.get, job.list, job.ack, job.cancel, job.confirm.
   Iface::JobService& jobs() { return _jobs; }
+  Upd::UpdateService& updates() { return _updates; }
   // Whether the link of this serial interface holds a valid local unlock (AUTHORITY.md section 10); the CLI privilege
   // table takes it as Context.unlocked, for the cable link only.
   bool unlockedFor(const BaseSerialInterface* src);
@@ -229,6 +231,7 @@ private:
   Iface::DeployAuth _auth;                  // the record, its marks and the signed-request checks (shared with the servers)
   DataStoreCopies _copies;
   Iface::JobService _jobs;                  // config.apply with confirm creates the jobs (OPERATIONS.md 3.4)
+  Upd::UpdateService _updates;              // update.manifest and update.status (UPDATES.md section 8)
   Iface::ConfirmHost _confirm = {};         // filled by jobsLoad(); until then nothing can be applied tentatively
   bool _jobs_booting = false;
   Iface::ChannelHost _chan_host = {};       // the table mgmtHost() hands out

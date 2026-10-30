@@ -1,4 +1,5 @@
-"""PlatformIO extra script: pass the build's identity to the compiler as -D MECON_VERSION="<git describe>".
+"""PlatformIO extra script: pass the build's identity to the compiler as -D MECON_VERSION="<git describe>" and
+-D MECON_VARIANT="<environment name>".
 
 The describe string is `git describe --tags --match 'v[0-9]*' --dirty` (a clean tag build is exactly the tag;
 a development build is v0.1.2-5-gabc1234, with -dirty when tracked files differ). Without git, or without a
@@ -22,6 +23,8 @@ def describe(project_dir):
 
 def apply(env):
     env.Append(CPPDEFINES=[("MECON_VERSION", env.StringifyMacro(describe(env.subst("$PROJECT_DIR"))))])
+    # The build environment's name: a release manifest names the variant it was built for (UPDATES.md section 4).
+    env.Append(CPPDEFINES=[("MECON_VARIANT", env.StringifyMacro(env.subst("$PIOENV")))])
 
 
 try:
