@@ -527,18 +527,7 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
       writeLocation(w, fix);
       break;
     }
-    case SID_INVENTORY: {
-      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());
-      int channels = 0, capacity = 0;
-#ifdef MAX_GROUP_CHANNELS
-      capacity = MAX_GROUP_CHANNELS;
-      ChannelDetails ch;
-      for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
-        if (_mesh->getChannel(i, ch) && ch.name[0]) channels++;
-#endif
-      writeCount(w, "channels", channels, capacity);
-      break;
-    }
+    case SID_INVENTORY: return false;   // paged: streamTick hands it to startInventory, and inventoryTick builds the pages
     case SID_CONNECTIVITY:
       if (!_conn_write) return false;
       _conn_write(w);
