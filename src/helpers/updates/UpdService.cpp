@@ -65,7 +65,8 @@ Device UpdateService::device() const {
   d.layout = MECON_LAYOUT;
   d.has_bootloader = false;   // no target here reports a bootloader version yet
   d.kinds = supportedKinds();
-  d.security_floor = floorRead();
+  uint32_t floor;
+  d.security_floor = floorRead(&floor) ? floor : 0xFFFFFFFFu;   // unreadable: no install passes (fail closed)
   d.running_known = parseVersion(mecon::versionFull(), &d.running);
   d.slot_size = slotSize();
   const MemStats m = memStats();
@@ -143,7 +144,9 @@ Status UpdateService::opManifest(OpContext& c, uint32_t now_ms) {
 Status UpdateService::opStatus(OpContext& c) {
   JsonWriter& w = *c.out;
   w.key("job"); w.null();   // no update job runs yet: update.offer is the next stage of this work
-  w.key("security_floor"); w.unum(floorRead());
+  uint32_t floor;
+  w.key("security_floor");
+  if (floorRead(&floor)) w.unum(floor); else w.null();   // null: the store cannot be read, and no install passes
   w.key("staged"); w.beginArray();
   Manifest* m = static_cast<Manifest*>(malloc(sizeof(Manifest)));
   for (const Slot& s : _s) {

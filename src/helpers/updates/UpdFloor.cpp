@@ -2,6 +2,7 @@
 
 #if defined(SIM_FREE_HEAP)   // the simulated board: sim_base sets it, no firmware build does
 #include "sim_config.h"
+#include <errno.h>
 #include <stdio.h>
 #include <string>
 
@@ -13,22 +14,27 @@ static std::string floorPath() {
   return d + ".floor";   // beside the data directory, so a simulated format leaves it
 }
 
-uint32_t floorRead() {
+bool floorRead(uint32_t* out) {
+  *out = 0;
   FILE* f = fopen(floorPath().c_str(), "rb");
-  if (!f) return 0;
+  if (!f) return errno == ENOENT;   // nothing stored; any other failure is unreadable
   unsigned long v = 0;
   const int n = fscanf(f, "%lu", &v);
   fclose(f);
-  return n == 1 ? (uint32_t)v : 0;
+  if (n != 1) return false;
+  *out = (uint32_t)v;
+  return true;
 }
 
 bool floorRaise(uint32_t v) {
-  if (floorRead() >= v) return true;
+  uint32_t cur;
+  if (!floorRead(&cur)) return false;
+  if (cur >= v) return true;
   FILE* f = fopen(floorPath().c_str(), "wb");
   if (!f) return false;
   fprintf(f, "%lu\n", (unsigned long)v);
   fclose(f);
-  return floorRead() >= v;
+  return floorRead(&cur) && cur >= v;
 }
 
 }  // namespace Upd
@@ -51,22 +57,30 @@ static esp_err_t openNs(nvs_open_mode_t mode, nvs_handle_t* h) {
   return e;
 }
 
-uint32_t floorRead() {
+bool floorRead(uint32_t* out) {
+  *out = 0;
   nvs_handle_t h;
-  if (openNs(NVS_READONLY, &h) != ESP_OK) return 0;
+  const esp_err_t o = openNs(NVS_READONLY, &h);
+  if (o == ESP_ERR_NVS_NOT_FOUND) return true;   // the namespace was never created: nothing stored
+  if (o != ESP_OK) return false;
   uint32_t v = 0;
-  if (nvs_get_u32(h, KEY, &v) != ESP_OK) v = 0;
+  const esp_err_t e = nvs_get_u32(h, KEY, &v);
   nvs_close(h);
-  return v;
+  if (e == ESP_ERR_NVS_NOT_FOUND) return true;
+  if (e != ESP_OK) return false;
+  *out = v;
+  return true;
 }
 
 bool floorRaise(uint32_t v) {
-  if (floorRead() >= v) return true;
+  uint32_t cur;
+  if (!floorRead(&cur)) return false;
+  if (cur >= v) return true;
   nvs_handle_t h;
   if (openNs(NVS_READWRITE, &h) != ESP_OK) return false;
   const bool ok = nvs_set_u32(h, KEY, v) == ESP_OK && nvs_commit(h) == ESP_OK;
   nvs_close(h);
-  return ok && floorRead() >= v;
+  return ok && floorRead(&cur) && cur >= v;
 }
 
 }  // namespace Upd
@@ -74,7 +88,7 @@ bool floorRaise(uint32_t v) {
 #else
 
 namespace Upd {
-uint32_t floorRead() { return 0; }
+bool floorRead(uint32_t* out) { *out = 0; return true; }   // not kept here (see UpdFloor.h)
 bool floorRaise(uint32_t) { return false; }
 }  // namespace Upd
 

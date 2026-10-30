@@ -17,8 +17,11 @@
 
 namespace Upd {
 
-uint32_t floorRead();                // 0 when nothing is stored, or the store cannot be read
-bool floorRaise(uint32_t v);         // stores max(stored, v); true once the stored value reads back at least v
+// false: the store cannot be read, and callers fail closed (preflight takes the floor as unreachable). Nothing stored
+// reads as 0.
+bool floorRead(uint32_t* out);
+// Stores max(stored, v); true once the stored value reads back at least v. An unreadable store is left as it is.
+bool floorRaise(uint32_t v);
 inline bool floorAtBoot() { return floorRaise(MECON_SECURITY_VERSION); }
 
 }  // namespace Upd

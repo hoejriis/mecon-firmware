@@ -111,3 +111,16 @@ def test_one_stage_a_second_and_two_slots_the_older_evicted(nodes):
     staged = {s["version"] for s in d.i.request("update.status")["result"]["staged"]}
     assert staged == {"v1.18.0-mecon.99.0.2", "v1.18.0-mecon.99.0.3"}, staged
 
+
+
+def test_an_unreadable_floor_fails_closed(nodes):
+    """A floor that cannot be read is reported as null, and no install passes it: the store's failure must not read as
+    'no floor'."""
+    n = nodes("companion_standalone", "uu", seed=36, rtc=RTC)
+    with open(n.dir.rstrip("/") + ".floor", "w") as f:
+        f.write("not a number\n")
+    n.start()
+    d = Dev(n)
+    assert d.i.request("update.status")["result"]["security_floor"] is None
+    r = d.stage(d.manifest(security_version=65535))
+    assert r["status"] == "ok" and r["result"]["preflight"] == "below-security-floor", r
