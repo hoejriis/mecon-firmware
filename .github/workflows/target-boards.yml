@@ -9,10 +9,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# A newer push to the same branch makes this run obsolete: cancel it rather than queue behind it.
+# On a pull request a newer push makes this run obsolete: cancel it rather than queue behind it. On main every
+# commit's run finishes, so each merge gets a verdict (#146): a newer one waits, and GitHub keeps only the newest
+# pending run in the group, so a busy day does not queue a run per merge.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

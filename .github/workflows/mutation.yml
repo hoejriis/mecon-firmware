@@ -11,10 +11,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# A newer push to the same branch makes this run obsolete: cancel it rather than queue behind it.
+# On a pull request a newer push makes this run obsolete: cancel it rather than queue behind it. On main every
+# commit's run finishes, so each merge gets a verdict (#146): a newer one waits, and GitHub keeps only the newest
+# pending run in the group, so a busy day does not queue a run per merge.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -76,3 +78,18 @@ jobs:
           exit $status
       - if: always()
         run: for m in ${{ matrix.mutant }}; do echo "== $m"; tail -15 ".sim-logs/mut_$m.log" 2>/dev/null; done
+
+  alarm:
+    # main is the only place the whole matrix runs (PRs only with full-ci): a failed or cancelled run there is as
+    # silent as a red nightly, so it opens or comments on one tracking Issue.
+    needs: [list, mutant]
+    if: >-
+      always() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    uses: ./.github/workflows/main-alarm.yml
+    with:
+      title: Mutation check failed or cancelled on main

@@ -10,6 +10,7 @@
 
 #include <Arduino.h>
 #include <helpers/cli/NetConsole.h>
+#include <helpers/LineAssembler.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -21,6 +22,7 @@
 #include "sim_config.h"
 
 static Cli::NetConsole ethernet_console;
+static LineAssembler ethernet_line;
 static int sim_eth_listen = -1, sim_eth_client = -1;
 
 static void ethernet_start_task() {
@@ -62,32 +64,26 @@ static void ethernet_loop_maintain() {
     int one = 1; setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
     fcntl(c, F_SETFL, O_NONBLOCK);
     sim_eth_client = c;
+    ethernet_line.reset();   // a partial line of the previous client is not the start of this one
     ethernet_console.endSession();
     sim_eth_send(ETHERNET_CLI_BANNER "\n");
   }
 }
 
-// Same line assembly as the real header: CR or LF ends a line, a leading LF is skipped, the buffer is bounded.
+// The same line assembly as the real header (helpers/LineAssembler.h).
 static bool ethernet_read_line(char* ethernet_command, size_t buf_size) {
   if (sim_eth_client < 0) { ethernet_console.endSession(); return false; }
-  int elen = strlen(ethernet_command);
-  while (elen < (int)buf_size - 1) {
+  for (;;) {
     char c;
     ssize_t n = recv(sim_eth_client, &c, 1, 0);
     if (n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) { close(sim_eth_client); sim_eth_client = -1; ethernet_console.endSession(); return false; }
-    if (n < 0) break;
-    if (c == '\n' && elen == 0) continue;
-    if (c == '\r' || c == '\n') { ethernet_command[elen++] = '\r'; break; }
-    ethernet_command[elen++] = c;
-    ethernet_command[elen] = 0;
+    if (n < 0) return false;
+    switch (ethernet_line.feed(ethernet_command, buf_size, c)) {
+      case LineAssembler::LINE: sim_eth_send("\n"); return true;
+      case LineAssembler::TOO_LONG: sim_eth_send("  -> ERR: line too long\n"); break;
+      default: break;
+    }
   }
-  if (elen == (int)buf_size - 1) ethernet_command[buf_size - 1] = '\r';
-  if (elen > 0 && ethernet_command[elen - 1] == '\r') {
-    ethernet_command[elen - 1] = 0;
-    sim_eth_send("\n");
-    return true;
-  }
-  return false;
 }
 
 static void ethernet_send_reply(const char* reply) {

@@ -130,6 +130,10 @@ A Backend records a device's `device_id` from `hello` or from `get device.id`, a
 - **Corrupt is never absent.** If something exists and nothing is intact, the record is **corrupt**. A corrupt record is never treated as absent, because absent means "no Deployment" and would reopen an unsigned first provisioning. Failing to allocate memory while loading is corrupt too.
 - **Provisioned marker.** A one-byte marker is written at the first provisioning. If both copies are missing but the marker is present, the record is corrupt, not absent; without the marker, losing both files would reopen first use.
   - The marker lives **outside the file system that holds the record**, because a file system that fails to mount may be formatted by the platform: in NVS on ESP32, and in a reserved flash page on nRF52.
+  - **nRF52:** one 4 KB page, 0xEC000, named per build. It lies in the 40 KB the bootloader preserves across a DFU (0xEA000-0xF4000) and in no file system of that build. Only those builds have it: the T1000-E and Wio Tracker L1 Repeater and Room server, and the Wio Tracker L1 Companion, whose ExtraFS is on its QSPI chip. The T1000-E Companion keeps ExtraFS over that page, so it has no marker store yet and refuses every first provisioning.
+    - The page is a log of 16-byte slots, `{magic, state, ~state, CRC-32}`, read fail-closed. An erased page is absent. Valid slots followed only by erased ones give the last slot's state. Anything else is present: a torn write, or another firmware's data written over the page after a downgrade.
+    - A write appends a slot. A full or unclean page is erased first, so there is one erase per 256 changes. Every write is read back.
+    - A build whose image has grown into the page has no marker store at all.
   - Only two operations clear it: `deployment.reset` and the factory reset (section 11). Nothing else, a file system format included, clears it.
 - **Contents.** The payload holds:
   - the contract version, `deployment_id` and a 1 to 64 byte display name;
@@ -181,7 +185,7 @@ Product profiles (section 14) may add fields; a device ignores fields it does no
 A provisioning carries no rotations. A device whose DAK has rotated gets `deployment.authority_update` first, so a provisioning always fits the 4,096-byte message with its set text escaped, even inside a signed wrapper.
 
 - **First provisioning** (no record, no marker) is trust on first use: it pins the DAK. It is accepted unsigned from the USB cable only. Never over BLE (a device cannot tell its own random PIN from one a user or a build chose), the TCP port, a broker of any kind (a broker would gain first-use trust over every reset or unenrolled device it can reach) or LoRa. *(Narrowed 2026-10-28 by the second security review; this section earlier also allowed BLE with the device's own random PIN.)*
-- A platform with no store for the provisioned marker (section 4) refuses an unsigned first provisioning.
+- A platform with no store for the provisioned marker (section 4) refuses every first provisioning, unsigned with `unsupported`. A signed one cannot exist without a record: with no authority set, it is `unauthenticated`. *(Corrected 2026-10-28: this line said only "an unsigned first provisioning".)*
 - **A device that holds a record** accepts `deployment.provision` only when signed by a current member. An unsigned re-send of a byte-identical `deployment` object returns the stored read-back; anything else unsigned is `unauthenticated`.
 - **Order and commit.** Checks run in the order above, then section 5 on the set. One commit, and the answer is read back from storage. That read-back, and the one an unsigned duplicate gets, carries `device_id` and `node_key` (section 3.5). An equal `provision_revision` with identical content is `duplicate`; a lower one is `stale_revision`.
 
@@ -299,6 +303,7 @@ Rules:
 ## 12. Keys, randomness and secrets
 
 - **Device keys and secrets** come from the platform's cryptographic RNG, fed by the hardware RNG: `esp_fill_random` on ESP32, and the nRF52's hardware RNG peripheral. This covers the node key, `device_id`, the BLE PIN, the local unlock challenge and the channel nonces. Never Arduino `random()`, which is a seeded libc PRNG on some cores.
+  - The node key's seed mixes that source with the LoRa radio's noise (`RadioNoiseListener`). On the nRF52 with the CC310 the source is the CC310's TRNG. On ESP32, `esp_fill_random` has full entropy only while Wi-Fi or BLE runs, and a node key is made in `setup()` before either starts, so it is drawn inside `bootloader_random_enable()`, which feeds the RNG from the SAR ADC's noise.
 - A signed update that names a minimum firmware version is bound to the record before a device enforces it, so downgrading the firmware cannot drop the rule ([#110](https://github.com/hoejriis/mecon-firmware/issues/110)).
 - **Wiping.** Key material is cleared with a wipe the compiler may not drop (a volatile loop), on every exit path of a rotation. A rotation's new key is drawn from a source that must pass a health test: not all zero, at least 16 distinct byte values, and not equal to the previous draw; otherwise the refusal is `rng`. After a rotation the old private key can remain in unerased flash blocks until they are reused (the file system replaces files atomically and does not erase in place), so a rotation protects against later use of the old key by the device, not against someone who images the flash of the same unit.
 - **The DAK and manager keys** never exist on a device. Only public keys and signatures do.
