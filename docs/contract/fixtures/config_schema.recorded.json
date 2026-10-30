@@ -19,7 +19,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": false
           },
           {
             "key": "tx",
@@ -29,7 +30,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "radio",
@@ -39,8 +41,9 @@
             "format": "freq,bw,sf,cr",
             "writable": true,
             "write_only": false,
-            "reboot": false,
-            "restarts": false
+            "reboot": true,
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "connectivity.mode",
@@ -52,7 +55,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": true
+            "restarts": true,
+            "confirm": true
           },
           {
             "key": "wifi.enabled",
@@ -60,7 +64,8 @@
             "writable": true,
             "write_only": false,
             "reboot": true,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "wifi.profile.{n}.ssid",
@@ -74,7 +79,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           }
         ],
         "next": 6
@@ -97,7 +103,8 @@
             "writable": true,
             "write_only": true,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "wifi.profile.{n}.priority",
@@ -111,7 +118,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "mqtt.enabled",
@@ -119,7 +127,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "mqtt.profile.{n}.type",
@@ -135,7 +144,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "mqtt.profile.{n}.host",
@@ -149,7 +159,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "mqtt.profile.{n}.port",
@@ -163,7 +174,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           }
         ],
         "next": 12
@@ -184,7 +196,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "mqtt.profile.{n}.site",
@@ -198,7 +211,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "mqtt.profile.{n}.user",
@@ -212,7 +226,8 @@
             "writable": true,
             "write_only": true,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "mqtt.profile.{n}.pwd",
@@ -226,7 +241,8 @@
             "writable": true,
             "write_only": true,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           },
           {
             "key": "mqtt.profile.{n}.priority",
@@ -240,7 +256,8 @@
             "writable": true,
             "write_only": false,
             "reboot": false,
-            "restarts": false
+            "restarts": false,
+            "confirm": true
           }
         ],
         "next": null

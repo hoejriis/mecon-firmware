@@ -170,6 +170,10 @@ void writeCount(JsonWriter& w, const char* key, int count, int capacity);
 // heap_low: 1 or 0 where the build checks the heap floor (the Companion), -1 to leave the field out.
 void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low = -1);
 
+// Whether the last reset was abnormal (a panic, the watchdog, a brownout or a lockup): 1 or 0, -1 when the board cannot
+// tell. The runtime stream's abnormal_reset, and the job table's boot rule (OPERATIONS.md section 3.3).
+int abnormalReset(mesh::MainBoard& b);
+
 // The power stream's fields from any board type (mesh::MainBoard in the firmware, a fake one in the native test).
 // The defaults answer false whether or not the board can tell, so external and charging are reported only by an
 // initialised power manager or a board with its own detect pins (hasPowerDetect); otherwise they are null.
