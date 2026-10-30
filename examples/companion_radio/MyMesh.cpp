@@ -2776,15 +2776,22 @@ void MyMesh::checkCLIRescueCmd() {
   }
   while (Serial.available() && len < sizeof(cli_command)-1) {
     char c = Serial.read();
+    if (cli_command_dropping) {   // inside an over-long line: discarded up to its end, never run (#165)
+      if (c == '\r') { cli_command_dropping = false; Serial.println("\n  -> ERR: line too long"); }
+      continue;
+    }
     if (c != '\n') {
       cli_command[len++] = c;
       cli_command[len] = 0;
     }
     Serial.print(c);  // echo
   }
-  if (len == sizeof(cli_command)-1) {  // buffer full: treat as a completed line
-    cli_command[sizeof(cli_command)-2] = '\r';  // place end-of-line marker inside the buffer
-    cli_command[sizeof(cli_command)-1] = 0;     // keep the buffer NUL-terminated
+  if (len == sizeof(cli_command)-1 && cli_command[len - 1] != '\r') {  // buffer full with no end of line: an over-long line
+    // Stock ran the first part as a line and then the rest as a new command. The line is dropped up to its end
+    // instead, and answered once there (#165).
+    cli_command[0] = 0;
+    len = 0;
+    cli_command_dropping = true;
   }
 
   if (len > 0 && cli_command[len - 1] == '\r') {  // received complete line
