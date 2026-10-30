@@ -320,6 +320,7 @@ private:
   bool _cli_rescue;
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
+  bool cli_command_dropping = false;   // inside an over-long rescue-console line (#165)
 #ifdef ENABLE_CONNMODE
   uint32_t _connmode_restart_at = 0;   // millis() deadline of the restart after a mode switch (0 = none)
   void scheduleConnectivityRestart();
