@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/mgmt.channel.get.result.json",
+  "title": "Result of mgmt.channel.get, bind and rotate",
+  "description": "The management channel binding (MANAGEMENT_CHANNEL.md). A change by a caller other than the cable also carries job, job_state and confirm_left_s (or reverted). Never the key or the fingerprint. Companion only.",
+  "type": "object",
+  "required": [
+    "state"
+  ],
+  "properties": {
+    "state": {
+      "enum": [
+        "none",
+        "bound",
+        "stale"
+      ]
+    },
+    "slot": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 31
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{2}$"
+    },
+    "key_bits": {
+      "enum": [
+        128,
+        256
+      ]
+    },
+    "job": {
+      "type": "string"
+    },
+    "job_state": {
+      "enum": [
+        "awaiting-confirm",
+        "failed"
+      ]
+    },
+    "confirm_left_s": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 900
+    },
+    "reverted": {
+      "type": "boolean"
+    }
+  }
+}

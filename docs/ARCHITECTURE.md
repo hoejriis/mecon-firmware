@@ -145,9 +145,9 @@ Where released MeshCore provides remote CLI/command delivery, MECON uses it as t
 
 ### Management over LoRa (planned)
 
-Nothing in this section is built. Three planned, generic capabilities, usable by any conforming manager, are owned by their own Issues:
+Three generic capabilities, usable by any conforming manager, are owned by their own Issues. The first is built for the Companion; the other two are not:
 
-- [#114](https://github.com/hoejriis/mecon-firmware/issues/114): a private management channel. Channel membership never grants command authority.
+- [#114](https://github.com/hoejriis/mecon-firmware/issues/114): a private management channel ([Management channel](contract/MANAGEMENT_CHANNEL.md), built for the Companion). Channel membership never grants command authority.
 - [#115](https://github.com/hoejriis/mecon-firmware/issues/115): authorized operations over direct (peer-to-peer) and channel LoRa, with results. The request carries its own signature.
 - [#116](https://github.com/hoejriis/mecon-firmware/issues/116): compact telemetry, a smaller and less frequent selection of the same telemetry catalogue ([#96](https://github.com/hoejriis/mecon-firmware/issues/96), not yet merged).
 
