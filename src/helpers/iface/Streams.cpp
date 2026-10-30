@@ -23,8 +23,9 @@ const StreamDef STREAMS[STREAM_COUNT] = {
   {"observations", 0, 0, 0, Cli::C_READ},
   {"connectivity", 10, 3600, 60, Cli::C_READ},
   {"environment", 30, 3600, 300, Cli::C_READ},
-  {"inventory", 300, 3600, 3600, Cli::C_READ},
+  {"inventory", 300, 3600, 3600, Cli::C_PRIVATE},   // entries on the Companion; counts only on the server roles
   {"logs", 0, 0, 0, Cli::C_POSTURE},   // the audit ring: the same class as `get audit`
+  {"location", 30, 3600, 300, Cli::C_PRIVATE},   // private: the broker, the device's own links, a signed request
 };
 
 int streamIndex(const char* name, size_t len) {
@@ -204,6 +205,24 @@ int countEnvironment(SensorManager& s, mesh::MainBoard& b) {
   JsonWriter w(scratch, sizeof(scratch));
   w.beginObject();
   return writeEnvironment(w, s, b);
+}
+
+// ---- location
+
+bool readLocation(LocationProvider* p, LocationFix& out) {
+  if (!p) return false;
+  out = LocationFix();
+  out.fix = p->isValid();
+  const long sats = p->satellitesCount();
+  out.sats = (uint8_t)(sats < 0 ? 0 : sats > 255 ? 255 : sats);
+  if (out.fix) {
+    out.lat_e6 = (int32_t)p->getLatitude();   // millionths of a degree, as MicroNMEA keeps them
+    out.lon_e6 = (int32_t)p->getLongitude();
+    out.alt_m = (int32_t)(p->getAltitude() / 1000);   // MicroNMEA: thousandths of a metre
+  }
+  uint32_t ms = 0;
+  if (p->fixAgeMs(ms)) out.age_s = (int32_t)(ms / 1000);
+  return true;
 }
 
 // ---- inventory

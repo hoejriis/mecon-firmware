@@ -89,9 +89,33 @@ extern SimRadio radio_driver;
 extern SimRTCClock rtc_clock;
 // Readings for the environment stream, from "<node dir>.sensors": one "<channel> <quantity> <value>" per line
 // (temperature, humidity, pressure, voltage), read on every query so a test can change them while the node runs.
+// A GNSS receiver for the location stream, driven by a file beside the data directory, "<dir>.gps":
+//   fix <lat_e6> <lon_e6> <alt_mm> <sats> [<age_s>]   or   nofix <sats>
+// No file: the board has no receiver (getLocationProvider() is null).
+class SimLocationProvider : public LocationProvider {
+public:
+  long getLatitude() override { return read().lat; }
+  long getLongitude() override { return read().lon; }
+  long getAltitude() override { return read().alt; }
+  long satellitesCount() override { return read().sats; }
+  bool isValid() override { return read().fix; }
+  long getTimestamp() override { return 0; }
+  void sendSentence(const char*) override {}
+  void reset() override {}
+  void begin() override {}
+  void stop() override {}
+  void loop() override {}
+  bool isEnabled() override { return true; }
+  bool fixAgeMs(uint32_t& out) const override;
+private:
+  struct State { bool fix = false; long lat = 0, lon = 0, alt = 0, sats = 0, age = -1; };
+  State read() const;
+};
+
 class SimSensorManager : public SensorManager {
 public:
   bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) override;
+  LocationProvider* getLocationProvider() override;
 };
 extern SimSensorManager sensors;
 

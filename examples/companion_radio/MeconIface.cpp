@@ -394,6 +394,7 @@ __attribute__((noinline)) int MeconIface::dispatchNow(const Cli::Context& ctx, u
 
 int MeconIface::dispatchInner(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                               size_t cap) {
+  _link_ctx = ctx;   // the transport's own context, before any signature replaces it
   _ctx = ctx;
   _auth.setContext(ctx);
   _caller = caller;
@@ -424,7 +425,14 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
 
 // Whether the caller of the request being handled may use a stream of this class: the CLI privilege table with its
 // real context, as for the CLI line the data would come from.
-bool MeconIface::streamAllow(void* user, uint8_t cls) { return Cli::decide(static_cast<MeconIface*>(user)->_ctx, cls).allow; }
+// A stream beyond read (logs, the private streams) also needs the link that will carry it to be allowed it by itself: a
+// signature authorises the request, not the wire, so a signed sub.start on the open TCP port or a default-PIN BLE link
+// does not send positions or contacts over that link.
+bool MeconIface::streamAllow(void* user, uint8_t cls) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  if (!Cli::decide(m->_ctx, cls).allow) return false;
+  return cls == Cli::C_READ || Cli::decide(m->_link_ctx, cls).allow;
+}
 
 // One received packet: an observations event to every transport subscribed, within the stream's rate.
 void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
@@ -516,6 +524,7 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
 void MeconIface::refreshEnvironment(uint32_t now) {
   if (_env_checked && now - _env_at < 60000) return;
   _env_ok = countEnvironment(sensors, board) > 0;
+  _loc_ok = sensors.getLocationProvider() != nullptr;   // the location stream: a build with a GNSS provider
   _env_checked = true;
   _env_at = now;
 }
@@ -543,18 +552,13 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
     case SID_ENVIRONMENT:
       if (writeEnvironment(w, sensors, board) == 0) return false;   // nothing to report this time
       break;
-    case SID_INVENTORY: {
-      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());
-      int channels = 0, capacity = 0;
-#ifdef MAX_GROUP_CHANNELS
-      capacity = MAX_GROUP_CHANNELS;
-      ChannelDetails ch;
-      for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
-        if (_mesh->getChannel(i, ch) && ch.name[0]) channels++;
-#endif
-      writeCount(w, "channels", channels, capacity);
+    case SID_LOCATION: {
+      LocationFix fix;
+      if (!readLocation(sensors.getLocationProvider(), fix)) return false;
+      writeLocation(w, fix);
       break;
     }
+    case SID_INVENTORY: return false;   // paged: streamTick hands it to startInventory, and inventoryTick builds the pages
     case SID_CONNECTIVITY:
       if (!_conn_write) return false;
       _conn_write(w);
@@ -590,6 +594,7 @@ void MeconIface::streamTick(uint32_t now) {
   const bool ts_known = ts >= 1704067200;   // 2024-01-01: an RTC that has never been set reads far earlier
   for (int s = 0; s < STREAM_COUNT; s++) {
     if (!(due & (1u << s))) continue;
+    if (s == SID_INVENTORY) { startInventory(now); continue; }   // paged: inventoryTick sends it
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;
@@ -647,16 +652,113 @@ void MeconIface::drainLogs() {
   }
 }
 
+void MeconIface::startInventory(uint32_t now) {
+  if (_inv_active) { _inv_again = true; return; }   // finish this one, then send another: never restarted, so no caller can
+                                                    // keep a Backend from ever completing a snapshot
+  _inv_active = true;
+  _inv_snapshot++;
+  _inv_part = 0;
+  _inv_channel = 0;
+  _inv_cursor = 0;
+  _inv_next = now;
+}
+
+void MeconIface::inventoryTick(uint32_t now) {
+  if (!_inv_active || (int32_t)(now - _inv_next) < 0) return;
+  bool any = _mqtt_subs.s[SID_INVENTORY].active;
+  for (Link& l : _links) {
+    if (!l.subs.s[SID_INVENTORY].active) continue;
+    any = true;
+    if (l.q && !l.q->eventFits(INV_EVENT)) { _inv_next = now + INV_PAGE_MS; return; }   // wait until the page fits
+  }
+  if (!any) { _inv_active = false; _inv_again = false; return; }
+  char* data = static_cast<char*>(malloc(INV_DATA));
+  char* ev = static_cast<char*>(malloc(INV_EVENT));
+  if (!data || !ev) { free(data); free(ev); _inv_next = now + 1000; return; }   // no heap now: try again in a second
+  int channels = 0, ch_cap = 0;
+#ifdef MAX_GROUP_CHANNELS
+  ch_cap = MAX_GROUP_CHANNELS;
+  {
+    ChannelDetails ch;
+    for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
+      if (_mesh->getChannel(i, ch) && ch.name[0]) channels++;
+    Iface::wipe(&ch, sizeof(ch));   // the copy holds a channel's secret
+  }
+#endif
+  InventoryPage page(data, INV_DATA);
+  bool ok = page.begin(_inv_snapshot, ++_inv_part, _mesh->getNumContacts(), _mesh->getContactCapacity(), channels, ch_cap);
+  char entry[400];
+  bool full = false, done = false;
+#ifdef MAX_GROUP_CHANNELS
+  for (; ok && _inv_channel < MAX_GROUP_CHANNELS; _inv_channel++) {
+    ChannelDetails ch;
+    const bool got = _mesh->getChannel(_inv_channel, ch);
+    char name[sizeof(ch.name) + 1];
+    memcpy(name, ch.name, sizeof(ch.name)); name[sizeof(ch.name)] = 0;
+    Iface::wipe(&ch, sizeof(ch));   // the copy holds the channel's secret; only the name is used below
+    if (!got || !name[0]) continue;
+    JsonWriter w(entry, sizeof(entry));
+    writeChannelEntry(w, _inv_channel, name);   // the name only: never the channel's secret
+    if (!w.ok()) continue;
+    if (!page.add(entry, w.size())) { full = true; break; }   // this channel opens the next page
+  }
+#endif
+  while (ok && !full) {
+    const int before = _inv_cursor;
+    ContactInfo c;
+    if (!_mesh->contactStore().next(_inv_cursor, c)) { done = true; break; }
+    char name[sizeof(c.name) + 1];
+    memcpy(name, c.name, sizeof(c.name)); name[sizeof(c.name)] = 0;
+    ContactEntry e{};
+    memcpy(e.key, c.id.pub_key, 32);
+    e.name = name;
+    e.type = c.type;
+    e.fav = c.isFav();
+    e.last_advert = c.last_advert_timestamp;
+    e.hops = c.out_path_len == OUT_PATH_UNKNOWN ? -1 : (int16_t)(c.out_path_len & 63);
+    e.has_pos = c.gps_lat != 0 || c.gps_lon != 0;
+    e.lat_e6 = c.gps_lat;
+    e.lon_e6 = c.gps_lon;
+    Iface::wipe(&c, sizeof(c));   // the copy may hold a cached shared secret
+    JsonWriter w(entry, sizeof(entry));
+    writeContactEntry(w, e);   // no shared secret, no path bytes
+    if (!w.ok()) continue;
+    if (!page.add(entry, w.size())) {
+      if (page.count() == 0) continue;   // cannot fit even an empty page: skipped rather than stall the snapshot
+      _inv_cursor = before;              // this contact opens the next page
+      full = true;
+    }
+  }
+  const size_t dn = ok ? page.finish(done) : 0;
+  if (dn) {
+    const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
+    int n = writeEvent(ev, INV_EVENT, STREAMS[SID_INVENTORY].name, ++_clock.seq[SID_INVENTORY], _epoch, ts >= 1704067200,
+                       ts, data);
+    if (n > 0) n = _prov.sign(STREAMS[SID_INVENTORY].name, ev, (size_t)n, INV_EVENT);
+    if (n > 0) sendEvent(SID_INVENTORY, ev, (size_t)n);   // a page that is not sent is not retried: the next snapshot is
+  }
+  if (done || !ok || !dn) {
+    _inv_active = false;
+    if (_inv_again) { _inv_again = false; startInventory(now + INV_PAGE_MS); }
+  }
+  _inv_next = now + INV_PAGE_MS;
+  free(data);
+  free(ev);
+}
+
 void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
   _jobs.tick(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) board.reboot();
   streamTick(now);
+  inventoryTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
     if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it
       l.nonce[0] = 0;
       l.unlock.clear();
+      l.subs.clear();              // and its subscriptions and queued messages: the next client on it inherits nothing
+      if (l.q) l.q->clear();
       l.may_read = false;
     }
     if (l.rx.tick(now)) {

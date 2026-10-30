@@ -106,6 +106,13 @@ public:
   // Next frame of the message at the head (out needs FRAME_MAX bytes); 0 when empty.
   size_t nextFrame(uint8_t* out);
   int count() const { return _count; }
+  // Whether an event of len bytes would be taken now (the same test push() makes).
+  bool eventFits(size_t len) const {
+    return _count < QUEUE_MESSAGES - 1 && _cap >= RESULT_RESERVE && _used <= _cap - RESULT_RESERVE &&
+           len <= _cap - RESULT_RESERVE - _used;
+  }
+  // Everything queued is dropped, a message half sent included: the link dropped and its next client starts afresh.
+  void clear() { _head = 0; _used = 0; _count = 0; _first = 0; _next_frame = 0; }
   uint32_t droppedEvents() const { return _dropped; }
   uint32_t refusedResults() const { return _refused; }
 

@@ -66,7 +66,7 @@ public:
   }
   uint32_t streamsProduced() const {
     return STREAMS_PRODUCED | (_conn_write ? (1u << Iface::SID_CONNECTIVITY) : 0) |
-           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0);
+           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << Iface::SID_LOCATION) : 0);
   }
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);
@@ -201,10 +201,23 @@ private:
   Iface::LogFeed _logs;
   void sendEvent(int stream, const char* ev, size_t n);
   void drainLogs();
+  // The inventory stream's snapshot (TELEMETRY.md): started when the stream is due (a new subscription, each period),
+  // then one page per pass, at most INV_PAGES_PER_S a second, so a long contact list never holds the RF loop.
+  void startInventory(uint32_t now);
+  void inventoryTick(uint32_t now);
+  static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
+  static const uint32_t INV_PAGE_MS = 200;
+  bool _inv_active = false;
+  uint32_t _inv_snapshot = 0, _inv_part = 0, _inv_next = 0;
+  int _inv_channel = 0;
+  int _inv_cursor = 0;   // the contact store's cursor (record ids), kept between pages
+  bool _inv_again = false;   // another snapshot is due once this one ends
+  Cli::Context _link_ctx;   // the transport's own context of the request being handled (a signature replaces _ctx)
   ConnWriteFn _conn_write = nullptr;
   ConnSignatureFn _conn_sig = nullptr;
   uint64_t _conn_last = 0;
   bool _env_ok = false;          // the environment stream has something to report (sensors start after the mesh)
+  bool _loc_ok = false;          // the build has a location provider (the location stream)
   bool _env_checked = false;
   void refreshEnvironment(uint32_t now);
   uint32_t _env_at = 0;

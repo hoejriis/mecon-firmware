@@ -288,6 +288,55 @@ TEST(IfaceEnvelope, EventSerialization) {
   EXPECT_EQ(-1, writeEvent(b, 20, "health", 1, 1, true, 1, nullptr));
 }
 
+// ---- the queue's room check (the inventory pages wait on it): it answers exactly what push() would do
+
+TEST(OutQueueRoom, EventFitsAgreesWithPushAtEveryFillLevel) {
+  for (size_t len : {(size_t)100, (size_t)500, (size_t)700, (size_t)1300, (size_t)1500}) {   // 500 reaches the reserve at 1,500 used
+    uint8_t store[2048];
+    OutQueue q(store, sizeof(store));
+    std::vector<uint8_t> msg(len, 'x');
+    for (int i = 0; i < 12; i++) {
+      const bool fits = q.eventFits(len);
+      const OutQueue::Push p = q.push(OutQueue::EVENT, msg.data(), len);
+      EXPECT_EQ(fits, p == OutQueue::PUSH_OK) << "len " << len << " step " << i;
+    }
+  }
+  uint8_t store[2048];
+  OutQueue q(store, sizeof(store));
+  std::vector<uint8_t> big(1400, 'y');
+  ASSERT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::EVENT, big.data(), big.size()));
+  EXPECT_FALSE(q.eventFits(1400)) << "a second page waits while the first is queued";
+  q.clear();
+  EXPECT_TRUE(q.eventFits(1400)) << "cleared on a disconnect";
+  EXPECT_EQ(0, q.count());
+}
+
+// ---- strings that are not UTF-8 (a contact name cut at a byte limit, or hostile)
+
+static std::string jsonOfBytes(const std::string& bytes) {
+  char b[200];
+  JsonWriter w(b, sizeof(b));
+  w.str(bytes.data(), bytes.size());
+  EXPECT_TRUE(w.ok());
+  return std::string(b, w.size());
+}
+
+TEST(IfaceJson, ValidUtf8PassesThroughUnchanged) {
+  EXPECT_EQ("\"\xc3\xa5se\"", jsonOfBytes("\xc3\xa5se"));                     // a 2-byte letter
+  EXPECT_EQ("\"\xe2\x82\xac\"", jsonOfBytes("\xe2\x82\xac"));               // 3 bytes
+  EXPECT_EQ("\"\xf0\x9f\x93\xa1\"", jsonOfBytes("\xf0\x9f\x93\xa1"));     // 4 bytes
+}
+
+TEST(IfaceJson, EachInvalidByteBecomesAReplacementCharacter) {
+  EXPECT_EQ("\"ab\\ufffd\"", jsonOfBytes("ab\xc3"));                // a sequence cut at the end
+  EXPECT_EQ("\"\\ufffdx\"", jsonOfBytes("\x80x"));                  // a stray continuation byte
+  EXPECT_EQ("\"\\ufffd\\ufffd\"", jsonOfBytes("\xc0\xaf"));       // an overlong '/'
+  EXPECT_EQ("\"\\ufffd\\ufffd\\ufffd\"", jsonOfBytes("\xed\xa0\x80"));   // a surrogate
+  EXPECT_EQ("\"\\ufffd\"", jsonOfBytes("\xff"));
+  EXPECT_EQ("\"\\ufffd\\ufffd\\ufffd\\ufffd\"", jsonOfBytes("\xf4\x90\x80\x80"));   // over U+10FFFF
+  EXPECT_EQ("\"\\ufffd\\ufffdA\"", jsonOfBytes("\xe2\x82" "A"));   // a 3-byte start cut short: per byte
+}
+
 // ---- result id cache
 
 TEST(IfaceCache, AnIdHeldByAnotherOperationIsAConflictNeverAHit) {

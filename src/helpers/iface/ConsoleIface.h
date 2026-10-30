@@ -136,9 +136,12 @@ private:
   static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
   ObsLimiter _obs;
   bool _env_ok = false, _env_checked = false;
+  bool _loc_ok = false;   // the build has a location provider (the location stream)
   void refreshEnvironment(uint32_t now);
   uint32_t _env_at = 0;
-  uint32_t streamsProduced() const { return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0); }
+  uint32_t streamsProduced() const {
+    return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << SID_LOCATION) : 0);
+  }
   LoopGap _gap;
   bool _boot_sent = false, _boot_pending = false;   // the runtime boot event: once per epoch
   LogFeed _logs;

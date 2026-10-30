@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.inventory.json",
   "title": "Data of an inventory event (TELEMETRY.md section 3)",
-  "description": "Counts of the role's own tables. Companion: contacts and channels. Repeater: neighbours and clients. Room server: clients. Entries are not included (their access rule comes with the Deployment authority stage).",
+  "description": "Server roles: counts of the role's own tables (Repeater: neighbours and clients; Room server: clients). Companion: one page of a snapshot of the contacts and channels, with the counts on every page. Class private (TELEMETRY.md).",
   "type": "object",
   "minProperties": 1,
   "properties": {
@@ -72,6 +72,99 @@
           "type": "integer",
           "minimum": 0
         }
+      }
+    },
+    "snapshot": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Companion: the snapshot this page belongs to"
+    },
+    "part": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "last": {
+      "type": "boolean",
+      "description": "the final page of the snapshot"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "key",
+              "name",
+              "type",
+              "fav",
+              "last_advert",
+              "hops"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "contact"
+              },
+              "key": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "none",
+                  "chat",
+                  "repeater",
+                  "room",
+                  "sensor",
+                  "other"
+                ]
+              },
+              "fav": {
+                "type": "boolean"
+              },
+              "last_advert": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "hops": {
+                "type": "integer",
+                "minimum": -1
+              },
+              "lat_e6": {
+                "type": "integer"
+              },
+              "lon_e6": {
+                "type": "integer"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "index",
+              "name"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "channel"
+              },
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        ]
       }
     }
   }

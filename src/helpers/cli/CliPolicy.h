@@ -54,6 +54,9 @@ enum Class : uint8_t {
   C_POSTURE,        // the security posture, the audit log, the connectivity mode, the broker-management flag
   C_DESTRUCTIVE,    // erases or factory-resets the device
   C_REBOOT,
+  C_PRIVATE,        // private telemetry: location, contact and channel lists, screen frames. The owner's rule, 2026-10-28:
+                    // "All this should go via the broker to the backend", so the TLS-verified broker session may, with the
+                    // device's own trusted links and a signed request; a LoRa admin or contact, or the Ethernet console, may not
   C_COUNT
 };
 
@@ -170,35 +173,35 @@ inline uint8_t auditCaller(Principal p) {
 // Rows are principals, in the order of the Principal enum; per principal one row for Normal and one for Hardened;
 // columns are the classes, in the order of the Class enum. ALLOW means allowed; anything else is the reason for the
 // refusal. A change to who may do what is a change to a cell here and to nothing else.
-#define CLI_ROW(r, w, s, p, d, b) { R_##r, R_##w, R_##s, R_##p, R_##d, R_##b }
+#define CLI_ROW(r, w, s, p, d, b, v) { R_##r, R_##w, R_##s, R_##p, R_##d, R_##b, R_##v }
 inline Reason tableCell(Principal p, bool hardened, uint8_t cls) {
   static const uint8_t T[P_COUNT][2][C_COUNT] = {
-    //                            READ            WRITE           SECRET          POSTURE         DESTRUCTIVE     REBOOT
-    /* untrusted      N */ { CLI_ROW(UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED),
-    /* untrusted      H */   CLI_ROW(UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED) },
-    /* cable          N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW),
-    /* cable          H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           ALLOW,           ALLOW) },
-    /* paired BLE     N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW),
-    /* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           NOT_PERMITTED,   ALLOW) },
-    /* remote admin   N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW),
-    /* remote admin   H */   CLI_ROW(ALLOW,           HARDENED,        HARDENED,        NOT_PERMITTED,   HARDENED,        ALLOW) },
-    /* admin, default N */ { CLI_ROW(DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW),
-    /* admin, default H */   CLI_ROW(DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW) },
-    /* guest          N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED),
-    /* guest          H */   CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED) },
-    /* flagged contact N */ { CLI_ROW(ALLOW,           REMOTE_LIMITED,  REMOTE_LIMITED,  NOT_PERMITTED,   REMOTE_LIMITED,  ALLOW),
-    /* flagged contact H */   CLI_ROW(CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF) },
-    /* MQTT verified  N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW),
-    /* MQTT verified  H */   CLI_ROW(ALLOW,           NEEDS_FLAG,      NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NEEDS_FLAG) },
-    /* MQTT unverified N */ { CLI_ROW(MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED),
-    /* MQTT unverified H */   CLI_ROW(MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED) },
-    /* button         N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED),
-    /* button         H */   CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED) },
-    /* Ethernet admin N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW),
-    /* Ethernet admin H */   CLI_ROW(NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF) },
+    //                            READ            WRITE           SECRET          POSTURE         DESTRUCTIVE     REBOOT          PRIVATE
+    /* untrusted      N */ { CLI_ROW(UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED, UNTRUSTED),
+    /* untrusted      H */   CLI_ROW(UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED,       UNTRUSTED, UNTRUSTED) },
+    /* cable          N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW, ALLOW),
+    /* cable          H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           ALLOW,           ALLOW, ALLOW) },
+    /* paired BLE     N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW, ALLOW),
+    /* paired BLE     H */   CLI_ROW(ALLOW,           ALLOW,           KEY_HARDENED,    ALLOW,           NOT_PERMITTED,   ALLOW, ALLOW) },
+    /* remote admin   N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW, NOT_PERMITTED),
+    /* remote admin   H */   CLI_ROW(ALLOW,           HARDENED,        HARDENED,        NOT_PERMITTED,   HARDENED,        ALLOW, NOT_PERMITTED) },
+    /* admin, default N */ { CLI_ROW(DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW, DEFAULT_PW),
+    /* admin, default H */   CLI_ROW(DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW,      DEFAULT_PW, DEFAULT_PW) },
+    /* guest          N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED, NOT_PERMITTED),
+    /* guest          H */   CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED, NOT_PERMITTED) },
+    /* flagged contact N */ { CLI_ROW(ALLOW,           REMOTE_LIMITED,  REMOTE_LIMITED,  NOT_PERMITTED,   REMOTE_LIMITED,  ALLOW, NOT_PERMITTED),
+    /* flagged contact H */   CLI_ROW(CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF,         CLI_OFF, CLI_OFF) },
+    /* MQTT verified  N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW, ALLOW),
+    /* MQTT verified  H */   CLI_ROW(ALLOW,           NEEDS_FLAG,      NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   NEEDS_FLAG, ALLOW) },
+    /* MQTT unverified N */ { CLI_ROW(MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED),
+    /* MQTT unverified H */   CLI_ROW(MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED, MQTT_UNVERIFIED) },
+    /* button         N */ { CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED, NOT_PERMITTED),
+    /* button         H */   CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED, NOT_PERMITTED) },
+    /* Ethernet admin N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW, NOT_PERMITTED),
+    /* Ethernet admin H */   CLI_ROW(NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF, NETCON_OFF) },
     // signed: custody (secret) comes with its own change; no remote erase, whatever the signature (AUTHORITY.md section 11)
-    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW),
-    /* signed         H */   CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW) },
+    /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW, ALLOW),
+    /* signed         H */   CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW, ALLOW) },
   };
   if (p >= P_COUNT || cls >= C_COUNT) return R_NOT_PERMITTED;
   return (Reason)T[p][hardened ? 1 : 0][cls];

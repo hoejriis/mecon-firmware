@@ -63,7 +63,7 @@ static bool u32Field(const JsonDoc& d, const char* key, uint32_t* out) {
 }
 
 static bool streamIsPrivate(const JsonDoc& d) {
-  static const char* const PRIVATE[] = { "screen", "location", "logs", "inventory.entries" };
+  static const char* const PRIVATE[] = { "screen", "location", "logs", "inventory" };   // inventory carries the entries
   char name[33];
   int ta = jsonFind(d, 0, "args");
   int ts = ta >= 0 ? jsonFind(d, ta, "stream") : -1;

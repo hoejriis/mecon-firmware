@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.location.json",
+  "title": "Data of a location event (TELEMETRY.md section 3): private, class private",
+  "type": "object",
+  "required": [
+    "fix",
+    "lat_e6",
+    "lon_e6",
+    "alt_m",
+    "sats",
+    "age_s"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "fix": {
+      "type": "boolean"
+    },
+    "lat_e6": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": -90000000,
+      "maximum": 90000000,
+      "description": "millionths of a degree; null without a fix"
+    },
+    "lon_e6": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": -180000000,
+      "maximum": 180000000,
+      "description": "millionths of a degree; null without a fix"
+    },
+    "alt_m": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "metres; null without a fix"
+    },
+    "sats": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "age_s": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "since the last valid fix; null when unknown"
+    }
+  }
+}
