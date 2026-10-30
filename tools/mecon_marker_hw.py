@@ -3,7 +3,8 @@
 keys (test/fixtures/deployment_authority_public_v1.json). Never on a real fleet.
 
     mecon_marker_hw.py <port> state                 hello and deployment.get
-    mecon_marker_hw.py <port> reset                 an unsigned deployment.reset over the cable
+    mecon_marker_hw.py <port> reset                 an unsigned deployment.reset over the cable: clears a corrupt record,
+                                                    and is refused on a healthy one
     mecon_marker_hw.py <port> provision             a first provisioning over the cable; expects ok
     mecon_marker_hw.py <port> expect-corrupt        files gone, marker kept: corrupt, and a provisioning is refused
 
@@ -78,9 +79,17 @@ def main():
     print("hello: role=%s firmware=%s; deployment.get: %s" % (h["result"].get("role"), h["result"].get("firmware"),
                                                               json.dumps(g.get("result"))[:120]))
     if step == "reset":
+        # An unsigned reset over the cable clears only a record that is not healthy (AUTHORITY.md section 9). A healthy
+        # record takes a signed deployment.reset (mecon_worker_hw.py), so here its refusal is what is checked.
+        state = (g.get("result") or {}).get("state")
         r = c.request("deployment.reset")
-        check("unsigned reset over the cable", r.get("status") == "ok", r)
-        check("then no record", c.request("deployment.get")["result"] == {"state": "none"})
+        if state == "provisioned":
+            check("unsigned reset of a healthy record refused", r.get("status") == "refused" and
+                  r.get("error") == "unauthenticated", r)
+            check("the record is kept", c.request("deployment.get")["result"].get("state") == "provisioned")
+        else:
+            check("unsigned reset over the cable", r.get("status") == "ok", r)
+            check("then no record", c.request("deployment.get")["result"] == {"state": "none"})
     elif step == "provision":
         r = c.request("deployment.provision", provision_args(key))
         check("first provisioning over the cable", r.get("status") == "ok", r)
