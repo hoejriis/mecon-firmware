@@ -113,10 +113,16 @@ bool slotActivate() {
   return writeOta(o);
 }
 
-bool slotRevert() {
+uint32_t slotRunning() { return (uint32_t)readOta().run + 1; }
+uint32_t slotBooting() { return (uint32_t)readOta().boot + 1; }
+uint32_t slotWritten() { return (uint32_t)inactive() + 1; }
+
+bool slotSetBoot(uint32_t id) {
+  if (id != 1 && id != 2) return false;
   OtaData o = readOta();
-  o.boot = 1 - o.run;
-  o.state = ST_VALID;   // the previous image ran before: nothing to verify
+  if ((int)id - 1 == o.run && o.state == ST_PENDING) return false;   // never vouches for an image on trial
+  o.boot = (int)id - 1;
+  if (o.boot != o.run || o.state == ST_NEW) o.state = ST_VALID;   // the image it names ran before: nothing to verify
   return writeOta(o);
 }
 
@@ -238,9 +244,31 @@ bool slotEraseStep() {
 
 bool slotActivate() { return g_part && esp_ota_set_boot_partition(g_part) == ESP_OK; }
 
-bool slotRevert() {
-  const esp_partition_t* prev = esp_ota_get_next_update_partition(nullptr);   // the other slot: the image before this one
-  return prev && esp_ota_set_boot_partition(prev) == ESP_OK;
+uint32_t slotRunning() {
+  const esp_partition_t* p = esp_ota_get_running_partition();
+  return p ? p->address : 0;
+}
+
+uint32_t slotBooting() {
+  const esp_partition_t* p = esp_ota_get_boot_partition();
+  return p ? p->address : 0;
+}
+
+uint32_t slotWritten() {
+  const esp_partition_t* p = esp_ota_get_next_update_partition(nullptr);
+  return p ? p->address : 0;
+}
+
+bool slotSetBoot(uint32_t id) {
+  if (!id) return false;
+  esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, nullptr);
+  const esp_partition_t* found = nullptr;
+  for (; it && !found; it = esp_partition_next(it)) {
+    const esp_partition_t* p = esp_partition_get(it);
+    if (p->address == id) found = p;
+  }
+  if (it) esp_partition_iterator_release(it);
+  return found && esp_ota_set_boot_partition(found) == ESP_OK;
 }
 
 bool runningHash(uint8_t out[32]) {
@@ -286,7 +314,10 @@ bool slotFinish() { return false; }
 void slotAbandon() {}
 bool slotEraseStep() { return false; }
 bool slotActivate() { return false; }
-bool slotRevert() { return false; }
+uint32_t slotRunning() { return 0; }
+uint32_t slotBooting() { return 0; }
+uint32_t slotWritten() { return 0; }
+bool slotSetBoot(uint32_t) { return false; }
 bool runningHash(uint8_t*) { return false; }
 RunState runningState() { return RS_UNKNOWN; }
 bool markValid() { return false; }

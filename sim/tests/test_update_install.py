@@ -337,9 +337,9 @@ def test_an_enrolled_device_installs_only_on_a_signed_offer(nodes):
     assert r["status"] == "ok" and r["result"]["state"] == "confirmed", r
 
 
-def test_an_image_that_cannot_show_it_is_the_installed_one_is_not_confirmed(nodes):
-    """Confirmation needs the running image to match the job's digest: with the record that names the digest gone, the
-    job is not confirmed, and the deadline decides."""
+def test_an_image_whose_record_is_lost_goes_back_to_the_previous_one(nodes):
+    """Without the record that names the job's slots and digest, the new image cannot show it is the one installed. It
+    boots on trial, so the slot it replaced is known: the device goes back to it, and nothing is left unconfirmed."""
     img = image()
     n, d = start(nodes, "uv", 52)
     r = offer(d, stage(d, img))["result"]
@@ -348,11 +348,118 @@ def test_an_image_that_cannot_show_it_is_the_installed_one_is_not_confirmed(node
     os.remove(n.dir.rstrip("/") + ".updjob")
     declare(n, NEW)
     n.start()
+    assert n.wait_exit(10) == 75, "unproven: back to the previous image"
+    declare(n, OLD)
+    n.start()
     d = Dev(n)
-    assert "update" not in d.hello, "nothing attests"
+    g = job_get(d, r["job"])
+    assert g["state"] == "reverted" and g["result"]["error"] == "unproven", g
+    assert d.i.request("update.status")["result"]["running"]["sha256"] == FACTORY_SHA
+
+
+def test_an_image_that_is_not_the_installed_one_goes_back(nodes):
+    """The new slot runs but its image does not hash to the manifest's digest: not proven, so back to the previous one."""
+    img = image()
+    n, d = start(nodes, "uh", 54)
+    r = offer(d, stage(d, img))["result"]
+    push(d, r["job"], r["transfer_token"], img)
+    assert n.wait_exit(15) == 75
+    with open(n.dir.rstrip("/") + ".ota1", "r+b") as f:   # the written slot (the node started on slot 0)
+        f.seek(len(img) - 1)
+        f.write(b"\x00" if img[-1] != 0 else b"\x01")
+    declare(n, NEW)
+    n.start()
+    assert n.wait_exit(10) == 75
+    declare(n, OLD)
+    n.start()
+    d = Dev(n)
+    g = job_get(d, r["job"])
+    assert g["state"] == "reverted" and g["result"]["error"] == "unproven", g
+    assert d.i.request("update.status")["result"]["running"]["sha256"] == FACTORY_SHA
+
+
+def test_a_cancel_before_the_reboot_keeps_the_previous_image(nodes):
+    """Between activation and the reboot that follows it, the previous image still runs: a cancel then points the next
+    boot back at it, rather than claiming a revert while the new image boots."""
+    img = image()
+    n, d = start(nodes, "ux", 55)
+    r = offer(d, stage(d, img))["result"]
+    push(d, r["job"], r["transfer_token"], img)
+    end = time.time() + 5
+    while job_get(d, r["job"])["state"] != "awaiting-confirm" and time.time() < end:
+        time.sleep(0.02)
+    c = d.i.request("job.cancel", {"job": r["job"]})
+    assert c["status"] == "ok" and c["result"]["state"] == "reverted", c
+    assert n.wait_exit(10) == 75, "the activation's reboot still happens"
+    n.start()
+    d = Dev(n)
+    assert d.i.request("update.status")["result"]["running"]["sha256"] == FACTORY_SHA, "the previous image boots"
+    assert "update" not in d.hello
+
+
+def test_no_confirmation_before_the_new_image_runs(nodes):
+    """Activated but not yet rebooted: the job awaits confirmation, but its image does not run, so a confirmation now
+    would vouch for an image nothing has seen boot."""
+    img = image()
+    n, d = start(nodes, "uq2", 60)
+    r = offer(d, stage(d, img))["result"]
+    push(d, r["job"], r["transfer_token"], img)
+    end = time.time() + 5
+    while job_get(d, r["job"])["state"] != "awaiting-confirm" and time.time() < end:
+        time.sleep(0.02)
     c = d.i.request("job.confirm", {"job": r["job"]})
     assert (c["status"], c.get("error")) == ("failed", "confirm-failed"), c
-    assert job_get(d, r["job"])["state"] == "awaiting-confirm"
+    assert n.wait_exit(10) == 75
+
+
+def test_a_lost_job_table_does_not_leave_an_unconfirmed_image(nodes):
+    img = image()
+    n, d = start(nodes, "uj", 56)
+    r = offer(d, stage(d, img))["result"]
+    push(d, r["job"], r["transfer_token"], img)
+    assert n.wait_exit(15) == 75
+    os.remove(os.path.join(n.dir, "mecon_jobs"))
+    declare(n, NEW)
+    n.start()
+    assert n.wait_exit(10) == 75, "no job to confirm it: back to the previous image"
+    declare(n, OLD)
+    n.start()
+    assert Dev(n).i.request("update.status")["result"]["running"]["sha256"] == FACTORY_SHA
+
+
+def test_a_confirmed_image_stays_when_the_job_table_is_lost(nodes):
+    n, d, job = install(nodes, "uy", 57)
+    assert d.i.request("job.confirm", {"job": job})["result"]["state"] == "confirmed"
+    n.stop()
+    os.remove(os.path.join(n.dir, "mecon_jobs"))
+    n.start()
+    d = Dev(n)
+    s = d.i.request("update.status")["result"]
+    assert s["running"]["sha256"] == hashlib.sha256(image()).hexdigest(), "the record says it was confirmed"
+    assert not os.path.exists(n.dir.rstrip("/") + ".updjob"), "and the record is done with"
+
+
+def test_a_confirmation_the_job_table_never_saved_still_counts(nodes):
+    """A power cut after job.confirm's record write and before the job table's: the record says confirmed, so the job
+    is confirmed at the next boot, not reverted. The record's layout on the simulated board: its confirmed flag is the
+    byte at offset 188."""
+    n, d, job = install(nodes, "uf", 58)
+    n.stop()
+    path = n.dir.rstrip("/") + ".updjob"
+    with open(path, "r+b") as f:
+        f.seek(188)
+        f.write(b"\x01")
+    n.start()
+    d = Dev(n)
+    g = job_get(d, job)
+    assert g["state"] == "confirmed" and g["result"]["confirmed_by"] == "record", g
+
+
+def test_no_offer_while_the_new_image_is_on_trial(nodes):
+    n, d, job = install(nodes, "up", 59)
+    # Its own id: the client counts from r-1 again after the reboot, and r-3 names the install's job.
+    r = offer(d, stage(d, image(3000, b"next")), rid="next-1")
+    assert (r["status"], r.get("error")) == ("busy", "verifying"), r
 
 
 @pytest.mark.timescale(60)

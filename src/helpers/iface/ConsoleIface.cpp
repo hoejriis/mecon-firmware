@@ -1,5 +1,4 @@
 #include "ConsoleIface.h"
-#include "helpers/updates/UpdFloor.h"
 #include <helpers/Uptime.h>
 #include "DevIdHello.h"
 #include <new>
@@ -180,7 +179,6 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _epoch = epoch;
   _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
   _updates.begin(_host.hardware, _host.role);
-  Upd::floorAtBoot();   // the floor rises to the security version compiled into this image (UPDATES.md section 4)
   if (_host.snap_store)
     _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
                            confirmRunAs, confirmJobId};

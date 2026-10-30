@@ -31,8 +31,14 @@ bool slotFinish();
 void slotAbandon();
 bool slotEraseStep();
 
-bool slotActivate();   // the next boot runs the written image
-bool slotRevert();     // the next boot runs the other slot again (the previous image, untouched since the install)
+bool slotActivate();   // the next boot runs the written image, on trial (pending-verify)
+
+// The slots by identity: the partition's flash address on ESP32, 1 or 2 on the simulated board, 0 where there is none.
+// What runs and what boots next is read from the slots themselves, never inferred from an image's hash.
+uint32_t slotRunning();            // the slot the running image came from
+uint32_t slotBooting();            // the slot the next boot runs
+uint32_t slotWritten();            // the slot an install writes: the one not running
+bool slotSetBoot(uint32_t id);     // the next boot runs that slot's image, not on trial (it ran before)
 
 // SHA-256 of the running application image: exactly its bytes, as a manifest's image.sha256 names them. Computed once
 // at boot (about 1.7 MB read); false where the platform cannot say.

@@ -1,5 +1,4 @@
 #include "MeconIface.h"
-#include <helpers/updates/UpdFloor.h>
 #include <helpers/Uptime.h>
 #include <helpers/iface/DevIdHello.h>
 #include <helpers/iface/Wipe.h>
@@ -439,7 +438,6 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   deployLoad();
   _prov.begin(&_mesh->self_id, &_auth, epoch, epoch_saved);
   _updates.begin(_mesh->hardwareName(), "companion");
-  Upd::floorAtBoot();   // the floor rises to the security version compiled into this image (UPDATES.md section 4)
   observeSink().fn = onObserve;
   observeSink().user = this;
 }

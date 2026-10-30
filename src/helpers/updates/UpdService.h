@@ -35,6 +35,8 @@
 
 namespace Upd {
 
+struct Record;
+
 class UpdateService {
 public:
   static const uint32_t STAGE_GAP_MS = 1000;              // at most one stage a second: each costs a signature check
@@ -105,6 +107,9 @@ public:
 
 private:
   enum Phase : uint8_t { IDLE, RECEIVING, VERIFYING };
+  // Putting the previous image back: it already runs (and the next boot runs it too), the next boot runs it, which slot
+  // holds it cannot be told, or the slots could not be changed.
+  enum Back : uint8_t { BACK_RUNS, BACK_REBOOT, BACK_UNKNOWN, BACK_FAILED };
 
   Slot _s[2] = {};
   uint32_t _last_stage_ms = 0;
@@ -141,6 +146,10 @@ private:
   int writeRunning(char* out, size_t cap, bool previous, const char* prev_version, const uint8_t* prev_sha) const;
   size_t resultObject(char* out, size_t cap, const char* members, bool previous, const char* prev_version,
                       const uint8_t* prev_sha) const;
+  void markProven();
+  Back backToPrevious(const Record* r);
+  bool revertJob(Iface::Job& j, const Record* r, const char* reason);
+  void confirmFromRecord(Iface::Job& j);
   void finish(Iface::Job& j, uint8_t state, const char* members);
 };
 

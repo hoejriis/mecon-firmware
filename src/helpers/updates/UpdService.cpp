@@ -67,6 +67,9 @@ void UpdateService::begin(const char* hardware, const char* role) {
   _role = role ? role : "";
   slotBoot();
   _running_known = runningHash(_running_sha);
+  // The floor rises to this image's compiled security version (section 4), at once unless the image is on trial: a fresh
+  // install raises it once its start-up checks pass or it is confirmed, so an image the bootloader rolls back never does.
+  if (runningState() != RS_PENDING) floorAtBoot();
 }
 
 Device UpdateService::device() const {
@@ -302,6 +305,9 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
 
   // Preflight (section 4); step 1, authority, was the dispatcher's.
   if (_offered_once && (uint32_t)(now_ms - _last_offer_ms) < OFFER_GAP_MS) { c.error = "rate"; return ST_BUSY; }   // 2
+  // An image on trial (installed, its start-up checks not yet passed): the slot an install writes holds the image the
+  // bootloader would return to, so nothing is written until this one is proven (esp_ota_begin refuses then too).
+  if (runningState() == RS_PENDING) { c.error = "verifying"; return ST_BUSY; }
   Job* open = t->openJob();                                                                                         // 3
   static char g_open_error[16 + Job::ID_CAP];
   // Another kind of job, or an update whose image is activated but has not booted yet (writing the slot now would
@@ -329,29 +335,36 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     return strcmp(v.status, "invalid") == 0 ? ST_INVALID : strcmp(v.status, "busy") == 0 ? ST_BUSY : ST_REFUSED;
   }
 
-  // Passed: an open update job is superseded (section 7, step 7).
-  if (open) {
-    if (open->state == JOB_AWAITING) {   // its image runs, attested: confirmed by this offer
-      finish(*open, JOB_CONFIRMED, "\"confirmed_by\":\"superseded\"");
-      recordClear();
-      _attested = false;
-    } else {   // never activated: cancelled; the new transfer writes over its slot
-      endTransfer(false);
-      finish(*open, JOB_CANCELLED, "\"reason\":\"superseded\"");
-    }
-  }
-  _erasing = false;   // the new write takes the slot over
   CryptoRNG rng;
   uint8_t token[16];
   memset(token, 0, sizeof(token));
   rng.random(token, sizeof(token));
   bool nonzero = false;
   for (uint8_t b : token) nonzero = nonzero || b != 0;
-  if (!nonzero || !slotOpen(m->image_size)) {
+  if (!nonzero) { free(m); c.error = "rng"; return ST_FAILED; }
+  // The slot first: an offer that cannot open it supersedes nothing. A transfer it replaced cannot go on (the slot's
+  // write was abandoned), so that job ends failed.
+  _erasing = false;   // the new write takes the slot over
+  if (!slotOpen(m->image_size)) {
     free(m);
-    persist();
-    c.error = nonzero ? "slot" : "rng";
+    if (open && open->state != JOB_AWAITING) failJob("slot");
+    c.error = "slot";
     return ST_FAILED;
+  }
+  // Passed: an open update job is superseded (section 7, step 7).
+  if (open) {
+    if (open->state == JOB_AWAITING) {   // its image runs, attested and proven (not on trial): confirmed by this offer
+      Record r;
+      if (recordLoad(&r) && strcmp(r.job, open->id) == 0) {
+        r.confirmed = 1;
+        recordSave(r);
+      }
+      finish(*open, JOB_CONFIRMED, "\"confirmed_by\":\"superseded\"");
+      _attested = false;
+    } else {   // never activated: cancelled; the new transfer writes over its slot
+      endTransfer(false);
+      finish(*open, JOB_CANCELLED, "\"reason\":\"superseded\"");
+    }
   }
   Job* j = t->open(jid, OP);
   if (!j) { free(m); slotAbandon(); persist(); c.error = "busy"; return ST_BUSY; }
@@ -461,6 +474,9 @@ void UpdateService::activate() {
   memcpy(r.image_sha, _image_sha, 32);
   if (_running_known) memcpy(r.prev_sha, _running_sha, 32);
   r.image_size = _size;
+  r.new_id = slotWritten();
+  r.prev_id = slotRunning();
+  if (!r.new_id || !r.prev_id || r.new_id == r.prev_id) { failJob("slot"); return; }
   if (!recordSave(r)) { failJob("storage"); return; }
   // The job spans the reboot awaiting confirmation; only an abnormal reset or the deadline reverts it (section 7).
   t->awaitConfirm(j, _within_s, false, BOOT_ABNORMAL);
@@ -481,7 +497,7 @@ void UpdateService::loop(uint32_t now_ms) {
   // are up and the loop turns), so the bootloader stops reverting it. From here the confirmation deadline decides.
   if (!_valid_marked && now_ms >= VALID_AFTER_MS) {
     _valid_marked = true;
-    if (runningState() == RS_PENDING) markValid();
+    if (runningState() == RS_PENDING) markProven();
   }
   if (_erasing) { _erasing = slotEraseStep(); return; }
   if (_phase == IDLE) return;
@@ -521,30 +537,116 @@ void UpdateService::loop(uint32_t now_ms) {
 }
 
 // ---- boot, attestation, confirmation and revert
+//
+// Which image runs, and which the next boot runs, is read from the slots (UpdSlot.h) and the record that names them,
+// never inferred from a hash alone. An update's image counts as proven only when its slot runs, the record names that
+// slot, and the running image hashes to the manifest's digest. Anything less ends with the previous image as the one the
+// device runs, or, where the device cannot tell which that is, with a failed job that says nothing was reverted.
+
+void UpdateService::markProven() {
+  if (runningState() == RS_PENDING) markValid();
+  floorAtBoot();   // the floor follows an image once it is proven (section 4)
+}
+
+UpdateService::Back UpdateService::backToPrevious(const Record* r) {
+  const uint32_t run = slotRunning();
+  if (!run) return BACK_FAILED;
+  if (r) {
+    // Activated but not yet booted (a cancel in the moment before the reboot): the next boot must run this slot again.
+    if (run == r->prev_id) return slotBooting() == run || slotSetBoot(run) ? BACK_RUNS : BACK_FAILED;
+    if (run == r->new_id) return slotSetBoot(r->prev_id) ? BACK_REBOOT : BACK_FAILED;
+    return BACK_UNKNOWN;
+  }
+  // No record: only the rollback state tells. An image on trial is a fresh install that never proved itself, and the
+  // other slot holds the image it replaced. An image not on trial may be either, so nothing is changed.
+  if (runningState() == RS_PENDING) return slotSetBoot(slotWritten()) ? BACK_REBOOT : BACK_FAILED;
+  return BACK_UNKNOWN;
+}
+
+bool UpdateService::revertJob(Job& j, const Record* r, const char* reason) {
+  _attested = false;
+  const Back b = backToPrevious(r);
+  if (b == BACK_FAILED) return false;
+  char members[80];
+  if (b == BACK_UNKNOWN) snprintf(members, sizeof(members), "\"error\":\"revert-unknown\",\"reverted\":false");
+  else if (reason) snprintf(members, sizeof(members), "\"error\":\"%s\",\"reverted\":true", reason);
+  else snprintf(members, sizeof(members), "\"reverted\":true");
+  char buf[Job::RESULT_CAP];
+  size_t n;
+  if (b == BACK_REBOOT) {   // the reboot that follows runs the previous image, which the result names
+    bool prev_known = false;
+    if (r) for (uint8_t x : r->prev_sha) prev_known = prev_known || x != 0;
+    n = resultObject(buf, sizeof(buf), members, true, r ? r->prev_version : "unknown", prev_known ? r->prev_sha : nullptr);
+  } else {
+    n = resultObject(buf, sizeof(buf), members, false, nullptr, nullptr);
+  }
+  JobTable* t = table();
+  if (t) t->setState(&j, b == BACK_UNKNOWN ? JOB_FAILED : JOB_REVERTED, n ? buf : nullptr, n);
+  // Kept across a reboot to the previous image: the boot that finds the previous slot running clears it, so a power cut
+  // before that reboot still reads as a revert.
+  if (b != BACK_REBOOT) recordClear();
+  if (b == BACK_REBOOT && _host.reboot) _host.reboot(_host.user);
+  return true;
+}
+
+// The record's job was confirmed before the job table could be saved (a power cut after job.confirm): confirmed.
+void UpdateService::confirmFromRecord(Job& j) {
+  finish(j, JOB_CONFIRMED, "\"confirmed_by\":\"record\"");
+  recordClear();
+  markProven();
+}
 
 void UpdateService::bootReconcile() {
-  Record r;
-  if (!recordLoad(&r)) return;
   JobTable* t = table();
+  Record r;
+  const bool have = recordLoad(&r);
   Job* j = nullptr;
-  if (!t || t->find(r.job, &j) != JobTable::FOUND || j->state != JOB_AWAITING) { recordClear(); return; }   // over
-  if (_running_known && memcmp(_running_sha, r.image_sha, 32) == 0) {
-    // The new image runs: it attests, and awaits confirmation.
-    _attested = true;
-    strncpy(_attested_job, r.job, sizeof(_attested_job) - 1);
-    char sha[65], m[Job::RESULT_CAP];
-    hexOf(sha, _running_sha, 32);
-    const int n = snprintf(m, sizeof(m), "{\"update\":{\"job\":\"%s\",\"version\":\"%s\",\"sha256\":\"%s\"}}", r.job,
-                           runningVersion(), sha);
-    if (n > 0 && (size_t)n < sizeof(m)) t->setResult(j, m, (size_t)n);
-    persist();
-    if (_host.jobs) _host.jobs->announce(*j);
+  if (have) {
+    if (!t || t->find(r.job, &j) != JobTable::FOUND) j = nullptr;
+  } else {
+    Job* o = openUpdateJob();
+    if (o && o->state == JOB_AWAITING) j = o;
+  }
+  const uint32_t run = slotRunning();
+
+  if (!have) {   // an update job awaits confirmation, and nothing names its slots (the record is lost or unreadable)
+    if (j && !revertJob(*j, nullptr, "unproven")) finish(*j, JOB_FAILED, "\"error\":\"revert-failed\"");
+    if (j) persist();
     return;
   }
-  // Another image runs: the bootloader returned to the previous slot (a reset before the new image was marked valid).
-  finish(*j, JOB_REVERTED, "\"error\":\"rolled-back\",\"reverted\":true");
-  recordClear();
-  persist();
+  if (j && j->state == JOB_AWAITING) {
+    if (r.confirmed) { confirmFromRecord(*j); persist(); return; }
+    if (run && run == r.new_id && _running_known && memcmp(_running_sha, r.image_sha, 32) == 0) {
+      // The new image runs and is the one installed: it attests, and awaits confirmation.
+      _attested = true;
+      strncpy(_attested_job, r.job, sizeof(_attested_job) - 1);
+      char sha[65], m[Job::RESULT_CAP];
+      hexOf(sha, _running_sha, 32);
+      const int n = snprintf(m, sizeof(m), "{\"update\":{\"job\":\"%s\",\"version\":\"%s\",\"sha256\":\"%s\"}}", r.job,
+                             runningVersion(), sha);
+      if (n > 0 && (size_t)n < sizeof(m)) t->setResult(j, m, (size_t)n);
+      persist();
+      if (_host.jobs) _host.jobs->announce(*j);
+      return;
+    }
+    if (run && run == r.prev_id) {   // the bootloader returned to the previous slot (a reset before it was marked valid)
+      if (!revertJob(*j, &r, "rolled-back")) finish(*j, JOB_FAILED, "\"error\":\"revert-failed\"");
+      persist();
+      return;
+    }
+    // The new slot runs but cannot show it holds the installed image: back to the previous one.
+    if (!revertJob(*j, &r, "unproven")) finish(*j, JOB_FAILED, "\"error\":\"revert-failed\"");
+    persist();
+    return;
+  }
+  // The job is over, or gone from the table. A confirmed image stays; an image never confirmed does not, whatever the
+  // job table lost.
+  if (r.confirmed || run != r.new_id) {
+    if (!r.confirmed && run == r.prev_id && slotBooting() != run) slotSetBoot(run);
+    recordClear();
+    return;
+  }
+  if (backToPrevious(&r) == BACK_REBOOT && _host.reboot) _host.reboot(_host.user);
 }
 
 bool UpdateService::jobRevert(Job& j) {
@@ -555,38 +657,22 @@ bool UpdateService::jobRevert(Job& j) {
   }
   Record r;
   const bool have = recordLoad(&r) && strcmp(r.job, j.id) == 0;
-  if (have && _running_known && memcmp(_running_sha, r.image_sha, 32) == 0) {
-    // The new image runs: the next boot runs the previous one again, which this result names.
-    if (!slotRevert()) return false;
-    char buf[Job::RESULT_CAP];
-    bool prev_known = false;   // all zero: the installing image could not hash itself
-    for (uint8_t b : r.prev_sha) prev_known = prev_known || b != 0;
-    const size_t n = resultObject(buf, sizeof(buf), "\"reverted\":true", true, r.prev_version,
-                                  prev_known ? r.prev_sha : nullptr);
-    JobTable* t = table();
-    if (t) t->setState(&j, JOB_REVERTED, n ? buf : nullptr, n);
-    recordClear();
-    _attested = false;
-    if (_host.reboot) _host.reboot(_host.user);
-    return true;
-  }
-  finish(j, JOB_REVERTED, "\"reverted\":true");   // the previous image already runs
-  recordClear();
-  _attested = false;
-  return true;
+  if (have && r.confirmed) { confirmFromRecord(j); return true; }   // confirmed before a power cut: not reverted
+  return revertJob(j, have ? &r : nullptr, nullptr);
 }
 
 bool UpdateService::jobConfirm(Job& j) {
-  // Only once the new image runs: reachability alone never confirms (section 7, step 4).
+  // Only once the new image runs and shows it is the one installed: reachability alone never confirms (section 7, step 4).
   if (!_attested || strcmp(_attested_job, j.id) != 0) return false;
-  // A confirmation ends the bootloader's rollback window too, if the start-up checks have not yet: a reset must not
-  // take a confirmed image back.
-  if (runningState() == RS_PENDING) markValid();
+  Record r;
+  if (!recordLoad(&r) || strcmp(r.job, j.id) != 0) return false;
+  r.confirmed = 1;   // saved before the job table: a power cut between the two still reads as confirmed
+  if (!recordSave(r)) return false;
+  markProven();   // a reset must not take a confirmed image back
   JobTable* t = table();
   char m[Job::RESULT_CAP];
   const size_t n = resultObject(m, sizeof(m), nullptr, false, nullptr, nullptr);
   if (t && n) t->setResult(&j, m, n);
-  recordClear();
   _attested = false;
   return true;
 }
