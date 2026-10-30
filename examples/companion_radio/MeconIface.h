@@ -7,6 +7,7 @@
 #include <helpers/iface/IfaceDispatch.h>
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/ChannelOps.h>
+#include <helpers/iface/MgmtChannel.h>
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
@@ -76,6 +77,7 @@ public:
   MyMesh* mesh() const { return _mesh; }
   Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this, nullptr, 0, &_confirm}; }
   Iface::ChannelHost channelHost();   // the native channel table (channel.* operations)
+  Iface::MgmtHost mgmtHost();         // the management channel binding (mgmt.channel.*; MeconMgmt.cpp)
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
 
@@ -86,6 +88,7 @@ public:
   // Loads the job table from its file and applies the boot rule, reverting a change that was not confirmed in time;
   // called once from MyMesh::begin() after the prefs are loaded and before the radio and the links start.
   void jobsLoad();
+  void mgmtLoad();   // the binding record's files and the public channel's fingerprint; from jobsLoad()
   // The channel nonce hello reports on the current link: empty when the device holds no Deployment record.
   const char* helloNonce();
   // status.deployment: nothing for a device with no record.
@@ -160,6 +163,10 @@ private:
   static bool chanGet(void* self, int slot, Iface::ChannelInfo& out);
   static bool chanSet(void* self, int slot, const char* name, const uint8_t* secret);
   static int chanFind(void* self, const uint8_t* secret);
+  static bool mgmtSlotFp(void* self, int slot, uint8_t out[Iface::MGMT_FP_BYTES]);
+  static void mgmtKeyFp(void* self, const uint8_t* key, uint8_t out[Iface::MGMT_FP_BYTES]);
+  static bool mgmtReadSlot(void* self, int slot, char name[Iface::CHANNEL_NAME_MAX + 1],
+                           uint8_t key[Iface::CHANNEL_SECRET_BYTES]);
   Link* linkFor(const BaseSerialInterface* src, bool create);
   int dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
   int dispatchNow(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
@@ -211,6 +218,8 @@ private:
   Iface::JobService _jobs;                  // config.apply with confirm creates the jobs (OPERATIONS.md 3.4)
   Iface::ConfirmHost _confirm = {};         // filled by jobsLoad(); until then nothing can be applied tentatively
   bool _jobs_booting = false;
+  Iface::ChannelHost _chan_host = {};       // the table mgmtHost() hands out
+  uint8_t _public_fp[Iface::MGMT_FP_BYTES] = {0};   // the public channel's key fingerprint, set by mgmtLoad()
   uint32_t _reboot_at = 0;                  // a revert restored a key that needs a reboot (0: none)
   const char* _deny = nullptr;              // why authorize() refused, when it has a contract code for it
   char _mqtt_nonce[33] = {0};               // the MQTT session is one link
