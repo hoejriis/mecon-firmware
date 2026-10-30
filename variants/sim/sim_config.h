@@ -14,6 +14,7 @@ struct SimConfig {
   bool lockstep = false;      // --lockstep: time is granted by the ether broker (variants/sim/sim_radio.cpp), not the wall clock
   uint32_t quantum_us = 1000; // --quantum-us: how far a lock-step node runs between two barriers
   uint32_t rtc_epoch = 1760000000;  // RTC value at process start (unix seconds)
+  uint32_t millis_start = 0;        // millis() at process start (--millis-start), to cross its 49.7-day wrap in a test
   std::string wifi_env;       // file listing the simulated Wi-Fi access points (variants/sim/sim_wifi.cpp)
   std::string mqtt_env;       // file with the simulated DNS names and mDNS responders (variants/sim/sim_mqtt_net.cpp)
   std::string ui_frames;      // file the recording display appends its frames to (variants/sim/sim_display.cpp)

@@ -23,3 +23,6 @@ WioTrackerL1_companion_radio_usb         445440      83968
 WioTrackerL1_repeater                    406528      40960
 # NimBLE twins (Issue #68, docs/NIMBLE_EVALUATION.md) and the LilyGo T-LoRa Bluedroid build they are compared with.
 LilyGo_TLora_V2_1_1_6_companion_radio_ble           1507328      82944
+# The STM32WLE5 Companion: 229376 B is the board's whole app area (board_upload.maximum_size), so its budget is the
+# area itself rather than use + 4 KB. Measured 226272 B on 2026-10-30.
+wio-e5-mini_companion_radio_usb          229376      20480

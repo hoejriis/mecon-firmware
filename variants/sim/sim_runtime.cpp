@@ -36,7 +36,7 @@ SimClock* sim_real_clock() { return &real(); }
 void sim_set_clock(SimClock* c) { g_override = c; }
 SimClock* sim_clock() { return g_override ? g_override : &real(); }
 
-unsigned long millis() { return (unsigned long)(uint32_t)(sim_clock()->nowUs() / 1000); }
+unsigned long millis() { return (unsigned long)(uint32_t)(sim_clock()->nowUs() / 1000 + g_sim.millis_start); }
 unsigned long micros() { return (unsigned long)(uint32_t)sim_clock()->nowUs(); }
 void delay(unsigned long ms) { sim_poll(); sim_clock()->sleepUs((uint64_t)ms * 1000); }
 void delayMicroseconds(unsigned int us) { sim_clock()->sleepUs(us); }

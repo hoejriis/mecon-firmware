@@ -56,6 +56,7 @@ int main(int argc, char** argv) {
     else if (a == "--fs-calls") g_sim.fs_calls = next();
     else if (a == "--write-fail") g_sim.write_fail = next();
     else if (a == "--rtc") g_sim.rtc_epoch = strtoul(next(), nullptr, 10);
+    else if (a == "--millis-start") g_sim.millis_start = strtoul(next(), nullptr, 10);
     else if (a == "--fault") {   // --fault /path:BYTES
       std::string v = next(); size_t c = v.rfind(':');
       if (c != std::string::npos) { g_sim.fault_path = v.substr(0, c); g_sim.fault_after = atol(v.c_str() + c + 1); }

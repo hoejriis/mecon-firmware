@@ -47,6 +47,10 @@ jobs:
   mutant:
     needs: list
     runs-on: ubuntu-latest
+    # A batch takes 4.5 min typically and 9.7 min at the most (198 batches on main, 2026-10-30). A job that runs
+    # three times that long is stuck or has lost its runner: it fails, and on main the alarm says so, rather than
+    # sitting with no result.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

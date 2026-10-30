@@ -1,4 +1,5 @@
 #include "MeconIface.h"
+#include <helpers/Uptime.h>
 #include <helpers/iface/DevIdHello.h>
 #include <helpers/iface/Wipe.h>
 #ifdef ENABLE_MECON_IFACE
@@ -138,7 +139,7 @@ Status opHello(OpContext& c) {
 
 // The health fields, shared by status.get and the health stream so the two never disagree.
 void writeHealth(JsonWriter& w, MyMesh* mesh) {
-  w.key("uptime_s"); w.unum(millis() / 1000);
+  w.key("uptime_s"); w.unum(Uptime::secs(millis()));
   const MemStats ms = memStats();
   w.key("heap");
   if (!ms.known) w.null();
