@@ -10,6 +10,7 @@
 #include "helpers/Posture.h"
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/cli/CliRegistry.h"
+#include "helpers/cli/CliCaller.h"
 #include "helpers/NrfWorker.h"
 #include "Observe.h"
 #include "Wipe.h"
@@ -32,7 +33,8 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock"};
+                                    "deployment.unlock_challenge", "deployment.unlock", "job.get", "job.list",
+                                    "job.ack", "job.cancel", "job.confirm"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -90,6 +92,7 @@ Status opStatus(OpContext& c) {
   const bool hardened = Posture::isHardened(m->host().posture(m->host().user));
   w.key("posture"); w.str(hardened ? "hardened" : "normal");
   m->auth().writeStatus(w, hardened);
+  m->jobs().writeStatus(w);
   return ST_OK;
 }
 
@@ -122,6 +125,11 @@ Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
 Status opDeploySetUnlock(OpContext& c) { return self(c)->auth().opSetUnlock(c); }
 Status opDeployUnlockChallenge(OpContext& c) { return self(c)->auth().opUnlockChallenge(c); }
 Status opDeployUnlock(OpContext& c) { return self(c)->auth().opUnlock(c); }
+Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
+Status opJobList(OpContext& c) { return self(c)->jobs().opList(c); }
+Status opJobAck(OpContext& c) { return self(c)->jobs().opAck(c); }
+Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
+Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
 
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
@@ -139,6 +147,12 @@ const OpEntry OPS[] = {
   // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
   {"deployment.unlock_challenge", opDeployUnlockChallenge, PRIV_WRITE, false},
   {"deployment.unlock", opDeployUnlock, PRIV_WRITE, false},
+  // As on the Companion: ack is of the read class, cancel and confirm write; the three keep their result.
+  {"job.get", opJobGet, PRIV_READ, false},
+  {"job.list", opJobList, PRIV_READ, false},
+  {"job.ack", opJobAck, PRIV_READ, true},
+  {"job.cancel", opJobCancel, PRIV_WRITE, true},
+  {"job.confirm", opJobConfirm, PRIV_WRITE, true},
 };
 
 }  // namespace
@@ -148,6 +162,13 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
+  if (_host.snap_store)
+    _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
+                           confirmRunAs, confirmJobId};
+  _jobs.setClassCheck(jobClasses, this);
+  _jobs.setOnChange(jobChanged, this);
+  _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);
+  configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
   if (_host.dep_store) {
     DeployAuth::Env env;
     env.store = _host.dep_store;
@@ -197,7 +218,77 @@ bool ConsoleIface::consoleUnlocked(void* self) {
   return s->_auth.unlocked(&s->_unlock);
 }
 
-ConfigHost ConsoleIface::configHost() { return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS}; }
+ConfigHost ConsoleIface::configHost() {
+  return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS, &_confirm};
+}
+
+// ---- commit-or-revert (OPERATIONS.md 3.4). The console is the cable: a signed request on it is a signed caller.
+
+bool ConsoleIface::confirmCable(void* user) {
+  return Cli::principalOf(static_cast<ConsoleIface*>(user)->_ctx) == Cli::P_CABLE;
+}
+
+uint8_t ConsoleIface::confirmLineClass(void*, const char* line) { return Cli::resolve(line, Cli::ROLE_REPEATER).cls; }
+
+void ConsoleIface::confirmRecordCaller(void* user, Job& j) {
+  const ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  j.who_transport = s->_ctx.transport;
+  j.who_auth = s->_ctx.auth;
+  j.who_posture = s->_ctx.posture;
+  j.who_mgmt = 0;
+  j.who_audit = 0;
+}
+
+// A revert line runs as the console did for the caller who applied it: the signed flag is set again for a signed
+// caller, so the CLI decides and audits it as that caller.
+bool ConsoleIface::confirmRunAs(void* user, const Job& j, const char* line, char* reply, size_t cap) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  const bool was = Cli::serverCaller().signed_line;
+  Cli::serverCaller().signed_line = j.who_auth == Cli::A_SIGNED;
+  const bool known = s->_host.run(s->_host.user, line, reply, cap);
+  Cli::serverCaller().signed_line = was;
+  return known;
+}
+
+bool ConsoleIface::confirmJobId(void* user, const Request& req, char* out, size_t cap) {
+  return JobService::identity(&static_cast<ConsoleIface*>(user)->_auth.answering(), req, out, cap);
+}
+
+bool ConsoleIface::jobRevert(void* user, Job& j) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (strcmp(j.op, "config.apply") != 0) return false;
+  bool reboot = false;
+  if (!configRevert(s->configHost(), j, &reboot)) return false;
+  s->_jobs.table()->setState(&j, JOB_REVERTED);
+  // The servers apply the radio only at boot, so a restored radio needs one more reboot, at boot too.
+  if (reboot) s->_reboot_at = millis() + 1500;
+  return true;
+}
+
+bool ConsoleIface::jobConfirm(void* user, Job& j) {
+  if (strcmp(j.op, "config.apply") != 0) return false;
+  configConfirmed(static_cast<ConsoleIface*>(user)->configHost());
+  return true;
+}
+
+// The console is one link, and its caller may always read: each change of a job's state is a line on it, unless a
+// request is being typed (then it is still in job.get and job.list).
+void ConsoleIface::jobChanged(void* user, const Job& j) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (!s->_out || s->_collecting) return;
+  char ev[512 + Job::RESULT_CAP];
+  const uint32_t ts = s->_host.clock_s ? s->_host.clock_s(s->_host.user) : 0;
+  int n = s->_jobs.writeEvent(ev, sizeof(ev), s->_epoch, ts >= 1704067200, ts, j);
+  if (n > 0) n = s->_prov.sign("job", ev, (size_t)n, sizeof(ev));
+  if (n > 0) s->printLine(*s->_out, ev, (size_t)n);
+}
+
+bool ConsoleIface::jobClasses(void* user, uint8_t cls) {
+  const ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  for (uint8_t c = 0; c < Cli::C_COUNT; c++)
+    if ((cls & (1u << c)) && !Cli::decide(s->_ctx, c).allow) return false;
+  return true;
+}
 
 bool ConsoleIface::cliRun(void* user, const char* line, char* reply, size_t cap) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
@@ -377,6 +468,8 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
   _gap.tick(now);
+  _jobs.tick(now);
+  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0 && _host.board) _host.board->reboot();
   refreshEnvironment(now);
   if (_collecting) return;   // an event never lands in the middle of a request being typed
   SubSet* sets[1] = { &_subs };

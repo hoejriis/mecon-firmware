@@ -1,5 +1,5 @@
 {
-  "description": "radio, written and read back on one simulated standalone Companion, in order. config.apply takes the four fields as plain decimals; an integral value may omit the decimal point (125) or carry it (250.0). config.get returns what the CLI prints: bandwidth without a trailing .0, the frequency at float32 precision (869.618 reads 869.6179809), so compare frequencies with a tolerance. A value without its four fields is invalid and nothing is written.",
+  "description": "radio, written and read back on one simulated standalone Companion, in order. config.apply takes the four fields as plain decimals; an integral value may omit the decimal point (125) or carry it (250.0). The CLI applies a radio change at the next boot, so every accepted write answers reboot_needed. config.get returns what the CLI prints: bandwidth without a trailing .0, the frequency at float32 precision (869.618 reads 869.6179809), so compare frequencies with a tolerance. A value without its four fields is invalid and nothing is written.",
   "steps": [
     {
       "apply": {
@@ -15,7 +15,7 @@
             "radio": "ok"
           },
           "complete": true,
-          "reboot_needed": false,
+          "reboot_needed": true,
           "restarting": false
         }
       },
@@ -43,7 +43,7 @@
             "radio": "ok"
           },
           "complete": true,
-          "reboot_needed": false,
+          "reboot_needed": true,
           "restarting": false
         }
       },
@@ -71,7 +71,7 @@
             "radio": "ok"
           },
           "complete": true,
-          "reboot_needed": false,
+          "reboot_needed": true,
           "restarting": false
         }
       },

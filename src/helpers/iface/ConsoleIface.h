@@ -13,6 +13,7 @@
 #include "DeployAuth.h"
 #include "IfaceConfig.h"
 #include "IfaceDispatch.h"
+#include "JobService.h"
 #include "Provenance.h"
 #include "Streams.h"
 
@@ -47,6 +48,11 @@ public:
     uint32_t (*clock_s)(void* user);
     // The node identity, to sign results and events with (AUTHORITY.md section 3.4); null: nothing is signed.
     const mesh::LocalIdentity* identity;
+    // The job table's file (OPERATIONS.md section 3); null keeps the table in RAM only.
+    JobStore* job_store;
+    // The commit-or-revert snapshot's file (OPERATIONS.md 3.4); null: nothing is applied tentatively, so only the
+    // cable may change the radio.
+    SnapStore* snap_store;
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |
@@ -66,6 +72,7 @@ public:
   // For the operations.
   const Host& host() const { return _host; }
   DeployAuth& auth() { return _auth; }
+  JobService& jobs() { return _jobs; }
   // The channel nonce hello reports: the console is one link, and holds its own.
   const char* helloNonce() { return _auth.helloNonce(_nonce); }
   const char* deviceIdHex() const { return _id_hex; }
@@ -85,6 +92,18 @@ private:
   static int runSigned(void* user, const Cli::Context& ctx, const char* body, size_t len, char* out, size_t cap);
   int run(const Cli::Context& ctx, const char* msg, size_t len, char* out, size_t cap, ResultCache* cache);
   static bool cliRun(void* self, const char* line, char* reply, size_t cap);
+  // Commit-or-revert: the hooks config.apply and the job table call.
+  static bool confirmCable(void* self);
+  static uint8_t confirmLineClass(void* self, const char* line);
+  static void confirmRecordCaller(void* self, Job& j);
+  static bool confirmRunAs(void* self, const Job& j, const char* line, char* reply, size_t cap);
+  static bool confirmJobId(void* self, const Request& req, char* out, size_t cap);
+  static bool jobRevert(void* self, Job& j);
+  static bool jobConfirm(void* self, Job& j);
+  static bool jobClasses(void* self, uint8_t cls);
+  static void jobChanged(void* self, const Job& j);
+  ConfirmHost _confirm = {};
+  uint32_t _reboot_at = 0;     // a revert restored a key that needs a reboot (0: none)
   static bool cliAllow(void* self, const char* line);
   void answer(Print& out);
 public:
@@ -104,6 +123,7 @@ private:
   ResultCache* _cache = nullptr;
   Provenance _prov;            // signs every result and event while a record exists
   DeployAuth _auth;            // the Deployment record and the signed-request checks (shared with the Companion)
+  JobService _jobs;            // config.apply with confirm creates the jobs (OPERATIONS.md 3.4)
   Cli::Context _ctx;           // the caller of the request being handled: the cable, or the signed principal on it
   const char* _deny = nullptr; // why authorize() refused, when it has a contract code for it
   char _nonce[33] = {0};       // the console's channel nonce (AUTHORITY.md section 7.1)

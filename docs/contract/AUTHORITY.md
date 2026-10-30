@@ -255,6 +255,7 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 
 Its point is that a transport never becomes authority: once a device belongs to a Deployment, changing it needs a member's signature or someone physically present.
 
+- "Reads" here means operations of the read class that change nothing. `job.ack` is of the read class but releases an owed result, so an unsigned caller is refused it (`unauthenticated`) once a record exists; otherwise any link could discard a result before its manager collects it. Signed, it carries a `job_id` (section 7.1).
 - Entering Hardened while a record exists is refused unless the record holds a local unlock secret. A signed request may lower the posture, as the cable may.
 - BLE loses the native factory reset once a record exists. Otherwise a BLE factory reset followed by a BLE first provisioning would let a paired phone take a device over without touching it.
 - Every path that formats or rebuilds storage keeps the record, or is gated as `deployment.reset` is. That includes the rescue console's `rebuild`, which reformats and saves back identity, settings, contacts and channels: it saves the record back too. A recovery path is never a silent unenrollment.

@@ -7,6 +7,8 @@
 #include "MyMesh.h"
 #include <new>
 #include <helpers/iface/Wipe.h>
+#include <helpers/iface/JobFsStore.h>
+#include <helpers/cli/CliRegistry.h>
 
 using namespace Iface;
 
@@ -22,6 +24,123 @@ bool DataStoreCopies::write(int slot, const uint8_t* frame, size_t len, Dep::Sto
 
 bool DataStoreCopies::removeBoth(int newer_slot, Dep::StoreFile which) {
   return _s->removeDeploymentCopies(newer_slot, which == Dep::SF_MARKS ? DataStore::DEP_MARKS : DataStore::DEP_RECORD);
+}
+
+// ---- jobs and commit-or-revert (OPERATIONS.md section 3)
+
+namespace {
+Iface::JobFsStore g_job_file;    // the DataStore's file system
+Iface::SnapFsStore g_snap_file;
+}  // namespace
+
+void MeconIface::jobsLoad() {
+  g_job_file.setFs(_mesh->_store->getPrimaryFS());
+  g_snap_file.setFs(_mesh->_store->getPrimaryFS());
+  _confirm = Iface::ConfirmHost{&_jobs, &g_snap_file, confirmCable, confirmLineClass, confirmReadSecret,
+                                confirmRecordCaller, confirmRunAs, confirmJobId};
+  _jobs.setClassCheck(jobClasses, this);
+  _jobs.setOnChange(jobChanged, this);
+  _jobs_booting = true;   // a revert at boot needs no reboot: the links start after this, with the restored prefs
+  _jobs.begin(&g_job_file, abnormalReset(board) == 1, jobRevert, jobConfirm, this);
+  _jobs_booting = false;
+  Iface::configSnapBoot(configHost());   // a snapshot no awaiting job owns goes: it holds old secrets
+}
+
+// The unsigned cable keeps its path whatever it changes. A signed request on the cable is a signed caller.
+bool MeconIface::confirmCable(void* user) {
+  return Cli::principalOf(static_cast<MeconIface*>(user)->_ctx) == Cli::P_CABLE;
+}
+
+uint8_t MeconIface::confirmLineClass(void*, const char* line) { return Cli::resolve(line, Cli::ROLE_COMPANION).cls; }
+
+// The write-only values, read from the prefs into the snapshot only: never into a result, an event or a log.
+bool MeconIface::confirmReadSecret(void* user, const Iface::KeyDef& k, unsigned idx, char* out, size_t cap) {
+  NodePrefs* p = static_cast<MeconIface*>(user)->_mesh->getNodePrefs();
+  const char* v = nullptr;
+#ifdef ENABLE_CONNMODE
+  if (strcmp(k.key, "wifi.profile.{n}.pwd") == 0 && idx < WifiProfiles::COUNT) v = p->wifi_profiles.pwd((uint8_t)idx);
+#endif
+#ifdef ENABLE_MQTT
+  if (idx < MqttProfiles::COUNT) {
+    if (strcmp(k.key, "mqtt.profile.{n}.user") == 0) v = p->mqtt_profiles.p[idx].user;
+    if (strcmp(k.key, "mqtt.profile.{n}.pwd") == 0) v = p->mqtt_profiles.p[idx].pwd;
+  }
+#endif
+  (void)p;
+  if (!v || strlen(v) >= cap) return false;
+  strcpy(out, v);
+  return true;
+}
+
+void MeconIface::confirmRecordCaller(void* user, Iface::Job& j) {
+  const MeconIface* m = static_cast<MeconIface*>(user);
+  j.who_transport = m->_ctx.transport;
+  j.who_auth = m->_ctx.auth;
+  j.who_posture = m->_ctx.posture;
+  j.who_mgmt = m->_ctx.mgmt ? 1 : 0;
+  j.who_audit = m->_caller;
+}
+
+// A revert line runs as the caller who applied the change, decided by the CLI table under today's posture: it can do
+// nothing that caller could not, and the audit names them.
+bool MeconIface::confirmRunAs(void* user, const Iface::Job& j, const char* line, char* reply, size_t cap) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  MyMesh* mesh = m->_mesh;
+  const Cli::Context ctx(j.who_transport, j.who_auth, mesh->postureValue(), j.who_mgmt != 0);
+  mesh->setCliCaller(ctx, j.who_audit);
+  char buf[sizeof(mesh->reply_buf)];
+  buf[0] = 0;
+  const bool known = mesh->handleCommand(line, ctx.remote ? 1 : 0, buf);
+  mesh->setCliCaller(Cli::Context(), Posture::CALLER_NET);
+  snprintf(reply, cap, "%s", buf);
+  Iface::wipe(buf, sizeof(buf));
+  return known;
+}
+
+bool MeconIface::confirmJobId(void* user, const Iface::Request& req, char* out, size_t cap) {
+  return Iface::JobService::identity(&static_cast<MeconIface*>(user)->_auth.answering(), req, out, cap);
+}
+
+bool MeconIface::jobRevert(void* user, Iface::Job& j) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  if (strcmp(j.op, "config.apply") != 0) return false;
+  bool reboot = false;
+  if (!Iface::configRevert(m->configHost(), j, &reboot)) return false;   // the job ends failed, revert-failed
+  m->_jobs.table()->setState(&j, Iface::JOB_REVERTED);
+  if (reboot && !m->_jobs_booting) m->_reboot_at = millis() + 1500;   // the result and the job event go out first
+  return true;
+}
+
+bool MeconIface::jobConfirm(void* user, Iface::Job& j) {
+  if (strcmp(j.op, "config.apply") != 0) return false;
+  Iface::configConfirmed(static_cast<MeconIface*>(user)->configHost());
+  return true;
+}
+
+// A job event goes to every connected transport whose last caller may read, and over the broker session, not only to
+// the transport that started the job: a result goes out over whichever path works (OPERATIONS.md 3.2).
+void MeconIface::jobChanged(void* user, const Iface::Job& j) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  char* ev = static_cast<char*>(malloc(RESULT_MAX));
+  if (!ev) return;   // the state is still in job.get and job.list
+  const uint32_t ts = m->_mesh->getRTCClock()->getCurrentTime();
+  int n = m->_jobs.writeEvent(ev, RESULT_MAX, m->_epoch, ts >= 1704067200, ts, j);
+  if (n > 0) n = m->_prov.sign("job", ev, (size_t)n, RESULT_MAX);
+  if (n > 0) {
+    for (Link& l : m->_links) {
+      if (!l.src || !l.may_read || !l.src->isConnected() || !m->ensureQueue(l)) continue;
+      l.q->push(Iface::OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
+    }
+    if (m->_mqtt_may_read && m->_ev_publish && m->_ev_up && m->_ev_up()) m->_ev_publish("job", ev, (size_t)n);
+  }
+  free(ev);
+}
+
+bool MeconIface::jobClasses(void* user, uint8_t cls) {
+  const MeconIface* m = static_cast<MeconIface*>(user);
+  for (uint8_t c = 0; c < Cli::C_COUNT; c++)
+    if ((cls & (1u << c)) && !Cli::decide(m->_ctx, c).allow) return false;
+  return true;
 }
 
 namespace {
