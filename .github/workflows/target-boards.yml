@@ -45,6 +45,7 @@ jobs:
           - WioTrackerL1_companion_radio_ble
           - WioTrackerL1_repeater
           - LilyGo_TLora_V2_1_1_6_companion_radio_ble          # NimBLE, this board's default stack
+          - wio-e5-mini_companion_radio_usb                    # STM32WLE5, 224 KB for the app: the tightest target
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
