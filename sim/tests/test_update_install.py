@@ -543,3 +543,29 @@ def test_the_token_not_the_link_authorises_a_chunk(nodes):
     # Own ids: the device keeps one result cache for every link, and both clients count from r-1.
     x = bi.request("update.chunk", {"job": r["job"], "token": r["transfer_token"], "offset": 0, "data": data}, rid="ble-3")
     assert x["status"] == "ok" and x["result"] == {"next": CHUNK}, x
+
+
+@pytest.mark.timescale(10)
+def test_after_three_send_backs_the_unconfirmed_image_stays_and_says_so(nodes):
+    """The previous image failed its trial each time it was sent back (the record's attempts, the byte at offset 189 on
+    the simulated board, at its limit of 3): the unconfirmed image stays rather than swap for ever, and reports itself."""
+    img = image()
+    n, d = start(nodes, "us3", 63)
+    r = offer(d, stage(d, img))["result"]
+    push(d, r["job"], r["transfer_token"], img)
+    assert n.wait_exit(15) == 75
+    os.remove(os.path.join(n.dir, "mecon_jobs"))   # no job left to confirm it
+    with open(n.dir.rstrip("/") + ".updjob", "r+b") as f:
+        f.seek(189)
+        f.write(b"\x03")
+    declare(n, NEW)
+    n.start()
+    d = Dev(n)
+    time.sleep(1)
+    assert n.proc.poll() is None, "not sent back a fourth time"
+    want = {"job": r["job"], "version": NEW, "sha256": hashlib.sha256(img).hexdigest(), "unconfirmed": True}
+    assert d.hello["update"] == want, d.hello.get("update")
+    assert d.i.request("status.get")["result"]["update"] == want
+    time.sleep(2.5)   # past its start-up checks: a restart now is a plain reboot, not a reset during a trial
+    n.restart()
+    assert Dev(n).hello["update"]["unconfirmed"] is True, "it stays reported across boots"

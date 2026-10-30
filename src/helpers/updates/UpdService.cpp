@@ -67,9 +67,6 @@ void UpdateService::begin(const char* hardware, const char* role) {
   _role = role ? role : "";
   slotBoot();
   _running_known = runningHash(_running_sha);
-  // The floor rises to this image's compiled security version (section 4), at once unless the image is on trial: a fresh
-  // install raises it once its start-up checks pass or it is confirmed, so an image the bootloader rolls back never does.
-  if (runningState() != RS_PENDING) floorAtBoot();
 }
 
 Device UpdateService::device() const {
@@ -356,7 +353,16 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   _erasing = false;   // the new write takes the slot over
   if (!slotOpen(m->image_size)) {
     free(m);
-    if (confirming) { conf.confirmed = 0; recordSave(conf); }
+    // The confirmation undone; if even that cannot be saved, the job is confirmed as the record already says, so the two
+    // never disagree (a record that says confirmed under an open job would confirm it at its deadline).
+    if (confirming) {
+      conf.confirmed = 0;
+      if (!recordSave(conf)) {
+        finish(*open, JOB_CONFIRMED, "\"confirmed_by\":\"superseded\"");
+        _attested = false;
+        persist();
+      }
+    }
     if (open && !confirming) failJob("slot");
     c.error = "slot";
     return ST_FAILED;
@@ -550,18 +556,18 @@ void UpdateService::loop(uint32_t now_ms) {
 
 void UpdateService::markProven() {
   if (runningState() == RS_PENDING) markValid();
-  floorAtBoot();   // the floor follows an image once it is proven (section 4)
+  if (!_stranded) floorAtBoot();   // the floor follows a proven image (section 4), unless it runs unconfirmed
   settleRecord();
 }
 
 // The record is done with once its job is over and the image running is proven: no reset can bring the other back.
 void UpdateService::settleRecord() {
   Record r;
-  if (!recordLoad(&r) || runningState() == RS_PENDING) return;
+  if (!recordLoad(&r) || runningState() != RS_VALID) return;   // on trial, or the state cannot be read: not settled
   JobTable* t = table();
   Job* j = nullptr;
   if (t && t->find(r.job, &j) == JobTable::FOUND && !jobTerminal(j->state)) return;   // still awaiting confirmation
-  if (!r.confirmed && slotRunning() == r.new_id && r.attempts < MAX_SEND_BACK) return;   // not settled: never confirmed
+  if (!r.confirmed && slotRunning() == r.new_id) return;   // an image never confirmed runs: never settled
   recordClear();
 }
 
@@ -611,7 +617,15 @@ void UpdateService::confirmFromRecord(Job& j) {
   markProven();
 }
 
+// At boot, after the job table: the install's outcome, then the floor. The floor rises to this image's compiled security
+// version (section 4) unless the image is on trial (a fresh install raises it once its start-up checks pass or it is
+// confirmed, so an image the bootloader rolls back never does) or runs unconfirmed because the previous one kept failing.
 void UpdateService::bootReconcile() {
+  reconcile();
+  if (runningState() != RS_PENDING && !_stranded) floorAtBoot();
+}
+
+void UpdateService::reconcile() {
   JobTable* t = table();
   Record r;
   const bool have = recordLoad(&r);
@@ -667,12 +681,18 @@ void UpdateService::bootReconcile() {
   // job table lost, and however it came back (a reset during the previous image's own trial returns to it). Sent back a
   // bounded number of times: a previous image that keeps failing its trial is not swapped in for ever.
   if (!r.confirmed && run && run == r.new_id) {
-    if (r.attempts >= MAX_SEND_BACK) { settleRecord(); return; }
+    if (r.attempts >= MAX_SEND_BACK) {   // the previous image failed its trial each time: stay, and say so
+      _stranded = true;
+      strncpy(_stranded_job, r.job, sizeof(_stranded_job) - 1);
+      return;
+    }
     r.attempts++;
     if (!recordSave(r)) return;
     if (backToPrevious(&r) == BACK_REBOOT && _host.reboot) _host.reboot(_host.user);
     return;
   }
+  // The previous image runs after an unconfirmed install: the next boot must run it too, whatever the slots last named.
+  if (!r.confirmed && run && run == r.prev_id && slotBooting() != run) slotSetBoot(run);
   settleRecord();
 }
 
@@ -705,11 +725,12 @@ bool UpdateService::jobConfirm(Job& j) {
 }
 
 void UpdateService::writeAttestation(JsonWriter& w) const {
-  if (!_attested) return;
+  if (!_attested && !_stranded) return;
   w.key("update"); w.beginObject();
-  w.key("job"); w.str(_attested_job);
+  w.key("job"); w.str(_attested ? _attested_job : _stranded_job);
   w.key("version"); w.str(runningVersion());
   w.key("sha256"); hex(w, _running_sha, 32);
+  if (_stranded) { w.key("unconfirmed"); w.boolean(true); }   // runs although its job ended without a confirmation
   w.endObject();
 }
 

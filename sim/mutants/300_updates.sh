@@ -48,3 +48,5 @@ mutate upd_recorded_confirmation_ignored $U '    if (r.confirmed && run && run =
 mutate upd_offer_during_the_trial $U '  if (runningState() == RS_PENDING) { c.error = "verifying"; return ST_BUSY; }' '' "$UI::test_no_offer_while_the_new_image_is_on_trial"
 mutate upd_record_cleared_during_the_trial $U '  if (!recordLoad(&r) || runningState() == RS_PENDING) return;' '  if (!recordLoad(&r)) return;' "$UI::test_a_reset_during_the_previous_images_trial_does_not_bring_the_new_one_back"
 mutate upd_confirmation_trusted_after_a_rollback $U '    if (r.confirmed && run && run == r.new_id) { confirmFromRecord(*j); persist(); return; }' '    if (r.confirmed) { confirmFromRecord(*j); persist(); return; }' "$UI::test_a_confirmation_that_did_not_survive_its_trial_is_a_rollback"
+mutate upd_send_back_unbounded $U '    if (r.attempts >= MAX_SEND_BACK) {   // the previous image failed its trial each time: stay, and say so' '    if (false) {' "$UI::test_after_three_send_backs_the_unconfirmed_image_stays_and_says_so"
+mutate upd_stranded_image_not_reported $U '      _stranded = true;' '' "$UI::test_after_three_send_backs_the_unconfirmed_image_stays_and_says_so"

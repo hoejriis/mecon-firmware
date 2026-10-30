@@ -97,7 +97,8 @@ public:
   bool jobConfirm(Iface::Job& j);
 
   // "update": {"job", "version", "sha256"} while the image of an update job runs unconfirmed (attestation, section 7
-  // step 3), into hello and the status snapshot; nothing otherwise.
+  // step 3), into hello and the status snapshot, with "unconfirmed": true once its job is over without a confirmation
+  // and the previous image kept failing its trial (step 6); nothing otherwise.
   void writeAttestation(Iface::JsonWriter& w) const;
 
   // The staged manifest with this hash, or nullptr (manifest-not-staged).
@@ -125,6 +126,8 @@ private:
   uint8_t _running_sha[32] = {};
   bool _running_known = false;
   bool _attested = false;     // an update job's image runs and awaits confirmation
+  bool _stranded = false;     // an image never confirmed runs, and the previous one kept failing its trial (section 7)
+  char _stranded_job[33] = {};
   char _attested_job[33] = {};
   bool _valid_marked = false;
 
@@ -152,6 +155,7 @@ private:
   bool revertJob(Iface::Job& j, const Record* r, const char* reason);
   void confirmFromRecord(Iface::Job& j);
   void settleRecord();
+  void reconcile();
   void finish(Iface::Job& j, uint8_t state, const char* members);
 };
 
