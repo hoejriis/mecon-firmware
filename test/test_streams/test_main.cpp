@@ -198,6 +198,81 @@ TEST(Inventory, AnEmptyLastPageIsValid) {
   EXPECT_STREQ(R"({"snapshot":1,"part":1,"contacts":{"count":0,"capacity":350},"channels":{"count":0,"capacity":8},"entries":[],"last":true})", out);
 }
 
+// Issue #1: the runtime stream's gnss object (receiver state, never a position).
+static std::string gnssJson(const GnssHealth& g) {
+  char buf[160];
+  Iface::JsonWriter w(buf, sizeof(buf));
+  w.beginObject();
+  Iface::writeGnss(w, g);
+  w.endObject();
+  EXPECT_TRUE(w.ok());
+  return buf;
+}
+
+TEST(Gnss, PoweredOffHasANullFixAndNoAgeBeforeAnyFix) {
+  GnssHealth g;   // defaults: off, fix unknown, no fix this boot
+  EXPECT_EQ("{\"gnss\":{\"powered\":false,\"fix\":null,\"sats\":0,\"fix_age_s\":null}}", gnssJson(g));
+}
+
+TEST(Gnss, PoweredWithoutAFixYet) {
+  GnssHealth g; g.powered = true; g.fix = 0; g.sats = 2;
+  EXPECT_EQ("{\"gnss\":{\"powered\":true,\"fix\":false,\"sats\":2,\"fix_age_s\":null}}", gnssJson(g));
+}
+
+TEST(Gnss, AFixWithItsAge) {
+  GnssHealth g; g.powered = true; g.fix = 1; g.sats = 9; g.fix_age_s = 4;
+  EXPECT_EQ("{\"gnss\":{\"powered\":true,\"fix\":true,\"sats\":9,\"fix_age_s\":4}}", gnssJson(g));
+  g.fix_age_s = 0;   // a fix this second is 0, not null
+  EXPECT_EQ("{\"gnss\":{\"powered\":true,\"fix\":true,\"sats\":9,\"fix_age_s\":0}}", gnssJson(g));
+}
+
+TEST(Gnss, AnOldFixKeepsItsAgeAfterThePowerGoesOff) {
+  GnssHealth g; g.powered = false; g.fix = -1; g.sats = 0; g.fix_age_s = 3600;
+  EXPECT_EQ("{\"gnss\":{\"powered\":false,\"fix\":null,\"sats\":0,\"fix_age_s\":3600}}", gnssJson(g));
+}
+
+// The power stream's external / charging gate (writePowerOf), with a fake board.
+struct FakeBoard {
+  bool pwrmgt = false, detect = false, ext = true, chg = true;
+  uint16_t getBattMilliVolts() { return 3900; }
+  bool isPwrMgtInitialised() const { return pwrmgt; }
+  bool hasPowerDetect() const { return detect; }
+  bool isExternalPowered() { return ext; }
+  bool isChargerActive() { return chg; }
+  bool hasUsbPowerDetect() { return false; }
+  bool isUsbPowered() { return false; }
+  bool hasSolarChargerDetect() { return false; }
+  bool isSolarChargerActive() { return false; }
+  uint16_t getBootVoltage() { return 0; }
+};
+
+static std::string powerJson(FakeBoard& b) {
+  char buf[160];
+  Iface::JsonWriter w(buf, sizeof(buf));
+  w.beginObject();
+  Iface::writePowerOf(w, b);
+  w.endObject();
+  EXPECT_TRUE(w.ok());
+  return buf;
+}
+
+TEST(Power, ABoardThatCannotTellReportsNull) {
+  FakeBoard b;   // no power manager, no detect pins: the defaults would answer false, which is not a measurement
+  EXPECT_EQ("{\"battery_mv\":3900,\"external\":null,\"charging\":null}", powerJson(b));
+}
+
+TEST(Power, DetectPinsAloneReportTheReadings) {
+  FakeBoard b; b.detect = true; b.ext = true; b.chg = false;   // the T1000-E: its own pins, no power manager
+  EXPECT_EQ("{\"battery_mv\":3900,\"external\":true,\"charging\":false}", powerJson(b));
+  b.ext = false; b.chg = true;
+  EXPECT_EQ("{\"battery_mv\":3900,\"external\":false,\"charging\":true}", powerJson(b));
+}
+
+TEST(Power, ThePowerManagerAloneStillReports) {
+  FakeBoard b; b.pwrmgt = true; b.ext = false; b.chg = false;
+  EXPECT_EQ("{\"battery_mv\":3900,\"external\":false,\"charging\":false}", powerJson(b));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

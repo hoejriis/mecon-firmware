@@ -7,6 +7,7 @@
 #include <RAK13800_W5100S.h>
 #include <helpers/nrf52/EthernetMac.h>
 #include <helpers/cli/NetConsole.h>
+#include <helpers/LineAssembler.h>
 
 #define PIN_SPI1_MISO (29)
 #define PIN_SPI1_MOSI (30)
@@ -33,6 +34,7 @@ static EthernetClient ethernet_client;
 static volatile bool ethernet_running = false;
 // The login state of the one console connection (docs/CLI.md): a new connection starts logged out.
 static Cli::NetConsole ethernet_console;
+static LineAssembler ethernet_line;
 
 // FreeRTOS task: handles hw init, DHCP, and retries in the background
 static void ethernet_task(void* param) {
@@ -110,6 +112,7 @@ static void ethernet_check_client() {
   if (newClient) {
     if (ethernet_client) ethernet_client.stop();
     ethernet_client = newClient;
+    ethernet_line.reset();   // a partial line of the previous client is not the start of this one
     ethernet_console.endSession();
     IPAddress ip = ethernet_client.remoteIP();
     Serial.printf("ETH: Client connected from %u.%u.%u.%u\n", ip[0], ip[1], ip[2], ip[3]);
@@ -132,22 +135,12 @@ static bool ethernet_read_line(char* ethernet_command, size_t buf_size) {
   if (!ethernet_running) return false;
   if (!ethernet_client || !ethernet_client.connected()) { ethernet_console.endSession(); return false; }
 
-  int elen = strlen(ethernet_command);
-  while (ethernet_client.available() && elen < (int)buf_size - 1) {
-    char c = ethernet_client.read();
-    if (c == '\n' && elen == 0) continue;  // ignore leading LF (from CR+LF)
-    if (c == '\r' || c == '\n') { ethernet_command[elen++] = '\r'; break; }
-    ethernet_command[elen++] = c;
-    ethernet_command[elen] = 0;
-  }
-  if (elen == (int)buf_size - 1) {
-    ethernet_command[buf_size - 1] = '\r';
-  }
-
-  if (elen > 0 && ethernet_command[elen - 1] == '\r') {
-    ethernet_command[elen - 1] = 0;
-    ethernet_client.println();
-    return true;
+  while (ethernet_client.available()) {
+    switch (ethernet_line.feed(ethernet_command, buf_size, (char)ethernet_client.read())) {
+      case LineAssembler::LINE: ethernet_client.println(); return true;
+      case LineAssembler::TOO_LONG: ethernet_client.println("  -> ERR: line too long"); break;
+      default: break;
+    }
   }
   return false;
 }

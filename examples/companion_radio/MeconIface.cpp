@@ -1,9 +1,11 @@
 #include "MeconIface.h"
+#include <helpers/iface/DevIdHello.h>
 #include <helpers/iface/Wipe.h>
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
 #include <helpers/MeconVersion.h>
 #include <helpers/MemStats.h>
+#include <helpers/NrfWorker.h>
 #include <helpers/HeapFloor.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliPolicy.h>
@@ -33,7 +35,11 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation"};
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation"
+#ifdef MAX_GROUP_CHANNELS
+                                    , "channel.list", "channel.get", "channel.put", "channel.remove"
+#endif
+                                    };
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -42,6 +48,10 @@ Status opGet(OpContext& c);
 Status opApply(OpContext& c);
 Status opSubStart(OpContext& c);
 Status opSubStop(OpContext& c);
+Status opChanList(OpContext& c);
+Status opChanGet(OpContext& c);
+Status opChanPut(OpContext& c);
+Status opChanRemove(OpContext& c);
 
 // The operation's class is the least it needs; each config key is decided again by its own CLI line (IfaceConfig).
 const OpEntry OPS[] = {
@@ -62,6 +72,13 @@ const OpEntry OPS[] = {
   {"deployment.unlock", MeconIface::opDeployUnlock, PRIV_WRITE, false},
   {"identity.rotate", MeconIface::opIdentityRotate, PRIV_WRITE, false},   // never answered from the cache: it must run once
   {"identity.rotation", MeconIface::opIdentityRotation, PRIV_READ, false},
+#ifdef MAX_GROUP_CHANNELS
+  // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
+  {"channel.list", opChanList, PRIV_READ, false},
+  {"channel.get", opChanGet, PRIV_READ, false},
+  {"channel.put", opChanPut, PRIV_WRITE, true},
+  {"channel.remove", opChanRemove, PRIV_WRITE, true},
+#endif
 };
 
 }  // namespace
@@ -79,6 +96,8 @@ Status opHello(OpContext& c) {
   w.key("interface"); w.str("1.0");
   w.key("device_id"); w.str(m->deviceIdHex());
   w.key("node_key"); w.str(key);
+  const Status ds = writeDeviceIdSig(c, mesh->self_id, m->deviceIdHex());
+  if (ds != ST_OK) return ds;
   w.key("role"); w.str("companion");
   w.key("hardware"); w.str(mesh->hardwareName());
   w.key("firmware"); w.str(mecon::versionFull());
@@ -159,7 +178,72 @@ Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
 
+Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
+  ChannelHost host = self(c)->channelHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opChanList(OpContext& c) { return withChannels(c, opChannelList); }
+Status opChanGet(OpContext& c) { return withChannels(c, opChannelGet); }
+Status opChanPut(OpContext& c) { return withChannels(c, opChannelPut); }
+Status opChanRemove(OpContext& c) { return withChannels(c, opChannelRemove); }
+
 }  // namespace
+
+// ---- channels: the native table
+
+ChannelHost MeconIface::channelHost() {
+#ifdef MAX_GROUP_CHANNELS
+  return ChannelHost{MAX_GROUP_CHANNELS, chanGet, chanSet, chanFind, this};
+#else
+  return ChannelHost{0, chanGet, chanSet, chanFind, this};
+#endif
+}
+
+bool MeconIface::chanGet(void* user, int slot, ChannelInfo& out) {
+  ChannelDetails ch;
+  if (!static_cast<MeconIface*>(user)->_mesh->getChannel(slot, ch)) return false;
+  memcpy(out.name, ch.name, CHANNEL_NAME_MAX);
+  out.name[CHANNEL_NAME_MAX] = 0;
+  out.hash = ch.channel.hash[0];
+  static const uint8_t ZERO[16] = {0};
+  out.key_bytes = memcmp(&ch.channel.secret[16], ZERO, 16) == 0 ? 16 : 32;   // as setChannel() hashes it
+  out.keyed = memcmp(ch.channel.secret, ZERO, 16) != 0 || out.key_bytes == 32;
+  wipe(&ch, sizeof(ch));
+  return true;
+}
+
+// Writes the slot and saves the table, as the native CMD_SET_CHANNEL frame does. When the save fails, the slot's
+// previous contents go back into RAM, so RAM and flash agree and a removed key cannot return after a reboot. An
+// empty name with an all-zero key is how the app clears a slot.
+bool MeconIface::chanSet(void* user, int slot, const char* name, const uint8_t* secret) {
+  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
+  ChannelDetails ch, before;
+  if (!mesh->getChannel(slot, before)) return false;
+  memset(&ch, 0, sizeof(ch));
+  StrHelper::strncpy(ch.name, name, sizeof(ch.name));
+  memcpy(ch.channel.secret, secret, CHANNEL_SECRET_BYTES);
+  bool ok = mesh->setChannel(slot, ch);
+  if (ok && !mesh->saveChannels()) {
+    mesh->setChannel(slot, before);
+    ok = false;
+  }
+  wipe(&ch, sizeof(ch));
+  wipe(&before, sizeof(before));
+  return ok;
+}
+
+int MeconIface::chanFind(void* user, const uint8_t* secret) {
+  mesh::GroupChannel g;
+  memset(&g, 0, sizeof(g));
+  memcpy(g.secret, secret, CHANNEL_SECRET_BYTES);
+  const int slot = static_cast<MeconIface*>(user)->_mesh->findChannelIdx(g);
+  wipe(&g, sizeof(g));
+  return slot;
+}
 
 // ---- settings: the caller's CLI
 
@@ -188,9 +272,9 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   MeconIface* self = static_cast<MeconIface*>(user);
   self->_deny = nullptr;
   // Open to any caller that can reach the interface: the read of the stored set (it reveals nothing secret), and the
-  // DAK-signed authority update (it carries its own proof; AUTHORITY.md sections 6.2 and 6.3).
-  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "identity.rotation") == 0 ||
-      strcmp(op.name, "deployment.authority_update") == 0) return true;
+  // DAK-signed authority update (it carries its own proof; AUTHORITY.md sections 6.2 and 6.3). identity.rotation is not:
+  // the rotation statement names device_id, which an untrusted link must not learn (section 3.5).
+  if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).
@@ -220,8 +304,39 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
 }
 
 // Every result of the interface is signed while a record exists (AUTHORITY.md section 3.4), whichever path produced it.
+namespace {
+struct DispatchJob {
+  MeconIface* m;
+  const Cli::Context* ctx;
+  uint8_t caller;
+  void* link;
+  const char* msg;
+  size_t len;
+  char* out;
+  size_t cap;
+  int n;
+};
+}  // namespace
+
+// The request's whole work runs on the nRF52 worker's stack (helpers/NrfWorker.h, #158); elsewhere it runs inline.
+__attribute__((noinline)) void MeconIface::dispatchJob(void* p) {
+  DispatchJob* j = static_cast<DispatchJob*>(p);
+  j->n = j->m->dispatchNow(*j->ctx, j->caller, static_cast<Link*>(j->link), j->msg, j->len, j->out, j->cap);
+}
+
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                          size_t cap) {
+  DispatchJob j = {this, &ctx, caller, link, msg, len, out, cap, -1};
+  if (NrfWorker::run(dispatchJob, &j, 15000)) return j.n;
+  // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature.
+  static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
+  if (cap <= sizeof(W)) return -1;
+  memcpy(out, W, sizeof(W));
+  return (int)sizeof(W) - 1;
+}
+
+__attribute__((noinline)) int MeconIface::dispatchNow(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg,
+                                                      size_t len, char* out, size_t cap) {
   _auth.answering().clear();
   const bool was_enrolled = _auth.enrolled();
   int n = dispatchInner(ctx, caller, link, msg, len, out, cap);

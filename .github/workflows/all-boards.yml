@@ -11,9 +11,20 @@ on:
   schedule:
     - cron: '17 2 * * *'
   workflow_dispatch:
+    inputs:
+      force_fail:
+        description: Fail shard 0 on purpose, to test the tracking-Issue alarm (#146)
+        type: boolean
+        default: false
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
     paths:
       - '.github/workflows/all-boards.yml'
+
+# A newer push to the same branch makes this run obsolete: cancel it rather than queue behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -24,6 +35,9 @@ env:
 
 jobs:
   plan:
+    # Draft PRs skip this; it runs once the PR is marked ready, and on every later push to it.
+    # Nightly and by hand; on a PR that edits this file only when it is ready and labelled full-ci, as the mutation matrix.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ubuntu-latest
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
@@ -34,7 +48,12 @@ jobs:
           python-version: '3.13'
       - run: pip install "platformio==${PLATFORMIO_VERSION}"
       - id: plan
+        env:
+          FORCE_FAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_fail }}
         run: |
+          if [ "$FORCE_FAIL" = "true" ]; then   # the alarm test needs a failure, not a full build: one empty shard
+            echo 'shards=[{"id": 0, "envs": ""}]' >> "$GITHUB_OUTPUT"; exit 0
+          fi
           pio project config --json-output > pio-config.json
           python3 - <<'PY'
           import json, os
@@ -65,6 +84,11 @@ jobs:
           key: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-${{ hashFiles('platformio.ini', 'variants/**/platformio.ini') }}
           restore-keys: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-
       - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - name: A forced failure, to test the alarm
+        if: github.event_name == 'workflow_dispatch' && inputs.force_fail && matrix.shard.id == 0
+        run: |
+          echo "::error::force_fail: shard 0 fails on purpose"
+          exit 1
       - name: Build shard ${{ matrix.shard.id }}
         run: |
           failed=()
@@ -83,7 +107,8 @@ jobs:
 
   verdict:
     needs: build
-    if: always()
+    # Only where the plan ran: a skipped plan skips the build, and the verdict would fail on it.
+    if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci')))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,3 +128,18 @@ jobs:
           if [ -n "$fixed" ]; then echo "::error::Listed as failing but now compiles (remove from ci/known-upstream-failures.txt):"; echo "$fixed"; status=1; fi
           if [ "${{ needs.build.result }}" != "success" ]; then echo "::error::A shard did not complete (${{ needs.build.result }})"; status=1; fi
           exit $status
+
+  alarm:
+    # The nightly on main, or a forced failure by hand, that did not pass: one tracking Issue, opened or commented on.
+    needs: [plan, build, verdict]
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_fail)) &&
+      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    uses: ./.github/workflows/main-alarm.yml
+    with:
+      title: Nightly All boards failing on main

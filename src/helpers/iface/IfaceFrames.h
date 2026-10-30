@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "IfaceJson.h"   // MAX_MSG
+#include "Wipe.h"
 
 namespace Iface {
 
@@ -63,8 +64,12 @@ public:
   ~Reassembler() { release(); }
   Reassembler(const Reassembler&) = delete;
   Reassembler& operator=(const Reassembler&) = delete;
-  // Frees the buffer of a completed message once the caller is done with data().
-  void release() { free(_buf); _buf = nullptr; _total = 0; }
+  // Frees the buffer of a completed message once the caller is done with data(). Wiped first: a request may carry a
+  // secret (a config.apply of a password).
+  void release() {
+    if (_buf) wipe(_buf, _cap);
+    free(_buf); _buf = nullptr; _cap = 0; _total = 0;
+  }
 
   RxResult feed(const uint8_t* f, size_t len, uint32_t now_ms);
   // Discards an incomplete message older than the timeout. True when it did (see takeDiscard).
@@ -79,6 +84,7 @@ private:
   void reset() { _active = false; _discarded = false; _mask = 0; _total = 0; _last_len = 0; _have_last = false; }
   void drop() { _discarded = true; _discarded_xid = _xid; _active = false; _mask = 0; _have_last = false; release(); }
   uint8_t* _buf = nullptr;
+  size_t _cap = 0;
   bool _active, _discarded, _have_last;
   uint8_t _xid, _count, _discarded_xid;
   uint32_t _mask, _start;

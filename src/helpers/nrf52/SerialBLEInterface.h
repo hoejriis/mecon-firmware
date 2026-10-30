@@ -43,9 +43,13 @@ class SerialBLEInterface : public BaseSerialInterface {
   static void onBleUartRX(uint16_t conn_handle);
 
   uint32_t _pin_code = 0;
+  bool _pin_chosen_by_user = false;
 public:
   // Paired BLE authenticates the peer only when the PIN is not the well-known default (123456).
   bool isTrustedTransport() const override { return _pin_code != 0 && _pin_code != 123456; }
+  // Issue #143: set before begin() when the PIN is one the user stored (NodePrefs::ble_pin), not a build default or a
+  // random session PIN. BLE DFU is registered only then (BleDfuPolicy); false, the default, fails closed.
+  void setPinChosenByUser(bool chosen) { _pin_chosen_by_user = chosen; }
   bool isBleTransport() const override { return true; }
   SerialBLEInterface() {
     _isEnabled = false;

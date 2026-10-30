@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ed_25519.h"
+#include "DepVerify.h"
 #include "helpers/iface/IfaceJson.h"
 
 namespace Dep {
@@ -41,7 +42,7 @@ static bool verifyBody(const char* body, size_t len, const uint8_t sig[SIG_LEN],
   memcpy(msg + dl + 1, SUFFIX, sl);
   msg[dl + 1 + sl] = 0;
   memcpy(msg + dl + sl + 2, body, len);
-  bool ok = ed25519_verify(sig, msg, n, key) == 1;
+  bool ok = verifySig(sig, msg, n, key);
   free(msg);
   return ok;
 }

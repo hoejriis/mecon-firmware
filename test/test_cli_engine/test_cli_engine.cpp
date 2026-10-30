@@ -267,7 +267,8 @@ TEST(Registry, RepeaterClassification) {
     {"erase", C_DESTRUCTIVE},
     {"get audit", C_POSTURE}, {"set posture normal confirm", C_POSTURE},
     {"set name x", C_WRITE}, {"password x", C_WRITE}, {"setperm aa 1", C_WRITE}, {"advert", C_WRITE}, {"advert.zerohop", C_WRITE},
-    {"start ota", C_WRITE}, {"clock sync", C_WRITE}, {"discover.neighbors", C_WRITE}, {"tempradio 1,2,3,4,5", C_WRITE},
+    // Issue #143: `start ota` replaces the firmware, so it is destructive, with or without trailing words
+    {"start ota", C_DESTRUCTIVE}, {"start ota x", C_DESTRUCTIVE}, {"clock sync", C_WRITE}, {"discover.neighbors", C_WRITE}, {"tempradio 1,2,3,4,5", C_WRITE},
     {"region load", C_WRITE}, {"region put a", C_WRITE}, {"poweroff", C_DESTRUCTIVE}, {"shutdown", C_DESTRUCTIVE}, {"log start", C_WRITE},
     {"sensor set a b", C_WRITE}, {"gps on", C_WRITE}, {"powersaving on", C_WRITE}, {"clear stats", C_WRITE},
     {"reboot now", C_WRITE}, {"time 5", C_WRITE}, {"neighbor.remove aa", C_WRITE},

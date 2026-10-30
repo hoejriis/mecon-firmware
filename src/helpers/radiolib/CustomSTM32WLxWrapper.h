@@ -10,6 +10,7 @@ public:
   CustomSTM32WLxWrapper(CustomSTM32WLx& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
   void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    idleIfReceiving();   // never retune the chip while it listens
     ((CustomSTM32WLx *)_radio)->setFrequency(freq);
     ((CustomSTM32WLx *)_radio)->setSpreadingFactor(sf);
     ((CustomSTM32WLx *)_radio)->setBandwidth(bw);

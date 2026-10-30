@@ -7,14 +7,20 @@
 #include <Arduino.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/Posture.h>
+#include "Wipe.h"
 #include <helpers/cli/CliCaller.h>
 #include <helpers/deployment/DepHmac.h>
 #include <helpers/deployment/DepMarker.h>
 #include <helpers/deployment/DepProvision.h>
 #include <helpers/deployment/DepReplay.h>
+#include "DeviceId.h"
 #include <new>
 #include <stdlib.h>
 #include <string.h>
+
+// The operation a signed request's cached result is stored under. '#' is outside the operation-name charset, so a plain
+// request can never name it: one reusing a signed key's text as its id gets a conflict, not the signed result.
+static const char SIGNED_OP[] = "#signed";
 
 namespace Iface {
 
@@ -332,6 +338,12 @@ bool DeployAuth::isWrapper(const char* m, size_t n) {
   delete d;
   return w;
 }
+// The verified body of a signed request, freed wiped: a config.apply carries passwords in clear.
+static void freeBody(char* body) {
+  if (body) Iface::wipe(body, Dep::MAX_WRAPPED + 1);
+  free(body);
+}
+
 
 int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], const char* msg, size_t len,
                                ResultCache* cache, RunFn run, void* run_user, char* out, size_t cap) {
@@ -351,7 +363,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   if (e != Dep::WR_OK) {
     _dep->auth_rejections++;
     n = writeResult(out, cap, "", ST_REFUSED, nullptr, Dep::wrapErrCode(e));
-    free(body);
+    freeBody(body);
     return n;
   }
   strncpy(_answering.op, v.op, sizeof(_answering.op) - 1);   // the verified request: its result names it
@@ -367,13 +379,13 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     // Marks that could not be written back at boot, or after a set change, are retried before anything is accepted.
     if (_dep->marks_dirty && !persistMarks()) {
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
-      free(body);
+      freeBody(body);
       return n;
     }
     if (v.member < 0 || v.member >= _dep->marks.n ||
         memcmp(_dep->marks.m[v.member].instance_id, _dep->set.members[v.member].instance_id, Dep::ID_LEN) != 0) {
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "marks");   // marks and set disagree: run nothing
-      free(body);
+      freeBody(body);
       return n;
     }
     Dep::Watermark& wm = _dep->marks.m[v.member].wm;
@@ -387,20 +399,20 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (rv == Dep::RV_TOO_OLD) {
       _dep->auth_rejections++;
       n = writeResult(out, cap, id, ST_REFUSED, nullptr, "replay");
-      free(body);
+      freeBody(body);
       return n;
     }
     if (rv == Dep::RV_DUPLICATE) {
       const char* data;
       size_t dl;
-      if (cache && cache->find(key, &data, &dl) == ResultCache::HIT && dl < cap) {
+      if (cache && cache->find(key, SIGNED_OP, &data, &dl) == ResultCache::HIT && dl < cap) {
         memcpy(out, data, dl);
         out[dl] = 0;
         n = (int)dl;
       } else {
         n = writeResult(out, cap, id, ST_FAILED, nullptr, "duplicate");   // it ran (or a cut lost it); read the state
       }
-      free(body);
+      freeBody(body);
       return n;
     }
     // New: the mark is persisted BEFORE the request runs, so a redelivery after a power cut cannot run it twice. A write
@@ -410,7 +422,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (!persistMarks()) {
       wm.mark = old;
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
-      free(body);
+      freeBody(body);
       return n;
     }
   }
@@ -422,9 +434,9 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   n = run(run_user, sctx, v.body, v.body_len, out, cap);   // job ids guard replay; no id cache
   if (_env.publish_caller) Cli::serverCaller().signed_line = false;
   _signed = false;
-  if (n > 0 && key[0] && cache) cache->store(key, out, (size_t)n);
+  if (n > 0 && key[0] && cache) cache->store(key, SIGNED_OP, out, (size_t)n);
   if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);   // used once
-  free(body);
+  freeBody(body);
   return n;
 }
 
@@ -438,10 +450,21 @@ void hexOfId(char* out, const uint8_t id[Dep::ID_LEN]) { hexTo(out, id, Dep::ID_
 
 // The fields of a stored Deployment (AUTHORITY.md section 6.3), shared by deployment.get and the read-back of a
 // provisioning. Nothing secret: the unlock secret and the DAK-signed set's private side never exist here.
-static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record& rec, const char* set_text, bool full) {
+// bind_key: for a provisioning's read-back, this device's node key; the read-back then carries device_id and node_key,
+// so the manager records the pair at the trusted moment of enrolment (AUTHORITY.md section 3.5). Null elsewhere.
+static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record& rec, const char* set_text, bool full,
+                        const uint8_t* bind_key = nullptr) {
   char id[2 * Dep::ID_LEN + 1];
   hexOfId(id, rec.deployment_id);
   w.key("state"); w.str("provisioned");
+  if (bind_key) {
+    char key[2 * Dep::KEY_LEN + 1];
+    static const char H[] = "0123456789abcdef";
+    for (int i = 0; i < Dep::KEY_LEN; i++) { key[2 * i] = H[bind_key[i] >> 4]; key[2 * i + 1] = H[bind_key[i] & 15]; }
+    key[2 * Dep::KEY_LEN] = 0;
+    w.key("device_id"); w.str(Iface::deviceIdHex());
+    w.key("node_key"); w.str(key);
+  }
   w.key("deployment_id"); w.str(id);
   w.key("deployment_name"); w.str(rec.deployment_name);
   w.key("authority_epoch"); w.unum(rec.authority_epoch);
@@ -593,7 +616,7 @@ Status DeployAuth::opProvision(OpContext& c) {
     }
     if (pe == Dep::P_DUPLICATE) {
       w.key("duplicate"); w.boolean(true);
-      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false);
+      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false, _env.node_key);
       st = ST_OK;
       goto done;
     }
@@ -614,7 +637,7 @@ Status DeployAuth::opProvision(OpContext& c) {
     }
     if (!saveMarksFor(k->set)) { c.error = "marks"; st = ST_BUSY; goto done; }
     if (!readCurrent(k)) { c.error = "storage"; st = ST_FAILED; goto done; }
-    writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false);
+    writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false, _env.node_key);
     st = ST_OK;
   }
 done:

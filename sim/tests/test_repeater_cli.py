@@ -30,3 +30,14 @@ def test_fresh_directory_gets_default_name(nodes):
     cli = CliClient(rep)
     assert cli.command("get name") == "> Sim Repeater"
     cli.close()
+
+
+def test_start_ota_is_refused_on_a_device_interface_build(nodes):
+    # Issue #143: `start ota` would put the BLE DFU service up, and the bootloader checks no signature. A build with
+    # the device interface (every sim repeater) refuses it on the console too, and starts nothing.
+    rep = nodes("repeater", "rep_ota").start()
+    cli = CliClient(rep)
+    reply = cli.command("start ota")
+    assert reply.startswith("ERR: start ota is off on this build"), reply
+    assert cli.command("get name") == "> Sim Repeater"   # still answering: nothing restarted
+    cli.close()

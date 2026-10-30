@@ -273,6 +273,9 @@ private:
   // Boot: a statement whose new key is not the current key never took effect and is deleted; one that is the current key
   // and still marked drop-pending finishes the drop of the old key's contacts and queue.
   void recoverRotation();
+  void recoverRotationAtBoot();                 // on nRF52 on the worker (#172)
+  static void recoverRotationJob(void* self);
+  void recoverRotationOnLoop();
   bool dropOldKeyState();
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);
@@ -295,7 +298,7 @@ private:
   bool isValidClientRepeatFreq(uint32_t f) const;
 
   // helpers, short-cuts
-  void saveChannels() { _store->saveChannels(this); }
+  bool saveChannels() { return _store->saveChannels(this); }
   void saveContacts();
 
   DataStore* _store;
@@ -336,9 +339,11 @@ private:
   char reply_buf[166];
   float _radio_freq = 0, _radio_bw = 0;
   uint8_t app_target_ver;
+  bool _clock_set = false;        // CMD_SET_DEVICE_TIME has set the clock since boot (frameGate)
   uint8_t *sign_data;
   uint32_t sign_data_len;
   unsigned long dirty_contacts_expiry;
+  uint8_t _contacts_retries;      // retries of the delayed contacts save since its last good write
 
   TransportKey send_scope;
 

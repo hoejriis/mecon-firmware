@@ -93,7 +93,77 @@ bool markerClear() {
 
 }  // namespace Dep
 
+#elif defined(NRF52_PLATFORM) && defined(MECON_MARKER_PAGE)
+// One flash page outside every file system, named by the env (MECON_MARKER_PAGE): it must lie in the bootloader's
+// preserved app-data region and in no file system of that build (docs/contract/AUTHORITY.md section 4). Written
+// through the core's flash cache, which uses the SoftDevice's flash calls while BLE runs and is shared with InternalFS.
+#include "DepMarkerPage.h"
+#include <flash/flash_nrf5x.h>
+
+extern "C" uint32_t __etext, __data_start__, __data_end__;
+
+namespace Dep {
+
+namespace {
+
+class NrfMarkerPage : public FlashPage {
+public:
+  size_t size() const override { return FLASH_NRF52_PAGE_SIZE; }
+  bool read(uint32_t off, void* buf, size_t n) override {
+    return flash_nrf5x_read(buf, (uint32_t)MECON_MARKER_PAGE + off, n) == (int)n;
+  }
+  bool write(uint32_t off, const void* buf, size_t n) override {
+    if (flash_nrf5x_write((uint32_t)MECON_MARKER_PAGE + off, buf, n) != (int)n) return false;
+    flash_nrf5x_flush();   // programmed now; the read-back is what proves it
+    return true;
+  }
+  bool erase() override { return flash_nrf5x_erase((uint32_t)MECON_MARKER_PAGE); }
+};
+
+// The page must be page-aligned and above the whole firmware image (code and the .data image after it); an image that
+// has grown into it makes the page code, and the platform then has no marker store at all.
+bool pageUsable() {
+  const uint32_t image_end = (uint32_t)&__etext + ((uint32_t)&__data_end__ - (uint32_t)&__data_start__);
+  return ((uint32_t)MECON_MARKER_PAGE % FLASH_NRF52_PAGE_SIZE) == 0 && image_end <= (uint32_t)MECON_MARKER_PAGE;
+}
+
+}  // namespace
+
+MarkerState markerRead() {
+  if (!pageUsable()) return MK_UNSUPPORTED;
+  NrfMarkerPage p;
+  return markerPageRead(p);
+}
+
+bool markerSet() {
+  if (!pageUsable()) return false;
+  NrfMarkerPage p;
+  return markerPageWrite(p, true);
+}
+
+bool markerClear() {
+  if (!pageUsable()) return false;
+  NrfMarkerPage p;
+  return markerPageWrite(p, false);
+}
+
+}  // namespace Dep
+
+#elif defined(NRF52_PLATFORM)
+// An nRF52 env that names no marker page: the T1000-E Companion, whose ExtraFS still covers the page (#117). It has
+// no marker store, and unsupported is the only safe answer. With no marker, a lost record would read as absent, which
+// is harmless only because such a device refuses every first provisioning and so never holds a record. Do not give
+// this branch a store without a page outside every file system: answering absent here would reopen the unsigned
+// first provisioning over the cable.
+
+namespace Dep {
+MarkerState markerRead() { return MK_UNSUPPORTED; }
+bool markerSet() { return false; }
+bool markerClear() { return false; }
+}  // namespace Dep
+
 #else
+// Any other platform: no marker store, so no unsigned first provisioning (AUTHORITY.md section 4).
 
 namespace Dep {
 MarkerState markerRead() { return MK_UNSUPPORTED; }

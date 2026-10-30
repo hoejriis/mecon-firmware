@@ -731,3 +731,91 @@ def test_the_stock_array_build_migrates_nothing_and_reads_a_stock_file(nodes):
     count, got = c.get_contacts()
     assert count == 30 and by_key(got)[key(5)]["name"] == "contact-5"
     assert os.path.exists(p(node, "/contacts3"))
+
+
+# ------------------------------------------------------------------------------------------------ lazy write after a burst
+
+def test_a_burst_of_adds_is_written_bucket_by_bucket_and_survives_a_power_cut(nodes):
+    # A flush of every changed bucket in one pass held the loop for ~5.6 s on hardware after 100 adds. The lazy write
+    # now takes one bucket per pass and keeps going until the last one is written, with no reboot to force it.
+    node = start(nodes).start()
+    c = connect(node)
+    for i in range(40):                               # records 0..39: buckets 0..4
+        assert c.add_contact_full(key(i), "burst-%d" % i, lastmod=RTC + i)[0] == 0, i
+    buckets = [p(node, "/ct%d" % b) for b in range(5)]
+    end = time.time() + 20
+    while time.time() < end and not all(os.path.exists(f) for f in buckets):
+        time.sleep(0.2)
+    assert all(os.path.exists(f) for f in buckets), [os.path.exists(f) for f in buckets]
+    time.sleep(0.5)
+    c.close()
+    node.proc.kill()                                  # a power cut: no reboot command, nothing flushed on the way out
+    node.proc.wait()
+    node.start()
+    c = connect(node)
+    count, got = c.get_contacts()
+    assert count == 40 and sorted(x["name"] for x in got) == sorted("burst-%d" % i for i in range(40))
+
+
+def _werr(c):
+    return c.contacts_line()["werr"]
+
+
+def _wait(cond, secs):
+    end = time.time() + secs
+    while time.time() < end and not cond():
+        time.sleep(0.3)
+    return cond()
+
+
+def test_a_save_that_fails_once_is_retried_without_another_change(nodes, tmp_path):
+    # A write error used to end the delayed save until the next contact change, so a contact the app was told OK
+    # could stay unsaved. The save is now set again a few times, further apart each time.
+    fail = tmp_path / "write-fail"
+    fail.write_text("/ct\n")
+    node = start(nodes, extra=["--write-fail", str(fail)]).start()
+    c = connect(node)
+    for i in range(16):                               # buckets 0 and 1
+        assert c.add_contact_full(key(i), "retry-%d" % i, lastmod=RTC + i)[0] == 0, i
+    assert _wait(lambda: _werr(c) >= 1, 12), "the first save never ran"
+    assert not os.path.exists(p(node, "/ct0")) and not os.path.exists(p(node, "/ct1"))
+    fail.unlink()                                     # the file system recovers; nothing else changes
+    buckets = [p(node, "/ct0"), p(node, "/ct1")]
+    assert _wait(lambda: all(os.path.exists(f) for f in buckets), 12), [os.path.exists(f) for f in buckets]
+    c.close()
+    node.proc.kill()
+    node.proc.wait()
+    node.start()
+    c = connect(node)
+    count, got = c.get_contacts()
+    assert count == 16
+
+
+def test_a_save_that_keeps_failing_gives_up_after_three_retries(nodes, tmp_path):
+    # 1 attempt plus retries 5, 15 and 45 s later: 4 write errors in about 70 s, then nothing until the next change.
+    fail = tmp_path / "write-fail"
+    fail.write_text("/ct\n")
+    node = start(nodes, extra=["--write-fail", str(fail)]).start()
+    c = connect(node)
+    assert c.add_contact_full(key(1), "stuck", lastmod=RTC)[0] == 0
+    assert _wait(lambda: _werr(c) >= 4, 90), _werr(c)
+    time.sleep(20)                                    # longer than any retry delay but the last
+    assert _werr(c) == 4, "the save kept retrying a file system that keeps failing"
+    assert c.add_contact_full(key(2), "next", lastmod=RTC)[0] == 0   # the next change starts a new save
+    assert _wait(lambda: _werr(c) >= 5, 12), _werr(c)
+
+
+def test_a_good_write_resets_the_retry_count(nodes, tmp_path):
+    # Buckets 0, 1 and 2 are changed and only bucket 0 fails. Pass 1 fails bucket 0 (retry 1, 5 s). The retry writes
+    # bucket 1 and the next pass bucket 2, both good with work left, so the count goes back to 0; bucket 0 then fails
+    # again and its retry is the first one again, 5 s later. Without the reset it would be the second one, 15 s later.
+    fail = tmp_path / "write-fail"
+    fail.write_text("/ct0\n")
+    node = start(nodes, extra=["--write-fail", str(fail)]).start()
+    c = connect(node)
+    for i in range(24):
+        assert c.add_contact_full(key(i), "reset-%d" % i, lastmod=RTC + i)[0] == 0, i
+    assert _wait(lambda: _werr(c) >= 2, 20), _werr(c)
+    assert os.path.exists(p(node, "/ct1")) and os.path.exists(p(node, "/ct2"))
+    fail.unlink()
+    assert _wait(lambda: os.path.exists(p(node, "/ct0")), 10), "bucket 0 waited for a later retry than the first"

@@ -177,18 +177,7 @@ void writeRadio(JsonWriter& w, mesh::Dispatcher& d, mesh::Radio& r, const RadioC
 
 // ---- power
 
-void writePower(JsonWriter& w, mesh::MainBoard& b) {
-  const uint16_t mv = b.getBattMilliVolts();
-  w.key("battery_mv"); if (mv) w.unum(mv); else w.null();
-  // The defaults answer false whether or not the board can tell; only an initialised power manager can.
-  const bool can_tell = b.isPwrMgtInitialised();
-  w.key("external"); if (can_tell) w.boolean(b.isExternalPowered()); else w.null();
-  w.key("charging"); if (can_tell) w.boolean(b.isChargerActive()); else w.null();
-  if (b.hasUsbPowerDetect()) { w.key("usb_power"); w.boolean(b.isUsbPowered()); }
-  if (b.hasSolarChargerDetect()) { w.key("solar"); w.boolean(b.isSolarChargerActive()); }
-  const uint16_t boot_mv = b.getBootVoltage();
-  if (boot_mv) { w.key("boot_mv"); w.unum(boot_mv); }
-}
+void writePower(JsonWriter& w, mesh::MainBoard& b) { writePowerOf(w, b); }
 
 // ---- environment
 
@@ -277,6 +266,8 @@ void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low)
   w.key("max"); w.unum(gap.take());
   w.endObject();
   if (heap_low >= 0) { w.key("heap_low"); w.boolean(heap_low != 0); }
+  GnssHealth g;
+  if (b.getGnssHealth(g)) writeGnss(w, g);   // absent on a board without a receiver
 }
 
 void writeBoot(JsonWriter& w, mesh::MainBoard& b, const char* role, const char* hardware) {

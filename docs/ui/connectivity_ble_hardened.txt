@@ -1,6 +1,6 @@
 # Connectivity page, BLE mode, Hardened, per-device PIN
 +---------------------+
-|ExampleNode          |
+|[H] ExampleNode      |
 |                     |
 |Mode: BLE, Hardened  |
 |Pin: per-device      |

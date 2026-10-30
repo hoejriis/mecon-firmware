@@ -11,12 +11,16 @@ What the on-device display shows and how the button drives it, for the Companion
 | UI code | Used by | Display | Notes |
 |---|---|---|---|
 | `examples/companion_radio/ui-new` | Companion builds for boards with a 128x64 OLED or TFT, including every Heltec V3 and V4 Companion env (`_usb`, `_ble`, `_wifi`, `_standalone`) | multi-page home screen, message preview, alerts | the UI this document describes in detail |
-| `examples/companion_radio/ui-orig` | older and smaller-screen boards (for example Wio E5 mini, RAK3112, T1000-E, Thinknode M3/M4/M7, Xiao nRF52) | one home screen, message preview, one-line alerts | stock, unchanged |
-| `examples/companion_radio/ui-tiny` | the T-Echo card | small-display (U8g2) screens with a scrolling status bar; same pages and gestures as `ui-new` minus the Bluetooth-skip, Wi-Fi line and connectivity additions (pages: home, recent, radio, Bluetooth, advert, GPS, sensors, hibernate) | stock, unchanged |
+| `examples/companion_radio/ui-orig` | older and smaller-screen boards (for example Wio E5 mini, RAK3112, T1000-E, Thinknode M3/M4/M7, Xiao nRF52) | one home screen, message preview, one-line alerts | stock, plus the [screen privacy](#screen-privacy) rules |
+| `examples/companion_radio/ui-tiny` | the T-Echo card | small-display (U8g2) screens with a scrolling status bar; same pages and gestures as `ui-new` minus the Bluetooth-skip, Wi-Fi line and connectivity additions (pages: home, recent, radio, Bluetooth, advert, GPS, sensors, hibernate) | stock, plus the [screen privacy](#screen-privacy) rules |
 | none | Companion builds on boards without a display (`DISPLAY_CLASS` not defined) | nothing | the device is driven by the phone app, USB or the CLI; the button, where there is one, still handles the first-8-seconds rescue |
 | `examples/simple_repeater/UITask.cpp`, `simple_room_server`, `simple_sensor` | Repeater, Room server, Sensor on boards with a display | boot splash, then node name and radio settings | stock, unchanged |
 
-**What this firmware changed:** only `ui-new`, and only when the build defines `ENABLE_CONNMODE`, which today means the two **standalone Companion** envs (`Heltec_v3_companion_radio_standalone`, `heltec_v4_companion_radio_standalone`). One fork commit touches `ui-new` (it adds the connectivity page and a status line; it removes two lines of stock code, listed below); no fork commit touches `ui-orig`, `ui-tiny` or the Repeater, Room server and Sensor screens. Every other `ui-new` env (`_usb`, `_ble`, `_wifi`) compiles to the stock screens. See [Connectivity mode](CONNECTIVITY_MODE.md) for the feature and [Standalone security postures](STANDALONE_POSTURES.md) for the posture it displays.
+**What this firmware changed:**
+- **In every Companion UI (`ui-new`, `ui-orig`, `ui-tiny`) and every env:** the [screen privacy](#screen-privacy) rules, which apply in both postures (Issue #113).
+- **In `ui-new`, only when the build defines `ENABLE_CONNMODE`:** the connectivity page and a status line. Today that means the two **standalone Companion** envs (`Heltec_v3_companion_radio_standalone`, `heltec_v4_companion_radio_standalone`).
+
+Apart from those, every `ui-new` env (`_usb`, `_ble`, `_wifi`) draws the stock screens. The Repeater, Room server and Sensor screens are unchanged. See [Connectivity mode](CONNECTIVITY_MODE.md) for the feature and [Standalone security postures](STANDALONE_POSTURES.md) for the posture it displays.
 
 ## The button
 
@@ -259,7 +263,7 @@ The bottom hint is `to Wi-Fi: long press` in BLE mode and `to BLE: long press` i
 
 ```text
 +---------------------+
-|ExampleNode          |
+|[H] ExampleNode      |
 |                     |
 |Mode: BLE, Hardened  |
 |Pin: per-device      |
@@ -366,7 +370,7 @@ Hardened with no MQTT profile that Hardened permits: Wi-Fi is not started at all
 
 ```text
 +---------------------+
-|ExampleNode          |
+|[H] ExampleNode      |
 |                     |
 |Mode: Wi-Fi, Hardened|
 |Wi-Fi: off           |
@@ -521,11 +525,41 @@ For developers porting or auditing: the fork's change to `ui-new/UITask.cpp` is 
 - the Bluetooth page is skipped by the next/previous-page code when the mode is not BLE;
 - `ConnStatusScreen.h` reads the live Wi-Fi, MQTT and BLE state into `ConnMode::ConnStatus`, and `src/helpers/connmode/ConnStatus.h` turns that into the text above.
 
+## Screen privacy
+
+What a Companion's own screen shows depends on the posture ([Standalone security postures](STANDALONE_POSTURES.md)). One header, `src/helpers/DisplayPrivacy.h`, holds the rules, and all three Companion UIs ask it **when they draw, not when a message arrives**. The posture can change while the device runs, so a preview captured in Normal is hidden once the device is Hardened.
+
+| | Normal | Hardened |
+|---|---|---|
+| Message text (preview) | shown | `message received` |
+| Sender or channel name (preview header) | shown | `-` |
+| Recent-advert names | shown | `-` (the age column stays) |
+| Discovered-node names (`ui-new`) | shown | public-key prefix in hex |
+| BLE pairing PIN (home page) | while BLE advertises: BLE is on and nobody is connected | the same, and only for a chosen PIN; with the default PIN BLE does not start, so no PIN is drawn |
+| Posture marker | none | `[H] ` before the node name in the title (`ui-tiny`: in the status bar) |
+| Own node name, battery, radio settings, counters, own GPS position | shown | shown |
+
+`ui-tiny` has no message preview (it shows a count only), so only the names, PIN and marker rows apply to it.
+
+**When the posture changes, every UI redraws at once.** It also asks the display for a full refresh: a no-op on OLED and TFT, a full redraw on e-paper.
+
+**E-paper keeps its last image without power.** Two cases follow from that:
+- **A controlled change** (`set posture hardened`, or a change while the device runs): the full refresh replaces the image straight away, so nothing from Normal stays on the panel.
+- **Power lost abruptly while Normal content is on screen:** that image stays on the panel until the device next boots and draws. Firmware cannot erase a panel that has no power.
+
+`ui-new`'s power-off already clears the panel before it powers down (`shutdown`).
+
+**How it is checked:**
+- `test/test_display_privacy`: the rules, for every posture byte, with advertising stopped, BLE connected, a default and a chosen PIN, and the change trigger.
+- `sim/tests/test_screen_privacy.py`: the real `ui-new` code. In Hardened an arriving message's text and sender are never drawn and the marker is shown. In Normal the message is drawn, and a live switch to Hardened hides it.
+- `ui-orig` and `ui-tiny` are compile-checked only (the T1000-E, T-Echo card and RAK3112 Companion builds). No simulator runs them.
+- The home page's PIN line is not reachable in the simulator, because its USB port always reports a host.
+
 ## What is never drawn
 
 No screen of this firmware draws a **Wi-Fi password, an MQTT username, password or token, a private key, an admin or guest password**, or the **digits of a PIN on the connectivity page**. This is structural, not a filter: the status text is built from `ConnMode::ConnStatus`, a plain struct with fields for the SSID (a network name, not a secret), signal strength, address, profile numbers, state names and booleans, and **no field that could hold a secret**, so the screen cannot draw what it is never given. A network name is drawn on purpose (it identifies which profile joined), and MQTT broker host names are not drawn at all.
 
-The one deliberate exception is stock behaviour kept on purpose: the **BLE pairing PIN** appears on the home page of the device's own display while no host is attached, because that is how a person pairs a phone with a device they hold. It is not drawn in Wi-Fi mode, and a default PIN is flagged instead of shown elsewhere.
+The one deliberate exception is stock behaviour kept on purpose: the **BLE pairing PIN** appears on the home page of the device's own display while BLE advertises and no host is attached, because that is how a person pairs a phone with a device they hold. It is not drawn in Wi-Fi mode, nor in Hardened with the default PIN, and a default PIN is flagged instead of shown elsewhere (see [Screen privacy](#screen-privacy)).
 
 The simulated suite checks this: `test_no_secret_is_ever_drawn` sets Wi-Fi and MQTT credentials, visits every page in both modes, arms the confirmation and changes the posture, then asserts that no credential appears in any recorded frame of any boot.
 
@@ -547,7 +581,7 @@ These screens were not run in the simulator; they are described from the code.
 - **Graphics**: battery icon, page dots, the Bluetooth, advert and power icons, the splash logo, and the popup frame (drawn here by the renderer). Not recorded by the simulator.
 - **Real OLED rendering and timing**: the real font metrics, contrast, the 15 s auto-off, the real click timing. Not run on hardware.
 - **Boards other than the simulated one**: joystick, rotary, TFT and e-paper variants. Not run.
-- **`ui-orig`, `ui-tiny`, Repeater and Room server screens**: described from the code, not run. They are unchanged from stock.
+- **`ui-orig`, `ui-tiny`, Repeater and Room server screens**: described from the code, not run. `ui-orig` and `ui-tiny` carry the [screen privacy](#screen-privacy) rules, compile-checked only; the rest are unchanged from stock.
 
 Hardware photos will replace these text renderings once a board has passed acceptance.
 

@@ -9,6 +9,7 @@ public:
   CustomLLCC68Wrapper(CustomLLCC68& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
   void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    idleIfReceiving();   // never retune the chip while it listens
     ((CustomLLCC68 *)_radio)->setFrequency(freq);
     ((CustomLLCC68 *)_radio)->setSpreadingFactor(sf);
     ((CustomLLCC68 *)_radio)->setBandwidth(bw);

@@ -103,7 +103,10 @@ microseconds and exit). A node exits with status 75 on `reboot` and 0 on `powero
 
 `--fault /path:BYTES` kills the process (status 99, nothing closed or flushed beyond what was written) after BYTES
 of the next write to that file. `--fault-before rename:/path` or `remove:/path` kills it just before that operation
-(the source path for a rename). SimFS refuses rename over an existing file, as ESP32 SPIFFS does.
+(the source path for a rename). `--write-fail FILE` is a write error rather than a power cut: while FILE exists, a write
+to a file whose path starts with the prefix on FILE's first line (for example `/ct`) writes nothing and returns 0, as a
+failing flash write does; the test removes FILE to let the file system recover. SimFS refuses rename over an existing
+file, as ESP32 SPIFFS does.
 
 On stock 1.18 the prefs save rewrites `/prefs.json` in place: cut after 40 bytes it leaves a truncated file that the
 loader accepts, the early field (`name`) takes the new value and a field in the lost tail (`tx`) silently reverts to its
@@ -241,10 +244,12 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
 
 ## Mutation check
 
+In CI the mutation workflow runs on pushes to `main` and on pull requests that are ready (not drafts) and labelled `full-ci`. Adding the label starts it, and every later push re-runs it. Use the label on authority and security changes, where the mutants should pass before the merge. Elsewhere they are checked on `main` straight after it, and a red run there is fixed at once.
+
 `sim/mutate.sh` breaks one thing per test group (a time-on-air constant, SimRadio dropping
 every packet, SimFS discarding writes, the fault hook disabled), rebuilds, expects that
 group to go red, restores the file with `git checkout` and finishes with a clean full run.
-Run it on a clean tree. It also breaks each duty-cycle rule (sliding window turned into a bucket, floor ignored, floor clamped at the CLI's 10 %, a straddling channel judged by its centre, a frequency change not applied) and expects the load tests and the unit tests to go red; those mutants take about 2.5 minutes each. A second group breaks each posture rule (a damaged posture byte read as Normal, BLE started with a default PIN, TCP servers started in Hardened, key transfer allowed, remote admin not read-only, default password accepted, an attempted password logged, remote lowering allowed, lowering without the confirm token, posture not persisted, a factory reset keeping the posture, refusals not audited, the audit readable remotely, repeats not folded, the flush limit off, the audit CRC unchecked, remote CLI left on in Hardened) and expects the posture tests or the unit tests to go red.
+Run it on a clean tree. The mutants themselves are in `sim/mutants/`, one file per topic, sourced in file-name order into the script's shell, so a variable a file sets is seen by every later file. A new topic gets its own file, numbered after the files whose variables it uses; two pull requests that each add a topic then touch different files. `sim/mutate.sh --list` prints every name in that order, and `--dry` checks every target without building. It also breaks each duty-cycle rule (sliding window turned into a bucket, floor ignored, floor clamped at the CLI's 10 %, a straddling channel judged by its centre, a frequency change not applied) and expects the load tests and the unit tests to go red; those mutants take about 2.5 minutes each. A second group breaks each posture rule (a damaged posture byte read as Normal, BLE started with a default PIN, TCP servers started in Hardened, key transfer allowed, remote admin not read-only, default password accepted, an attempted password logged, remote lowering allowed, lowering without the confirm token, posture not persisted, a factory reset keeping the posture, refusals not audited, the audit readable remotely, repeats not folded, the flush limit off, the audit CRC unchecked, remote CLI left on in Hardened) and expects the posture tests or the unit tests to go red.
 
 A third group breaks each Wi-Fi controller rule (priority ignored, tie to the higher number, a failed scan not joined directly or joined without regard to priority, a missed guess not cooled, a scan not stopped in the driver or not bounded or its failure taken for an empty result, Arduino's table or the driver's list not read, a scan that holds the main loop, a wrong password or a not-found retried at once, no escalation, no join timeout, drops not counted or never forgiven, a lost network not failed over, no hold-down, a missed scan not restarting it, scans on the best profile, backoff not growing or not reset, an edit that keeps the link or the cooldown, the radio's own leave counted as a failure, an unmapped auth reason, the stock keys or commands changed, priorities or further profiles not persisted, a password in a listing or in the log, the TCP server served without a link, Wi-Fi started in Hardened) and expects the Wi-Fi tests or the unit tests to go red.
 

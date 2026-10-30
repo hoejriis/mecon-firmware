@@ -1197,7 +1197,7 @@ See [Standalone security postures](STANDALONE_POSTURES.md).
 #### View the boot reset and shutdown reasons
 **Usage:** `get pwrmgt.bootreason`
 
-**Note:** Returns an error on boards without power management support.
+**Note:** Answers on every board. The reset reason is real on nRF52 and ESP32 boards; the shutdown reason is `Not available` on boards without power management support.
 
 ---
 
