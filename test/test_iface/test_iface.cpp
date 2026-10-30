@@ -98,14 +98,17 @@ TEST(IfaceJson, TrailingDataIsRejected) {
 
 TEST(IfaceJson, DepthLimit) {
   RequestDoc d;
-  std::string ok4 = R"({"a":{"b":{"c":{}}}})";           // 4 containers
-  std::string bad5 = R"({"a":{"b":{"c":{"d":{}}}}})";    // 5
-  EXPECT_EQ(J_OK, jsonParse(d, ok4.data(), ok4.size()));
-  EXPECT_EQ(J_TOO_DEEP, jsonParse(d, bad5.data(), bad5.size()));
-  std::string arr = R"({"a":[[[1]]]})";
+  std::string ok5 = R"({"a":{"b":{"c":{"d":{}}}}})";      // 5 containers
+  std::string bad6 = R"({"a":{"b":{"c":{"d":{"e":{}}}}}})";   // 6
+  EXPECT_EQ(J_OK, jsonParse(d, ok5.data(), ok5.size()));
+  EXPECT_EQ(J_TOO_DEEP, jsonParse(d, bad6.data(), bad6.size()));
+  // the deepest shape a contract defines: a provisioning's args.deployment.broker_roles[{...}]
+  std::string roles = R"({"v":1,"id":"p","op":"deployment.provision","args":{"deployment":{"broker_roles":[{"profile":0,"role":"primary"}]}}})";
+  EXPECT_EQ(J_OK, jsonParse(d, roles.data(), roles.size()));
+  std::string arr = R"({"a":[[[[1]]]]})";
   EXPECT_EQ(J_OK, jsonParse(d, arr.data(), arr.size()));
-  std::string arr5 = R"({"a":[[[[1]]]]})";
-  EXPECT_EQ(J_TOO_DEEP, jsonParse(d, arr5.data(), arr5.size()));
+  std::string arr6 = R"({"a":[[[[[1]]]]]})";
+  EXPECT_EQ(J_TOO_DEEP, jsonParse(d, arr6.data(), arr6.size()));
   // siblings do not accumulate depth
   std::string sib = R"({"a":{"x":{}},"b":{"x":{}},"c":[{},{}]})";
   EXPECT_EQ(J_OK, jsonParse(d, sib.data(), sib.size()));
