@@ -1,4 +1,5 @@
 #include "MeconIface.h"
+#include <helpers/updates/UpdFloor.h>
 #include <helpers/Uptime.h>
 #include <helpers/iface/DevIdHello.h>
 #include <helpers/iface/Wipe.h>
@@ -37,7 +38,8 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
-                                    "job.get", "job.list", "job.ack", "job.cancel", "job.confirm"
+                                    "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
+                                    "update.manifest", "update.status"
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -56,6 +58,8 @@ Status opJobList(OpContext& c) { return self(c)->jobs().opList(c); }
 Status opJobAck(OpContext& c) { return self(c)->jobs().opAck(c); }
 Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
 Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
+Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, millis()); }
+Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
 Status opChanList(OpContext& c);
 Status opChanGet(OpContext& c);
 Status opChanPut(OpContext& c);
@@ -91,6 +95,9 @@ const OpEntry OPS[] = {
   {"job.ack", opJobAck, PRIV_READ, true},
   {"job.cancel", opJobCancel, PRIV_WRITE, true},
   {"job.confirm", opJobConfirm, PRIV_WRITE, true},
+  // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
+  {"update.manifest", opUpdManifest, PRIV_READ, false},
+  {"update.status", opUpdStatus, PRIV_READ, false},
 #ifdef MAX_GROUP_CHANNELS
   // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
   {"channel.list", opChanList, PRIV_READ, false},
@@ -419,6 +426,8 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _epoch = epoch;
   deployLoad();
   _prov.begin(&_mesh->self_id, &_auth, epoch, epoch_saved);
+  _updates.begin(_mesh->hardwareName(), "companion");
+  Upd::floorAtBoot();   // the floor rises to the security version compiled into this image (UPDATES.md section 4)
   observeSink().fn = onObserve;
   observeSink().user = this;
 }

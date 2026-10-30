@@ -4,6 +4,9 @@
 #include <helpers/AtomicFile.h>
 #include <helpers/deployment/DepRecord.h>
 #include <helpers/deployment/DepFsStore.h>
+#ifdef ENABLE_MECON_IFACE
+  #include <helpers/updates/UpdFloor.h>
+#endif
 
 #if defined(EXTRAFS) || defined(QSPIFLASH)
   #define MAX_BLOBRECS 100
@@ -178,7 +181,13 @@ bool DataStore::formatFileSystem() {
   return LittleFS.format();
 #elif defined(ESP32)
   bool fs_success = ((fs::SPIFFSFS *)_fs)->format();
+#ifdef ENABLE_MECON_IFACE
+  const uint32_t floor = Upd::floorRead();   // the security floor survives a factory reset (UPDATES.md section 4)
+#endif
   esp_err_t nvs_err = nvs_flash_erase(); // no need to reinit, will be done by reboot
+#ifdef ENABLE_MECON_IFACE
+  if (floor) Upd::floorRaise(floor);         // opens NVS again; at worst the next boot raises it to the running image's
+#endif
   return fs_success && (nvs_err == ESP_OK);
 #else
   #error "need to implement format()"

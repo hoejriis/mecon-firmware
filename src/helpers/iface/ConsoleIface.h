@@ -14,6 +14,7 @@
 #include "IfaceConfig.h"
 #include "IfaceDispatch.h"
 #include "JobService.h"
+#include "helpers/updates/UpdService.h"
 #include "Provenance.h"
 #include "Streams.h"
 
@@ -73,6 +74,7 @@ public:
   const Host& host() const { return _host; }
   DeployAuth& auth() { return _auth; }
   JobService& jobs() { return _jobs; }
+  Upd::UpdateService& updates() { return _updates; }
   // The channel nonce hello reports: the console is one link, and holds its own.
   const char* helloNonce() { return _auth.helloNonce(_nonce); }
   const char* deviceIdHex() const { return _id_hex; }
@@ -124,6 +126,7 @@ private:
   Provenance _prov;            // signs every result and event while a record exists
   DeployAuth _auth;            // the Deployment record and the signed-request checks (shared with the Companion)
   JobService _jobs;            // config.apply with confirm creates the jobs (OPERATIONS.md 3.4)
+  Upd::UpdateService _updates; // update.manifest and update.status (UPDATES.md section 8)
   Cli::Context _ctx;           // the caller of the request being handled: the cable, or the signed principal on it
   const char* _deny = nullptr; // why authorize() refused, when it has a contract code for it
   char _nonce[33] = {0};       // the console's channel nonce (AUTHORITY.md section 7.1)

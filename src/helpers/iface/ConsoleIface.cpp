@@ -1,4 +1,5 @@
 #include "ConsoleIface.h"
+#include "helpers/updates/UpdFloor.h"
 #include <helpers/Uptime.h>
 #include "DevIdHello.h"
 #include <new>
@@ -35,7 +36,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "job.get", "job.list",
-                                    "job.ack", "job.cancel", "job.confirm"};
+                                    "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -131,6 +132,8 @@ Status opJobList(OpContext& c) { return self(c)->jobs().opList(c); }
 Status opJobAck(OpContext& c) { return self(c)->jobs().opAck(c); }
 Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
 Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
+Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, millis()); }
+Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
 
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
@@ -154,6 +157,9 @@ const OpEntry OPS[] = {
   {"job.ack", opJobAck, PRIV_READ, true},
   {"job.cancel", opJobCancel, PRIV_WRITE, true},
   {"job.confirm", opJobConfirm, PRIV_WRITE, true},
+  // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
+  {"update.manifest", opUpdManifest, PRIV_READ, false},
+  {"update.status", opUpdStatus, PRIV_READ, false},
 };
 
 }  // namespace
@@ -163,6 +169,8 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
+  _updates.begin(_host.hardware, _host.role);
+  Upd::floorAtBoot();   // the floor rises to the security version compiled into this image (UPDATES.md section 4)
   if (_host.snap_store)
     _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
                            confirmRunAs, confirmJobId};
