@@ -264,6 +264,9 @@ private:
   size_t _cap, _n = 0;
   int _count = 0;
 };
+// Whether the last reset was abnormal (a panic, the watchdog, a brownout or a lockup): 1 or 0, -1 when the board cannot
+// tell. The runtime stream's abnormal_reset, and the job table's boot rule (OPERATIONS.md section 3.3).
+int abnormalReset(mesh::MainBoard& b);
 
 // The power stream's fields from any board type (mesh::MainBoard in the firmware, a fake one in the native test).
 // The defaults answer false whether or not the board can tell, so external and charging are reported only by an

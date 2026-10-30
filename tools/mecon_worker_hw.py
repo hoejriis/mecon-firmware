@@ -53,6 +53,10 @@ def main():
     c, h, close = m.console(sys.argv[1])
     key = h["result"]["node_key"]
     g = c.request("deployment.get")["result"]
+    if g.get("state") == "provisioned":
+        # An unsigned reset is refused on a healthy record, and a signed one needs that record's issuer and job ids.
+        close()
+        sys.exit("the board already holds a record: clear it with a signed deployment.reset first")
     if g.get("state") != "none":
         r = c.request("deployment.reset")
         check("start from no record", r.get("status") == "ok", r)

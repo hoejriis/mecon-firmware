@@ -8,6 +8,8 @@ namespace Iface {
 bool charsetOk(Charset cs, char c) {
   uint8_t u = (uint8_t)c;
   switch (cs) {
+    case CS_JOB:  if (u == '#') return true;   // and the CS_ID set
+    // fall through
     case CS_ID:   return (u >= '0' && u <= '9') || (u >= 'A' && u <= 'Z') || (u >= 'a' && u <= 'z') || u == '.' || u == '_' || u == ':' || u == '-';
     case CS_NAME: return (u >= '0' && u <= '9') || (u >= 'A' && u <= 'Z') || (u >= 'a' && u <= 'z') || u == '.' || u == '_' || u == '-';
     default:      return u >= 0x20 && u != 0x7F;

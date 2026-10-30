@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/job.list.result.json",
+  "title": "Result of job.list: every job in the table",
+  "type": "object",
+  "required": [
+    "jobs",
+    "open",
+    "owed"
+  ],
+  "properties": {
+    "jobs": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "job",
+          "op",
+          "state",
+          "owed"
+        ],
+        "properties": {
+          "job": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "op": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "progress",
+              "applied",
+              "awaiting-confirm",
+              "confirmed",
+              "reverted",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "owed": {
+            "type": "boolean",
+            "description": "Terminal and not yet acknowledged with job.ack."
+          }
+        }
+      }
+    },
+    "open": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "owed": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

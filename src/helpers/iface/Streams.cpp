@@ -246,14 +246,20 @@ static bool containsNoCase(const char* s, const char* word) {
   return false;
 }
 
+int abnormalReset(mesh::MainBoard& b) {
+  const char* why = b.getResetReasonString(b.getResetReason());
+  if (!why || strcmp(why, "Not available") == 0) return -1;
+  return containsNoCase(why, "panic") || containsNoCase(why, "watchdog") || containsNoCase(why, "brownout") ||
+         containsNoCase(why, "lockup");
+}
+
 void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low) {
   const char* why = b.getResetReasonString(b.getResetReason());
   const bool known = why && strcmp(why, "Not available") != 0;
   w.key("reset_reason"); if (known) w.str(why); else w.null();
   w.key("abnormal_reset");
-  if (!known) w.null();
-  else w.boolean(containsNoCase(why, "panic") || containsNoCase(why, "watchdog") || containsNoCase(why, "brownout") ||
-                 containsNoCase(why, "lockup"));
+  const int ab = abnormalReset(b);
+  if (ab < 0) w.null(); else w.boolean(ab == 1);
   w.key("boot_ms"); w.beginObject();
   static const char* const STAGE[] = {"store", "mesh", "setup"};
   for (int s = 0; s < mecon::boot::N_STAGES; s++) {
