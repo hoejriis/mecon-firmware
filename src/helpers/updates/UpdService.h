@@ -43,6 +43,7 @@ public:
   static const uint32_t OFFER_GAP_MS = 60 * 1000;         // an offer that would erase the slot again (preflight 2)
   static const uint32_t STALL_MS = 10 * 60 * 1000;        // no chunk for this long fails the job (section 6)
   static const uint32_t VALID_AFTER_MS = 20 * 1000;       // the start-up checks: the loop has run this long (stage 1)
+  static const uint8_t MAX_SEND_BACK = 3;                   // boots that send an unconfirmed image back to the previous one
   static const uint32_t CONFIRM_MIN_S = 30, CONFIRM_MAX_S = 3600, CONFIRM_DEFAULT_S = 900;
   static const size_t CHUNK_MAX = 2304;                    // decoded bytes per update.chunk
   static const uint32_t READBACK_PIECE = 4096;             // bytes hashed per loop pass
@@ -150,6 +151,7 @@ private:
   Back backToPrevious(const Record* r);
   bool revertJob(Iface::Job& j, const Record* r, const char* reason);
   void confirmFromRecord(Iface::Job& j);
+  void settleRecord();
   void finish(Iface::Job& j, uint8_t state, const char* members);
 };
 

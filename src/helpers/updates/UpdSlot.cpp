@@ -47,14 +47,17 @@ int inactive() { return 1 - readOta().run; }
 
 }  // namespace
 
+// As the ESP32 bootloader with app rollback: a new entry boots on trial; a reset while on trial returns to the other slot.
 void slotBoot() {
   OtaData o = readOta();
   if (o.state == ST_PENDING) {   // reset before the image was marked valid: back to the previous slot
     o.run = o.boot = 1 - o.run;
     o.state = ST_VALID;
+  } else if (o.state == ST_NEW) {
+    o.run = o.boot;
+    o.state = ST_PENDING;
   } else if (o.boot != o.run) {
     o.run = o.boot;
-    o.state = o.state == ST_NEW ? ST_PENDING : ST_VALID;
   }
   writeOta(o);
 }
@@ -117,12 +120,14 @@ uint32_t slotRunning() { return (uint32_t)readOta().run + 1; }
 uint32_t slotBooting() { return (uint32_t)readOta().boot + 1; }
 uint32_t slotWritten() { return (uint32_t)inactive() + 1; }
 
+// As esp_ota_set_boot_partition with app rollback (ESP-IDF 4.4, esp_rewrite_ota_data): a new otadata entry in state NEW,
+// so the named image boots on trial, even one that ran before.
 bool slotSetBoot(uint32_t id) {
   if (id != 1 && id != 2) return false;
   OtaData o = readOta();
-  if ((int)id - 1 == o.run && o.state == ST_PENDING) return false;   // never vouches for an image on trial
+  if ((int)id - 1 == o.run && o.state == ST_PENDING) return false;
   o.boot = (int)id - 1;
-  if (o.boot != o.run || o.state == ST_NEW) o.state = ST_VALID;   // the image it names ran before: nothing to verify
+  o.state = ST_NEW;
   return writeOta(o);
 }
 

@@ -38,7 +38,8 @@ bool slotActivate();   // the next boot runs the written image, on trial (pendin
 uint32_t slotRunning();            // the slot the running image came from
 uint32_t slotBooting();            // the slot the next boot runs
 uint32_t slotWritten();            // the slot an install writes: the one not running
-bool slotSetBoot(uint32_t id);     // the next boot runs that slot's image, not on trial (it ran before)
+bool slotSetBoot(uint32_t id);     // the next boot runs that slot's image, on trial: ESP-IDF writes every new boot
+                                   // entry as NEW, so even an image that ran before must prove itself again
 
 // SHA-256 of the running application image: exactly its bytes, as a manifest's image.sha256 names them. Computed once
 // at boot (about 1.7 MB read); false where the platform cannot say.

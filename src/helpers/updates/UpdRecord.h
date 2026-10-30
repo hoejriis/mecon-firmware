@@ -3,8 +3,9 @@
 // image's digest, the image that installed it, and which slot holds each. Written just before activation, read at every
 // boot. The job table keeps the job's state; this keeps what attestation and a revert need to know about the images, so a
 // revert acts on the slots it names and never on a guess. Marked confirmed by job.confirm (not cleared: a power cut
-// before the job table is saved, or a confirmed job later dropped from the table, must not read as an unproven image),
-// and cleared by the first boot that finds the job over and the image it left running settled.
+// before the job table is saved, or a confirmed job later dropped from the table, must not read as an unproven image).
+// Cleared only once the job is over and the image it left running is proven (no longer on trial), because until then a
+// reset can bring the other image back, and the record is what notices.
 //
 //   ESP32 (ESP_PLATFORM)   NVS namespace "mecon", key "updjob" (a factory reset erases it, with the job table)
 //   simulated boards       a file beside the data directory (<dir>.updjob)
@@ -25,6 +26,7 @@ struct Record {
   uint32_t new_id;         // the slot the image was written to (UpdSlot.h slot identities)
   uint32_t prev_id;        // the slot that ran when it was activated: the previous image
   uint8_t confirmed;       // job.confirm (or a supersede) accepted the image
+  uint8_t attempts;        // times a boot found the unconfirmed image running and sent the device back
 };
 
 bool recordLoad(Record* out);   // false: none, or not an intact record of this layout

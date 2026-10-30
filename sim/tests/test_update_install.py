@@ -439,20 +439,60 @@ def test_a_confirmed_image_stays_when_the_job_table_is_lost(nodes):
     assert not os.path.exists(n.dir.rstrip("/") + ".updjob"), "and the record is done with"
 
 
-def test_a_confirmation_the_job_table_never_saved_still_counts(nodes):
-    """A power cut after job.confirm's record write and before the job table's: the record says confirmed, so the job
-    is confirmed at the next boot, not reverted. The record's layout on the simulated board: its confirmed flag is the
-    byte at offset 188."""
-    n, d, job = install(nodes, "uf", 58)
-    n.stop()
-    path = n.dir.rstrip("/") + ".updjob"
-    with open(path, "r+b") as f:
+def set_confirmed(n):
+    """The record's confirmed flag, as job.confirm writes it: on the simulated board the byte at offset 188."""
+    with open(n.dir.rstrip("/") + ".updjob", "r+b") as f:
         f.seek(188)
         f.write(b"\x01")
+
+
+@pytest.mark.timescale(10)
+def test_a_confirmation_the_job_table_never_saved_still_counts(nodes):
+    """A power cut after job.confirm's record write and before the job table's: the record says confirmed, so the job
+    is confirmed at the next boot, not reverted."""
+    n, d, job = install(nodes, "uf", 58)
+    time.sleep(2.5)   # past the start-up checks, as a confirmed image is
+    n.stop()
+    set_confirmed(n)
     n.start()
     d = Dev(n)
     g = job_get(d, job)
     assert g["state"] == "confirmed" and g["result"]["confirmed_by"] == "record", g
+
+
+def test_a_confirmation_that_did_not_survive_its_trial_is_a_rollback(nodes):
+    """Confirmed in the record, but the image was reset before it was marked valid and the bootloader returned to the
+    previous slot: what runs is not what was confirmed, so the job ends rolled back."""
+    n, d, job = install(nodes, "ug", 61)
+    n.stop()   # within the trial
+    set_confirmed(n)
+    declare(n, OLD)
+    n.start()
+    d = Dev(n)
+    g = job_get(d, job)
+    assert g["state"] == "reverted" and g["result"]["error"] == "rolled-back", g
+    assert d.i.request("update.status")["result"]["running"]["sha256"] == FACTORY_SHA
+
+
+@pytest.mark.timescale(10)
+def test_a_reset_during_the_previous_images_trial_does_not_bring_the_new_one_back(nodes):
+    """After a revert the previous image boots on trial too (ESP-IDF writes every boot entry as new). A reset in that
+    trial returns to the unconfirmed image, and the record sends the device back again."""
+    n, d, job = install(nodes, "ub2", 62, within_s=30)
+    assert n.wait_exit(20) == 75, "the deadline reverts"
+    declare(n, OLD)
+    n.start()
+    n.stop()   # within the previous image's trial: the bootloader returns to the new image
+    declare(n, NEW)
+    n.start()
+    assert n.wait_exit(10) == 75, "an unconfirmed image running again: sent back"
+    declare(n, OLD)
+    n.start()
+    d = Dev(n)
+    assert d.i.request("update.status")["result"]["running"]["sha256"] == FACTORY_SHA
+    assert job_get(d, job)["state"] == "reverted"
+    time.sleep(2.5)   # the previous image passes its trial: the record is done with
+    assert not os.path.exists(n.dir.rstrip("/") + ".updjob")
 
 
 def test_no_offer_while_the_new_image_is_on_trial(nodes):

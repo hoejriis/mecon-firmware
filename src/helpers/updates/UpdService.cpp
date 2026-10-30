@@ -342,23 +342,28 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   bool nonzero = false;
   for (uint8_t b : token) nonzero = nonzero || b != 0;
   if (!nonzero) { free(m); c.error = "rng"; return ST_FAILED; }
+  // An attested image this offer supersedes is confirmed by it: written down first, as job.confirm does, and undone if
+  // the slot cannot be opened.
+  Record conf;
+  const bool confirming = open && open->state == JOB_AWAITING;
+  if (confirming) {
+    if (!recordLoad(&conf) || strcmp(conf.job, open->id) != 0) { free(m); c.error = "storage"; return ST_BUSY; }
+    conf.confirmed = 1;
+    if (!recordSave(conf)) { free(m); c.error = "storage"; return ST_BUSY; }
+  }
   // The slot first: an offer that cannot open it supersedes nothing. A transfer it replaced cannot go on (the slot's
   // write was abandoned), so that job ends failed.
   _erasing = false;   // the new write takes the slot over
   if (!slotOpen(m->image_size)) {
     free(m);
-    if (open && open->state != JOB_AWAITING) failJob("slot");
+    if (confirming) { conf.confirmed = 0; recordSave(conf); }
+    if (open && !confirming) failJob("slot");
     c.error = "slot";
     return ST_FAILED;
   }
   // Passed: an open update job is superseded (section 7, step 7).
   if (open) {
-    if (open->state == JOB_AWAITING) {   // its image runs, attested and proven (not on trial): confirmed by this offer
-      Record r;
-      if (recordLoad(&r) && strcmp(r.job, open->id) == 0) {
-        r.confirmed = 1;
-        recordSave(r);
-      }
+    if (confirming) {   // its image runs, attested and proven (not on trial): confirmed by this offer
       finish(*open, JOB_CONFIRMED, "\"confirmed_by\":\"superseded\"");
       _attested = false;
     } else {   // never activated: cancelled; the new transfer writes over its slot
@@ -546,6 +551,18 @@ void UpdateService::loop(uint32_t now_ms) {
 void UpdateService::markProven() {
   if (runningState() == RS_PENDING) markValid();
   floorAtBoot();   // the floor follows an image once it is proven (section 4)
+  settleRecord();
+}
+
+// The record is done with once its job is over and the image running is proven: no reset can bring the other back.
+void UpdateService::settleRecord() {
+  Record r;
+  if (!recordLoad(&r) || runningState() == RS_PENDING) return;
+  JobTable* t = table();
+  Job* j = nullptr;
+  if (t && t->find(r.job, &j) == JobTable::FOUND && !jobTerminal(j->state)) return;   // still awaiting confirmation
+  if (!r.confirmed && slotRunning() == r.new_id && r.attempts < MAX_SEND_BACK) return;   // not settled: never confirmed
+  recordClear();
 }
 
 UpdateService::Back UpdateService::backToPrevious(const Record* r) {
@@ -582,9 +599,8 @@ bool UpdateService::revertJob(Job& j, const Record* r, const char* reason) {
   }
   JobTable* t = table();
   if (t) t->setState(&j, b == BACK_UNKNOWN ? JOB_FAILED : JOB_REVERTED, n ? buf : nullptr, n);
-  // Kept across a reboot to the previous image: the boot that finds the previous slot running clears it, so a power cut
-  // before that reboot still reads as a revert.
-  if (b != BACK_REBOOT) recordClear();
+  // The record stays until the previous image is proven (settleRecord): the slot it now boots is on trial too, and a
+  // reset in that trial returns to the new image, which the record then sends back again.
   if (b == BACK_REBOOT && _host.reboot) _host.reboot(_host.user);
   return true;
 }
@@ -592,7 +608,6 @@ bool UpdateService::revertJob(Job& j, const Record* r, const char* reason) {
 // The record's job was confirmed before the job table could be saved (a power cut after job.confirm): confirmed.
 void UpdateService::confirmFromRecord(Job& j) {
   finish(j, JOB_CONFIRMED, "\"confirmed_by\":\"record\"");
-  recordClear();
   markProven();
 }
 
@@ -615,7 +630,15 @@ void UpdateService::bootReconcile() {
     return;
   }
   if (j && j->state == JOB_AWAITING) {
-    if (r.confirmed) { confirmFromRecord(*j); persist(); return; }
+    if (r.confirmed && run && run == r.new_id) { confirmFromRecord(*j); persist(); return; }
+    // Confirmed, but a reset before the image was marked valid returned to the previous slot: what runs is not what
+    // was confirmed. The job ends as the rollback it is.
+    if (r.confirmed) {
+      if (!revertJob(*j, &r, "rolled-back")) finish(*j, JOB_FAILED, "\"error\":\"revert-failed\"");
+      persist();
+      settleRecord();
+      return;
+    }
     if (run && run == r.new_id && _running_known && memcmp(_running_sha, r.image_sha, 32) == 0) {
       // The new image runs and is the one installed: it attests, and awaits confirmation.
       _attested = true;
@@ -632,6 +655,7 @@ void UpdateService::bootReconcile() {
     if (run && run == r.prev_id) {   // the bootloader returned to the previous slot (a reset before it was marked valid)
       if (!revertJob(*j, &r, "rolled-back")) finish(*j, JOB_FAILED, "\"error\":\"revert-failed\"");
       persist();
+      settleRecord();
       return;
     }
     // The new slot runs but cannot show it holds the installed image: back to the previous one.
@@ -640,13 +664,16 @@ void UpdateService::bootReconcile() {
     return;
   }
   // The job is over, or gone from the table. A confirmed image stays; an image never confirmed does not, whatever the
-  // job table lost.
-  if (r.confirmed || run != r.new_id) {
-    if (!r.confirmed && run == r.prev_id && slotBooting() != run) slotSetBoot(run);
-    recordClear();
+  // job table lost, and however it came back (a reset during the previous image's own trial returns to it). Sent back a
+  // bounded number of times: a previous image that keeps failing its trial is not swapped in for ever.
+  if (!r.confirmed && run && run == r.new_id) {
+    if (r.attempts >= MAX_SEND_BACK) { settleRecord(); return; }
+    r.attempts++;
+    if (!recordSave(r)) return;
+    if (backToPrevious(&r) == BACK_REBOOT && _host.reboot) _host.reboot(_host.user);
     return;
   }
-  if (backToPrevious(&r) == BACK_REBOOT && _host.reboot) _host.reboot(_host.user);
+  settleRecord();
 }
 
 bool UpdateService::jobRevert(Job& j) {
@@ -657,7 +684,7 @@ bool UpdateService::jobRevert(Job& j) {
   }
   Record r;
   const bool have = recordLoad(&r) && strcmp(r.job, j.id) == 0;
-  if (have && r.confirmed) { confirmFromRecord(j); return true; }   // confirmed before a power cut: not reverted
+  if (have && r.confirmed && slotRunning() == r.new_id) { confirmFromRecord(j); return true; }   // confirmed before a cut
   return revertJob(j, have ? &r : nullptr, nullptr);
 }
 
