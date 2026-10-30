@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <helpers/RegulatoryDutyCycle.h>
+#include <helpers/RxDelay.h>
 #if defined(NRF52_PLATFORM)
   #include <Arduino.h>   // NVIC_SystemReset
   #include <helpers/NrfWorker.h>
@@ -114,7 +115,7 @@ void Dispatcher::formatDutyCycleReply(char* reply) {
 }
 
 int Dispatcher::calcRxDelay(float score, uint32_t air_time) const {
-  return (int) ((powf(10.0f, 0.85f - score) - 1.0f) * air_time);   // float, as the Companion's: no double pow linked
+  return RxDelay::ms(score, air_time);
 }
 
 uint32_t Dispatcher::getCADFailRetryDelay() const {
