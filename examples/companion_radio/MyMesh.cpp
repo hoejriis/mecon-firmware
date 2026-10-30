@@ -1473,6 +1473,10 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeErrFrame(ERR_CODE_NOT_FOUND); // unknown contact
     }
+  } else if (cmd_frame[0] == CMD_ADD_UPDATE_CONTACT && len >= 1 + 32 + 2 + 1 && cmd_frame[1 + PUB_KEY_SIZE] == ADV_TYPE_NONE) {
+    // Type 0 is the anonymous slot's (BaseChatMesh::addContact): a contact added with it is unlisted and overwritten
+    // by the next unknown sender, and an update to it would turn a stored contact into one. Refused, as stock did not.
+    writeErrFrame(ERR_CODE_ILLEGAL_ARG);
   } else if (cmd_frame[0] == CMD_ADD_UPDATE_CONTACT && len >= 1 + 32 + 2 + 1) {
     uint8_t *pub_key = &cmd_frame[1];
     ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
