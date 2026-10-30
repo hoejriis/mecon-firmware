@@ -4,6 +4,9 @@
 #include <string.h>
 #include <string>
 #include "helpers/deployment/DepAuthority.h"
+#include "helpers/deployment/DepHmac.h"
+#include "helpers/iface/Jobs.h"
+#include "helpers/updates/UpdB64.h"
 #include "helpers/updates/UpdPreflight.h"
 #include "vectors.h"
 
@@ -181,6 +184,56 @@ TEST(UpdAnchors, OnlyTheTestKeyHereAndNoProductionKeyYet) {
   EXPECT_EQ(1u, TEST_ANCHORS_COUNT);
   uint8_t unknown[8] = {0};
   EXPECT_EQ(nullptr, findAnchor(unknown));
+}
+
+TEST(UpdChunk, Base64IsStrictAndCanonical) {
+  uint8_t out[8];
+  EXPECT_EQ(3, base64Decode("6Q8A", 4, out, sizeof(out)));
+  EXPECT_EQ(0xE9, out[0]);
+  EXPECT_EQ(0x0F, out[1]);
+  EXPECT_EQ(0x00, out[2]);
+  EXPECT_EQ(1, base64Decode("6Q==", 4, out, sizeof(out)));
+  EXPECT_EQ(2, base64Decode("6Q8=", 4, out, sizeof(out)));
+  EXPECT_EQ(6, base64Decode("+/+/+/+/", 8, out, sizeof(out)));
+  EXPECT_EQ(0xFB, out[0]);
+  EXPECT_EQ(0, base64Decode("", 0, out, sizeof(out)));
+  // Not canonical, or not base64 at all: refused, never decoded to something.
+  for (const char* bad : {"6Q", "6Q=", "6R==", "6Q9=", "6Q==6Q==", "=Q==", "6=Q=", "6Q-_", "6Q\n=", "6Q 8"})
+    EXPECT_EQ(-1, base64Decode(bad, strlen(bad), out, sizeof(out))) << bad;
+  EXPECT_EQ(-1, base64Decode("6Q8A6Q8A6Q8A", 12, out, 8)) << "longer than the buffer";
+  EXPECT_EQ(8, base64Decode("6Q8A6Q8A6Q8=", 12, out, 8));
+}
+
+TEST(UpdChunk, StreamedHashMatchesOneShot) {
+  uint8_t data[1000];
+  for (size_t i = 0; i < sizeof(data); i++) data[i] = (uint8_t)(i * 7 + 3);
+  uint8_t whole[32], parts[32];
+  Dep::sha256(data, sizeof(data), whole);
+  Dep::Sha256Ctx c;
+  Dep::sha256Init(&c);
+  for (size_t at = 0; at < sizeof(data); at += 63) Dep::sha256Update(&c, data + at, at + 63 <= sizeof(data) ? 63 : sizeof(data) - at);
+  Dep::sha256Finish(&c, parts);
+  EXPECT_EQ(0, memcmp(whole, parts, 32));
+  // The empty input, as FIPS 180-4 gives it.
+  static const uint8_t EMPTY[32] = {0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f, 0xb9, 0x24,
+                                    0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55};
+  Dep::sha256Init(&c);
+  Dep::sha256Finish(&c, parts);
+  EXPECT_EQ(0, memcmp(EMPTY, parts, 32));
+}
+
+TEST(UpdJob, AnOpenJobsResultChangesATerminalOneNever) {
+  Iface::JobTable t;
+  Iface::Job* j = t.open("u1", "update.offer");
+  ASSERT_NE(nullptr, j);
+  ASSERT_TRUE(t.awaitConfirm(j, 300, false, Iface::BOOT_ABNORMAL));
+  const char att[] = "{\"update\":{\"job\":\"u1\"}}";
+  EXPECT_TRUE(t.setResult(j, att, sizeof(att) - 1));
+  EXPECT_EQ(Iface::JOB_AWAITING, j->state);
+  EXPECT_EQ(std::string(att), std::string(j->result, j->result_len));
+  ASSERT_TRUE(t.setState(j, Iface::JOB_CONFIRMED));
+  EXPECT_FALSE(t.setResult(j, "{\"x\":1}", 7));
+  EXPECT_EQ(std::string(att), std::string(j->result, j->result_len));
 }
 
 int main(int argc, char** argv) {

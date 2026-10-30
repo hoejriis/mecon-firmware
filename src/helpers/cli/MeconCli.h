@@ -80,6 +80,7 @@ inline const char* className(uint8_t c) {
     case C_DESTRUCTIVE: return "destructive";
     case C_REBOOT: return "reboot";
     case C_PRIVATE: return "private";
+    case C_UPDATE: return "update";
   }
   return "?";
 }

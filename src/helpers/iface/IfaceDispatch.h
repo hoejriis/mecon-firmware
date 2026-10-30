@@ -6,7 +6,8 @@
 
 namespace Iface {
 
-enum Priv { PRIV_READ, PRIV_WRITE, PRIV_ADMIN };
+// PRIV_UPDATE: the update class of the privilege table (UPDATES.md section 5).
+enum Priv { PRIV_READ, PRIV_WRITE, PRIV_ADMIN, PRIV_UPDATE };
 
 struct OpContext {
   const Request* req;

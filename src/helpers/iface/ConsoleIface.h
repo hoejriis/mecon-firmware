@@ -102,10 +102,12 @@ private:
   static bool confirmJobId(void* self, const Request& req, char* out, size_t cap);
   static bool jobRevert(void* self, Job& j);
   static bool jobConfirm(void* self, Job& j);
+  static bool updSigned(void* self);
+  static void updReboot(void* self);
   static bool jobClasses(void* self, uint8_t cls);
   static void jobChanged(void* self, const Job& j);
   ConfirmHost _confirm = {};
-  uint32_t _reboot_at = 0;     // a revert restored a key that needs a reboot (0: none)
+  uint32_t _reboot_at = 0;     // a revert restored a key, or an update activated or reverted an image (0: none)
   static bool cliAllow(void* self, const char* line);
   void answer(Print& out);
 public:
@@ -126,7 +128,7 @@ private:
   Provenance _prov;            // signs every result and event while a record exists
   DeployAuth _auth;            // the Deployment record and the signed-request checks (shared with the Companion)
   JobService _jobs;            // config.apply with confirm creates the jobs (OPERATIONS.md 3.4)
-  Upd::UpdateService _updates; // update.manifest and update.status (UPDATES.md section 8)
+  Upd::UpdateService _updates; // the update operations and their install (UPDATES.md sections 5 to 8)
   Cli::Context _ctx;           // the caller of the request being handled: the cable, or the signed principal on it
   const char* _deny = nullptr; // why authorize() refused, when it has a contract code for it
   char _nonce[33] = {0};       // the console's channel nonce (AUTHORITY.md section 7.1)

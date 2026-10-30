@@ -16,3 +16,26 @@ mutate upd_slot_size_unchecked src/helpers/updates/UpdPreflight.h '  if (m.kind 
 mutate upd_stage_not_rate_limited src/helpers/updates/UpdService.cpp '  if (_staged_once && (uint32_t)(now_ms - _last_stage_ms) < STAGE_GAP_MS) { c.error = "rate"; return ST_BUSY; }' '' "$UP::test_one_stage_a_second_and_two_slots_the_older_evicted"
 mutate upd_stage_evicts_the_newer src/helpers/updates/UpdService.cpp '<= 0 ? &_s[0] : &_s[1];   // evict the older' '<= 0 ? &_s[1] : &_s[0];   // evict the older' "$UP::test_one_stage_a_second_and_two_slots_the_older_evicted"
 mutate upd_unreadable_floor_reads_as_none src/helpers/updates/UpdService.cpp '  d.security_floor = floorRead(&floor) ? floor : 0xFFFFFFFFu;   // unreadable: no install passes (fail closed)' '  floorRead(&floor); d.security_floor = floor;' "$UP::test_an_unreadable_floor_fails_closed"
+
+# slice 2: the offer, the push transfer, the install and its confirmation (UPDATES.md sections 5 to 7)
+UI=sim/tests/test_update_install.py
+U=src/helpers/updates/UpdService.cpp
+mutate upd_chunk_token_unchecked $U '  if (!ours || !match) { c.error = "bad-token"; return ST_REFUSED; }' '  if (!ours) { c.error = "bad-token"; return ST_REFUSED; }' "$UI::test_a_chunk_needs_the_jobs_token"
+mutate upd_chunk_overlong_written $U '  if ((uint32_t)n > _size - _received) { free(bytes); c.error = "too-large"; return ST_REFUSED; }' '' "$UI::test_a_chunk_needs_the_jobs_token"
+mutate upd_chunk_offset_ignored $U '  if ((uint32_t)offset != _received) { w.key("next"); w.unum(_received); return ST_OK; }   // resume where it stands' '' "$UI::test_a_pushed_image_installs_attests_and_is_confirmed"
+mutate upd_digest_unchecked $U '  if (!Dep::constTimeEqual(got, _image_sha, 32)) { failJob("digest-mismatch"); return; }' '' "$UI::test_a_wrong_digest_fails_and_activates_nothing"
+mutate upd_image_format_unchecked $U '  if (!slotFinish()) { failJob("bad-image"); return; }   // the platform'"'"'s own check of the image format' '  slotFinish();' "$UI::test_an_image_the_platform_does_not_accept_fails"
+mutate upd_offer_rate_unlimited $U '  if (_offered_once && (uint32_t)(now_ms - _last_offer_ms) < OFFER_GAP_MS) { c.error = "rate"; return ST_BUSY; }   // 2' '' "$UI::test_offers_that_preflight_refuses"
+mutate upd_stall_ignored $U '    if ((uint32_t)(now_ms - _last_chunk_ms) >= STALL_MS) failJob("stalled");' '' "$UI::test_a_transfer_with_no_chunk_for_ten_minutes_fails"
+mutate upd_any_reboot_reverts $U '  t->awaitConfirm(j, _within_s, false, BOOT_ABNORMAL);' '  t->awaitConfirm(j, _within_s, false, BOOT_SECOND);' "$UI::test_a_normal_reboot_does_not_revert"
+mutate upd_never_marked_valid $U '    if (runningState() == RS_PENDING) markValid();
+  }' '  }' "$UI::test_an_abnormal_reset_reverts_at_once"
+mutate upd_confirm_leaves_the_rollback_window $U '  // take a confirmed image back.
+  if (runningState() == RS_PENDING) markValid();' '  // take a confirmed image back.' "$UI::test_a_pushed_image_installs_attests_and_is_confirmed"
+mutate upd_rollback_not_noticed $U '  finish(*j, JOB_REVERTED, "\"error\":\"rolled-back\",\"reverted\":true");' '  return;' "$UI::test_a_reset_before_the_image_is_marked_valid_rolls_back"
+mutate upd_revert_keeps_the_new_image $U '    if (!slotRevert()) return false;' '' "$UI::test_the_deadline_reverts_to_the_previous_image"
+mutate upd_confirm_without_attestation $U '  if (!_attested || strcmp(_attested_job, j.id) != 0) return false;' '' "$UI::test_an_image_that_cannot_show_it_is_the_installed_one_is_not_confirmed"
+mutate upd_offer_read_class examples/companion_radio/MeconIface.cpp '  {"update.offer", opUpdOffer, PRIV_UPDATE, true},' '  {"update.offer", opUpdOffer, PRIV_READ, true},' "$UI::test_an_enrolled_device_installs_only_on_a_signed_offer"
+mutate upd_chunk_needs_a_class src/helpers/iface/DeployAuth.cpp '  if (strcmp(op.name, "update.chunk") == 0) return PRE_ALLOW;' '' "$UI::test_the_token_not_the_link_authorises_a_chunk"
+mutate upd_class_open_to_ble src/helpers/cli/CliPolicy.h '    /* paired BLE     N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW, ALLOW, NOT_PERMITTED),' '    /* paired BLE     N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW, ALLOW, ALLOW),' unit:test_cli_engine
+mutate upd_base64_leftover_bits_ignored src/helpers/updates/UpdB64.h '    if (last && pad == 2 && (g & 0xFFFF) != 0) return -1;   // the leftover bits of "xx==" are zero' '' unit:test_updates "$UI::test_a_chunk_needs_the_jobs_token"

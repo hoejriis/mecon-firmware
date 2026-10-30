@@ -62,7 +62,7 @@ struct Job {
   uint8_t cls;
   uint8_t who_transport, who_auth, who_posture, who_mgmt, who_audit;
   uint16_t result_len;
-  char result[RESULT_CAP];     // the latest result or state data, as JSON members (the role's choice); never a value
+  char result[RESULT_CAP];     // the latest result or state data, as one JSON object (the role's choice); never a value
                                // read back from the device, which a CLI reply can echo
 };
 
@@ -126,6 +126,15 @@ public:
       j->result_len = (uint16_t)len;
     }
     j->state = state;
+    return true;
+  }
+
+  // New result members for a job that is not terminal, its state unchanged: a firmware update's attestation once the
+  // new image runs (UPDATES.md section 7). A terminal result never changes.
+  bool setResult(Job* j, const char* result, size_t len) {
+    if (!j || !j->state || jobTerminal(j->state) || !result || len > Job::RESULT_CAP) return false;
+    memcpy(j->result, result, len);
+    j->result_len = (uint16_t)len;
     return true;
   }
 

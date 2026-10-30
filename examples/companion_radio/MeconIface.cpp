@@ -39,7 +39,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
-                                    "update.manifest", "update.status"
+                                    "update.manifest", "update.status", "update.offer", "update.chunk"
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -60,6 +60,8 @@ Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
 Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
 Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, millis()); }
 Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
+Status opUpdOffer(OpContext& c) { return self(c)->updates().opOffer(c, millis()); }
+Status opUpdChunk(OpContext& c) { return self(c)->updates().opChunk(c, millis()); }
 Status opChanList(OpContext& c);
 Status opChanGet(OpContext& c);
 Status opChanPut(OpContext& c);
@@ -98,6 +100,11 @@ const OpEntry OPS[] = {
   // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
   {"update.manifest", opUpdManifest, PRIV_READ, false},
   {"update.status", opUpdStatus, PRIV_READ, false},
+  // The offer is of the update class and keeps its result: a retry gets the same job and transfer token back. A chunk
+  // is authorised by that token (DeployAuth::preAuthorize lets it through to the handler) and is not kept: its answer
+  // is the offset expected next, which a retry asks again.
+  {"update.offer", opUpdOffer, PRIV_UPDATE, true},
+  {"update.chunk", opUpdChunk, PRIV_READ, false},
 #ifdef MAX_GROUP_CHANNELS
   // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
   {"channel.list", opChanList, PRIV_READ, false},
@@ -134,6 +141,7 @@ Status opHello(OpContext& c) {
   w.key("firmware"); w.str(mecon::versionFull());
   w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
   w.key("epoch"); w.unum(m->epoch());
+  m->updates().writeAttestation(w);   // the image of an update job, while it awaits confirmation (UPDATES.md section 7)
   // The channel nonce of the link this reply goes to, only once a Deployment record exists (AUTHORITY.md section 7.1).
   const char* nonce = m->helloNonce();
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
@@ -180,6 +188,7 @@ Status opStatus(OpContext& c) {
   w.key("posture"); w.str(Posture::isHardened(mesh->postureValue()) ? "hardened" : "normal");
   m->writeDeploymentStatus(w, Posture::isHardened(mesh->postureValue()));
   m->jobs().writeStatus(w);
+  m->updates().writeAttestation(w);
   return ST_OK;
 }
 
@@ -335,7 +344,10 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
     case Iface::DeployAuth::PRE_DENY: return false;
     case Iface::DeployAuth::PRE_TABLE: break;
   }
-  const uint8_t cls = op.priv == PRIV_READ ? Cli::C_READ : op.priv == PRIV_WRITE ? Cli::C_WRITE : Cli::C_POSTURE;
+  const uint8_t cls = op.priv == PRIV_READ    ? Cli::C_READ
+                      : op.priv == PRIV_WRITE  ? Cli::C_WRITE
+                      : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
+                                               : Cli::C_POSTURE;
   return Cli::decide(self->_ctx, cls).allow;
 }
 
@@ -758,6 +770,7 @@ void MeconIface::inventoryTick(uint32_t now) {
 void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
   _jobs.tick(now);
+  _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) board.reboot();
   streamTick(now);
   inventoryTick(now);

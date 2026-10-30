@@ -64,6 +64,33 @@ bool SimLocationProvider::fixAgeMs(uint32_t& out) const {
   return true;
 }
 
+namespace {
+struct ResetKnob { bool read = false; std::string why; };
+ResetKnob& resetKnob() {
+  static ResetKnob k;
+  if (k.read) return k;
+  k.read = true;
+  std::string d = g_sim.dir;
+  while (d.size() > 1 && d.back() == '/') d.pop_back();
+  const std::string path = d + ".reset";
+  FILE* f = fopen(path.c_str(), "r");
+  if (!f) return k;
+  char line[64] = {0};
+  if (fgets(line, sizeof(line), f)) {
+    line[strcspn(line, "\r\n")] = 0;
+    k.why = line;
+  }
+  fclose(f);
+  remove(path.c_str());
+  return k;
+}
+}  // namespace
+
+uint32_t SimBoard::getResetReason() const { return resetKnob().why.empty() ? 0 : 1; }
+const char* SimBoard::getResetReasonString(uint32_t reason) {
+  return reason && !resetKnob().why.empty() ? resetKnob().why.c_str() : "Not available";
+}
+
 void SimBoard::reboot() { fflush(NULL); exit(75); }
 void SimBoard::powerOff() { fflush(NULL); exit(0); }
 
