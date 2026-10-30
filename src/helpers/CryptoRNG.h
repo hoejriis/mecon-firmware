@@ -17,6 +17,7 @@
   #include <esp_random.h>
 #elif defined(NRF52_PLATFORM)
   #include <nrf_soc.h>
+  #include <nrf_sdm.h>   // sd_softdevice_is_enabled: included here, not left to whatever a user included first
 #elif defined(ARDUINO_ARCH_RP2040)
   #include <Arduino.h>
 #elif defined(__linux__) || defined(__APPLE__)

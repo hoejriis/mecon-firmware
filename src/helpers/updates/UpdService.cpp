@@ -331,6 +331,8 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     c.error = v.error;
     return strcmp(v.status, "invalid") == 0 ? ST_INVALID : strcmp(v.status, "busy") == 0 ? ST_BUSY : ST_REFUSED;
   }
+  // This build installs app images only: the nRF52 bootloader path is a later stage, refused before any job opens.
+  if (m->kind != KIND_APP) { free(m); c.error = "unsupported-kind"; return ST_REFUSED; }
 
   CryptoRNG rng;
   uint8_t token[16];
