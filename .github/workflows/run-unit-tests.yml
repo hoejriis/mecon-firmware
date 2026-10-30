@@ -26,6 +26,14 @@ jobs:
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
 
+      - name: Generated files match their sources
+        # The release anchors come from docs/contract/release-keys.json and the update vectors from the release test
+        # key; a hand edit, or a key added without running the tool, fails here (UPDATES.md section 3).
+        run: |
+          pip install cryptography
+          python3 tools/gen_release_anchors.py --check
+          python3 tools/mecon_update_vectors.py --check
+
       - name: Run Unit Tests
         run: pio test -e native -e native_kiss_modem -vv
 

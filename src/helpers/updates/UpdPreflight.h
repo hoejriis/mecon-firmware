@@ -41,6 +41,8 @@ inline Verdict refuse(const char* e) { return {false, "refused", e}; }
 // Step 5: the key is a compiled-in anchor (of this line), and allowed when the record narrows the anchors.
 // allowed: the record's allowed key ids (8 bytes each), n_allowed 0 meaning every anchor.
 inline Verdict checkKey(const Manifest& m, const uint8_t* allowed, size_t n_allowed, const Anchor** out) {
+  // A build with no anchor at all (every firmware build until a production key exists) says so: no key could pass.
+  if (PRODUCTION_ANCHORS_COUNT + TEST_ANCHORS_COUNT == 0) return refuse("no-release-anchor");
   const Anchor* a = findAnchor(m.key_id);
   if (!a || strcmp(a->line, m.line) != 0) return refuse("untrusted-release-key");
   if (n_allowed) {
