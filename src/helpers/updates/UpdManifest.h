@@ -8,25 +8,25 @@
 
 namespace Upd {
 
-const size_t MANIFEST_MAX = 600;   // bytes of manifest text
+const size_t MANIFEST_MAX = 640;   // bytes of manifest text
 const size_t SIG_LEN = 64;
 
 enum Kind : uint8_t { KIND_APP = 1, KIND_BOOTLOADER_DFU = 2 };
 
-const int MAX_HW_REVS = 4;
+const int MAX_HW_REVS = 2;
 
 struct Manifest {
   uint8_t key_id[8];
   char line[17];
-  char version[40];          // as hello's firmware, e.g. "v1.18.0-mecon.0.2.0"
-  char min_from[40];         // the lowest running version that may install it
+  char version[25];          // as hello's firmware, e.g. "v1.18.0-mecon.0.2.0"
+  char min_from[25];         // the lowest running version that may install it
   char build[41];            // the commit it was built from
-  char upstream[24];         // informational
+  char upstream[16];         // informational
   char interface_[8];        // informational
-  char hardware[33];
-  char hardware_rev[MAX_HW_REVS][17];
+  char hardware[25];
+  char hardware_rev[MAX_HW_REVS][9];
   uint8_t n_hardware_rev;
-  char role[17];
+  char role[13];
   char variant[49];
   uint32_t layout;
   bool has_bootloader_min;
