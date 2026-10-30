@@ -1,4 +1,5 @@
 #include "ConsoleIface.h"
+#include <helpers/Uptime.h>
 #include "DevIdHello.h"
 #include <new>
 #include <stdio.h>
@@ -64,7 +65,7 @@ Status opHello(OpContext& c) {
 
 // Shared by status.get and the health stream. A server has no contact list, so "contacts" is absent.
 void writeHealth(JsonWriter& w, ConsoleIface* m) {
-  w.key("uptime_s"); w.unum(millis() / 1000);
+  w.key("uptime_s"); w.unum(Uptime::secs(millis()));
   const MemStats ms = memStats();
   w.key("heap");
   if (!ms.known) w.null();
