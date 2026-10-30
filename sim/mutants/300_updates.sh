@@ -1,8 +1,7 @@
 # Mutants for sim/mutate.sh, sourced in file-name order into its shell (variables set here are seen by later files).
 # signed updates, staging and preflight (UPDATES.md sections 3, 4 and 8; src/helpers/updates/)
 UP=sim/tests/test_updates.py
-mutate upd_unknown_key_allowed src/helpers/updates/UpdManifest.cpp '    if (match < 0 || (seen & (1u << match))) return false;' '    if (match >= 0 && (seen & (1u << match))) return false;' unit:test_updates
-mutate upd_duplicate_key_allowed src/helpers/updates/UpdManifest.cpp '    if (match < 0 || (seen & (1u << match))) return false;' '    if (match < 0) return false;' unit:test_updates
+mutate upd_unknown_key_allowed src/helpers/updates/UpdManifest.cpp '    if (!known) return false;' '' unit:test_updates
 mutate upd_uppercase_hex_accepted src/helpers/updates/UpdManifest.cpp "  if (c >= 'a' && c <= 'f') return c - 'a' + 10;" "  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
   if (c >= 'A' && c <= 'F') return c - 'A' + 10;" unit:test_updates
 mutate upd_signature_unchecked src/helpers/updates/UpdManifest.cpp '  const bool ok = Dep::verifySig(sig, msg, dl + 1 + len, key);' '  const bool ok = true; (void)sig; (void)key;' unit:test_updates "$UP::test_staging_refuses_a_wrong_signature_an_unknown_key_and_a_wrong_target"

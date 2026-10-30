@@ -13,22 +13,17 @@ namespace {
 
 typedef JsonBuf<64> ManifestDoc;   // 19 keys and their values, the image object and the revision list
 
-// Every key of the object at t is one of names[], and none appears twice.
+// Every key of the object at t is one of names[]. A key given twice never gets here: jsonParse refuses it in any object.
 bool onlyKeys(const JsonDoc& d, int t, const char* const* names, int n_names) {
   if (!isObject(d, t)) return false;
-  uint32_t seen = 0;
   int k = t + 1;
   for (int i = 0; i < d.tok[t].size; i++) {
-    int match = -1;
-    for (int j = 0; j < n_names; j++) {
+    bool known = false;
+    for (int j = 0; j < n_names && !known; j++) {
       const size_t nl = strlen(names[j]);
-      if (d.tok[k].type == JSMN_STRING && (size_t)d.tlen(k) == nl && memcmp(d.str(k), names[j], nl) == 0) {
-        match = j;
-        break;
-      }
+      known = d.tok[k].type == JSMN_STRING && (size_t)d.tlen(k) == nl && memcmp(d.str(k), names[j], nl) == 0;
     }
-    if (match < 0 || (seen & (1u << match))) return false;
-    seen |= 1u << match;
+    if (!known) return false;
     k = jsonSkip(d, k + 1);   // past the value
   }
   return true;
