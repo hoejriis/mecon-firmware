@@ -150,6 +150,25 @@ def test_provisioning_refusals(nodes):
     assert r["status"] == "refused" and r["error"] == "unauthenticated", r
 
 
+def test_broker_roles_are_parsed_over_the_cable_and_signed(nodes):
+    """A provisioning that binds a broker role nests five deep (args.deployment.broker_roles[{...}]); it must parse."""
+    d = boot(nodes, "dr", seed=23)
+    assert d.c.cli("set mqtt.profile 0 type static").startswith(">")
+    assert d.c.cli("set mqtt.profile 0 host 127.0.0.2").startswith(">")
+    bad = provision_args(d.node_key)
+    bad["deployment"]["broker_roles"] = [{"profile": 3, "role": "primary"}]   # no such profile: read, then refused
+    r = d.i.request("deployment.provision", bad)
+    assert r["status"] != "ok" and r.get("error") == "bad_broker_roles", r
+    good = provision_args(d.node_key)
+    good["deployment"]["broker_roles"] = [{"profile": 0, "role": "primary"}]
+    r = d.i.request("deployment.provision", good)
+    assert r["status"] == "ok", r
+    again = provision_args(d.node_key, 2)
+    again["deployment"]["broker_roles"] = [{"profile": 0, "role": "secondary"}]
+    r = d.send(wrap(d.node_key, "deployment.provision", again, job=1))
+    assert r["status"] == "ok" and d.i.request("deployment.get")["result"]["provision_revision"] == 2, r
+
+
 def test_a_signed_provisioning_moves_the_provision_revision(nodes):
     d = boot(nodes, "dq")
     d.provision()

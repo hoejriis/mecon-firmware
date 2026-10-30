@@ -14,7 +14,8 @@ namespace Iface {
 
 const size_t MAX_MSG = 4096;     // bytes per message after reassembly
 const int MAX_TOKENS = 96;
-const int MAX_DEPTH = 4;         // containers nested, the root object counting as 1
+const int MAX_DEPTH = 5;         // containers nested, the root object counting as 1. 5 is the deepest a contract
+                                 // defines: a provisioning's args.deployment.broker_roles[{...}] (AUTHORITY.md 6.1)
 
 enum JsonErr {
   J_OK = 0,
