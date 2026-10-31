@@ -155,8 +155,10 @@ private:
   Dep::Sha256Ctx* _readback = nullptr;
   bool _erasing = false;
 
+#ifdef UPD_DOWNLOAD
   // The download (source.url). The connect and the response head run on the network's worker, which writes _dl_err
-  // (nullptr: the body follows) and _dl_status; the main loop reads them once the worker is idle.
+  // (nullptr: the body follows) and _dl_status; the main loop reads them once the worker is idle. Only in the builds
+  // that can download: the URL alone is about 270 bytes of RAM the others would carry for nothing.
   Url _url = {};
   uint32_t _accepted_ms = 0;
   bool _dl_started = false, _dl_connected = false, _dl_close_pending = false;
@@ -165,6 +167,7 @@ private:
   static void dlJob(void* self);
   const char* dlConnect();
   void downloadStep(uint32_t now_ms);
+#endif
 
   Iface::JobTable* table() const { return _host.jobs ? _host.jobs->table() : nullptr; }
   void persist() { if (_host.jobs) _host.jobs->persist(); }

@@ -418,8 +418,10 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   strncpy(_job, jid, sizeof(_job) - 1);
   _job[sizeof(_job) - 1] = 0;
   if (!by_url) memcpy(_token, token, sizeof(_token));   // a download has no chunks, so no token
+#ifdef UPD_DOWNLOAD
   _url = url;
   _accepted_ms = now_ms;
+#endif
   memcpy(_image_sha, m->image_sha256, 32);
   strncpy(_version, m->version, sizeof(_version) - 1);
   _version[sizeof(_version) - 1] = 0;
