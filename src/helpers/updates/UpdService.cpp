@@ -73,8 +73,9 @@ bool unhex(const char* s, uint8_t* out, size_t n) {
 
 }  // namespace
 
-void UpdateService::begin(const char* hardware, const char* role) {
+void UpdateService::begin(const char* hardware, const char* role, const char* hardware_names) {
   _hardware = hardware ? hardware : "";
+  _hardware_names = hardware_names;
   _role = role ? role : "";
   slotBoot();
   _running_known = runningHash(_running_sha);
@@ -84,6 +85,7 @@ Device UpdateService::device() const {
   Device d = {};
   d.line = "public";
   d.hardware = _hardware;
+  d.hardware_names = _hardware_names;
   d.hardware_rev = MECON_HARDWARE_REV;
   d.role = _role;
   d.variant = MECON_VARIANT;

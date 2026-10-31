@@ -78,3 +78,7 @@ mutate upd_floor_page_no_complement $FP '  if (w[0] != FLOOR_MAGIC || w[2] != ~w
 mutate upd_dfu_reset_counts_from_the_offer examples/companion_radio/MeconIface.cpp '    _updates.replyWritten(millis());   // the reply goes out on this pass: a DFU reset the request asked for waits for it' '' "$UF::test_the_reset_into_the_bootloader_waits_for_the_answer"
 mutate upd_dfu_reset_counts_from_the_offer_console src/helpers/iface/ConsoleIface.cpp '    _updates.replyWritten(millis());   // a DFU reset the request asked for waits for its reply' '' "$UF::test_the_reset_into_the_bootloader_waits_for_the_answer"
 mutate upd_dfu_status_zero_hash $U '      w.key("sha256"); if (_running_known) hex(w, _running_sha, 32); else w.null();   // the nRF52 attests by version' '      w.key("sha256"); hex(w, _running_sha, 32);' "$UF::test_a_dfu_offer_resets_into_the_bootloader_and_the_new_image_attests"
+# a board that reports one of several names (Heltec V4 / V4.3) takes a manifest for any of them, and only a whole name
+UPF=src/helpers/updates/UpdPreflight.h
+mutate upd_hardware_name_prefix_matches $UPF '    if (len == n && n && memcmp(p, want, n) == 0) return true;' '    if (n && memcmp(p, want, n) == 0) return true;' unit:test_updates
+mutate upd_hardware_names_ignored $UPF '  if (!d.hardware_names) return false;' '  return false;' unit:test_updates

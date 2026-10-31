@@ -50,6 +50,9 @@ public:
   virtual bool setAdcMultiplier(float multiplier) { return false; };
   virtual float getAdcMultiplier() const { return 0.0f; }
   virtual const char* getManufacturerName() const = 0;
+  // Every name getManufacturerName() can return on this build, '|'-separated: a board whose name follows the parts it
+  // finds at run time (the Heltec V4's front end) lists each, so one release manifest serves the build (UPDATES.md 4).
+  virtual const char* getManufacturerNames() const { return getManufacturerName(); }
   virtual void onBeforeTransmit() { }
   virtual void onAfterTransmit() { }
   virtual void reboot() = 0;

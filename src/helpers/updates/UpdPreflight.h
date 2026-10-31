@@ -13,6 +13,7 @@ namespace Upd {
 struct Device {
   const char* line;          // "public"
   const char* hardware;      // hello's hardware
+  const char* hardware_names; // every name this build's board can report, '|'-separated; null: hardware only
   const char* hardware_rev;  // this board's revision
   const char* role;          // hello's role
   const char* variant;       // the build environment
@@ -27,6 +28,21 @@ struct Device {
   uint32_t free_heap;
   uint32_t heap_needed;      // what a transfer needs
 };
+
+// A manifest's hardware is this board when it is one of the names the build can report (exactly, a whole name).
+inline bool hardwareMatches(const char* want, const Device& d) {
+  if (strcmp(want, d.hardware) == 0) return true;
+  if (!d.hardware_names) return false;
+  const size_t n = strlen(want);
+  for (const char* p = d.hardware_names; *p;) {
+    const char* e = strchr(p, '|');
+    const size_t len = e ? (size_t)(e - p) : strlen(p);
+    if (len == n && n && memcmp(p, want, n) == 0) return true;
+    if (!e) break;
+    p = e + 1;
+  }
+  return false;
+}
 
 // The outcome of a check: ok, or a refusal with its status and error code (the contract's names).
 struct Verdict {
@@ -58,7 +74,7 @@ inline Verdict checkKey(const Manifest& m, const uint8_t* allowed, size_t n_allo
 inline Verdict checkTarget(const Manifest& m, const Device& d) {
   bool rev = false;
   for (int i = 0; i < m.n_hardware_rev && !rev; i++) rev = strcmp(m.hardware_rev[i], d.hardware_rev) == 0;
-  if (strcmp(m.line, d.line) != 0 || strcmp(m.hardware, d.hardware) != 0 || !rev || strcmp(m.role, d.role) != 0 ||
+  if (strcmp(m.line, d.line) != 0 || !hardwareMatches(m.hardware, d) || !rev || strcmp(m.role, d.role) != 0 ||
       strcmp(m.variant, d.variant) != 0 || m.layout != d.layout || !(d.kinds & (1u << m.kind)))
     return refuse("wrong-target");
   if (m.has_bootloader_min && d.has_bootloader && d.bootloader < m.bootloader_min) return refuse("wrong-target");

@@ -179,7 +179,7 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
-  _updates.begin(_host.hardware, _host.role);
+  _updates.begin(_host.hardware, _host.role, _host.board ? _host.board->getManufacturerNames() : nullptr);
   if (_host.snap_store)
     _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
                            confirmRunAs, confirmJobId};

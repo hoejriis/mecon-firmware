@@ -65,7 +65,7 @@ A public release on GitHub carries its update set as release assets, so any mana
 | `line` | `public` for this repository. A device installs only its own line, because versions do not order across lines ([VERSIONING_AND_RELEASES](../VERSIONING_AND_RELEASES.md)) |
 | `version`, `build` | the firmware version (as `hello`'s `firmware`), and the commit it was built from |
 | `upstream`, `interface` | the MeshCore base, and the device-interface version. Both informational; the device does not refuse on them |
-| `hardware`, `hardware_rev`, `role`, `variant` | the device's own `hello` `hardware` and `role`, the board revisions the image supports (a list; a device's revision is a build setting, `1` unless its environment says otherwise), and the build environment name |
+| `hardware`, `hardware_rev`, `role`, `variant` | the device's own `hello` `hardware` (or any other name the same build's board can report: a Heltec V4 reports `Heltec V4 OLED` or `Heltec V4.3 OLED` by the front end it finds, and accepts a manifest naming either, so one manifest serves the build) and `role`, the board revisions the image supports (a list; a device's revision is a build setting, `1` unless its environment says otherwise), and the build environment name |
 | `layout` | the partition or flash-layout version the image was built for. An image for another layout could overwrite a file system or the record |
 | `bootloader_min` | the lowest bootloader version the image needs, where the target reports one |
 | `data_format` | the version of the on-flash data the image reads and writes (section 9) |

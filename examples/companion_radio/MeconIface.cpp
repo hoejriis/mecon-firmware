@@ -450,7 +450,7 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _epoch = epoch;
   deployLoad();
   _prov.begin(&_mesh->self_id, &_auth, epoch, epoch_saved);
-  _updates.begin(_mesh->hardwareName(), "companion");
+  _updates.begin(_mesh->hardwareName(), "companion", _mesh->hardwareNames());
   observeSink().fn = onObserve;
   observeSink().user = this;
 }
