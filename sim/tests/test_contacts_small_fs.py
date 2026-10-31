@@ -32,7 +32,7 @@ def seed(node, n):
 
 @pytest.mark.parametrize("kind", ["companion", "companion_asan"])
 def test_350_stock_contacts_move_whole_into_the_store_on_a_t1000e_sized_fs(nodes, kind):
-    node = start(nodes, "t1k", kind=kind, extra=["--fs-size", str(EXTRAFS), "--heap-budget", "50000"])
+    node = start(nodes, "t1k", kind=kind, extra=["--fs-size", str(EXTRAFS), "--fs-enforce", "--heap-budget", "50000"])
     keys = seed(node, 350)
     node.start()
     c = connect(node)
@@ -51,7 +51,12 @@ def test_350_stock_contacts_move_whole_into_the_store_on_a_t1000e_sized_fs(nodes
 
 def test_a_stock_file_the_fs_cannot_take_keeps_every_contact_the_store_has_no_room_for(nodes):
     # 80,000 bytes: the seeded files fit, but the store is sized for about 256 records
-    node = start(nodes, "tiny", extra=["--fs-size", "80000", "--heap-budget", "50000"])
+    node = start(nodes, "tiny", extra=["--fs-size", "80000", "--fs-enforce", "--heap-budget", "50000"])
+    node.start()                                             # overwriting the oldest is on, and the migration still
+    c = connect(node)                                        # must not evict: what it evicts is not in the old file
+    assert c.set_overwrite_oldest(True)[0] == 0
+    c.close()
+    node.stop()
     keys = seed(node, 350)
     node.start()
     c = connect(node)
@@ -72,7 +77,7 @@ def test_a_stock_file_the_fs_cannot_take_keeps_every_contact_the_store_has_no_ro
 
 
 def test_a_cut_between_a_bucket_write_and_the_truncation_finishes_without_duplicates(nodes):
-    node = start(nodes, "cut", extra=["--fs-size", "80000", "--heap-budget", "50000"])
+    node = start(nodes, "cut", extra=["--fs-size", "80000", "--fs-enforce", "--heap-budget", "50000"])
     keys = seed(node, 350)
     node.start()                                             # part of the file moves before the room runs out
     c = connect(node)

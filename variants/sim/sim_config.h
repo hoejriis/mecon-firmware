@@ -23,6 +23,7 @@ struct SimConfig {
   uint32_t heap_budget = 300000;   // free heap the node reports at boot (--heap-budget); the contact cache is sized from it
   std::string heap_file;      // file "FREE [LARGEST]" the test rewrites to change the heap the node reports at run time (--heap-file)
   uint32_t fs_size = 1536 * 1024;  // size of the simulated file system (--fs-size)
+  bool fs_enforce = false;          // a write that would take the files past fs_size fails, as on a full flash (--fs-enforce)
   std::string fs_calls;       // file rewritten after every file system call with the running counts (--fs-calls)
   uint32_t fs_write_ms = 0;   // --fs-write-ms: each written file's close holds the node this long, as a flash save does
   std::string fault_path;     // fault injection: file path (as the app sees it) ...
