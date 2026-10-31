@@ -62,6 +62,22 @@ mutate upd_download_https_heap_as_http $U '  if (by_url) dev.heap_needed = url.t
 mutate upd_download_hands_out_a_token $U '  if (!by_url) { w.key("transfer_token"); w.str(tok); }' '  { w.key("transfer_token"); w.str(tok); }' "$UD::test_an_image_downloads_by_name_installs_and_attests"
 mutate upd_download_host_without_port $U '  if (_url.port != (_url.tls ? 443 : 80)) snprintf(port, sizeof(port), ":%u", (unsigned)_url.port);' '' "$UD::test_an_image_downloads_by_name_installs_and_attests"
 mutate upd_url_userinfo_accepted src/helpers/updates/UpdUrl.h '  if (*p != '"'"'/'"'"') return false;   // user info ("@"), an IPv6 literal, anything else between host and path' '  if (*p != '"'"'/'"'"') { strcpy(out->path, "/"); return true; }' unit:test_updates
+# slice 4: the nRF52 path through the bootloader's serial DFU (UPDATES.md section 6, kind bootloader-dfu)
+UF=sim/tests/test_update_dfu.py
+mutate upd_dfu_never_enters_the_bootloader $U '    slotEnterDfu();' '' "$UF::test_a_dfu_offer_resets_into_the_bootloader_and_the_new_image_attests"
+mutate upd_dfu_attests_any_version $U '  if (!want[0] || strcmp(want, runningVersion()) != 0) {' '  if (!want[0]) {' "$UF::test_a_dfu_that_did_not_happen_ends_not_installed"
+mutate upd_dfu_deadline_says_not_installed $U '    const bool installed = want[0] && strcmp(want, runningVersion()) == 0;' '    const bool installed = false;' "$UF::test_an_unconfirmed_dfu_image_stays_and_the_job_says_so"
+mutate upd_dfu_takes_a_url $U '    if (by_url) { free(m); c.error = "unsupported-source"; return ST_REFUSED; }   // the bootloader takes it over USB only' '' "$UF::test_a_dfu_board_takes_no_ip_source_and_no_app_image"
+mutate upd_dfu_second_offer_while_open $U '    if (open) {   // no supersede here: a DFU replaces the whole image, and one job at a time' '    if (false) {' "$UF::test_a_dfu_offer_while_the_last_one_awaits_its_confirmation_is_busy"
+FP=src/helpers/updates/UpdFloorPage.h
+mutate upd_floor_page_rewrites_every_raise $FP '  if (s.floor >= v) return true;' '' unit:test_upd_floor_page
+mutate upd_floor_page_lowers $FP '  if (s.floor >= v) return true;' '  if (s.floor == v) return true;' unit:test_upd_floor_page
+mutate upd_floor_page_ignores_trailing_data $FP '    if (!p.read((uint32_t)off, s, sizeof(s)) || !Dep::markerSlotErased(s)) { r.readable = false; return r; }' '    if (!p.read((uint32_t)off, s, sizeof(s))) { r.readable = false; return r; }' unit:test_upd_floor_page
+mutate upd_floor_page_no_read_back $FP '  return floorPageRead(p, &now) && now >= v;' '  return true;' unit:test_upd_floor_page
+mutate upd_floor_page_no_complement $FP '  if (w[0] != FLOOR_MAGIC || w[2] != ~w[1] || w[3] != Dep::markerCrc32(s, 12)) return false;' '  if (w[0] != FLOOR_MAGIC || w[3] != Dep::markerCrc32(s, 12)) return false;' unit:test_upd_floor_page
+mutate upd_dfu_reset_counts_from_the_offer examples/companion_radio/MeconIface.cpp '    _updates.replyWritten(millis());   // the reply goes out on this pass: a DFU reset the request asked for waits for it' '' "$UF::test_the_reset_into_the_bootloader_waits_for_the_answer"
+mutate upd_dfu_reset_counts_from_the_offer_console src/helpers/iface/ConsoleIface.cpp '    _updates.replyWritten(millis());   // a DFU reset the request asked for waits for its reply' '' "$UF::test_the_reset_into_the_bootloader_waits_for_the_answer"
+mutate upd_dfu_status_zero_hash $U '      w.key("sha256"); if (_running_known) hex(w, _running_sha, 32); else w.null();   // the nRF52 attests by version' '      w.key("sha256"); hex(w, _running_sha, 32);' "$UF::test_a_dfu_offer_resets_into_the_bootloader_and_the_new_image_attests"
 # a board that reports one of several names (Heltec V4 / V4.3) takes a manifest for any of them, and only a whole name
 UPF=src/helpers/updates/UpdPreflight.h
 mutate upd_hardware_name_prefix_matches $UPF '    if (len == n && n && memcmp(p, want, n) == 0) return true;' '    if (n && memcmp(p, want, n) == 0) return true;' unit:test_updates

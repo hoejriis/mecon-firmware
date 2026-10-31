@@ -70,9 +70,7 @@ mutate mqtt_name_resolved_once $MQ_CTRL "  if (j.resolve && !_net->resolve(j.hos
   else if (j.resolve) cached[_job_profile] = j.addr;" $MQ_SIM::test_a_host_name_is_resolved_again_on_every_attempt
 mutate mqtt_password_in_listing $MQ_PROF_C 'const char* pwd = q.pwd[0] ? "set" : "unset";' 'const char* pwd = q.pwd[0] ? q.pwd : "unset";' unit:test_mqtt_prefs
 mutate mqtt_password_in_listing_sim $MQ_PROF_C 'const char* pwd = q.pwd[0] ? "set" : "unset";' 'const char* pwd = q.pwd[0] ? q.pwd : "unset";' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
-mutate mqtt_password_logged $MQ_CTRL "  _psc.setClient(_net->client());
-  const char* user = j.user[0]" '  fprintf(stderr, "mqtt connect as %s\n", j.pwd);
-  _psc.setClient(_net->client());
+mutate mqtt_password_logged $MQ_CTRL "  const char* user = j.user[0]" '  fprintf(stderr, "mqtt connect as %s\n", j.pwd);
   const char* user = j.user[0]' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
 mutate mqtt_credentials_not_sent $MQ_CTRL "const char* user = j.user[0] ? j.user : nullptr;" "const char* user = nullptr;" $MQ_SIM::test_credentials_are_used_and_a_wrong_password_fails_over
 mutate mqtt_profiles_not_persisted examples/companion_radio/NodePrefs.h "        key[0] = 'h'; def(key, q.host, sizeof(q.host));

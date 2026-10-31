@@ -5,7 +5,8 @@ name: Mutation check
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    # Not `opened`: a PR created with full-ci fires `labeled` as well, and two runs for one commit cancelled each other.
+    types: [synchronize, reopened, ready_for_review, labeled]
     paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', '.github/workflows/mutation.yml']
   push:
     branches: [main]
@@ -14,8 +15,11 @@ on:
 # On a pull request a newer push makes this run obsolete: cancel it rather than queue behind it. On main every
 # commit's run finishes, so each merge gets a verdict (#146): a newer one waits, and GitHub keeps only the newest
 # pending run in the group, so a busy day does not queue a run per merge.
+# The group says whether the run will do the work (the same test as the list job's `if`): a run that will only skip
+# (a push without the label, another label added) must not cancel one that is an hour into the matrix, and a cancelled
+# run stays on the PR as a failed check that blocks the merge.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci')) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -25,7 +29,7 @@ jobs:
   list:
     # On main (after a merge) and by hand. A PR runs it only when it is ready and labelled full-ci (owner's
     # choice, 2026-10-29: the matrix is most of the repo's Actions minutes); adding the label starts it.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
     runs-on: ubuntu-latest
     outputs:
       mutants: ${{ steps.list.outputs.mutants }}

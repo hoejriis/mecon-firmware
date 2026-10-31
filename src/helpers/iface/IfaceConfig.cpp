@@ -29,6 +29,10 @@ const KeyDef KEYS[] = {
    "set mqtt.profile %u port %s"},
   {"mqtt.profile.{n}.tls", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_CONFIRM | KF_ONOFF, 5, "get mqtt.profile %u", F_MQTT_TLS,
    "set mqtt.profile %u tls %s"},
+  {"mqtt.profile.{n}.transport", K_ENUM, 0, 0, "tcp|ws", KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_TRANSPORT,
+   "set mqtt.profile %u transport %s"},
+  {"mqtt.profile.{n}.path", K_STRING, 1, 63, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u path", F_WHOLE,
+   "set mqtt.profile %u path %s"},
   {"mqtt.profile.{n}.site", K_STRING, 1, 23, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_SITE,
    "set mqtt.profile %u site %s"},
   {"mqtt.profile.{n}.user", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_CONFIRM | KF_WRITE_ONLY, 5, "get mqtt.profile %u", F_MQTT_USER,
@@ -455,6 +459,10 @@ bool parseField(uint8_t field, const char* reply, char* out, size_t cap, bool* i
     case F_MQTT_TLS:
       if (strncmp(rest, "discovery ", 10) == 0) { copyOut(out, cap, "on", 2); return true; }   // always TLS
       return tokenAfter(rest - 1, "tls", out, cap);
+    case F_MQTT_TRANSPORT:   // shown only when ws; a discovery profile is always tcp
+      if (strncmp(rest, "static ", 7) == 0 && tokenAfter(rest - 1, "transport", out, cap)) return true;
+      copyOut(out, cap, "tcp", 3);
+      return true;
     case F_MQTT_HOST: case F_MQTT_PORT: {
       if (strncmp(rest, "static ", 7) != 0) { *is_null = true; out[0] = 0; return true; }
       const char* hp = rest + 7;

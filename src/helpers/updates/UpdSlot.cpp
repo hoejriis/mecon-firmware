@@ -131,7 +131,23 @@ bool slotSetBoot(uint32_t id) {
   return writeOta(o);
 }
 
+bool slotIsDfuBoard() {
+  static int known = -1;
+  if (known < 0) {
+    FILE* f = fopen((base() + ".dfu-board").c_str(), "r");
+    known = f != nullptr;
+    if (f) fclose(f);
+  }
+  return known == 1;
+}
+
+void slotEnterDfu() {
+  fflush(nullptr);
+  exit(76);   // the test plays the bootloader: it installs the image (declares its version) and starts the node again
+}
+
 bool runningHash(uint8_t out[32]) {
+  if (slotIsDfuBoard()) return false;   // as the nRF52: the image the bootloader wrote is not hashed here
   Dep::Sha256Ctx c;
   Dep::sha256Init(&c);
   FILE* f = fopen(slotPath(readOta().run).c_str(), "rb");
@@ -303,11 +319,18 @@ RunState runningState() {
 
 bool markValid() { return esp_ota_mark_app_valid_cancel_rollback() == ESP_OK; }
 
+bool slotIsDfuBoard() { return false; }
+void slotEnterDfu() {}
+
 const char* runningVersion() { return mecon::versionFull(); }
 
 }  // namespace Upd
 
 #else
+// No slot here. The nRF52 installs through its bootloader instead (kind bootloader-dfu), which slotEnterDfu() resets into.
+#if defined(NRF52_PLATFORM)
+#include <Arduino.h>
+#endif
 
 namespace Upd {
 void slotBoot() {}
@@ -327,6 +350,13 @@ bool runningHash(uint8_t*) { return false; }
 RunState runningState() { return RS_UNKNOWN; }
 bool markValid() { return false; }
 const char* runningVersion() { return mecon::versionFull(); }
+#if defined(NRF52_PLATFORM)
+bool slotIsDfuBoard() { return true; }
+void slotEnterDfu() { enterSerialDfu(); }   // GPREGRET 0x4e, SoftDevice off, reset: the bootloader's USB serial DFU
+#else
+bool slotIsDfuBoard() { return false; }
+void slotEnterDfu() {}
+#endif
 }  // namespace Upd
 
 #endif

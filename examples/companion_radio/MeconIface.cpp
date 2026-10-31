@@ -391,7 +391,10 @@ __attribute__((noinline)) void MeconIface::dispatchJob(void* p) {
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                          size_t cap) {
   DispatchJob j = {this, &ctx, caller, link, msg, len, out, cap, -1};
-  if (NrfWorker::run(dispatchJob, &j, 15000)) return j.n;
+  if (NrfWorker::run(dispatchJob, &j, 15000)) {
+    _updates.replyWritten(millis());   // the reply goes out on this pass: a DFU reset the request asked for waits for it
+    return j.n;
+  }
   // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature.
   static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
   if (cap <= sizeof(W)) return -1;

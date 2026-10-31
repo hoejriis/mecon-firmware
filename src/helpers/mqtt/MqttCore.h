@@ -21,7 +21,7 @@
 #include "MqttProfiles.h"
 
 enum class MqttState : uint8_t { Off, NoLink, Idle, Connecting, Connected, Backoff };
-enum class MqttFail : uint8_t { None, Dns, Tcp, Tls, Pin, Auth, Timeout, Dropped, Lost, Posture, Plain };
+enum class MqttFail : uint8_t { None, Dns, Tcp, Tls, Pin, Auth, Timeout, Dropped, Lost, Posture, Plain, Ws };
 
 struct MqttTiming {
   uint32_t rescan_ms = 60000;            // between browses while on a lower-priority profile (or with nothing up)
