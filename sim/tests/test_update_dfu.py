@@ -9,6 +9,7 @@ import time
 import pytest
 from test_device_interface import mecon_schema
 from test_update_install import NEW, OLD, declare, job_get
+from test_device_interface_server import client as console_client
 from test_updates import Dev, RTC
 
 PACKAGE = b"PK\x03\x04 a serial-DFU package, as the Reader would send it"
@@ -49,6 +50,8 @@ def test_a_dfu_offer_resets_into_the_bootloader_and_the_new_image_attests(nodes)
     assert not mecon_schema.check(d.hello, mecon_schema.load("hello.result.json"))
     st = d.i.request("status.get", {})["result"]
     assert st["update"]["sha256"] is None and not mecon_schema.check(st, mecon_schema.load("status.get.result.json")), st
+    u = d.i.request("update.status")["result"]
+    assert u["job"]["sha256"] is None and u["running"]["sha256"] is None, u
     g = job_get(d, "nf-1")
     assert g["state"] == "awaiting-confirm" and g["result"]["update"]["version"] == NEW, g
     r = d.i.request("job.confirm", {"job": "nf-1"})
@@ -108,3 +111,31 @@ def test_a_dfu_offer_while_the_last_one_awaits_its_confirmation_is_busy(nodes):
     assert (r["status"], r.get("error")) == ("busy", "job-open:nf-5a"), r
     time.sleep(2)
     assert n.proc.poll() is None, "no second reset"
+
+
+class ConsoleDev(Dev):
+    """The same requests over the console interface (repeater and room server builds)."""
+
+    def __init__(self, n):
+        self.cli, self.i = console_client(n)
+        self.hello = self.i.request("hello")["result"]
+
+
+@pytest.mark.parametrize("kind,variant", [("companion_standalone", "sim_companion_standalone"), ("repeater", "sim_repeater")])
+def test_the_reset_into_the_bootloader_waits_for_the_answer(nodes, kind, variant):
+    """Every flash write holds the node 400 ms, as an InternalFS save does on the nRF52: the job-table save inside the
+    offer must not spend the reset's delay before the answer is written (on wiotest the answer was lost to the reset)."""
+    n = nodes(kind, "nr" + kind[:3], seed=96, rtc=RTC, extra=["--fs-write-ms", "400"])
+    open(n.dir.rstrip("/") + ".dfu-board", "w").close()
+    declare(n, OLD)
+    n.start()
+    d = Dev(n) if kind.startswith("companion") else ConsoleDev(n)
+    msha = stage_dfu(d, variant=variant)
+    t0 = time.time()
+    r = offer(d, msha)
+    t_reply = time.time()
+    assert r is not None and r["status"] == "ok" and r["result"]["dfu"] == "serial", r
+    assert n.wait_exit(15) == 76
+    t_exit = time.time()
+    print("answer after %.2f s, reset %.2f s after the answer" % (t_reply - t0, t_exit - t_reply))
+    assert t_exit - t_reply >= 1.2, "the reset's 1.5 s count from the answer"

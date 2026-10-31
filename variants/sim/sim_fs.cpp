@@ -2,6 +2,7 @@
 // with a power-cut fault hook for storage-integrity tests.
 #include "shims/SPIFFS.h"
 #include "sim_config.h"
+#include "sim_clock.h"
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
@@ -177,7 +178,14 @@ size_t File::size() const {
 }
 size_t File::position() const { return (_p && _p->fp) ? ftell(_p->fp) : 0; }
 bool File::seek(uint32_t pos) { return _p && _p->fp && fseek(_p->fp, pos, SEEK_SET) == 0; }
-void File::close() { if (_p && _p->fp) { fclose(_p->fp); _p->fp = nullptr; } }
+void File::close() {
+  if (!_p || !_p->fp) return;
+  fclose(_p->fp);
+  _p->fp = nullptr;
+  // A real board's flash save holds the loop (a Heltec V3 took about 0.6 s a key for a config.apply); --fs-write-ms makes
+  // the simulated one take time too, so a test can see what a slow save does to what follows it.
+  if (g_sim.fs_write_ms && _p->written) sim_clock()->sleepUs((uint64_t)g_sim.fs_write_ms * 1000);
+}
 const char* File::path() const { return _p ? _p->fs_path.c_str() : ""; }
 const char* File::name() const {
   if (!_p) return "";

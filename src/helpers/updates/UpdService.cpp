@@ -255,7 +255,7 @@ Status UpdateService::opStatus(OpContext& c) {
       w.key("sha256"); hex(w, _image_sha, 32);
     } else if (_attested && strcmp(_attested_job, j->id) == 0) {
       w.key("version"); w.str(runningVersion());
-      w.key("sha256"); hex(w, _running_sha, 32);
+      w.key("sha256"); if (_running_known) hex(w, _running_sha, 32); else w.null();   // the nRF52 attests by version
     }
     w.endObject();
   }
@@ -389,7 +389,7 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     _offered_once = true;
     _last_offer_ms = now_ms;
     _dfu_pending = true;
-    _dfu_at = now_ms + 1500;
+    _dfu_at = now_ms + DFU_DELAY_MS;   // counted again from the reply (replyWritten)
     JsonWriter& w = *c.out;
     w.key("job"); w.str(j->id);
     w.key("state"); w.str(jobStateName(j->state));
