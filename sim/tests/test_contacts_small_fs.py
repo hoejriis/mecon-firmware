@@ -1,22 +1,28 @@
-"""Migrating a stock /contacts3 into the contact store on a file system too small to hold both (Issue #223).
+"""A stock /contacts3 on a file system too small to hold it and the contact store's buckets at once (Issue #223).
 
-A SenseCAP T1000-E keeps its contacts on a 100 KB ExtraFS. 350 stock records (53,200 bytes) plus the store's buckets
-for them do not fit there at once, so the migration moves the old file a bucket at a time from its end and cuts it
-back after each bucket is written. Before this, the store was sized as if the old file stayed, came out at about 100
-records, and the import evicted while the serial interface was still NULL: the board crashed at every boot.
+A SenseCAP T1000-E keeps its contacts on a 100 KB ExtraFS. 350 stock records (53,200 bytes), the store's buckets for
+them, /adv_blobs and /channels2 need about 130 KB, so they cannot all be there at once. On the board, main's boot
+migration evicted while the serial interface was still NULL (the simulator's crash), and an attempt to shrink the
+old file as it migrated corrupted it: the Adafruit LittleFS's truncate cannot be trusted. So:
 
-Software verification only: the simulated file system is one host directory counted in exact bytes. It does not model
-the T1000-E's two file systems or LittleFS block rounding (128-byte blocks there, so close to exact bytes).
+- the T1000-E Companions keep the stock contact array (CONTACTS_STOCK_ARRAY): /contacts3 stays the table, nothing
+  migrates, and a board moved from the private fork keeps every contact;
+- an adaptive build that meets such a file never evicts during the migration, keeps the old file while anything
+  in it is not in the store, and reports how many with `unmigrated N` on `get contacts.capacity`.
+
+Software verification only: the simulated file system is one host directory counted in exact bytes, with
+--fs-enforce failing writes past its size. It does not model the T1000-E's two file systems or LittleFS itself.
 """
 import os
 
 import pytest
 
-from sim.tests.test_contacts import STOCK, by_key, connect, contact, p, start, stock_file
+from sim.tests.test_contacts import STOCK, by_key, connect, contact, key, p, start, stock_file
 
 EXTRAFS = 0x19000                                            # main.cpp: CustomLFS ExtraFS(0xD4000, 0x19000, 128)
 ADV_BLOBS = (4 + 7 + 1 + 2 + 32 + 32 + 4 + 64 + 32) * 100    # the nRF52 build pre-allocates 100 blob records
 CHANNELS = 40 * 68                                           # 40 channels in /channels2
+T1000E = ["--fs-size", str(EXTRAFS), "--fs-enforce", "--heap-budget", "50000"]
 
 
 def seed(node, n):
@@ -30,28 +36,48 @@ def seed(node, n):
     return {c["key"] for c in want}
 
 
-@pytest.mark.parametrize("kind", ["companion", "companion_asan"])
-def test_350_stock_contacts_move_whole_into_the_store_on_a_t1000e_sized_fs(nodes, kind):
-    node = start(nodes, "t1k", kind=kind, extra=["--fs-size", str(EXTRAFS), "--fs-enforce", "--heap-budget", "50000"])
+def keys_in_old_file(node):
+    data = open(p(node, "/contacts3"), "rb").read()
+    return {STOCK.unpack_from(data, i)[0] for i in range(0, len(data) - len(data) % STOCK.size, STOCK.size)}
+
+
+def test_the_stock_array_build_keeps_350_fork_contacts_on_a_t1000e_sized_fs(nodes):
+    node = start(nodes, "t1k", kind="companion_stockcontacts", extra=T1000E)
     keys = seed(node, 350)
     node.start()
     c = connect(node)
     count, got = c.get_contacts()
     assert count == 350 and set(by_key(got)) == keys, (count, len(got))
-    assert not os.path.exists(p(node, "/contacts3")), "the old file goes once every record is in the store"
-    assert c.contacts_line()["store"][0] == 350 and c.contacts_line()["unmigrated"] == 0
+    assert keys_in_old_file(node) == keys, "the stock table stays the table"
+    c.close()
+    node.restart()
+    c = connect(node)
+    assert set(by_key(c.get_contacts()[1])) == keys
+    c.close()
+
+
+def test_the_stock_array_build_still_saves_a_full_table_with_no_room_for_a_second_copy(nodes):
+    # 345 records (52,440 B) beside /adv_blobs and /channels2 leave no room on 100 KB for the atomic save's temp copy;
+    # the save then replaces the file the way upstream does, rather than failing and losing the change at the next boot.
+    node = start(nodes, "full", kind="companion_stockcontacts", extra=T1000E)
+    keys = seed(node, 340)
+    node.start()
+    c = connect(node)
+    for i in range(340, 345):
+        assert c.add_contact(key(i), "new-%d" % i) == b"\x00"
+    import time
+    time.sleep(8)                                            # the lazy save
     c.close()
     node.restart()
     c = connect(node)
     count, got = c.get_contacts()
-    assert count == 350 and set(by_key(got)) == keys
-    assert node.sanitizer_report() == ""
+    assert count == 345 and set(by_key(got)) == keys | {key(i) for i in range(340, 345)}
     c.close()
 
 
-def test_a_stock_file_the_fs_cannot_take_keeps_every_contact_the_store_has_no_room_for(nodes):
-    # 80,000 bytes: the seeded files fit, but the store is sized for about 256 records
-    node = start(nodes, "tiny", extra=["--fs-size", "80000", "--fs-enforce", "--heap-budget", "50000"])
+@pytest.mark.parametrize("kind", ["companion", "companion_asan"])
+def test_an_adaptive_build_on_a_t1000e_sized_fs_boots_loses_nothing_and_reports_the_shortfall(nodes, kind):
+    node = start(nodes, "ad", kind=kind, extra=T1000E)
     node.start()                                             # overwriting the oldest is on, and the migration still
     c = connect(node)                                        # must not evict: what it evicts is not in the old file
     assert c.set_overwrite_oldest(True)[0] == 0
@@ -63,21 +89,20 @@ def test_a_stock_file_the_fs_cannot_take_keeps_every_contact_the_store_has_no_ro
     count, got = c.get_contacts()
     stored = set(by_key(got))
     assert 0 < count < 350 and stored <= keys
-    data = open(p(node, "/contacts3"), "rb").read()
-    left = {STOCK.unpack_from(data, i)[0] for i in range(0, len(data) - len(data) % STOCK.size, STOCK.size)}
-    assert stored | left == keys, "nothing is lost: what the store could not take is still in the old file"
-    assert c.contacts_line()["unmigrated"] == len(keys - stored), "and the shortfall is reported, not silent"
-    size = len(data)
+    assert stored | keys_in_old_file(node) == keys, "nothing is lost: what the store could not take is still in the old file"
+    line = c.contacts_line()
+    assert line["unmigrated"] == len(keys - stored) and line["evicted"] == 0, "and the shortfall is reported, not silent"
+    size = os.path.getsize(p(node, "/contacts3"))
     c.close()
     node.restart()                                           # a later boot neither loses nor churns
     c = connect(node)
-    count2, got2 = c.get_contacts()
-    assert set(by_key(got2)) == stored and os.path.getsize(p(node, "/contacts3")) == size
+    assert set(by_key(c.get_contacts()[1])) == stored and os.path.getsize(p(node, "/contacts3")) == size
+    assert node.sanitizer_report() == ""
     c.close()
 
 
-def test_a_cut_between_a_bucket_write_and_the_truncation_finishes_without_duplicates(nodes):
-    node = start(nodes, "cut", extra=["--fs-size", "80000", "--fs-enforce", "--heap-budget", "50000"])
+def test_a_later_boot_with_room_takes_the_rest_without_duplicates(nodes):
+    node = start(nodes, "room", extra=T1000E)
     keys = seed(node, 350)
     node.start()                                             # part of the file moves before the room runs out
     c = connect(node)
@@ -85,13 +110,11 @@ def test_a_cut_between_a_bucket_write_and_the_truncation_finishes_without_duplic
     assert 0 < first < 350
     c.close()
     node.stop()
-    want = [contact(i, flags=1 if i % 9 == 0 else 0) for i in range(350)]
-    with open(p(node, "/contacts3"), "wb") as f:             # as if no truncation had happened: every record twice
-        f.write(stock_file(want))
-    node.extra = ["--fs-size", "200000", "--heap-budget", "50000"]   # room for all of them now
+    node.extra = ["--fs-size", "300000", "--fs-enforce", "--heap-budget", "50000"]   # room for all of them now
     node.start()
     c = connect(node)
     count, got = c.get_contacts()
     assert count == 350 and len(got) == 350 and set(by_key(got)) == keys
     assert not os.path.exists(p(node, "/contacts3"))
+    assert c.contacts_line()["unmigrated"] == 0
     c.close()

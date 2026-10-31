@@ -152,7 +152,7 @@ bool ContactStore::begin(ContactBackend* backend, ContactStoreListener* listener
       }
     }
     uint64_t avail = _be->freeBytes();
-    if (avail != 0xFFFFFFFFull) avail += (uint64_t)found * BUCKET_BYTES + cfg.reclaimable_bytes;   // our own files are free space too
+    if (avail != 0xFFFFFFFFull) avail += (uint64_t)found * BUCKET_BYTES;   // our own files are free space too
     uint64_t cap_fs = 0xFFFFFFull;
     if (avail != 0xFFFFFFFFull) {
       avail = avail > cfg.fs_reserve ? avail - cfg.fs_reserve : 0;

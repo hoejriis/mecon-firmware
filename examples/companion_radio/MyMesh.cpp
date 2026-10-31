@@ -2269,13 +2269,8 @@ void MyMesh::loadContactsAtBoot() {
 #ifdef CONTACTS_STOCK_ARRAY
   _store->loadContacts(this);
 #else
-  ContactStoreConfig cfg = contactStoreConfigFor(MAX_CONTACTS);
-  uint32_t legacy = _store->legacyContactsBytes();
-#ifdef LEGACY_CONTACTS_TRUNCATE
-  cfg.reclaimable_bytes = legacy;   // the tail migration frees the old file as the store fills
-#endif
-  initContactStore(_store, cfg);
-  if (_store->legacyContactsExist()) migrateLegacyContacts();   // an emptied file, left by a power cut, is removed too
+  initContactStore(_store, contactStoreConfigFor(MAX_CONTACTS));
+  if (_store->legacyContactsExist()) migrateLegacyContacts();
 #endif
   bootstrapRTCfromContacts();
 }
@@ -2283,22 +2278,6 @@ void MyMesh::loadContactsAtBoot() {
 void MyMesh::migrateLegacyContacts() {
   ContactStore& cs = contactStore();
   _migrate_full = false;
-#ifdef LEGACY_CONTACTS_TRUNCATE
-  // A bucket's worth at a time from the end of the old file: store them, write them, then cut them off the old file.
-  // A power cut between the write and the cut leaves them in both, and the next boot skips the ones it already has.
-  _migrate = MIGRATE_MERGE;
-  bool ok = true;
-  uint32_t n, last = 0xFFFFFFFFu;
-  while (ok && (n = _store->legacyContactsBytes() / LEGACY_CONTACT_BYTES) > 0) {
-    if (n >= last) { ok = false; break; }   // the file did not shrink: stop rather than loop at boot
-    last = n;
-    uint32_t from = n > CONTACT_RECORD_BUCKET ? n - CONTACT_RECORD_BUCKET : 0;
-    _store->loadContacts(this, from);
-    ok = !_migrate_full && cs.flush() && _store->truncateLegacyContacts(from);
-  }
-  _migrate = MIGRATE_NONE;
-  if (ok) _store->removeLegacyContacts();   // empty, or a torn last record
-#else
   bool bulk = cs.count() == 0;
   _migrate = bulk ? MIGRATE_BULK : MIGRATE_MERGE;
   if (bulk) cs.importBegin();
@@ -2306,7 +2285,6 @@ void MyMesh::migrateLegacyContacts() {
   bool ok = bulk ? cs.importEnd() : cs.flush();
   _migrate = MIGRATE_NONE;
   if (ok && !_migrate_full) _store->removeLegacyContacts();
-#endif
   // Whatever is left in the old file and not in the store is counted, and reported by get contacts.capacity, so a
   // shortfall is visible rather than silent; the next boot tries again.
   _unmigrated = 0;

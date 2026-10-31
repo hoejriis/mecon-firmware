@@ -303,11 +303,10 @@ bool DataStore::savePrefs(NodePrefs& _prefs) {
   return AtomicFile::save(_fs, "/prefs.json", [&_prefs](Stream& s) { return _prefs.saveSerial(s); });
 }
 
-void DataStore::loadContacts(DataStoreHost* host, uint32_t from) {
+void DataStore::loadContacts(DataStoreHost* host) {
     AtomicFile::recover(_getContactsChannelsFS(), "/contacts3");   // finish or drop a save that was cut by a power loss
     if (!AtomicFile::exists(_getContactsChannelsFS(), "/contacts3")) return;   // at boot: not in the listing (BootPresence.h)
     File file = openRead(_getContactsChannelsFS(), "/contacts3");
-    if (file && from > 0 && !file.seek(from * LEGACY_CONTACT_BYTES)) { file.close(); return; }
     if (file) {
       bool full = false;
       while (!full) {
@@ -338,8 +337,7 @@ void DataStore::loadContacts(DataStoreHost* host, uint32_t from) {
 }
 
 void DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactInfo& c)) {
-  // temp file + verify + swap: a power cut keeps the previous complete table
-  AtomicFile::save(_getContactsChannelsFS(), "/contacts3", [host, filter](Stream& s) {
+  auto writer = [host, filter](Stream& s) {
     uint32_t idx = 0;
     ContactInfo c;
     uint8_t unused = 0;
@@ -367,7 +365,19 @@ void DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactIn
       idx++;  // advance to next contact
     }
     return true;
-  });
+  };
+  // temp file + verify + swap: a power cut keeps the previous complete table
+  if (AtomicFile::save(_getContactsChannelsFS(), "/contacts3", writer)) return;
+  // No room for a second copy of the table (a full table on the T1000-E's 100 KB ExtraFS, Issue #223): replace it the
+  // way upstream does, the old file removed first. A power cut during this write loses the table, as it does upstream;
+  // without it, every save of a full table failed and the changes were lost at the next boot.
+  uint32_t free_bytes = freeBytes();
+  File cur = openRead(_getContactsChannelsFS(), "/contacts3");
+  uint32_t table = cur ? (uint32_t)cur.size() : 0;
+  if (cur) cur.close();
+  if (free_bytes == 0xFFFFFFFFu || free_bytes >= table + LEGACY_CONTACT_BYTES * 8) return;   // not a space problem
+  File f = openWrite(_getContactsChannelsFS(), "/contacts3");
+  if (f) { writer(f); f.close(); }
 }
 
 bool DataStore::legacyContactsExist() {
@@ -377,32 +387,6 @@ bool DataStore::legacyContactsExist() {
 
 bool DataStore::removeLegacyContacts() {
   return _getContactsChannelsFS()->remove("/contacts3");
-}
-
-uint32_t DataStore::legacyContactsBytes() {
-  if (!legacyContactsExist()) return 0;
-  File file = openRead(_getContactsChannelsFS(), "/contacts3");
-  if (!file) return 0;
-  uint32_t n = file.size();
-  file.close();
-  return n;
-}
-
-bool DataStore::truncateLegacyContacts(uint32_t records) {
-#ifdef LEGACY_CONTACTS_TRUNCATE
-#if defined(NRF52_PLATFORM)
-  File file = _getContactsChannelsFS()->open("/contacts3", FILE_O_WRITE);
-#else
-  File file = _getContactsChannelsFS()->open("/contacts3", "a");
-#endif
-  if (!file) return false;
-  bool ok = file.truncate(records * LEGACY_CONTACT_BYTES);
-  file.close();
-  return ok;
-#else
-  (void)records;
-  return false;
-#endif
 }
 
 // ---- contact store buckets (docs/CONTACTS.md): "/ct<N>", replaced through the same temp-verify-swap as prefs

@@ -11,16 +11,17 @@ bool DataStore::removeBucket' '  bucketPath(path, sizeof(path), b);
 }
 
 bool DataStore::removeBucket' $CT_SIM::test_power_cut_in_the_temp_file_keeps_the_previous_record $CT_SIM::test_contacts_are_never_written_in_place
-mutate contacts_stock_file_written_in_place examples/companion_radio/DataStore.cpp 'AtomicFile::save(_getContactsChannelsFS(), "/contacts3", [host, filter](Stream& s) {' 'auto inPlaceSave = [](FILESYSTEM* fs, const char* path, auto writer) { File f = openWrite(fs, path); if (f) { writer(f); f.close(); } }; inPlaceSave(_getContactsChannelsFS(), "/contacts3", [host, filter](Stream& s) {' $CT_SIM::test_the_stock_array_build_is_ram_only_and_atomic_and_evicts_the_oldest
+mutate contacts_stock_file_written_in_place examples/companion_radio/DataStore.cpp '  if (AtomicFile::save(_getContactsChannelsFS(), "/contacts3", writer)) return;' '  { File g = openWrite(_getContactsChannelsFS(), "/contacts3"); if (g) { writer(g); g.close(); } return; }' $CT_SIM::test_the_stock_array_build_is_ram_only_and_atomic_and_evicts_the_oldest
 mutate contacts_flush_skipped examples/companion_radio/MyMesh.cpp '  flushContacts();   // rewrites the buckets that hold a changed record, each one atomically' '' $CT_SIM::test_power_cut_between_write_and_rename
-mutate contacts_old_file_kept_after_migration examples/companion_radio/MyMesh.cpp '  if (ok) _store->removeLegacyContacts();' '' $CT_SIM::test_stock_contacts_file_migrates_unchanged
+mutate contacts_old_file_kept_after_migration examples/companion_radio/MyMesh.cpp '  if (ok && !_migrate_full) _store->removeLegacyContacts();' '' $CT_SIM::test_stock_contacts_file_migrates_unchanged
 mutate contacts_merge_overwrites_store examples/companion_radio/MyMesh.cpp '    if (_migrate == MIGRATE_MERGE && cs.find(contact.id.pub_key, PUB_KEY_SIZE)) return true;   // the store'"'"'s is newer' '' $CT_SIM::test_a_stock_file_beside_a_filled_store_is_merged_not_duplicated
-# The migration on a small file system (Issue #223; the simulator takes the truncating path, as the nRF52 does)
+# A stock file on a small file system (Issue #223): the migration never evicts, and reports what it could not take
 CT_SMALL=sim/tests/test_contacts_small_fs.py
-mutate contacts_migration_evicts examples/companion_radio/MyMesh.cpp '    if (cs.count() >= cs.capacity()) { _migrate_full = true; return false; }' '' $CT_SMALL::test_a_stock_file_the_fs_cannot_take_keeps_every_contact_the_store_has_no_room_for
-mutate contacts_migration_ignores_reclaimable examples/companion_radio/MyMesh.cpp '  cfg.reclaimable_bytes = legacy;' '' $CT_SMALL::test_350_stock_contacts_move_whole_into_the_store_on_a_t1000e_sized_fs
-mutate contacts_migration_file_not_cut examples/companion_radio/MyMesh.cpp '    ok = !_migrate_full && cs.flush() && _store->truncateLegacyContacts(from);' '    ok = !_migrate_full && cs.flush();' $CT_SMALL::test_350_stock_contacts_move_whole_into_the_store_on_a_t1000e_sized_fs
-mutate contacts_migration_reads_whole_file examples/companion_radio/MyMesh.cpp '    _store->loadContacts(this, from);' '    _store->loadContacts(this, 0);' $CT_SMALL::test_350_stock_contacts_move_whole_into_the_store_on_a_t1000e_sized_fs
+CT_SMALL_AD=$CT_SMALL::test_an_adaptive_build_on_a_t1000e_sized_fs_boots_loses_nothing_and_reports_the_shortfall
+mutate contacts_migration_evicts examples/companion_radio/MyMesh.cpp '    if (cs.count() >= cs.capacity()) { _migrate_full = true; return false; }' '' $CT_SMALL_AD
+mutate contacts_migration_shortfall_unreported examples/companion_radio/MyMesh.cpp '    if (!contactStore().find(contact.id.pub_key, PUB_KEY_SIZE)) _unmigrated++;' '' $CT_SMALL_AD
+mutate contacts_migration_drops_the_rest examples/companion_radio/MyMesh.cpp '  if (ok && !_migrate_full) _store->removeLegacyContacts();' '  if (ok) _store->removeLegacyContacts();' $CT_SMALL_AD
+mutate contacts_full_stock_table_not_saved examples/companion_radio/DataStore.cpp '  if (f) { writer(f); f.close(); }' '' $CT_SMALL::test_the_stock_array_build_still_saves_a_full_table_with_no_room_for_a_second_copy
 mutate contacts_record_crc_unchecked $CS '  if (crc32(in, 156) != want) return false;' '' unit:test_contact_store
 mutate contacts_record_crc_unchecked_sim $CS '  if (crc32(in, 156) != want) return false;' '' $CT_SIM::test_a_damaged_bucket_loses_only_what_is_in_it
 mutate contacts_record_layout_changed $CS '  out[64] = c.type;
