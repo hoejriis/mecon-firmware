@@ -560,6 +560,7 @@ TEST(ConfigConfirm, AtBootAnOrphanSnapshotGoes) {
   r.sf.f = {1, 2, 3};
   configSnapBoot(r.host);
   EXPECT_TRUE(r.sf.f.empty());
+  EXPECT_EQ(nullptr, r.jobs.peek()) << "the boot check allocates no job table";
   r.cli.ssid[1] = "office";
   r.call(R"({"set":{"wifi.profile.1.ssid":"x"},"confirm":{}})", "keep");
   const auto kept = r.sf.f;

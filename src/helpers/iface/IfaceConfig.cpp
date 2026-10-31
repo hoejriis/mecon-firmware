@@ -392,7 +392,7 @@ void configConfirmed(const ConfigHost& h) {
 void configSnapBoot(const ConfigHost& h) {
   const ConfirmHost* ch = h.confirm;
   if (!ch || !ch->snap) return;
-  JobTable* t = ch->jobs ? ch->jobs->table() : nullptr;
+  JobTable* t = ch->jobs ? ch->jobs->peek() : nullptr;   // at boot: no table, no job to keep
   const Job* open = t ? t->openJob() : nullptr;
   bool keep = false;
   if (open && open->state == JOB_AWAITING && strcmp(open->op, "config.apply") == 0) {

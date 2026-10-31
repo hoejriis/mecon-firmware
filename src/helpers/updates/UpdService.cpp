@@ -282,7 +282,7 @@ Status UpdateService::opStatus(OpContext& c) {
 // ---- update.offer
 
 Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
-  JobTable* t = table();
+  JobTable* t = tableForNewJob();
   if (!t) { c.error = "no-memory"; return ST_BUSY; }
   char jid[Job::ID_CAP + 1];
   if (!_host.job_id || !_host.job_id(_host.user, *c.req, jid, sizeof(jid))) { c.error = "bad-args"; return ST_INVALID; }

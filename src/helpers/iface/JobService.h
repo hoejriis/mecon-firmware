@@ -52,6 +52,9 @@ public:
   int writeEvent(char* buf, size_t cap, uint32_t epoch, bool ts_known, int64_t ts, const Job& j);
 
   JobTable* table();   // allocated on first use; null when the heap cannot hold it
+  // The table if one exists, never allocating it (about 4.4 KB): for every path that only asks about jobs, so a device
+  // that has had no job since boot does not hold the table. Only a path that opens a job calls table().
+  JobTable* peek() const { return _t; }
   bool persist();      // saves the table; false (and the caller answers busy) when the save fails
 
   Status opGet(OpContext& c);

@@ -44,3 +44,6 @@ mutate cc_console_no_revert src/helpers/iface/ConsoleIface.cpp '  _jobs.begin(_h
 mutate svc_change_never_told src/helpers/iface/JobService.cpp '    if (tell && _on_change) _on_change(_change_user, *j);' '' unit:test_job_service
 mutate svc_change_told_twice src/helpers/iface/JobService.cpp '    if (j->seq == _seen_seq[i] && j->state == _seen_state[i]) continue;' '' unit:test_job_service
 mutate job_event_only_to_the_requester examples/companion_radio/MeconDeploy.cpp '      if (!l.src || !l.may_read || !l.src->isConnected() || !m->ensureQueue(l)) continue;' '      if (&l != m->_cur_link || !m->ensureQueue(l)) continue;' sim/tests/test_jobs.py::test_every_transport_that_may_read_hears_a_job_change
+# the boot checks only ask whether a job is open: they never allocate the table (about 4.4 KB of heap, issue 100)
+mutate jobs_config_boot_allocates_the_table src/helpers/iface/IfaceConfig.cpp '  JobTable* t = ch->jobs ? ch->jobs->peek() : nullptr;   // at boot: no table, no job to keep' '  JobTable* t = ch->jobs ? ch->jobs->table() : nullptr;' unit:test_iface_config
+mutate jobs_mgmt_boot_allocates_the_table src/helpers/iface/MgmtChannel.cpp '  JobTable* t = h.jobs ? h.jobs->peek() : nullptr;   // at boot: no table, no job to keep' '  JobTable* t = h.jobs ? h.jobs->table() : nullptr;' unit:test_mgmt_channel

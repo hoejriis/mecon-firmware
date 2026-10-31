@@ -169,7 +169,9 @@ private:
   void downloadStep(uint32_t now_ms);
 #endif
 
-  Iface::JobTable* table() const { return _host.jobs ? _host.jobs->table() : nullptr; }
+  // Every path but an offer works on a job that exists, or asks whether one does: the table is not allocated for that.
+  Iface::JobTable* table() const { return _host.jobs ? _host.jobs->peek() : nullptr; }
+  Iface::JobTable* tableForNewJob() const { return _host.jobs ? _host.jobs->table() : nullptr; }
   void persist() { if (_host.jobs) _host.jobs->persist(); }
   Iface::Job* openUpdateJob() const;
   void endTransfer(bool erase);
