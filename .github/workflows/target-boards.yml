@@ -25,7 +25,7 @@ jobs:
     # when the change comes from this repository, which frees GitHub's hosted concurrency for the rest. A pull request
     # from a fork never runs on a self-hosted runner (its code is not ours to run there): it gets a hosted one. No
     # secret is passed to these jobs.
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON('["Heltec_v3_companion_radio_wifi","Heltec_v3_companion_radio_standalone","heltec_v4_companion_radio_wifi","heltec_v4_companion_radio_standalone"]'), matrix.env) && fromJSON('["self-hosted","mecon-public","X64"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON('["Heltec_v3_companion_radio_wifi","Heltec_v3_companion_radio_standalone","heltec_v4_companion_radio_wifi","heltec_v4_companion_radio_standalone"]'), matrix.env) && fromJSON('["self-hosted","mecon-public","ARM64"]') || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
