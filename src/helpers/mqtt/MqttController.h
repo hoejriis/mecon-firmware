@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include "MqttCore.h"
 #include "MqttNet.h"
+#include "MqttWsClient.h"
 #include "../cli/CliMqtt.h"
 #if defined(SIM_FREE_HEAP) && defined(ESP32)
   // The simulator builds libraries without ESP32 (variants/sim/platformio.ini) and PubSubClient picks its callback type
@@ -90,7 +91,7 @@ private:
   // One connect attempt. `req` is a copy of everything the job needs, taken on the main loop, so a profile edited while
   // the job runs is not read by it. The job writes `result` and the main loop reads it after MqttNet::asyncIdle().
   struct ConnectJob {
-    enum Result : uint8_t { Ok, Dns, Tcp, Tls, Pin, Auth, Timeout, Cancelled };
+    enum Result : uint8_t { Ok, Dns, Tcp, Tls, Pin, Ws, Auth, Timeout, Cancelled };
     bool resolve;                       // `host` is a name to resolve now (every attempt), not an address
     char host[MqttProfile::HOST_BUF];
     uint32_t addr;                      // host order; the resolved address once the job has run
@@ -100,11 +101,16 @@ private:
     char anchor[MqttProfile::ANCHOR_BUF];   // leaf fingerprint, "" when the anchor is a CA
     char* ca;                           // a private copy of the CA certificate (base64 DER), freed by takeResult()
     char name[MqttProfile::HOST_BUF];   // the broker's host name for SNI and the name check, "" when it has none
+    bool ws;                            // MQTT over WebSocket: the upgrade runs after the transport (and its TLS) opens
+    char http_host[MqttProfile::HOST_BUF];   // the profile's host as written, for the upgrade's Host header
+    char path[MqttProfile::PATH_BUF];
+    uint8_t ws_key[16];                 // the Sec-WebSocket-Key's random bytes
     char user[MqttProfile::USER_BUF];   // "" when none
     char pwd[MqttProfile::PWD_BUF];
     Result result;
   };
   ConnectJob _job;
+  MqttWsClient _ws;                  // PubSubClient's connection for a ws profile; it wraps MqttNet's
   bool _job_active = false;          // a job was started and its result has not been taken yet (main loop only)
   uint8_t _job_profile = 0;          // the profile the job connects, for the posture check
   std::atomic<bool> _job_cancel{false};   // set by the main loop, read by the job between its steps

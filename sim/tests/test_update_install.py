@@ -199,8 +199,6 @@ def test_offers_that_preflight_refuses(nodes):
     r = offer(d, "ab" * 32)
     assert (r["status"], r.get("error")) == ("refused", "manifest-not-staged"), r
     msha = stage(d, img)
-    r = d.i.request("update.offer", {"manifest_sha256": msha, "source": {"url": "https://example.invalid/i.bin"}})
-    assert (r["status"], r.get("error")) == ("refused", "unsupported-source"), "IP delivery is a later stage"
     r = d.i.request("update.offer", {"manifest_sha256": msha, "source": {"push": True}, "confirm": {"within_s": 29}})
     assert r["status"] == "invalid", "the window is 30 to 3,600 s"
     time.sleep(1.05)

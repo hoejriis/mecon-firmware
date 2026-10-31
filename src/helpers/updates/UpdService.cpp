@@ -13,6 +13,15 @@
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/deployment/DepAuthority.h"
 #include "helpers/iface/IfaceJson.h"
+#ifdef UPD_DOWNLOAD
+#include "helpers/mqtt/MqttNet.h"
+#if defined(SIM_FREE_HEAP)
+#include <unistd.h>
+#else
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
+#endif
 
 namespace Upd {
 
@@ -22,7 +31,9 @@ namespace {
 
 // The paths this build supports.
 uint8_t supportedKinds() {
-#if defined(SIM_FREE_HEAP) || defined(ESP_PLATFORM)
+#if defined(SIM_FREE_HEAP)
+  return slotIsDfuBoard() ? 1u << KIND_BOOTLOADER_DFU : 1u << KIND_APP;   // a simulated board plays one target or the other
+#elif defined(ESP_PLATFORM)
   return 1u << KIND_APP;
 #elif defined(NRF52_PLATFORM)
   return 1u << KIND_BOOTLOADER_DFU;
@@ -143,17 +154,21 @@ void UpdateService::endTransfer(bool erase) {
   }
   if (_readback) { memset(_readback, 0, sizeof(*_readback)); delete _readback; _readback = nullptr; }
   memset(_token, 0, sizeof(_token));   // the token dies with the transfer
+#ifdef UPD_DOWNLOAD
+  if (_phase == DOWNLOADING || _dl_started) _dl_close_pending = true;   // closed once the worker is idle (loop)
+  _dl_started = _dl_connected = false;
+#endif
   _phase = IDLE;
   _job[0] = 0;
   _size = _received = _readback_at = 0;
 }
 
-void UpdateService::failJob(const char* error) {
+void UpdateService::failJob(const char* error, const char* extra) {
   JobTable* t = table();
   Job* j = nullptr;
   if (t && _job[0] && t->find(_job, &j) == JobTable::FOUND && !jobTerminal(j->state)) {
-    char m[48];
-    snprintf(m, sizeof(m), "\"error\":\"%s\"", error);
+    char m[96];
+    snprintf(m, sizeof(m), "\"error\":\"%s\"%s%s", error, extra ? "," : "", extra ? extra : "");
     finish(*j, JOB_FAILED, m);
   }
   endTransfer(true);
@@ -240,7 +255,7 @@ Status UpdateService::opStatus(OpContext& c) {
       w.key("sha256"); hex(w, _image_sha, 32);
     } else if (_attested && strcmp(_attested_job, j->id) == 0) {
       w.key("version"); w.str(runningVersion());
-      w.key("sha256"); hex(w, _running_sha, 32);
+      w.key("sha256"); if (_running_known) hex(w, _running_sha, 32); else w.null();   // the nRF52 attests by version
     }
     w.endObject();
   }
@@ -291,8 +306,24 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   }
   bool push = false;
   const int tp = jsonFind(d, src, "push");
-  if (jsonFind(d, src, "url") >= 0) { c.error = "unsupported-source"; return ST_REFUSED; }   // IP delivery: a later stage
-  if (tp < 0 || !jsonGetBool(d, tp, &push) || !push || d.tok[src].size != 1) { c.error = "bad-args"; return ST_INVALID; }
+  const int tu = jsonFind(d, src, "url");
+  Url url = {};
+  const bool by_url = tu >= 0;
+  if (by_url) {
+#ifdef UPD_DOWNLOAD
+    char text[257];   // at most 256 bytes (section 6)
+    if (d.tok[src].size != 1 || !jsonGetString(d, tu, text, sizeof(text), CS_ANY, 1) || !parseUrl(text, &url)) {
+      c.error = "bad-args";
+      return ST_INVALID;
+    }
+#else
+    c.error = "unsupported-source";   // no network in this build
+    return ST_REFUSED;
+#endif
+  } else if (tp < 0 || !jsonGetBool(d, tp, &push) || !push || d.tok[src].size != 1) {
+    c.error = "bad-args";
+    return ST_INVALID;
+  }
   int64_t within = CONFIRM_DEFAULT_S;
   const int cf = jsonFind(d, a, "confirm");
   if (cf >= 0 && (!isObject(d, cf) || !jsonGetInt(d, jsonFind(d, cf, "within_s"), CONFIRM_MIN_S, CONFIRM_MAX_S, &within))) {
@@ -300,6 +331,8 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     return ST_INVALID;
   }
 
+  // A board with nowhere to keep a security floor installs nothing (the T1000-E Companion, UPDATES.md section 4).
+  if (!floorSupported()) { c.error = "unsupported"; return ST_REFUSED; }
   // Preflight (section 4); step 1, authority, was the dispatcher's.
   if (_offered_once && (uint32_t)(now_ms - _last_offer_ms) < OFFER_GAP_MS) { c.error = "rate"; return ST_BUSY; }   // 2
   // An image on trial (installed, its start-up checks not yet passed): the slot an install writes holds the image the
@@ -318,7 +351,8 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   if (!s) { c.error = "manifest-not-staged"; return ST_REFUSED; }
   Manifest* m = static_cast<Manifest*>(malloc(sizeof(Manifest)));
   if (!m) { c.error = "low-memory"; return ST_BUSY; }
-  const Device dev = device();
+  Device dev = device();
+  if (by_url) dev.heap_needed = url.tls ? HEAP_NEEDED_HTTPS : HEAP_NEEDED_HTTP;   // step 12: the download's own connection
   const Anchor* an = nullptr;
   Verdict v = {true, nullptr, nullptr};
   if (!parseManifest(s->text, s->len, m)) v = {false, "invalid", "bad-manifest"};
@@ -331,8 +365,37 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     c.error = v.error;
     return strcmp(v.status, "invalid") == 0 ? ST_INVALID : strcmp(v.status, "busy") == 0 ? ST_BUSY : ST_REFUSED;
   }
-  // This build installs app images only: the nRF52 bootloader path is a later stage, refused before any job opens.
-  if (m->kind != KIND_APP) { free(m); c.error = "unsupported-kind"; return ST_REFUSED; }
+  // The nRF52 path (section 6): the bootloader installs the image, so there is no slot and no transfer here. The job opens
+  // awaiting confirmation, since it spans the bootloader step, and the device resets into the bootloader's serial DFU
+  // once this answer has gone out. The Reader then sends the package.
+  if (m->kind == KIND_BOOTLOADER_DFU) {
+    if (by_url) { free(m); c.error = "unsupported-source"; return ST_REFUSED; }   // the bootloader takes it over USB only
+    if (open) {   // no supersede here: a DFU replaces the whole image, and one job at a time
+      snprintf(g_open_error, sizeof(g_open_error), "job-open:%s", open->id);
+      free(m);
+      c.error = g_open_error;
+      return ST_BUSY;
+    }
+    Job* j = t->open(jid, OP);
+    if (!j) { free(m); c.error = "busy"; return ST_BUSY; }
+    j->cls = (uint8_t)(1u << Cli::C_UPDATE);
+    if (_host.record_caller) _host.record_caller(_host.user, *j);
+    char res[64];
+    const int n = snprintf(res, sizeof(res), "{\"dfu\":{\"version\":\"%s\"}}", m->version);   // what the next boot must run
+    t->awaitConfirm(j, (uint32_t)within, false, BOOT_ABNORMAL);
+    if (n > 0 && (size_t)n < sizeof(res)) t->setResult(j, res, (size_t)n);
+    free(m);
+    persist();
+    _offered_once = true;
+    _last_offer_ms = now_ms;
+    _dfu_pending = true;
+    _dfu_at = now_ms + DFU_DELAY_MS;   // counted again from the reply (replyWritten)
+    JsonWriter& w = *c.out;
+    w.key("job"); w.str(j->id);
+    w.key("state"); w.str(jobStateName(j->state));
+    w.key("dfu"); w.str("serial");
+    return ST_OK;
+  }
 
   CryptoRNG rng;
   uint8_t token[16];
@@ -384,10 +447,14 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   j->cls = (uint8_t)(1u << Cli::C_UPDATE);
   if (_host.record_caller) _host.record_caller(_host.user, *j);
 
-  _phase = RECEIVING;
+  _phase = by_url ? DOWNLOADING : RECEIVING;
   strncpy(_job, jid, sizeof(_job) - 1);
   _job[sizeof(_job) - 1] = 0;
-  memcpy(_token, token, sizeof(_token));
+  if (!by_url) memcpy(_token, token, sizeof(_token));   // a download has no chunks, so no token
+#ifdef UPD_DOWNLOAD
+  _url = url;
+  _accepted_ms = now_ms;
+#endif
   memcpy(_image_sha, m->image_sha256, 32);
   strncpy(_version, m->version, sizeof(_version) - 1);
   _version[sizeof(_version) - 1] = 0;
@@ -406,7 +473,7 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   JsonWriter& w = *c.out;
   w.key("job"); w.str(j->id);
   w.key("state"); w.str(jobStateName(j->state));
-  w.key("transfer_token"); w.str(tok);   // only here: never in the job, its events, update.status or a log
+  if (!by_url) { w.key("transfer_token"); w.str(tok); }   // only here: never in the job, its events, update.status or a log
   w.key("next"); w.unum(0);
   memset(tok, 0, sizeof(tok));
   return ST_OK;
@@ -506,12 +573,24 @@ void UpdateService::activate() {
 }
 
 void UpdateService::loop(uint32_t now_ms) {
+  // An offer of a bootloader-dfu image resets into the bootloader once its answer has gone out.
+  if (_dfu_pending && (int32_t)(now_ms - _dfu_at) >= 0) {
+    _dfu_pending = false;
+    slotEnterDfu();
+  }
   // Stage 1 of the rollback: the image has run its start-up for VALID_AFTER_MS (the radio, the mesh and the interface
   // are up and the loop turns), so the bootloader stops reverting it. From here the confirmation deadline decides.
   if (!_valid_marked && now_ms >= VALID_AFTER_MS) {
     _valid_marked = true;
     if (runningState() == RS_PENDING) markProven();
   }
+#ifdef UPD_DOWNLOAD
+  // A download that ended (finished, failed, cancelled, superseded) gives its connection back once its worker is idle.
+  if (_dl_close_pending && updatePlatformNet().asyncIdle()) {
+    updatePlatformNet().close();
+    _dl_close_pending = false;
+  }
+#endif
   if (_erasing) { _erasing = slotEraseStep(); return; }
   if (_phase == IDLE) return;
 
@@ -532,6 +611,12 @@ void UpdateService::loop(uint32_t now_ms) {
     if ((uint32_t)(now_ms - _last_chunk_ms) >= STALL_MS) failJob("stalled");
     return;
   }
+#ifdef UPD_DOWNLOAD
+  if (_phase == DOWNLOADING) {
+    downloadStep(now_ms);
+    return;
+  }
+#endif
   // VERIFYING: one piece of the slot per pass, hashed as read back from flash.
   static uint8_t buf[1024];
   const uint32_t end = _readback_at + READBACK_PIECE < _size ? _readback_at + READBACK_PIECE : _size;
@@ -548,6 +633,127 @@ void UpdateService::loop(uint32_t now_ms) {
   if (!slotFinish()) { failJob("bad-image"); return; }   // the platform's own check of the image format
   activate();
 }
+
+// ---- the download over IP (section 6)
+
+#ifdef UPD_DOWNLOAD
+// A short wait on the worker. Not delay(): on the simulated board that also runs the main loop's polling.
+static void workerNap() {
+#if defined(SIM_FREE_HEAP)
+  usleep(5000);
+#else
+  vTaskDelay(pdMS_TO_TICKS(5));
+#endif
+}
+
+void UpdateService::dlJob(void* self) {
+  UpdateService* s = static_cast<UpdateService*>(self);
+  s->_dl_err = s->dlConnect();
+}
+
+// On the network's worker: the name, the connection (TLS for https: encrypted, the server not authenticated, since the
+// digest alone decides the image), the request, and the response head. The body is the main loop's.
+const char* UpdateService::dlConnect() {
+  MqttNet& n = updatePlatformNet();
+  _dl_status = 0;
+  uint32_t addr = 0;
+  const bool literal = urlIpv4(_url.host, &addr);
+  if (!literal && !n.resolve(_url.host, addr)) return "download-dns";
+  const MqttOpenArgs a = {_url.tls, addr, _url.port, nullptr, nullptr, literal ? nullptr : _url.host, HEAD_TIMEOUT_MS};
+  if (n.open(a) != MqttOpen::Ok) return "download-connect";
+  Client& c = n.client();
+  char req[sizeof(_url.path) + sizeof(_url.host) + 96];
+  char port[8] = "";   // the Host header names the port when it is not the scheme's own
+  if (_url.port != (_url.tls ? 443 : 80)) snprintf(port, sizeof(port), ":%u", (unsigned)_url.port);
+  const int len = snprintf(req, sizeof(req), "GET %s HTTP/1.1\r\nHost: %s%s\r\nConnection: close\r\nUser-Agent: mecon\r\n\r\n",
+                           _url.path, _url.host, port);
+  if (len <= 0 || (size_t)len >= sizeof(req) || c.write(reinterpret_cast<const uint8_t*>(req), (size_t)len) != (size_t)len)
+    return "download-connect";
+  HttpHead h;
+  char line[160];
+  size_t ln = 0;
+  const uint32_t t0 = millis();
+  for (;;) {
+    if ((uint32_t)(millis() - t0) >= HEAD_TIMEOUT_MS) return "download-head";
+    const int ch = c.read();
+    if (ch < 0) {
+      if (!c.connected() && !c.available()) return "download-head";
+      workerNap();
+      continue;
+    }
+    if (ch == '\r') continue;
+    if (ch == '\n') {
+      if (ln == 0) break;   // the blank line: the body follows
+      line[ln] = 0;
+      httpHeadLine(h, line);
+      ln = 0;
+      continue;
+    }
+    if (ln + 1 < sizeof(line)) line[ln++] = (char)ch;   // a longer line is cut: only the status and two headers matter
+  }
+  _dl_status = h.status;
+  if (h.bad || !h.status) return "download-head";
+  if (h.status != 200) return "download-status";
+  if (h.chunked) return "download-encoding";
+  if (h.has_length && h.length != _size) return "download-size";   // not the image the manifest names
+  return nullptr;
+}
+
+void UpdateService::downloadStep(uint32_t now_ms) {
+  MqttNet& n = updatePlatformNet();
+  if ((uint32_t)(now_ms - _accepted_ms) >= DOWNLOAD_MS) { failJob("download-timeout"); return; }
+  if (!_dl_started) {   // wait for the link and for an earlier download's connection to close, within the deadline
+    if (_dl_close_pending || !n.linkUp() || !n.asyncIdle()) return;
+    _dl_err = nullptr;
+    if (!n.asyncStart(dlJob, this)) { failJob("download-connect"); return; }
+    _dl_started = true;
+    return;
+  }
+  if (!_dl_connected) {
+    if (!n.asyncIdle()) return;   // the connect and the head run on the worker
+    if (_dl_err) {
+      char extra[24];
+      snprintf(extra, sizeof(extra), "\"http_status\":%d", _dl_status);
+      failJob(_dl_err, strcmp(_dl_err, "download-status") == 0 ? extra : nullptr);   // the status, where it is the reason
+      return;
+    }
+    _dl_connected = true;
+    JobTable* t = table();
+    Job* j = nullptr;
+    if (t && t->find(_job, &j) == JobTable::FOUND && j->state == JOB_ACCEPTED) {
+      t->setState(j, JOB_PROGRESS);
+      persist();
+    }
+  }
+  // The body: what has arrived, at most one piece a pass, and never beyond image.size.
+  Client& c = n.client();
+  static uint8_t buf[1024];
+  uint32_t taken = 0;
+  while (taken < DOWNLOAD_PIECE && _received < _size) {
+    const int avail = c.available();
+    if (avail <= 0) break;
+    uint32_t k = _size - _received;
+    if (k > sizeof(buf)) k = sizeof(buf);
+    if (k > (uint32_t)avail) k = (uint32_t)avail;
+    const int got = c.read(buf, k);
+    if (got <= 0) break;
+    if (!slotWrite(_received, buf, (size_t)got)) { failJob("write-failed"); return; }
+    _received += (uint32_t)got;
+    taken += (uint32_t)got;
+  }
+  if (_received == _size) {   // all of it: the connection goes, the read-back starts
+    n.close();
+    _dl_started = _dl_connected = false;
+    _readback = new (std::nothrow) Dep::Sha256Ctx();
+    if (!_readback) { failJob("low-memory"); return; }
+    Dep::sha256Init(_readback);
+    _readback_at = 0;
+    _phase = VERIFYING;
+    return;
+  }
+  if (!taken && !c.connected() && !c.available()) failJob("download-short");   // the server closed before the end
+}
+#endif
 
 // ---- boot, attestation, confirmation and revert
 //
@@ -627,7 +833,44 @@ void UpdateService::bootReconcile() {
   if (runningState() != RS_PENDING && !_stranded) floorAtBoot();
 }
 
+// The version a bootloader-dfu job expects the next boot to run, from its result ({"dfu":{"version":...}}); "" if none.
+static void dfuVersionOf(const Job& j, char* out, size_t cap) {
+  out[0] = 0;
+  static const char KEY[] = "\"dfu\":{\"version\":\"";
+  const char* p = j.result_len ? strstr(j.result, KEY) : nullptr;
+  if (!p) return;
+  p += sizeof(KEY) - 1;
+  size_t n = 0;
+  while (p[n] && p[n] != '"' && n + 1 < cap) { out[n] = p[n]; n++; }
+  out[n] = 0;
+}
+
+// The nRF52 path at boot: the job the offer opened spans the bootloader step. The image that runs now is the installed one
+// when its compiled version is the manifest's (the bootloader installs a package the device cannot hash); otherwise the
+// DFU did not happen and the job ends.
+void UpdateService::dfuReconcile() {
+  Job* j = openUpdateJob();
+  if (!j || j->state != JOB_AWAITING) return;
+  char want[sizeof(_version)];
+  dfuVersionOf(*j, want, sizeof(want));
+  if (!want[0] || strcmp(want, runningVersion()) != 0) {
+    finish(*j, JOB_FAILED, "\"error\":\"not-installed\"");
+    persist();
+    return;
+  }
+  _attested = true;
+  strncpy(_attested_job, j->id, sizeof(_attested_job) - 1);
+  char m[Job::RESULT_CAP];
+  const int n = snprintf(m, sizeof(m), "{\"dfu\":{\"version\":\"%s\"},\"update\":{\"job\":\"%s\",\"version\":\"%s\",\"sha256\":null}}",
+                         want, j->id, runningVersion());
+  JobTable* t = table();
+  if (t && n > 0 && (size_t)n < sizeof(m)) t->setResult(j, m, (size_t)n);
+  persist();
+  if (_host.jobs) _host.jobs->announce(*j);
+}
+
 void UpdateService::reconcile() {
+  if (slotIsDfuBoard()) { dfuReconcile(); return; }
   JobTable* t = table();
   Record r;
   const bool have = recordLoad(&r);
@@ -704,6 +947,14 @@ bool UpdateService::jobRevert(Job& j) {
     finish(j, JOB_FAILED, "\"error\":\"interrupted\"");
     return true;
   }
+  if (slotIsDfuBoard()) {   // no slot to return to (section 7, step 6): the image stays, and the job says so
+    char want[sizeof(_version)];
+    dfuVersionOf(j, want, sizeof(want));
+    const bool installed = want[0] && strcmp(want, runningVersion()) == 0;
+    finish(j, JOB_FAILED, installed ? "\"error\":\"unconfirmed\",\"reverted\":false" : "\"error\":\"not-installed\"");
+    _attested = false;
+    return true;
+  }
   Record r;
   const bool have = recordLoad(&r) && strcmp(r.job, j.id) == 0;
   if (have && r.confirmed && slotRunning() == r.new_id) { confirmFromRecord(j); return true; }   // confirmed before a cut
@@ -713,6 +964,14 @@ bool UpdateService::jobRevert(Job& j) {
 bool UpdateService::jobConfirm(Job& j) {
   // Only once the new image runs and shows it is the one installed: reachability alone never confirms (section 7, step 4).
   if (!_attested || strcmp(_attested_job, j.id) != 0) return false;
+  if (slotIsDfuBoard()) {   // the version is the attestation here, and there is no record or rollback window
+    JobTable* t = table();
+    char m[Job::RESULT_CAP];
+    const size_t n = resultObject(m, sizeof(m), nullptr, false, nullptr, nullptr);
+    if (t && n) t->setResult(&j, m, n);
+    _attested = false;
+    return true;
+  }
   Record r;
   if (!recordLoad(&r) || strcmp(r.job, j.id) != 0) return false;
   r.confirmed = 1;   // saved before the job table: a power cut between the two still reads as confirmed
@@ -731,7 +990,8 @@ void UpdateService::writeAttestation(JsonWriter& w) const {
   w.key("update"); w.beginObject();
   w.key("job"); w.str(_attested ? _attested_job : _stranded_job);
   w.key("version"); w.str(runningVersion());
-  w.key("sha256"); hex(w, _running_sha, 32);
+  w.key("sha256");
+  if (_running_known) hex(w, _running_sha, 32); else w.null();   // null where the platform does not hash its image (nRF52)
   if (_stranded) { w.key("unconfirmed"); w.boolean(true); }   // runs although its job ended without a confirmation
   w.endObject();
 }

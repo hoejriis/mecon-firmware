@@ -60,3 +60,6 @@ public:
 };
 
 MqttNet& mqttPlatformNet();
+// A second, independent network of the same kind, for a firmware update's download over IP (UPDATES.md section 6): its
+// own connection and its own worker, so a download never touches the broker session.
+MqttNet& updatePlatformNet();

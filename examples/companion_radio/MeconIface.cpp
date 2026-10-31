@@ -402,6 +402,7 @@ int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, co
     // 1.5 s from here, not from the line inside the request. A nine-key config.apply took 5.6 s on a Heltec V3.
     _mesh->restartConnectivityClock();
 #endif
+    _updates.replyWritten(millis());   // the reply goes out on this pass: a DFU reset the request asked for waits for it
     return j.n;
   }
   // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature.

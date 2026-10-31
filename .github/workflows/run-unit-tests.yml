@@ -34,6 +34,12 @@ jobs:
           python3 tools/gen_release_anchors.py --check
           python3 tools/mecon_update_vectors.py --check
 
+      - name: Release key tool
+        # tools/mecon_release_key.py makes the production release keys and signs manifests (UPDATES.md section 3).
+        run: |
+          pip install cryptography pytest
+          python3 -m pytest -q tools/tests
+
       - name: Run Unit Tests
         run: pio test -e native -e native_kiss_modem -vv
 

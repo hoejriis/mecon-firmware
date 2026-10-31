@@ -37,6 +37,7 @@ const char* MqttCore::failName(MqttFail f) {
     case MqttFail::Lost: return "lost";
     case MqttFail::Posture: return "posture";
     case MqttFail::Plain: return "plain";
+    case MqttFail::Ws: return "ws";
   }
   return "?";
 }

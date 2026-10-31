@@ -200,6 +200,38 @@
             "confirm": true
           },
           {
+            "key": "mqtt.profile.{n}.transport",
+            "type": "enum",
+            "choices": [
+              "tcp",
+              "ws"
+            ],
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
+          {
+            "key": "mqtt.profile.{n}.path",
+            "type": "string",
+            "min_len": 1,
+            "max_len": 63,
+            "index": [
+              0,
+              5
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
+          {
             "key": "mqtt.profile.{n}.site",
             "type": "string",
             "min_len": 1,
@@ -243,7 +275,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 18
+      }
+    },
+    {
+      "cursor": 18,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "mqtt.profile.{n}.priority",
             "type": "integer",

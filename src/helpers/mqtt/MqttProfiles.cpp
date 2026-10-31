@@ -19,6 +19,18 @@ static bool nameChars(const char* s) {
   return true;
 }
 
+// A WebSocket path: '/' and then the characters RFC 3986 allows in a path (no query, no fragment), 63 at most.
+static bool pathOk(const char* s) {
+  const size_t n = strlen(s);
+  if (n == 0 || n >= MqttProfile::PATH_BUF || s[0] != '/') return false;
+  for (size_t i = 0; i < n; i++) {
+    const char c = s[i];
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) continue;
+    if (!strchr("/-._~!$&'()*+,;=:@%", c)) return false;
+  }
+  return true;
+}
+
 static bool setText(char* dst, size_t cap, const char* v) {
   size_t n = strlen(v);
   if (n >= cap) return false;
@@ -170,8 +182,12 @@ static int formatProfile(const MqttProfiles& pr, const MqttCore* core, uint8_t i
     return snprintf(out, cap, "%u: discovery site=%s anchor=%s prio=%u user=%s pwd=%s%s last=%s", (unsigned)i, q.site,
                     anchor, (unsigned)q.prio, user, pwd, manage, last);
   }
-  return snprintf(out, cap, "%u: static %s:%u tls=%s anchor=%s prio=%u user=%s pwd=%s%s last=%s", (unsigned)i, q.host,
-                  (unsigned)q.effectivePort(), q.tls ? "on" : "off", anchor, (unsigned)q.prio, user, pwd, manage, last);
+  // The transport is shown only for a WebSocket profile, so a TCP profile's listing is as it was. The path is not in the
+  // line (`get mqtt.profile <n> path` reads it): with a 63-character host and path the line would outgrow the 150-byte
+  // reply and lose the fields after it.
+  const char* ws = q.ws ? " transport=ws" : "";
+  return snprintf(out, cap, "%u: static %s:%u tls=%s%s anchor=%s prio=%u user=%s pwd=%s%s last=%s", (unsigned)i, q.host,
+                  (unsigned)q.effectivePort(), q.tls ? "on" : "off", ws, anchor, (unsigned)q.prio, user, pwd, manage, last);
 }
 
 bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture, const char* command, char* reply,
@@ -211,7 +227,7 @@ bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture,
       for (const char* c = v; *c; c++) {
         if (*c < '0' || *c > '9' || (n = n * 10 + (*c - '0')) > 65535) { ok = false; break; }
       }
-      if (!ok) snprintf(reply, cap, "ERR: port is 0-65535 (0 = 8883 with TLS, 1883 without)");
+      if (!ok) snprintf(reply, cap, "ERR: port is 0-65535 (0 = 8883 with TLS, 1883 without; 443 and 80 over WebSocket)");
       else { q.port = (uint16_t)n; done(true, "port updated"); }
     } else if (memcmp(p, "tls ", 4) == 0) {
       const char* v = p + 4;
@@ -222,6 +238,16 @@ bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture,
           snprintf(reply, cap, "ERR: plain MQTT is refused in the Hardened posture");
         else { q.tls = 0; done(true, "is plain MQTT (unverified)"); }
       } else snprintf(reply, cap, "ERR: tls is on or off");
+    } else if (memcmp(p, "transport ", 10) == 0) {
+      const char* v = p + 10;
+      if (q.kind == MqttProfile::Discovery) snprintf(reply, cap, "ERR: a discovery profile is always MQTT over TLS");
+      else if (strcmp(v, "tcp") == 0) { q.ws = 0; done(true, "speaks MQTT over the connection"); }
+      else if (strcmp(v, "ws") == 0) { q.ws = 1; done(true, "speaks MQTT over WebSocket"); }
+      else snprintf(reply, cap, "ERR: transport is tcp or ws");
+    } else if (memcmp(p, "path ", 5) == 0) {
+      const char* v = p + 5;
+      if (!pathOk(v)) snprintf(reply, cap, "ERR: path starts with / and is at most 63 URL path characters: letters, digits and -._~!$&'()*+,;=:@%/");
+      else { setText(q.path, sizeof(q.path), strcmp(v, "/mqtt") == 0 ? "" : v); done(true, "path updated"); }
     } else if (memcmp(p, "anchor ", 7) == 0) {
       const char* v = p + 7;
       if (strcmp(v, "clear") == 0) { q.anchor[0] = 0; pr.clearCa(idx); done(true, "anchor cleared"); }
@@ -298,7 +324,7 @@ bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture,
         snprintf(reply, cap, "> profile %u priority is now %u", (unsigned)idx, n);
       }
     } else {
-      snprintf(reply, cap, "ERR: set mqtt.profile <n> type|host|port|tls|anchor|ca|site|user|pwd|priority|manage <value> | clear");
+      snprintf(reply, cap, "ERR: set mqtt.profile <n> type|host|port|tls|transport|path|anchor|ca|site|user|pwd|priority|manage <value> | clear");
     }
     return true;
   }
@@ -310,6 +336,7 @@ bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture,
       snprintf(reply, cap, "ERR: profile number 0-%u", (unsigned)(MqttProfiles::COUNT - 1));
       return true;
     }
+    if (strcmp(p, " path") == 0) { snprintf(reply, cap, "> %s", pr.p[idx].wsPath()); return true; }
     if (pr.p[idx].kind == MqttProfile::Unset) { snprintf(reply, cap, "> %u: (not set)", (unsigned)idx); return true; }
     int n = snprintf(reply, cap, "> ");
     formatProfile(pr, core, idx, reply + n, cap - n);
