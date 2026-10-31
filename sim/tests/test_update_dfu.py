@@ -7,6 +7,7 @@ import hashlib
 import time
 
 import pytest
+from test_device_interface import mecon_schema
 from test_update_install import NEW, OLD, declare, job_get
 from test_updates import Dev, RTC
 
@@ -45,6 +46,9 @@ def test_a_dfu_offer_resets_into_the_bootloader_and_the_new_image_attests(nodes)
     n.start()
     d = Dev(n)
     assert d.hello["update"] == {"job": "nf-1", "version": NEW, "sha256": None}, "attested by version"
+    assert not mecon_schema.check(d.hello, mecon_schema.load("hello.result.json"))
+    st = d.i.request("status.get", {})["result"]
+    assert st["update"]["sha256"] is None and not mecon_schema.check(st, mecon_schema.load("status.get.result.json")), st
     g = job_get(d, "nf-1")
     assert g["state"] == "awaiting-confirm" and g["result"]["update"]["version"] == NEW, g
     r = d.i.request("job.confirm", {"job": "nf-1"})
