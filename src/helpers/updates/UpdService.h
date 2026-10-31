@@ -184,6 +184,9 @@ private:
   void confirmFromRecord(Iface::Job& j);
   void settleRecord();
   void reconcile();
+  void dfuReconcile();
+  bool _dfu_pending = false;   // an offered bootloader-dfu image: reset into the bootloader at _dfu_at
+  uint32_t _dfu_at = 0;
   void finish(Iface::Job& j, uint8_t state, const char* members);
 };
 

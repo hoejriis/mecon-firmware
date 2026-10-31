@@ -26,6 +26,8 @@ bool floorRead(uint32_t* out) {
   return true;
 }
 
+bool floorSupported() { return true; }
+
 bool floorRaise(uint32_t v) {
   uint32_t cur;
   if (!floorRead(&cur)) return false;
@@ -72,6 +74,8 @@ bool floorRead(uint32_t* out) {
   return true;
 }
 
+bool floorSupported() { return true; }
+
 bool floorRaise(uint32_t v) {
   uint32_t cur;
   if (!floorRead(&cur)) return false;
@@ -85,9 +89,71 @@ bool floorRaise(uint32_t v) {
 
 }  // namespace Upd
 
+#elif defined(NRF52_PLATFORM) && defined(MECON_FLOOR_PAGE)
+// One flash page named by the env (MECON_FLOOR_PAGE): in the bootloader's preserved app-data region, below the
+// provisioned marker's page, and in no file system of that build. Written through the core's flash cache, as the marker.
+#include <flash/flash_nrf5x.h>
+#include "UpdFloorPage.h"
+
+extern "C" uint32_t __etext, __data_start__, __data_end__;
+
+namespace Upd {
+
+namespace {
+
+class NrfFloorPage : public Dep::FlashPage {
+public:
+  size_t size() const override { return FLASH_NRF52_PAGE_SIZE; }
+  bool read(uint32_t off, void* buf, size_t n) override {
+    return flash_nrf5x_read(buf, (uint32_t)MECON_FLOOR_PAGE + off, n) == (int)n;
+  }
+  bool write(uint32_t off, const void* buf, size_t n) override {
+    if (flash_nrf5x_write((uint32_t)MECON_FLOOR_PAGE + off, buf, n) != (int)n) return false;
+    flash_nrf5x_flush();   // programmed now; the read-back is what proves it
+    return true;
+  }
+  bool erase() override { return flash_nrf5x_erase((uint32_t)MECON_FLOOR_PAGE); }
+};
+
+// Page-aligned and above the whole firmware image: an image grown into the page would make it code.
+bool pageUsable() {
+  const uint32_t image_end = (uint32_t)&__etext + ((uint32_t)&__data_end__ - (uint32_t)&__data_start__);
+  return ((uint32_t)MECON_FLOOR_PAGE % FLASH_NRF52_PAGE_SIZE) == 0 && image_end <= (uint32_t)MECON_FLOOR_PAGE;
+}
+
+}  // namespace
+
+bool floorSupported() { return pageUsable(); }
+
+bool floorRead(uint32_t* out) {
+  *out = 0;
+  if (!pageUsable()) return false;   // no store: unreadable, so no install passes
+  NrfFloorPage p;
+  return floorPageRead(p, out);
+}
+
+bool floorRaise(uint32_t v) {
+  if (!pageUsable()) return false;
+  NrfFloorPage p;
+  return floorPageRaise(p, v);
+}
+
+}  // namespace Upd
+
+#elif defined(NRF52_PLATFORM)
+// An nRF52 env that names no floor page: the T1000-E Companion, whose ExtraFS covers the whole preserved region. It has
+// nowhere to keep a floor, so it reads as unreadable and every install is refused, never taken without one.
+
+namespace Upd {
+bool floorSupported() { return false; }
+bool floorRead(uint32_t* out) { *out = 0; return false; }
+bool floorRaise(uint32_t) { return false; }
+}  // namespace Upd
+
 #else
 
 namespace Upd {
+bool floorSupported() { return false; }
 bool floorRead(uint32_t* out) { *out = 0; return true; }   // not kept here (see UpdFloor.h)
 bool floorRaise(uint32_t) { return false; }
 }  // namespace Upd

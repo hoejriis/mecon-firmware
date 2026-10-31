@@ -8,8 +8,10 @@
 //                          it reads the floor first and raises it back after the erase. A power cut between the two
 //                          leaves the floor at the running image's compiled version from the next boot on.
 //   simulated boards       a file beside the data directory (<dir>.floor), like the provisioned marker
-//   anything else          not kept: floorRead() is 0 and floorRaise() fails. The nRF52 store comes with its update
-//                          path (#110).
+//   nRF52                  a flash page the env names (MECON_FLOOR_PAGE), in the bootloader's preserved region below
+//                          the provisioned marker's page (UpdFloorPage.h). An env without one (the T1000-E Companion,
+//                          whose ExtraFS covers the region) reads as unreadable, so every install is refused.
+//   anything else          not kept: floorRead() is 0 and floorRaise() fails.
 #include <stdint.h>
 
 #ifndef MECON_SECURITY_VERSION
@@ -23,6 +25,8 @@ namespace Upd {
 bool floorRead(uint32_t* out);
 // Stores max(stored, v); true once the stored value reads back at least v. An unreadable store is left as it is.
 bool floorRaise(uint32_t v);
+// The platform can keep a floor. False: no install of any kind is offered (update.offer answers unsupported).
+bool floorSupported();
 inline bool floorAtBoot() { return floorRaise(MECON_SECURITY_VERSION); }   // to this image's compiled version
 
 }  // namespace Upd
