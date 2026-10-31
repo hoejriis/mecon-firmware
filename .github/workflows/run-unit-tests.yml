@@ -26,6 +26,15 @@ jobs:
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
 
+      - name: No file truncation in firmware sources
+        # Truncating a file on the Adafruit nRF52 LittleFS (1.7) left it unreadable, and the board faulted at every
+        # boot (Issue #223, bilbo). Shrink a file by rewriting it atomically (helpers/AtomicFile.h) instead.
+        run: |
+          if git grep -nE '(\.|->)truncate[[:space:]]*\(|lfs_file_truncate' -- src examples variants; then
+            echo "::error::file truncation in firmware sources (Issue #223): rewrite the file atomically instead"
+            exit 1
+          fi
+
       - name: Generated files match their sources
         # The release anchors come from docs/contract/release-keys.json and the update vectors from the release test
         # key; a hand edit, or a key added without running the tool, fails here (UPDATES.md section 3).
