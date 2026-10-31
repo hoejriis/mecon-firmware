@@ -64,7 +64,8 @@ jobs:
     needs: check
     if: needs.check.outputs.stale == 'true'
     uses: ./.github/workflows/main-alarm.yml
-    permissions:
+    permissions:   # at least what main-alarm.yml declares (contents: read): a called workflow cannot hold more than its caller
+      contents: read
       issues: write
       actions: read
     with:
