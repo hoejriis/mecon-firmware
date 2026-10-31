@@ -36,12 +36,12 @@ Flash and static RAM (`.data` + `.bss`) per Heltec target, from local builds in 
 
 | Target | Flash before | Flash after | Difference | Static RAM before | Static RAM after | Difference |
 |---|---|---|---|---|---|---|
-| `Heltec_v3_companion_radio_ble` | 1,702,821 B (50.9 %) | 1,507,828 B (45.1 %) | −194,993 B | 131,028 B | 118,956 B | −12,072 B |
-| `Heltec_v3_companion_radio_standalone` | 1,878,817 B (56.2 %) | 1,652,036 B (49.4 %) | −226,781 B | 136,980 B | 125,084 B | −11,896 B |
-| `Heltec_v3_companion_radio_wifi` | 1,312,361 B (39.3 %) | 1,474,908 B (44.1 %) | +162,547 B | 114,336 B | 114,276 B | −60 B |
-| `Heltec_v3_companion_radio_usb` | 682,665 B (20.4 %) | 741,880 B (22.2 %) | +59,215 B | 38,460 B | 38,880 B | +420 B |
-| `Heltec_v3_repeater` | 1,191,817 B (35.7 %) | 1,390,696 B (41.6 %) | +198,879 B | 63,216 B | 63,132 B | −84 B |
-| `Heltec_v3_room_server` | 1,187,221 B (35.5 %) | 1,385,672 B (41.5 %) | +198,451 B | 66,904 B | 66,820 B | −84 B |
+| `Heltec_v3_companion_radio_ble` | 1,512,148 B | 1,448,788 B | −63,360 B | 119,180 B | 117,852 B | −1,328 B |
+| `Heltec_v3_companion_radio_standalone` | 1,772,828 B | 1,715,176 B | −57,652 B | 132,700 B | 131,124 B | −1,576 B |
+| `Heltec_v3_companion_radio_usb` | 747,068 B | 707,688 B | −39,380 B | 39,096 B | 37,772 B | −1,324 B |
+| `Heltec_v3_companion_radio_wifi` | 1,485,752 B | 1,428,968 B | −56,784 B | 115,524 B | 113,956 B | −1,568 B |
+| `Heltec_v3_repeater` | 815,756 B | 776,232 B | −39,524 B | 43,552 B | 42,212 B | −1,340 B |
+| `Heltec_v3_room_server` | 810,880 B | 771,348 B | −39,532 B | 47,240 B | 45,900 B | −1,340 B |
 | `heltec_v4_companion_radio_ble` | 1,701,017 B (26.0 %) | 1,494,780 B (22.8 %) | −206,237 B | 131,008 B | 118,932 B | −12,076 B |
 | `heltec_v4_companion_radio_standalone` | 1,877,005 B (28.6 %) | 1,639,088 B (25.0 %) | −237,917 B | 136,960 B | 125,036 B | −11,924 B |
 | `heltec_v4_companion_radio_wifi` | 1,310,717 B (20.0 %) | 1,461,916 B (22.3 %) | +151,199 B | 114,324 B | 114,236 B | −88 B |
@@ -59,6 +59,52 @@ On ESP-IDF 5.3, Bluedroid against NimBLE for the same build (before the switch):
 | `Heltec_v3_companion_radio_standalone` | 2,092,836 B | 1,651,028 B | 138,632 B | 125,084 B |
 
 The size budgets in `ci/size-budget.txt` are seeded from the "after" column (use + 4 KB).
+
+## Heap: rebuilt Arduino IDF libraries (hybrid compile)
+
+The Heltec V3 envs (`esp32s3_idf5_base` in `platformio.ini`) carry a `custom_sdkconfig` and a `custom_component_remove` list. On the first build pioarduino's "hybrid compile" rebuilds the Arduino ESP-IDF libraries for the ESP32-S3 with them, instead of using the prebuilt set.
+
+What is set:
+
+- **Wi-Fi TX buffers are dynamic** (`CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER=y`, 16 buffers), not a static pool of 8 buffers of about 1.6 KB. `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n` goes with it: Arduino's base config puts Wi-Fi and LWIP buffers in PSRAM, which locks out dynamic TX. The V3 has no PSRAM, so nothing else moves there. On a board with PSRAM Wi-Fi and LWIP buffers would come from internal RAM instead, which is why the V4 does not take this (below).
+- **The IPC tasks get a 2,048-byte stack** (`CONFIG_ESP_IPC_TASK_STACK_SIZE=2048`) instead of the stock 1,024. Installing the GPIO ISR service at boot runs on the IPC task, and with heap poisoning on it overran the 1,024-byte stack in 4 of 304 resets on v3test (`Stack canary watchpoint triggered (ipc0/ipc1)`, Issue #216). Upstream's library builder made the same change. It costs 2 KB of internal heap (two tasks).
+- **13 unused managed components are removed** from the library build: esp_insights, esp_rainmaker, rmaker_common, esp_diagnostics, esp_diag_data_store, esp_schedule, esp-sr, esp-zboss-lib, esp-zigbee-lib, esp_modem, esp-modbus, esp_rcp_update and esp-libhelix-mp3.
+
+**The mbedTLS buffers stay static.** Dynamic mbedTLS buffers (`CONFIG_MBEDTLS_DYNAMIC_BUFFER`) were tried and break Wi-Fi: the radio never leaves `scanning` once a TLS session starts. Do not add them to `custom_sdkconfig`.
+
+Measured on v3test (V3 standalone Companion, `get mecon.mem` idle and 20 s after a pinned-TLS MQTT session verified, main bafb88d5 against this build in one session, 2026-10-31): idle free heap 98,276 B against 105,228 B, largest block 36,852 B against 42,996 B; with the TLS session free 36,956 B against 50,764 B (about 14 KB more), largest block 14,836 B against 31,732 B, low-water 24,860 B against 38,228 B (about 13 KB more). That is net of the 2 KB the larger IPC stacks take. The largest block moves with the memory layout (an unchanged tree has measured both 14,836 B and 31,732 B), so the free and low-water gains are the ones to rely on. An earlier split (Issue #100) put about 8 KB of free heap on the component removal and about 7 KB on the dynamic TX buffers. Both gains need the rebuilt libraries; there is no runtime-only route, because the prebuilt libraries reserve the static pool from their own sdkconfig.
+
+Flash and static RAM of the V3 envs, main (bafb88d5) against this build (local builds in the project container, same toolchain and locked libraries, 2026-10-31):
+
+| Target | Flash before | Flash after | Difference | Static RAM before | Static RAM after | Difference |
+|---|---|---|---|---|---|---|
+| `Heltec_v3_companion_radio_ble` | 1,509,044 B | 1,444,828 B | −64,216 B | 119,156 B | 117,828 B | −1,328 B |
+| `Heltec_v3_companion_radio_standalone` | 1,713,020 B | 1,654,564 B | −58,456 B | 126,988 B | 125,412 B | −1,576 B |
+| `Heltec_v3_companion_radio_usb` | 743,912 B | 704,056 B | −39,856 B | 39,064 B | 37,740 B | −1,324 B |
+| `Heltec_v3_companion_radio_wifi` | 1,477,396 B | 1,419,524 B | −57,872 B | 114,636 B | 113,068 B | −1,568 B |
+| `Heltec_v3_repeater` | 1,445,804 B | 1,383,208 B | −62,596 B | 63,940 B | 62,612 B | −1,328 B |
+| `Heltec_v3_room_server` | 1,440,816 B | 1,378,152 B | −62,664 B | 67,628 B | 66,300 B | −1,328 B |
+
+Flash drops by about 57-63 KB on the BLE, standalone and Wi-Fi Companions and by about 39-40 KB on the USB Companion, the repeater and the room server; static RAM by about 1.3-1.6 KB. The V3 budgets in `ci/size-budget.txt` are set from these builds (use + 4 KB).
+
+### The Heltec V4 stays on the stock libraries
+
+The V4 envs extend `esp32_idf5_base`, without the section. Measured on v4test with Wi-Fi + TLS MQTT, the hybrid build cost internal heap: free 101,472 B against 102,568 B on main, largest block 34,804 B against 38,900 B, low-water 91,816 B against 97,832 B. The cause is `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n`, which the dynamic TX buffers need and which moves Wi-Fi and LWIP out of the V4's PSRAM. The rule set before the run was that a build which costs the V4 does not go to the V4. The V4 builds and budgets are unchanged from main.
+
+V3 and V4 are both ESP32-S3, so one PlatformIO core directory cannot hold both library sets: building a V3 then a V4 (or the reverse) in one directory reinstalls the stock package and rebuilds the hybrid one again (about 6 minutes). Use separate volumes locally, or separate core directories (`all-boards.yml` gives the V4 and C6 envs their own). `target-boards` and `pr-build-check` build one env per runner, so they cannot mix.
+
+### Building
+
+The libraries are rebuilt once into the shared `framework-arduinoespressif32-libs` package of the PlatformIO core directory (about 6 minutes cold). pioarduino keys the rebuilt set by the `custom_sdkconfig` text and the chip, so **every ESP32-S3 env that takes the hybrid build must carry the same section** (the V3 envs do, through `esp32s3_idf5_base`): an env without it, or for another chip such as the ESP32-C6 boards, makes the next build reinstall the stock libraries and rebuild again. A CI job that mixes them uses a separate `PLATFORMIO_CORE_DIR` for the others (`all-boards.yml` does this for the C6 envs).
+
+It is a two-step build, because the hybrid pass matches `build_src_filter` against a placeholder directory and our `../examples` entries escape it:
+
+1. `bin/idf5_libs.sh` builds the stub env `idf5_hybrid_libs`, which only exists to trigger the library rebuild. It is idempotent (a second run takes seconds) and installs PyYAML into PlatformIO's Python if it is missing, which the component removal needs. Given an env name it does nothing unless that env has a `custom_sdkconfig`, so a workflow can call it before every build.
+2. `pio run -e <env>` as usual.
+
+Locally: `sim/run.sh bin/idf5_libs.sh`, then `sim/run.sh pio run -e Heltec_v3_repeater`. `build.sh` and the three build workflows (`target-boards`, `pr-build-check`, `all-boards`) call the script. The native sim envs are not affected. To check the result, read `packages/framework-arduinoespressif32-libs/esp32s3/sdkconfig` in the PlatformIO core directory (the options above) and the "Removing component" lines in the first build's log.
+
+Not done: a hardware run of the V4 and of the other roles with this build.
 
 ## On hardware
 
