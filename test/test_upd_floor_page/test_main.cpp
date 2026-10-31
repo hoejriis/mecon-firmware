@@ -111,6 +111,7 @@ TEST(FloorPage, ASlotWithABadComplementOrCrcIsNotValid) {
   memcpy(a, w, sizeof(a)); a[0] ^= 1;
   EXPECT_FALSE(floorSlotValid(reinterpret_cast<const uint8_t*>(a), &f));
   memcpy(a, w, sizeof(a)); a[2] ^= 1;
+  a[3] = markerCrc32(reinterpret_cast<const uint8_t*>(a), 12);   // a bad complement under a good crc
   EXPECT_FALSE(floorSlotValid(reinterpret_cast<const uint8_t*>(a), &f));
   memcpy(a, w, sizeof(a)); a[3] ^= 1;
   EXPECT_FALSE(floorSlotValid(reinterpret_cast<const uint8_t*>(a), &f));
