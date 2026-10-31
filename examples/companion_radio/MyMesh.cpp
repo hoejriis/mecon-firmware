@@ -3059,6 +3059,7 @@ void MyMesh::checkSerialInterface() {
 void MyMesh::scheduleConnectivityRestart() {
   _connmode_restart_at = millis() + 1500;
   if (_connmode_restart_at == 0) _connmode_restart_at = 1;
+  _connmode_reply_owed = true;   // the next reply written, the one to this request, counts the 1.5 s again (#226)
 }
 
 bool MyMesh::requestConnectivityMode(uint8_t want, uint8_t caller) {

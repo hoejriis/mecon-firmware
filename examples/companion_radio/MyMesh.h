@@ -149,8 +149,15 @@ public:
   bool requestConnectivityMode(uint8_t want, uint8_t caller);
   bool connectivityRestartPending() const { return _connmode_restart_at != 0; }
   // A pending restart counts its 1.5 s again from now: the interface calls this once a request's reply is written, so a
-  // long request that switched the mode early does not lose its reply to the restart it asked for.
-  void restartConnectivityClock() { if (_connmode_restart_at != 0) scheduleConnectivityRestart(); }
+  // long request that switched the mode early does not lose its reply to the restart it asked for. Only the first reply
+  // after the switch, the one to the request that made it: a host polling every 300 ms must not postpone it (#226).
+  void restartConnectivityClock() {
+    if (_connmode_restart_at != 0 && _connmode_reply_owed) {
+      _connmode_restart_at = millis() + 1500;
+      if (_connmode_restart_at == 0) _connmode_restart_at = 1;
+    }
+    _connmode_reply_owed = false;
+  }
 #endif
   void handleCmdFrame(size_t len);
   bool advert();
@@ -329,6 +336,7 @@ private:
   bool cli_command_dropping = false;   // inside an over-long rescue-console line (#165)
 #ifdef ENABLE_CONNMODE
   uint32_t _connmode_restart_at = 0;   // millis() deadline of the restart after a mode switch (0 = none)
+  bool _connmode_reply_owed = false;   // a switch was scheduled and the reply that follows it is not written yet
   void scheduleConnectivityRestart();
 #endif
   uint8_t _cli_caller = Posture::CALLER_NET;   // who is behind a handleCommand(); set by each adapter, fails closed

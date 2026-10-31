@@ -33,3 +33,5 @@ mutate connmode_wifi_password_drawn_as_ssid examples/companion_radio/ui-new/Conn
 mutate connmode_mqtt_password_drawn $UI "      int ly = 19;" "      int ly = 19; display.drawTextCentered(display.width() / 2, 8, _node_prefs->mqtt_profiles.p[0].pwd);" $CM_SIM::test_no_secret_is_ever_drawn
 # the restart after a mode switch counts from the interface's reply, not from the line (a long config.apply lost its reply)
 mutate connmode_restart_counts_from_the_line examples/companion_radio/MeconIface.cpp '    _mesh->restartConnectivityClock();' '' sim/tests/test_connmode_reply.py::test_the_reply_survives_a_slow_flash_after_the_mode_line
+# Only the switch's own reply restarts the clock: a host polling every 300 ms must not postpone the restart (#226)
+mutate connmode_every_reply_postpones_the_restart examples/companion_radio/MyMesh.h '    if (_connmode_restart_at != 0 && _connmode_reply_owed) {' '    if (_connmode_restart_at != 0) {' sim/tests/test_connmode_reply.py::test_a_host_polling_faster_than_the_delay_does_not_postpone_the_restart
