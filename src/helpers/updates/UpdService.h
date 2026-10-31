@@ -16,6 +16,12 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "UpdPreflight.h"
+#include "UpdUrl.h"
+
+// A download over IP (source.url) needs a network: the builds with the MQTT controller's, on ESP32 and the simulated board.
+#if defined(ENABLE_MQTT) && (defined(ESP_PLATFORM) || defined(SIM_FREE_HEAP))
+#define UPD_DOWNLOAD 1
+#endif
 #include "helpers/deployment/DepHmac.h"
 #include "helpers/iface/IfaceDispatch.h"
 #include "helpers/iface/JobService.h"
@@ -46,6 +52,14 @@ public:
   static const uint8_t MAX_SEND_BACK = 3;                   // boots that send an unconfirmed image back to the previous one
   static const uint32_t CONFIRM_MIN_S = 30, CONFIRM_MAX_S = 3600, CONFIRM_DEFAULT_S = 900;
   static const size_t CHUNK_MAX = 2304;                    // decoded bytes per update.chunk
+  static const uint32_t DOWNLOAD_MS = 30 * 60 * 1000;      // a download not finished this long after accepted fails
+  static const uint32_t HEAD_TIMEOUT_MS = 15 * 1000;       // the connect, and the response head
+  static const uint32_t DOWNLOAD_PIECE = 4096;             // body bytes taken per loop pass
+  // A download's own connection, measured on a Heltec V3 (2026-10-31): plain HTTP took about 23 KB, HTTPS about 63 KB and
+  // left 3.5 KB at its lowest. So HTTPS asks for the measured cost and a 32 KB margin, and a board without PSRAM is
+  // refused it (busy, low-memory) and uses HTTP, which the digest makes just as safe.
+  static const uint32_t HEAP_NEEDED_HTTP = 48 * 1024;
+  static const uint32_t HEAP_NEEDED_HTTPS = 96 * 1024;
   static const uint32_t READBACK_PIECE = 4096;             // bytes hashed per loop pass
   static const uint32_t HEAP_NEEDED = 48 * 1024;
   static constexpr const char* OP = "update.offer";
@@ -108,7 +122,7 @@ public:
   Device device() const;
 
 private:
-  enum Phase : uint8_t { IDLE, RECEIVING, VERIFYING };
+  enum Phase : uint8_t { IDLE, RECEIVING, DOWNLOADING, VERIFYING };
   // Putting the previous image back: it already runs (and the next boot runs it too), the next boot runs it, which slot
   // holds it cannot be told, or the slots could not be changed.
   enum Back : uint8_t { BACK_RUNS, BACK_REBOOT, BACK_UNKNOWN, BACK_FAILED };
@@ -141,11 +155,25 @@ private:
   Dep::Sha256Ctx* _readback = nullptr;
   bool _erasing = false;
 
+#ifdef UPD_DOWNLOAD
+  // The download (source.url). The connect and the response head run on the network's worker, which writes _dl_err
+  // (nullptr: the body follows) and _dl_status; the main loop reads them once the worker is idle. Only in the builds
+  // that can download: the URL alone is about 270 bytes of RAM the others would carry for nothing.
+  Url _url = {};
+  uint32_t _accepted_ms = 0;
+  bool _dl_started = false, _dl_connected = false, _dl_close_pending = false;
+  const char* _dl_err = nullptr;
+  int _dl_status = 0;
+  static void dlJob(void* self);
+  const char* dlConnect();
+  void downloadStep(uint32_t now_ms);
+#endif
+
   Iface::JobTable* table() const { return _host.jobs ? _host.jobs->table() : nullptr; }
   void persist() { if (_host.jobs) _host.jobs->persist(); }
   Iface::Job* openUpdateJob() const;
   void endTransfer(bool erase);
-  void failJob(const char* error);
+  void failJob(const char* error, const char* extra = nullptr);
   void activate();
   int writeRunning(char* out, size_t cap, bool previous, const char* prev_version, const uint8_t* prev_sha) const;
   size_t resultObject(char* out, size_t cap, const char* members, bool previous, const char* prev_version,

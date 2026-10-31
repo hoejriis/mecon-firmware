@@ -234,4 +234,9 @@ MqttNet& mqttPlatformNet() {
   static Esp32Net n;
   return n;
 }
+
+MqttNet& updatePlatformNet() {
+  static Esp32Net n;
+  return n;
+}
 #endif
