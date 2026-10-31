@@ -63,6 +63,9 @@ jobs:
       - run: pip install "platformio==6.2.0"
       - run: |
           set -o pipefail   # a failed build must fail the step, not be hidden by tee
+          # Libraries outside the checkout, which actions/checkout cleans on every job: a self-hosted runner keeps them
+          # between jobs instead of fetching each one from the PlatformIO registry again (it limits downloads per address).
+          export PLATFORMIO_LIBDEPS_DIR="$HOME/.pio-libdeps"
           pio run -e ${{ matrix.env }} | tee build.log
       - name: Record RAM and flash
         run: |
