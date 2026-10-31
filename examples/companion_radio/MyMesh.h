@@ -147,6 +147,9 @@ public:
   uint8_t getConnectivityMode() { return ConnMode::sanitize(_prefs.connectivity_mode); }
   bool requestConnectivityMode(uint8_t want, uint8_t caller);
   bool connectivityRestartPending() const { return _connmode_restart_at != 0; }
+  // A pending restart counts its 1.5 s again from now: the interface calls this once a request's reply is written, so a
+  // long request that switched the mode early does not lose its reply to the restart it asked for.
+  void restartConnectivityClock() { if (_connmode_restart_at != 0) scheduleConnectivityRestart(); }
 #endif
   void handleCmdFrame(size_t len);
   bool advert();

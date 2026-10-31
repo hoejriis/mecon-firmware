@@ -391,7 +391,14 @@ __attribute__((noinline)) void MeconIface::dispatchJob(void* p) {
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                          size_t cap) {
   DispatchJob j = {this, &ctx, caller, link, msg, len, out, cap, -1};
-  if (NrfWorker::run(dispatchJob, &j, 15000)) return j.n;
+  if (NrfWorker::run(dispatchJob, &j, 15000)) {
+#ifdef ENABLE_CONNMODE
+    // The reply is written and goes out on this pass: a restart the request asked for (connectivity.mode) counts its
+    // 1.5 s from here, not from the line inside the request. A nine-key config.apply took 5.6 s on a Heltec V3.
+    _mesh->restartConnectivityClock();
+#endif
+    return j.n;
+  }
   // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature.
   static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
   if (cap <= sizeof(W)) return -1;
