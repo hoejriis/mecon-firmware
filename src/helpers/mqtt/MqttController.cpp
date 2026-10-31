@@ -1,4 +1,5 @@
 #include "MqttController.h"
+#include "../CryptoRNG.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -133,6 +134,13 @@ void MqttController::attempt(const MqttAction& a) {
     j.resolve = !parseIPv4(q.host, j.addr);
     if (j.resolve) { strlcpy_(j.host, q.host, sizeof(j.host)); strlcpy_(j.name, q.host, sizeof(j.name)); }
     j.port = q.effectivePort();
+    j.ws = q.useWs();
+    if (j.ws) {
+      strlcpy_(j.http_host, q.host, sizeof(j.http_host));
+      strlcpy_(j.path, q.wsPath(), sizeof(j.path));
+      CryptoRNG rng;
+      rng.random(j.ws_key, sizeof(j.ws_key));
+    }
   } else {
     MqttCandidate c;
     if (!_core.candidate(a.cand, c)) { _core.onConnectFailed(now, MqttFail::Lost); return; }
@@ -190,7 +198,19 @@ void MqttController::runConnect() {
     return;
   }
   if (_job_cancel) { _net->close(); j.result = ConnectJob::Cancelled; return; }
-  _psc.setClient(_net->client());
+  if (j.ws) {
+    // The upgrade runs inside the connection open() returned, so the broker it reaches is the one TLS authenticated.
+    MqttWs::Answer why;
+    if (!_ws.begin(_net->client(), j.http_host, j.port, j.tls, j.path, j.ws_key, OPEN_TIMEOUT_MS, &why)) {
+      _net->close();
+      j.result = ConnectJob::Ws;
+      return;
+    }
+    if (_job_cancel) { _ws.stop(); _net->close(); j.result = ConnectJob::Cancelled; return; }
+    _psc.setClient(_ws);
+  } else {
+    _psc.setClient(_net->client());
+  }
   const char* user = j.user[0] ? j.user : nullptr;
   const char* pwd = (user && j.pwd[0]) ? j.pwd : nullptr;
   if (!_psc.connect(_client_id, user, pwd, _topic, 1, true, "{\"online\":false}")) {
@@ -234,6 +254,7 @@ void MqttController::takeResult() {
     case ConnectJob::Tcp: _core.onConnectFailed(now, MqttFail::Tcp); return;
     case ConnectJob::Tls: _core.onConnectFailed(now, MqttFail::Tls); return;
     case ConnectJob::Pin: _core.onConnectFailed(now, MqttFail::Pin); return;
+    case ConnectJob::Ws: _core.onConnectFailed(now, MqttFail::Ws); return;
     case ConnectJob::Auth: _core.onConnectFailed(now, MqttFail::Auth); return;
     case ConnectJob::Timeout: _core.onConnectFailed(now, MqttFail::Timeout); return;
     case ConnectJob::Cancelled: _core.onConnectCancelled(); return;

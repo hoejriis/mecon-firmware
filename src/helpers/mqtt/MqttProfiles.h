@@ -3,6 +3,7 @@
 //
 // Up to MECON_MQTT_MAX_PROFILES profiles, each a priority, optional credentials and one of two kinds:
 //   Static     a host name or IPv4 address and a port, TLS on or off, and (with TLS) an optional pinned certificate;
+//              MQTT straight over the connection (transport tcp) or over WebSocket at a path (transport ws);
 //   Discovery  an enrolled LAN broker: a site ID that must appear in the mDNS TXT record and a TLS trust anchor the
 //              broker must satisfy. Always TLS, never plain.
 // The trust anchor is either the SHA-256 fingerprint of the broker's own (leaf) certificate, or a CA certificate that
@@ -28,6 +29,7 @@ struct MqttProfile {
   static constexpr size_t ANCHOR_BUF = 65;   // SHA-256 as 64 lower-case hex digits
   static constexpr size_t USER_BUF = 32;
   static constexpr size_t PWD_BUF = 64;
+  static constexpr size_t PATH_BUF = 64;     // 63 characters, starting with '/'
   // A CA certificate is held as base64 text of its DER encoding: at most CA_B64_MAX characters (1,440 DER bytes; an
   // RSA-4096 root is about 1,400, an EC P-256 CA about 450). Prefs store it in CA_CHUNK-character pieces because one
   // prefs token holds 127 characters.
@@ -39,16 +41,20 @@ struct MqttProfile {
   uint8_t prio;
   uint8_t tls;       // Static only; a Discovery profile is always TLS
   uint8_t manage;    // 1: this broker may manage the device over MQTT even in Hardened (docs/CLI.md); set locally only
-  uint16_t port;     // 0 = the default for the profile's TLS setting (8883 / 1883)
+  uint8_t ws;        // Static only: 1 = MQTT over WebSocket (subprotocol mqtt) at `path`, inside the TLS when tls is on
+  uint16_t port;     // 0 = the default for the profile's transport and TLS setting (8883 / 1883, 443 / 80 for ws)
   char host[HOST_BUF];
   char site[SITE_BUF];
   char anchor[ANCHOR_BUF];
   char user[USER_BUF];
   char pwd[PWD_BUF];
+  char path[PATH_BUF];   // the WebSocket path; empty = /mqtt
   char* ca;          // base64 DER of the CA certificate anchor, or nullptr; owned by MqttProfiles
 
   bool useTls() const { return kind == Discovery || tls != 0; }
-  uint16_t effectivePort() const { return port ? port : (useTls() ? 8883 : 1883); }
+  bool useWs() const { return kind == Static && ws != 0; }
+  uint16_t effectivePort() const { return port ? port : (useWs() ? (useTls() ? 443 : 80) : (useTls() ? 8883 : 1883)); }
+  const char* wsPath() const { return path[0] ? path : "/mqtt"; }
   bool hasCa() const { return ca != nullptr && ca[0] != 0; }
   bool hasAnchor() const { return anchor[0] != 0 || hasCa(); }
   // 0 unset, 1 leaf fingerprint, 2 CA certificate (a profile holds at most one)
@@ -136,8 +142,8 @@ struct MqttProfileChange {
   bool credentials = false;   // anything but the priority: the session may need to be redone
 };
 
-// Handles `set mqtt.profile <n> type|host|port|tls|anchor|site|user|pwd|priority|manage <value>`,
-// `set mqtt.profile <n> clear`, `get mqtt.profile <n>` and `get mqtt.profiles [from]`.
+// Handles `set mqtt.profile <n> type|host|port|tls|transport|path|anchor|site|user|pwd|priority|manage <value>`,
+// `set mqtt.profile <n> clear`, `get mqtt.profile <n>`, `get mqtt.profile <n> path` and `get mqtt.profiles [from]`.
 // Returns false when `command` is none of these. `core` is optional; with it the listing carries each profile's last
 // failure. `posture` is the current security posture. `reply_cap` includes the NUL.
 bool mqttProfileCommand(MqttProfiles& profiles, const MqttCore* core, uint8_t posture, const char* command,

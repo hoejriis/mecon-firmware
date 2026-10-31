@@ -35,7 +35,8 @@ enum Field : uint8_t {
   F_MQTT_PRIO,
   F_MQTT_USER,
   F_MQTT_PWD,
-  F_MQTT_SITE
+  F_MQTT_SITE,
+  F_MQTT_TRANSPORT
 };
 
 struct KeyDef {
