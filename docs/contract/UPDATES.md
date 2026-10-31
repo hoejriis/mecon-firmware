@@ -123,7 +123,7 @@ The class's column is in docs/CLI.md's privilege table, and AUTHORITY.md section
 **The offer.** `update.offer {"manifest_sha256", "source", "confirm": {"within_s"}}`: the staged manifest by its hash, the source (`{"push": true}`, or `{"url": "https://..."}` for IP), and the confirmation window of section 7 (30 to 3,600 s; 900 when `confirm` is left out). A push offer that passes preflight answers `{"job", "state": "accepted", "transfer_token", "next": 0}`.
 
 **Bounds:**
-- an `update.offer` or an `update.manifest` is at most **1,400 bytes over MQTT** (the device's client buffer is 1,600 bytes with the topic), and at most 4,096 over USB and BLE;
+- an `update.offer` or an `update.manifest` is at most **1,536 bytes over MQTT** and at most 4,096 over USB and BLE. The device's MQTT client buffer is 1,600 bytes for the whole PUBLISH: with at most 7 bytes of header and the 42-byte topic `mecon/<device_id>/req`, a request of up to 1,551 bytes fits. A signed stage of the longest manifest is about 1,480 bytes, and a Backend that stages through a broker which is not TLS-verified has to sign it (an unverified broker session may not read);
 - `source.url` is at most 256 bytes;
 - a manifest is at most 640 bytes. Every field filled in at its longest measures 637 bytes (the `longest` vector).
 
