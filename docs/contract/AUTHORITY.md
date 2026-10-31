@@ -178,7 +178,7 @@ Arguments, as one `deployment` object:
 - `dak` and `authority_epoch`;
 - `authority_set` and `authority_set_sig`;
 - `unlock_secret` (optional; section 10);
-- `broker_roles` (optional: `[{"profile":n,"role":"primary"|"secondary"|"local"}]`, each naming an existing MQTT profile, else `bad_broker_roles`).
+- `broker_roles` (optional: `[{"profile":n,"role":"primary"|"secondary"|"local"}]`, each naming an existing MQTT profile, else `bad_broker_roles`). The record keeps them, and the read-back and `deployment.get` report them as stored. Broker selection does not use them yet: the profiles' own priorities decide.
 
 Product profiles (section 14) may add fields; a device ignores fields it does not know.
 
@@ -195,7 +195,7 @@ A newer authority set, with any rotations before it, for a device that holds a r
 
 ### 6.3 `deployment.get`
 
-An open read: the stored set and its signature, `deployment_id`, the epoch and revisions, the fallback flag, and each member's current sequence mark. A manager that lost track of its sequence (a restore from backup) reads its mark and continues above it. It reveals nothing secret. The same set is published retained at `mecon/<device_id>/authority` over MQTT.
+An open read: the stored set and its signature, `deployment_id`, the epoch and revisions, the fallback flag, each member's current sequence mark, and the `broker_roles` the provisioning set (an empty list when it set none). A manager that lost track of its sequence (a restore from backup) reads its mark and continues above it. It reveals nothing secret. The same set is published retained at `mecon/<device_id>/authority` over MQTT.
 
 ## 7. Checking a signed request
 
