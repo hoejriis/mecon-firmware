@@ -337,8 +337,7 @@ void DataStore::loadContacts(DataStoreHost* host) {
 }
 
 void DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactInfo& c)) {
-  // temp file + verify + swap: a power cut keeps the previous complete table
-  AtomicFile::save(_getContactsChannelsFS(), "/contacts3", [host, filter](Stream& s) {
+  auto writer = [host, filter](Stream& s) {
     uint32_t idx = 0;
     ContactInfo c;
     uint8_t unused = 0;
@@ -366,7 +365,19 @@ void DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactIn
       idx++;  // advance to next contact
     }
     return true;
-  });
+  };
+  // temp file + verify + swap: a power cut keeps the previous complete table
+  if (AtomicFile::save(_getContactsChannelsFS(), "/contacts3", writer)) return;
+  // No room for a second copy of the table (a full table on the T1000-E's 100 KB ExtraFS, Issue #223): replace it the
+  // way upstream does, the old file removed first. A power cut during this write loses the table, as it does upstream;
+  // without it, every save of a full table failed and the changes were lost at the next boot.
+  uint32_t free_bytes = freeBytes();
+  File cur = openRead(_getContactsChannelsFS(), "/contacts3");
+  uint32_t table = cur ? (uint32_t)cur.size() : 0;
+  if (cur) cur.close();
+  if (free_bytes == 0xFFFFFFFFu || free_bytes >= table + LEGACY_CONTACT_BYTES * 8) return;   // not a space problem
+  File f = openWrite(_getContactsChannelsFS(), "/contacts3");
+  if (f) { writer(f); f.close(); }
 }
 
 bool DataStore::legacyContactsExist() {

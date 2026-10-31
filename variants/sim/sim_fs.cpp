@@ -15,6 +15,8 @@ fs::SPIFFSFS SPIFFS;
 
 namespace fs {
 
+size_t treesize(const std::string& d);   // bytes under a host directory (the used space, below)
+
 // Call counts for tests that bound the file system work of a boot (--fs-calls FILE): the file holds
 // "exists=N open=N remove=N rename=N missing=N", rewritten after each call. A real SPIFFS scans its file table on each
 // call, and a lookup that finds nothing scans all of it (about 0.9 s per lookup on a Heltec V4's 3.4 MB partition), so
@@ -144,6 +146,7 @@ static bool write_fails(const std::string& path) {
 size_t File::write(const uint8_t* buf, size_t n) {
   if (!_p || !_p->fp) return 0;
   if (write_fails(_p->fs_path)) return 0;
+  if (g_sim.fs_enforce && _p->owner && treesize(_p->owner->root()) + n > g_sim.fs_size) return 0;   // full
   // Fault hook: after N bytes written to the named file, persist exactly those
   // N bytes and kill the process without closing anything (a power cut).
   if (g_sim.fault_after >= 0 && _p->fs_path == g_sim.fault_path) {
@@ -229,7 +232,7 @@ bool SPIFFSFS::format() {
   return true;
 }
 
-static size_t treesize(const std::string& d) {
+size_t treesize(const std::string& d) {
   size_t total = 0;
   if (DIR* dir = opendir(d.c_str())) {
     while (dirent* e = readdir(dir)) {

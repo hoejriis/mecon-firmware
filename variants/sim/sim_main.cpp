@@ -53,6 +53,7 @@ int main(int argc, char** argv) {
     else if (a == "--heap-budget") g_sim.heap_budget = strtoul(next(), nullptr, 10);
     else if (a == "--heap-file") g_sim.heap_file = next();
     else if (a == "--fs-size") g_sim.fs_size = strtoul(next(), nullptr, 10);
+    else if (a == "--fs-enforce") g_sim.fs_enforce = true;
     else if (a == "--fs-calls") g_sim.fs_calls = next();
     else if (a == "--fs-write-ms") g_sim.fs_write_ms = strtoul(next(), nullptr, 10);
     else if (a == "--write-fail") g_sim.write_fail = next();
