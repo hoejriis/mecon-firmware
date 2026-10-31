@@ -432,4 +432,9 @@ MqttNet& mqttPlatformNet() {
   static SimNet* n = new SimNet;
   return *n;
 }
+
+MqttNet& updatePlatformNet() {
+  static SimNet* n = new SimNet;   // never destroyed, as above
+  return *n;
+}
 #endif

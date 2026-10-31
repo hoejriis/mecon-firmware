@@ -50,3 +50,15 @@ mutate upd_record_cleared_during_the_trial $U '  if (!recordLoad(&r) || runningS
 mutate upd_confirmation_trusted_after_a_rollback $U '    if (r.confirmed && run && run == r.new_id) { confirmFromRecord(*j); persist(); return; }' '    if (r.confirmed) { confirmFromRecord(*j); persist(); return; }' "$UI::test_a_confirmation_that_did_not_survive_its_trial_is_a_rollback"
 mutate upd_send_back_unbounded $U '    if (r.attempts >= MAX_SEND_BACK) {   // the previous image failed its trial each time: stay, and say so' '    if (false) {' "$UI::test_after_three_send_backs_the_unconfirmed_image_stays_and_says_so"
 mutate upd_stranded_image_not_reported $U '      _stranded = true;' '' "$UI::test_after_three_send_backs_the_unconfirmed_image_stays_and_says_so"
+# slice 3: the download over IP (UPDATES.md section 6)
+UD=sim/tests/test_update_download.py
+mutate upd_download_past_image_size $U '    uint32_t k = _size - _received;' '    uint32_t k = sizeof(buf);' "$UD::test_no_more_than_image_size_is_taken"
+mutate upd_download_length_unchecked $U '  if (h.has_length && h.length != _size) return "download-size";   // not the image the manifest names' '' "$UD::test_downloads_that_cannot_be_the_image_fail"
+mutate upd_download_status_unchecked $U '  if (h.status != 200) return "download-status";' '' "$UD::test_downloads_that_cannot_be_the_image_fail"
+mutate upd_download_chunked_taken $U '  if (h.chunked) return "download-encoding";' '' "$UD::test_downloads_that_cannot_be_the_image_fail"
+mutate upd_download_short_not_noticed $U '  if (!taken && !c.connected() && !c.available()) failJob("download-short");   // the server closed before the end' '' "$UD::test_downloads_that_cannot_be_the_image_fail"
+mutate upd_download_never_times_out $U '  if ((uint32_t)(now_ms - _accepted_ms) >= DOWNLOAD_MS) { failJob("download-timeout"); return; }' '' "$UD::test_a_download_that_cannot_reach_the_network_times_out"
+mutate upd_download_heap_as_push $U '  if (by_url) dev.heap_needed = HEAP_NEEDED_URL;   // step 12: a download opens its own connection, TLS included' '' "$UD::test_a_download_needs_more_heap_than_a_push"
+mutate upd_download_hands_out_a_token $U '  if (!by_url) { w.key("transfer_token"); w.str(tok); }' '  { w.key("transfer_token"); w.str(tok); }' "$UD::test_an_image_downloads_by_name_installs_and_attests"
+mutate upd_download_host_without_port $U '  if (_url.port != (_url.tls ? 443 : 80)) snprintf(port, sizeof(port), ":%u", (unsigned)_url.port);' '' "$UD::test_an_image_downloads_by_name_installs_and_attests"
+mutate upd_url_userinfo_accepted src/helpers/updates/UpdUrl.h '  if (*p != '"'"'/'"'"') return false;   // user info ("@"), an IPv6 literal, anything else between host and path' '  if (*p != '"'"'/'"'"') { strcpy(out->path, "/"); return true; }' unit:test_updates

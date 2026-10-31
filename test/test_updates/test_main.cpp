@@ -8,6 +8,7 @@
 #include "helpers/iface/Jobs.h"
 #include "helpers/updates/UpdB64.h"
 #include "helpers/updates/UpdPreflight.h"
+#include "helpers/updates/UpdUrl.h"
 #include "vectors.h"
 
 using namespace Upd;
@@ -234,6 +235,63 @@ TEST(UpdJob, AnOpenJobsResultChangesATerminalOneNever) {
   ASSERT_TRUE(t.setState(j, Iface::JOB_CONFIRMED));
   EXPECT_FALSE(t.setResult(j, "{\"x\":1}", 7));
   EXPECT_EQ(std::string(att), std::string(j->result, j->result_len));
+}
+
+TEST(UpdUrl, AUrlIsReadStrictly) {
+  Url u;
+  ASSERT_TRUE(parseUrl("https://mecon.cloud/fw/abc.bin?x=1", &u));
+  EXPECT_TRUE(u.tls);
+  EXPECT_STREQ("mecon.cloud", u.host);
+  EXPECT_EQ(443, u.port);
+  EXPECT_STREQ("/fw/abc.bin?x=1", u.path);
+  ASSERT_TRUE(parseUrl("http://10.0.0.69:8080", &u));
+  EXPECT_FALSE(u.tls);
+  EXPECT_EQ(8080, u.port);
+  EXPECT_STREQ("/", u.path);
+  uint32_t a = 0;
+  EXPECT_TRUE(urlIpv4(u.host, &a));
+  EXPECT_EQ(0x0A000045u, a);
+  EXPECT_FALSE(urlIpv4("mecon.cloud", &a));
+  EXPECT_FALSE(urlIpv4("10.0.0.256", &a));
+  EXPECT_FALSE(urlIpv4("10.0.0", &a));
+  for (const char* bad : {"ftp://h/x", "https://", "https://user@h/x", "https://h:0/x", "https://h:65536/x", "https://h:/x",
+                          "https://[::1]/x", "https://h/a b", "https://h/a#frag", "https://h/\x7f", "https://h_x/a", "HTTPS://h/x"})
+    EXPECT_FALSE(parseUrl(bad, &u)) << bad;
+  std::string longhost = "https://" + std::string(64, 'a') + "/x";
+  EXPECT_FALSE(parseUrl(longhost.c_str(), &u)) << "a host of 64 characters";
+  std::string longpath = "https://h/" + std::string(199, 'a');
+  EXPECT_FALSE(parseUrl(longpath.c_str(), &u)) << "a path of 200 characters";
+}
+
+TEST(UpdUrl, TheResponseHeadGivesStatusLengthAndEncoding) {
+  HttpHead h;
+  httpHeadLine(h, "HTTP/1.1 200 OK");
+  httpHeadLine(h, "Content-Type: application/octet-stream");
+  httpHeadLine(h, "CONTENT-LENGTH:  1767376 ");
+  EXPECT_EQ(200, h.status);
+  EXPECT_TRUE(h.has_length);
+  EXPECT_EQ(1767376u, h.length);
+  EXPECT_FALSE(h.chunked);
+  EXPECT_FALSE(h.bad);
+  HttpHead c;
+  httpHeadLine(c, "HTTP/1.0 404 Not Found");
+  httpHeadLine(c, "Transfer-Encoding: chunked");
+  EXPECT_EQ(404, c.status);
+  EXPECT_TRUE(c.chunked);
+  HttpHead two;   // two lengths that disagree: refused, not the first or the last
+  httpHeadLine(two, "HTTP/1.1 200 OK");
+  httpHeadLine(two, "Content-Length: 10");
+  httpHeadLine(two, "Content-Length: 11");
+  EXPECT_TRUE(two.bad);
+  for (const char* bad : {"HTTP/2 200 OK", "HTTP/1.1 20 OK", "HTTP/1.1 600 X", "HTTP/1.1 2000 X", "ICY 200 OK"}) {
+    HttpHead b;
+    httpHeadLine(b, bad);
+    EXPECT_TRUE(b.bad) << bad;
+  }
+  HttpHead n;
+  httpHeadLine(n, "HTTP/1.1 200 OK");
+  httpHeadLine(n, "Content-Length: 12a");
+  EXPECT_TRUE(n.bad);
 }
 
 int main(int argc, char** argv) {
