@@ -1,0 +1,72 @@
+name: Nightly watchdog
+
+# The alarm on All boards (main-alarm.yml) runs inside the nightly, so a nightly that GitHub never starts raises
+# nothing. This hourly check reads the newest scheduled All boards run on main that ran to the end (a cancelled run, or
+# one still queued, does not count) and raises the alarm when it started more than 30 h ago, or never. GitHub starts the
+# 02:17Z nightly up to about six hours late, so 30 h leaves room for that and still catches a day without one. Losing
+# every hourly run of this check for a day is far less likely than losing the one nightly.
+
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+    inputs:
+      pretend_age_h:
+        description: Treat the last nightly as this many hours old, to test the alarm
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      stale: ${{ steps.age.outputs.stale }}
+      message: ${{ steps.age.outputs.message }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PRETEND: ${{ inputs.pretend_age_h }}
+    steps:
+      - name: How long since the last nightly ran
+        id: age
+        run: |
+          set -euo pipefail
+          last=$(gh run list --workflow all-boards.yml --event schedule --branch main --limit 20 \
+            --json createdAt,status,conclusion,url \
+            --jq 'map(select(.status == "completed" and .conclusion != "cancelled")) | .[0] // empty | "\(.createdAt) \(.url)"')
+          now=$(date -u +%s)
+          if [ -n "$PRETEND" ]; then
+            [[ "$PRETEND" =~ ^[0-9]+$ ]] || { echo "pretend_age_h must be a whole number of hours"; exit 1; }
+            age_h=$PRETEND
+            what="a test: the last nightly treated as ${PRETEND} h old"
+          elif [ -z "$last" ]; then
+            age_h=1000000
+            what="no scheduled All boards run on main has ever run to the end"
+          else
+            age_h=$(( (now - $(date -u -d "${last%% *}" +%s)) / 3600 ))
+            what="the last one started ${age_h} h ago: ${last#* }"
+          fi
+          echo "last nightly: $what"
+          if [ "$age_h" -gt 30 ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "message=Nightly All boards on main has not run for over 30 h ($what), so main has gone unchecked. Start it by hand (Actions, All boards, Run workflow) and look for why the schedule did not fire." >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  alarm:
+    needs: check
+    if: needs.check.outputs.stale == 'true'
+    uses: ./.github/workflows/main-alarm.yml
+    permissions:
+      issues: write
+      actions: read
+    with:
+      title: Nightly All boards has not run
+      message: ${{ needs.check.outputs.message }}

@@ -16,6 +16,11 @@ on:
         description: The tracking Issue's exact title
         required: true
         type: string
+      message:
+        description: What to say in place of the failed-run report, for an alarm about a run that never happened
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -30,20 +35,25 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TITLE: ${{ inputs.title }}
+      MESSAGE: ${{ inputs.message }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Open or update the tracking Issue
         run: |
           set -euo pipefail
-          jobs=$(gh api "repos/$GH_REPO/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs" --paginate \
-            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")
-                  | "- \(.name): \(.conclusion)"')
-          body=$(printf '%s\n\n%s\n%s\n%s\n\n%s\n' \
-            "${{ github.workflow }} on \`${{ github.ref_name }}\` did not pass: $RUN_URL" \
-            "- event: ${{ github.event_name }}" \
-            "- commit: ${{ github.sha }}" \
-            "- attempt: ${{ github.run_attempt }}" \
-            "${jobs:-(no job reported failed or cancelled; see the run)}")
+          if [ -n "$MESSAGE" ]; then
+            body=$(printf '%s\n\n- reported by: %s\n' "$MESSAGE" "$RUN_URL")
+          else
+            jobs=$(gh api "repos/$GH_REPO/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs" --paginate \
+              --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")
+                    | "- \(.name): \(.conclusion)"')
+            body=$(printf '%s\n\n%s\n%s\n%s\n\n%s\n' \
+              "${{ github.workflow }} on \`${{ github.ref_name }}\` did not pass: $RUN_URL" \
+              "- event: ${{ github.event_name }}" \
+              "- commit: ${{ github.sha }}" \
+              "- attempt: ${{ github.run_attempt }}" \
+              "${jobs:-(no job reported failed or cancelled; see the run)}")
+          fi
           # An exact title match among the open bug Issues, listed rather than searched: the search index lags a new
           # Issue, so two alarms in quick succession would each open one.
           n=$(gh issue list --state open --label bug --json number,title --limit 200 \
