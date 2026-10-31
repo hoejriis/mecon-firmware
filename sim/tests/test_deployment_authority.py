@@ -163,10 +163,14 @@ def test_broker_roles_are_parsed_over_the_cable_and_signed(nodes):
     good["deployment"]["broker_roles"] = [{"profile": 0, "role": "primary"}]
     r = d.i.request("deployment.provision", good)
     assert r["status"] == "ok", r
+    # Read back as stored, in the provisioning's read-back and in deployment.get (#201).
+    assert r["result"]["broker_roles"] == [{"profile": 0, "role": "primary"}], r
+    assert d.i.request("deployment.get")["result"]["broker_roles"] == [{"profile": 0, "role": "primary"}]
     again = provision_args(d.node_key, 2)
     again["deployment"]["broker_roles"] = [{"profile": 0, "role": "secondary"}]
     r = d.send(wrap(d.node_key, "deployment.provision", again, job=1))
     assert r["status"] == "ok" and d.i.request("deployment.get")["result"]["provision_revision"] == 2, r
+    assert d.i.request("deployment.get")["result"]["broker_roles"] == [{"profile": 0, "role": "secondary"}]
 
 
 def test_a_signed_provisioning_moves_the_provision_revision(nodes):

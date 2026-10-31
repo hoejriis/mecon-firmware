@@ -501,6 +501,18 @@ static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record
     w.endObject();
   }
   w.endArray();
+  // The broker roles the provisioning set (AUTHORITY.md 6.1): transport metadata the record keeps, read back so a manager
+  // can see what it stored. Empty when the provisioning set none.
+  w.key("broker_roles"); w.beginArray();
+  static const char* const ROLE[] = {"primary", "secondary", "local"};
+  for (int i = 0; i < rec.n_roles; i++) {
+    if (rec.roles[i].role > Dep::ROLE_LOCAL) continue;
+    w.beginObject();
+    w.key("profile"); w.unum(rec.roles[i].profile);
+    w.key("role"); w.str(ROLE[rec.roles[i].role]);
+    w.endObject();
+  }
+  w.endArray();
 }
 
 Status DeployAuth::opGet(OpContext& c) {
