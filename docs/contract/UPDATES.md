@@ -99,7 +99,7 @@ A public release on GitHub carries its update set as release assets, so any mana
 9. **Starting version.** The running version is at least `min_from`: `below-min-from`.
 10. **Downgrade.** `version` is not below the running version, unless `downgrade:true` and the offer is Deployment-signed: `downgrade-refused`.
 11. **Slot.** `image.size` fits the target's update slot: `too-large`.
-12. **Heap.** Enough free heap for the transfer: `busy`, `low-memory`. A download asks for more than a push (64 KB against 48 KB), since it opens its own connection, TLS included, beside the broker's.
+12. **Heap.** Enough free heap for the transfer: `busy`, `low-memory`. A download opens its own connection: 48 KB over plain HTTP, as for a push, and 96 KB over HTTPS (measured on a Heltec V3: HTTP cost about 23 KB, HTTPS about 63 KB and left 3.5 KB at its lowest). A board without PSRAM is therefore refused an HTTPS download and uses HTTP, which the digest makes just as safe.
 
 Passing them makes the request a job, `accepted` (OPERATIONS.md 3.1).
 
@@ -215,6 +215,11 @@ A revert therefore always finds data the previous image can read. A forced rever
 - the flash written: the image's own size, into the inactive slot, each sector erased as the write reaches it;
 - throughput: about 5 KB/s, so about six minutes per image; from the last chunk to the reboot into the new image, 5.2 s (the read-back of the whole slot, the image check, and the 1.5 s for the answer to go out);
 - `loop_gap_ms.max` was not measured, and neither was BLE delivery.
+
+**Measured, the same board downloading over Wi-Fi, 2026-10-31.** The 1,770,192-byte image from a server on the same LAN:
+- plain HTTP: 21.8 s, about 79 KB/s; free heap fell from 74 KB to 50 KB during the download;
+- HTTPS: 32.9 s, about 53 KB/s; free heap fell from 74 KB to 11 KB, the largest block to 7 KB, and the lowest point was 3.5 KB. That is why step 12 asks 96 KB for HTTPS.
+- There was no broker session open during either.
 
 ## 11. Conformance
 

@@ -348,7 +348,7 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   Manifest* m = static_cast<Manifest*>(malloc(sizeof(Manifest)));
   if (!m) { c.error = "low-memory"; return ST_BUSY; }
   Device dev = device();
-  if (by_url) dev.heap_needed = HEAP_NEEDED_URL;   // step 12: a download opens its own connection, TLS included
+  if (by_url) dev.heap_needed = url.tls ? HEAP_NEEDED_HTTPS : HEAP_NEEDED_HTTP;   // step 12: the download's own connection
   const Anchor* an = nullptr;
   Verdict v = {true, nullptr, nullptr};
   if (!parseManifest(s->text, s->len, m)) v = {false, "invalid", "bad-manifest"};

@@ -55,7 +55,11 @@ public:
   static const uint32_t DOWNLOAD_MS = 30 * 60 * 1000;      // a download not finished this long after accepted fails
   static const uint32_t HEAD_TIMEOUT_MS = 15 * 1000;       // the connect, and the response head
   static const uint32_t DOWNLOAD_PIECE = 4096;             // body bytes taken per loop pass
-  static const uint32_t HEAP_NEEDED_URL = 64 * 1024;       // a second TLS session beside the broker's
+  // A download's own connection, measured on a Heltec V3 (2026-10-31): plain HTTP took about 23 KB, HTTPS about 63 KB and
+  // left 3.5 KB at its lowest. So HTTPS asks for the measured cost and a 32 KB margin, and a board without PSRAM is
+  // refused it (busy, low-memory) and uses HTTP, which the digest makes just as safe.
+  static const uint32_t HEAP_NEEDED_HTTP = 48 * 1024;
+  static const uint32_t HEAP_NEEDED_HTTPS = 96 * 1024;
   static const uint32_t READBACK_PIECE = 4096;             // bytes hashed per loop pass
   static const uint32_t HEAP_NEEDED = 48 * 1024;
   static constexpr const char* OP = "update.offer";
