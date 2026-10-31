@@ -10,6 +10,7 @@
 #include <helpers/HeapFloor.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliPolicy.h>
+#include <helpers/cli/MeconCli.h>
 #include <helpers/cli/CliRegistry.h>
 #include <helpers/BaseSerialInterface.h>
 #include <helpers/CryptoRNG.h>
@@ -347,7 +348,11 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
                                                : Cli::C_POSTURE;
-  return Cli::decide(self->_ctx, cls).allow;
+  // A refusal says why, in the CLI's words (broker-not-verified, untrusted-transport, enrolled-unsigned, ...): a bare
+  // "refused" cannot be told from any other.
+  const Cli::Verdict v = Cli::decide(self->_ctx, cls);
+  if (!v.allow) self->_deny = Cli::reasonName(v.reason);
+  return v.allow;
 }
 
 const char* MeconIface::denyReason(void* user) { return static_cast<MeconIface*>(user)->_deny; }
@@ -392,6 +397,11 @@ int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, co
                          size_t cap) {
   DispatchJob j = {this, &ctx, caller, link, msg, len, out, cap, -1};
   if (NrfWorker::run(dispatchJob, &j, 15000)) {
+#ifdef ENABLE_CONNMODE
+    // The reply is written and goes out on this pass: a restart the request asked for (connectivity.mode) counts its
+    // 1.5 s from here, not from the line inside the request. A nine-key config.apply took 5.6 s on a Heltec V3.
+    _mesh->restartConnectivityClock();
+#endif
     _updates.replyWritten(millis());   // the reply goes out on this pass: a DFU reset the request asked for waits for it
     return j.n;
   }
