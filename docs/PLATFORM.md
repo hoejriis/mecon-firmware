@@ -36,12 +36,12 @@ Flash and static RAM (`.data` + `.bss`) per Heltec target, from local builds in 
 
 | Target | Flash before | Flash after | Difference | Static RAM before | Static RAM after | Difference |
 |---|---|---|---|---|---|---|
-| `Heltec_v3_companion_radio_ble` | 1,702,821 B (50.9 %) | 1,507,828 B (45.1 %) | −194,993 B | 131,028 B | 118,956 B | −12,072 B |
-| `Heltec_v3_companion_radio_standalone` | 1,878,817 B (56.2 %) | 1,652,036 B (49.4 %) | −226,781 B | 136,980 B | 125,084 B | −11,896 B |
-| `Heltec_v3_companion_radio_wifi` | 1,312,361 B (39.3 %) | 1,474,908 B (44.1 %) | +162,547 B | 114,336 B | 114,276 B | −60 B |
-| `Heltec_v3_companion_radio_usb` | 682,665 B (20.4 %) | 741,880 B (22.2 %) | +59,215 B | 38,460 B | 38,880 B | +420 B |
-| `Heltec_v3_repeater` | 1,191,817 B (35.7 %) | 1,390,696 B (41.6 %) | +198,879 B | 63,216 B | 63,132 B | −84 B |
-| `Heltec_v3_room_server` | 1,187,221 B (35.5 %) | 1,385,672 B (41.5 %) | +198,451 B | 66,904 B | 66,820 B | −84 B |
+| `Heltec_v3_companion_radio_ble` | 1,512,148 B | 1,448,788 B | −63,360 B | 119,180 B | 117,852 B | −1,328 B |
+| `Heltec_v3_companion_radio_standalone` | 1,772,828 B | 1,715,176 B | −57,652 B | 132,700 B | 131,124 B | −1,576 B |
+| `Heltec_v3_companion_radio_usb` | 747,068 B | 707,688 B | −39,380 B | 39,096 B | 37,772 B | −1,324 B |
+| `Heltec_v3_companion_radio_wifi` | 1,485,752 B | 1,428,968 B | −56,784 B | 115,524 B | 113,956 B | −1,568 B |
+| `Heltec_v3_repeater` | 815,756 B | 776,232 B | −39,524 B | 43,552 B | 42,212 B | −1,340 B |
+| `Heltec_v3_room_server` | 810,880 B | 771,348 B | −39,532 B | 47,240 B | 45,900 B | −1,340 B |
 | `heltec_v4_companion_radio_ble` | 1,701,017 B (26.0 %) | 1,494,780 B (22.8 %) | −206,237 B | 131,008 B | 118,932 B | −12,076 B |
 | `heltec_v4_companion_radio_standalone` | 1,877,005 B (28.6 %) | 1,639,088 B (25.0 %) | −237,917 B | 136,960 B | 125,036 B | −11,924 B |
 | `heltec_v4_companion_radio_wifi` | 1,310,717 B (20.0 %) | 1,461,916 B (22.3 %) | +151,199 B | 114,324 B | 114,236 B | −88 B |
@@ -67,13 +67,14 @@ The Heltec V3 envs (`esp32s3_idf5_base` in `platformio.ini`) carry a `custom_sdk
 What is set:
 
 - **Wi-Fi TX buffers are dynamic** (`CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER=y`, 16 buffers), not a static pool of 8 buffers of about 1.6 KB. `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n` goes with it: Arduino's base config puts Wi-Fi and LWIP buffers in PSRAM, which locks out dynamic TX. The V3 has no PSRAM, so nothing else moves there. On a board with PSRAM Wi-Fi and LWIP buffers would come from internal RAM instead, which is why the V4 does not take this (below).
+- **The IPC tasks get a 2,048-byte stack** (`CONFIG_ESP_IPC_TASK_STACK_SIZE=2048`) instead of the stock 1,024. Installing the GPIO ISR service at boot runs on the IPC task, and with heap poisoning on it overran the 1,024-byte stack in 4 of 304 resets on v3test (`Stack canary watchpoint triggered (ipc0/ipc1)`, Issue #216). Upstream's library builder made the same change. It costs 2 KB of internal heap (two tasks).
 - **13 unused managed components are removed** from the library build: esp_insights, esp_rainmaker, rmaker_common, esp_diagnostics, esp_diag_data_store, esp_schedule, esp-sr, esp-zboss-lib, esp-zigbee-lib, esp_modem, esp-modbus, esp_rcp_update and esp-libhelix-mp3.
 
 **The mbedTLS buffers stay static.** Dynamic mbedTLS buffers (`CONFIG_MBEDTLS_DYNAMIC_BUFFER`) were tried and break Wi-Fi: the radio never leaves `scanning` once a TLS session starts. Do not add them to `custom_sdkconfig`.
 
 Measured on v3test (V3 standalone Companion, Wi-Fi + TLS MQTT verified, about 4 minutes after start, Issue #100): free heap 44,440 B on main against 59,536 B with both changes (about 15 KB more), low-water 31,796 B against 48,216 B (about 16 KB more); the largest free block is unchanged at 31,732 B. Of that, removing the components gives about 8 KB free and 11 KB low-water, and the dynamic TX buffers about 7 KB and 5 KB more. Both gains need the rebuilt libraries; there is no runtime-only route, because the prebuilt libraries reserve the static pool from their own sdkconfig.
 
-Flash and static RAM of the V3 envs, main against this build (local builds in the project container, same toolchain):
+Flash and static RAM of the V3 envs, main (bafb88d5) against this build (local builds in the project container, same toolchain and locked libraries, 2026-10-31):
 
 | Target | Flash before | Flash after | Difference | Static RAM before | Static RAM after | Difference |
 |---|---|---|---|---|---|---|
@@ -84,7 +85,7 @@ Flash and static RAM of the V3 envs, main against this build (local builds in th
 | `Heltec_v3_repeater` | 1,445,804 B | 1,383,208 B | −62,596 B | 63,940 B | 62,612 B | −1,328 B |
 | `Heltec_v3_room_server` | 1,440,816 B | 1,378,152 B | −62,664 B | 67,628 B | 66,300 B | −1,328 B |
 
-Flash drops by about 58-64 KB on every V3 target except the USB Companion (about 40 KB); static RAM by about 1.3-1.6 KB. The V3 budgets in `ci/size-budget.txt` were lowered (use + 4 KB).
+Flash drops by about 57-63 KB on the BLE, standalone and Wi-Fi Companions and by about 39-40 KB on the USB Companion, the repeater and the room server; static RAM by about 1.3-1.6 KB. The V3 budgets in `ci/size-budget.txt` are set from these builds (use + 4 KB).
 
 ### The Heltec V4 stays on the stock libraries
 

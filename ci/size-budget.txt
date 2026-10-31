@@ -1,14 +1,14 @@
 # Size budget per target environment: the most flash and static RAM a build may use, in bytes.
 # The target-boards workflow fails when a build goes over its budget. Raise a budget in the same PR that
 # needs it, and say why in the commit message. Seeded 2026-10-21 from main (dd5c9c44): use + 4 KB, rounded up
-# to a whole KB. The Heltec V3 rows were lowered 2026-10-28 for the rebuilt IDF libraries (docs/PLATFORM.md), same rule.
+# to a whole KB. The Heltec V3 rows were set 2026-10-31 for the rebuilt IDF libraries (docs/PLATFORM.md), same rule.
 # environment                             flash        ram
-Heltec_v3_companion_radio_ble           1517568     123904
-Heltec_v3_companion_radio_standalone    1774592     135168
-Heltec_v3_companion_radio_usb            751616      43008
-Heltec_v3_companion_radio_wifi          1490944     118784
-Heltec_v3_repeater                      1449984      67584
-Heltec_v3_room_server                   1444864      71680
+Heltec_v3_companion_radio_ble           1453056     122880
+Heltec_v3_companion_radio_standalone    1719296     136192
+Heltec_v3_companion_radio_usb            712704      41984
+Heltec_v3_companion_radio_wifi          1433600     118784
+Heltec_v3_repeater                       781312      47104
+Heltec_v3_room_server                    776192      50176
 heltec_v4_companion_radio_ble           1504256     123904
 heltec_v4_companion_radio_standalone    1761280     135168
 heltec_v4_companion_radio_usb            737280      43008
