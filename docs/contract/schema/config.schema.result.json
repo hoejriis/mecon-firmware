@@ -10,7 +10,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["key", "type", "writable", "write_only", "reboot", "restarts"],
+        "required": ["key", "type", "writable", "write_only", "reboot", "restarts", "confirm"],
         "properties": {
           "key": {"type": "string", "description": "A key, or a pattern with one 0-based index written {n}, for example wifi.profile.{n}.ssid."},
           "type": {"type": "string", "enum": ["string", "integer", "boolean", "enum"]},
@@ -22,7 +22,8 @@
           "writable": {"type": "boolean"},
           "write_only": {"type": "boolean", "description": "A secret: config.get reports \"set\" or \"unset\", never the value."},
           "reboot": {"type": "boolean", "description": "Takes effect after a reboot."},
-          "restarts": {"type": "boolean", "description": "The device restarts itself shortly after the write."}
+          "restarts": {"type": "boolean", "description": "The device restarts itself shortly after the write."},
+          "confirm": {"type": "boolean", "description": "The key can cut its caller's path: any caller but the unsigned cable must send config.apply with confirm (OPERATIONS.md section 3.4)."}
         }
       }
     },

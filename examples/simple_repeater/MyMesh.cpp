@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/Uptime.h>
 #include <helpers/iface/Observe.h>
 #include <helpers/AuditStore.h>
 #include <algorithm>
@@ -120,6 +121,10 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
 
     client = acl.putClient(sender, 0);  // add to contacts (if not already known)
     if (sender_timestamp <= client->last_timestamp) {
+      // Issue #112: audited, so a client locked out by a clock that once ran ahead is visible. The watermark is
+      // RAM only (ClientACL never saves it): a reboot clears it. Neither timestamp is logged.
+      Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_LOGIN_FAILED, Posture::CALLER_REMOTE_ADMIN,
+                           Posture::W_STALE_LOGIN);
       MESH_DEBUG_PRINTLN("Possible login replay attack!");
       return 0;  // FATAL: client table is full -OR- replay attack
     }
@@ -230,7 +235,7 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
     stats.n_packets_recv = radio_driver.getPacketsRecv();
     stats.n_packets_sent = radio_driver.getPacketsSent();
     stats.total_air_time_secs = getTotalAirTime() / 1000;
-    stats.total_up_time_secs = uptime_millis / 1000;
+    stats.total_up_time_secs = (uint32_t)Uptime::secs(millis());
     stats.n_sent_flood = getNumSentFlood();
     stats.n_sent_direct = getNumSentDirect();
     stats.n_recv_flood = getNumRecvFlood();
@@ -883,8 +888,6 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       , bridge(&_prefs, _mgr, &rtc)
 #endif
 {
-  last_millis = 0;
-  uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
@@ -1358,9 +1361,7 @@ void MyMesh::loop() {
   }
 
   // update uptime
-  uint32_t now = millis();
-  uptime_millis += now - last_millis;
-  last_millis = now;
+  Uptime::ms(millis());   // every pass, so the 64-bit uptime never misses a wrap of millis()
 }
 
 // To check if there is pending work

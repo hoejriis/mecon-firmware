@@ -85,6 +85,8 @@ TEST(MqttPrefs, SixFullProfilesRoundTrip) {
     strcpy(q.anchor, ANCHOR);
     snprintf(q.user, sizeof(q.user), "u%u-%s", i, "abcdefghijklmnopqrstuvwxyz0123");   // 31 chars
     snprintf(q.pwd, sizeof(q.pwd), "pw%u-%s", i, "0123456789012345678901234567890123456789012345678901234567");   // 63 chars
+    q.ws = (i % 2) == 0;
+    snprintf(q.path, sizeof(q.path), "/p%u-%s", i, "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstu");   // 63 chars
   }
   a.mqtt_enabled = 0;
   CaptureStream out;
@@ -106,6 +108,8 @@ TEST(MqttPrefs, SixFullProfilesRoundTrip) {
     EXPECT_STREQ(x.anchor, y.anchor) << int(i);
     EXPECT_STREQ(x.user, y.user) << int(i);
     EXPECT_STREQ(x.pwd, y.pwd) << int(i);
+    EXPECT_EQ(x.ws, y.ws) << int(i);
+    EXPECT_STREQ(x.path, y.path) << int(i);
   }
 }
 
@@ -639,4 +643,53 @@ TEST(MqttCaPrefs, AMalformedFingerprintIsUnusableAndNoAnchorIsFine) {
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
+}
+
+// ---- MQTT over WebSocket
+
+TEST(MqttProfileCli, TheLongestWebSocketProfileLineKeepsEveryParsedField) {
+  MqttProfiles p;
+  cmd(p, "set mqtt.profile 0 type static");
+  cmd(p, "set mqtt.profile 0 host 123456789012345678901234567890123456789012345678901234567890123");
+  cmd(p, "set mqtt.profile 0 port 65535");
+  cmd(p, "set mqtt.profile 0 tls off");
+  cmd(p, "set mqtt.profile 0 transport ws");
+  cmd(p, "set mqtt.profile 0 path /12345678901234567890123456789012345678901234567890123456789012");
+  cmd(p, "set mqtt.profile 0 priority 255");
+  cmd(p, "set mqtt.profile 0 user u");
+  cmd(p, "set mqtt.profile 0 pwd p");
+  cmd(p, "set mqtt.profile 0 anchor 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
+  // The worst case outgrows the 150-byte reply by its last field. transport=ws sits before the anchor, so what is cut is
+  // last= (as manage=on already can), never a field the interface parses: a cut transport token would read wrong.
+  std::string r = cmd(p, "get mqtt.profile 0");
+  EXPECT_NE(std::string::npos, r.find(" tls=off transport=ws anchor=fingerprint prio=255 user=set pwd=set ")) << r;
+  EXPECT_LE(r.size(), 149u) << r;
+  EXPECT_EQ("> /12345678901234567890123456789012345678901234567890123456789012", cmd(p, "get mqtt.profile 0 path"));
+}
+
+TEST(MqttProfileCli, TransportPathAndTheirDefaults) {
+  MqttProfiles p;
+  EXPECT_EQ("> /mqtt", cmd(p, "get mqtt.profile 3 path")) << "the default, even unset";
+  cmd(p, "set mqtt.profile 0 type static");
+  cmd(p, "set mqtt.profile 0 host b.example");
+  EXPECT_EQ(8883, p.p[0].effectivePort());
+  EXPECT_EQ(0, cmd(p, "set mqtt.profile 0 transport ws").rfind(">", 0));
+  EXPECT_EQ(443, p.p[0].effectivePort());
+  cmd(p, "set mqtt.profile 0 tls off");
+  EXPECT_EQ(80, p.p[0].effectivePort());
+  cmd(p, "set mqtt.profile 0 port 8080");
+  EXPECT_EQ(8080, p.p[0].effectivePort());
+  EXPECT_EQ(0, cmd(p, "set mqtt.profile 0 path /mqtt").rfind(">", 0));
+  EXPECT_STREQ("", p.p[0].path) << "the default is stored as nothing";
+  for (const char* bad : {"set mqtt.profile 0 path mqtt", "set mqtt.profile 0 path /a b", "set mqtt.profile 0 path /q?x",
+                          "set mqtt.profile 0 path /f#x", "set mqtt.profile 0 path /\"", "set mqtt.profile 0 transport wss",
+                          "set mqtt.profile 0 path /1234567890123456789012345678901234567890123456789012345678901234"})
+    EXPECT_EQ(0, cmd(p, bad).rfind("ERR", 0)) << bad;
+  EXPECT_STREQ("", p.p[0].path) << "a refused path changes nothing";
+  cmd(p, "set mqtt.profile 1 type discovery");
+  EXPECT_EQ(0, cmd(p, "set mqtt.profile 1 transport ws").rfind("ERR", 0));
+  p.p[1].ws = 1;   // as a damaged prefs file might have it
+  EXPECT_FALSE(p.p[1].useWs()) << "a discovery profile never uses WebSocket";
+  EXPECT_EQ(0, cmd(p, "set mqtt.profile 0 clear").rfind(">", 0));
+  EXPECT_EQ(0, p.p[0].ws);
 }

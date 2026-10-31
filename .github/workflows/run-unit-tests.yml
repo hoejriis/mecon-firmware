@@ -8,6 +8,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# On a pull request a newer push makes this run obsolete: cancel it rather than queue behind it. On main every
+# commit's run finishes, so each merge gets a verdict (#146): a newer one waits, and GitHub keeps only the newest
+# pending run in the group, so a busy day does not queue a run per merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -18,6 +25,20 @@ jobs:
 
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
+
+      - name: Generated files match their sources
+        # The release anchors come from docs/contract/release-keys.json and the update vectors from the release test
+        # key; a hand edit, or a key added without running the tool, fails here (UPDATES.md section 3).
+        run: |
+          pip install cryptography
+          python3 tools/gen_release_anchors.py --check
+          python3 tools/mecon_update_vectors.py --check
+
+      - name: Release key tool
+        # tools/mecon_release_key.py makes the production release keys and signs manifests (UPDATES.md section 3).
+        run: |
+          pip install cryptography pytest
+          python3 -m pytest -q tools/tests
 
       - name: Run Unit Tests
         run: pio test -e native -e native_kiss_modem -vv

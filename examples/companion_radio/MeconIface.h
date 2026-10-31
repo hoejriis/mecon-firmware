@@ -6,11 +6,16 @@
 #include <stdint.h>
 #include <helpers/iface/IfaceDispatch.h>
 #include <helpers/iface/IfaceConfig.h>
+#include <helpers/iface/ChannelOps.h>
+#include <helpers/iface/MgmtChannel.h>
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/AuditLog.h>
 #include <helpers/iface/DeployAuth.h>
+#include <helpers/iface/Provenance.h>
+#include <helpers/iface/JobService.h>
+#include <helpers/updates/UpdService.h>
 
 class MyMesh;
 class BaseSerialInterface;
@@ -31,7 +36,8 @@ private:
 
 class MeconIface {
 public:
-  void begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch);
+  // epoch_saved: false when this boot's epoch could not be written, so it may repeat and nothing is signed (AUTHORITY.md 3.4).
+  void begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch, bool epoch_saved);
   // One CMD_MECON frame from the transport the current command arrived on (called while the reply is bound to it).
   void onFrame(const BaseSerialInterface* src, const uint8_t* frame, size_t len, uint32_t now);
   // Hands out pending frames, at most one per transport per call, and drops stale partial messages.
@@ -61,7 +67,7 @@ public:
   }
   uint32_t streamsProduced() const {
     return STREAMS_PRODUCED | (_conn_write ? (1u << Iface::SID_CONNECTIVITY) : 0) |
-           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0);
+           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << Iface::SID_LOCATION) : 0);
   }
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);
@@ -70,7 +76,9 @@ public:
 
   static bool streamAllow(void* self, uint8_t cls);   // may the caller of the request being handled use a stream of this class
   MyMesh* mesh() const { return _mesh; }
-  Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this}; }
+  Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this, nullptr, 0, &_confirm}; }
+  Iface::ChannelHost channelHost();   // the native channel table (channel.* operations)
+  Iface::MgmtHost mgmtHost();         // the management channel binding (mgmt.channel.*; MeconMgmt.cpp)
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
 
@@ -78,6 +86,10 @@ public:
   // Loads the record and its sequence marks from storage; called once from begin(). No record leaves a standalone device
   // with no DepState at all.
   void deployLoad();
+  // Loads the job table from its file and applies the boot rule, reverting a change that was not confirmed in time;
+  // called once from MyMesh::begin() after the prefs are loaded and before the radio and the links start.
+  void jobsLoad();
+  void mgmtLoad();   // the binding record's files and the public channel's fingerprint; from jobsLoad()
   // The channel nonce hello reports on the current link: empty when the device holds no Deployment record.
   const char* helloNonce();
   // status.deployment: nothing for a device with no record.
@@ -89,6 +101,13 @@ public:
   static Iface::Status opDeploySetUnlock(Iface::OpContext& c);
   static Iface::Status opDeployUnlockChallenge(Iface::OpContext& c);
   static Iface::Status opDeployUnlock(Iface::OpContext& c);
+  // identity.rotate (AUTHORITY.md section 11): signed, sensitive, only with a readable record.
+  static Iface::Status opIdentityRotate(Iface::OpContext& c);
+  // identity.rotation: a plain read of the rotation statement the old key signed.
+  static Iface::Status opIdentityRotation(Iface::OpContext& c);
+  // The job operations (OPERATIONS.md section 3): job.get, job.list, job.ack, job.cancel, job.confirm.
+  Iface::JobService& jobs() { return _jobs; }
+  Upd::UpdateService& updates() { return _updates; }
   // Whether the link of this serial interface holds a valid local unlock (AUTHORITY.md section 10); the CLI privilege
   // table takes it as Context.unlocked, for the cable link only.
   bool unlockedFor(const BaseSerialInterface* src);
@@ -122,6 +141,7 @@ private:
     Iface::SubSet subs;
     char nonce[33] = {0};                   // the channel nonce issued for this link (AUTHORITY.md section 7.1)
     Iface::LinkUnlock unlock;               // its local unlock challenge and state (section 10); cleared when the link drops
+    bool may_read = false;                  // its last caller may read: it gets job events (OPERATIONS.md 3.1)
   };
   static const int LINKS = 4;               // USB, BLE, TCP and one spare
 
@@ -129,11 +149,35 @@ private:
   // interface request never gets more than the same caller's CLI line would.
   static bool authorize(void* mesh, const Iface::OpEntry& op, const Iface::Request& req);
   static bool cliRun(void* self, const char* line, char* reply, size_t cap);
+  // Commit-or-revert (OPERATIONS.md 3.4; MeconDeploy.cpp): the hooks config.apply and the job table call.
+  static bool confirmCable(void* self);
+  static uint8_t confirmLineClass(void* self, const char* line);
+  static bool confirmReadSecret(void* self, const Iface::KeyDef& k, unsigned idx, char* out, size_t cap);
+  static void confirmRecordCaller(void* self, Iface::Job& j);
+  static bool confirmRunAs(void* self, const Iface::Job& j, const char* line, char* reply, size_t cap);
+  static bool confirmJobId(void* self, const Iface::Request& req, char* out, size_t cap);
+  static bool jobRevert(void* self, Iface::Job& j);
+  static bool jobConfirm(void* self, Iface::Job& j);
+  static bool updSigned(void* self);
+  static void updReboot(void* self);
+  static bool jobClasses(void* self, uint8_t cls);
+  static void jobChanged(void* self, const Iface::Job& j);
+  bool _mqtt_may_read = false;
   static bool cliAllow(void* self, const char* line);
+  static bool chanGet(void* self, int slot, Iface::ChannelInfo& out);
+  static bool chanSet(void* self, int slot, const char* name, const uint8_t* secret);
+  static int chanFind(void* self, const uint8_t* secret);
+  static bool mgmtSlotFp(void* self, int slot, uint8_t out[Iface::MGMT_FP_BYTES]);
+  static void mgmtKeyFp(void* self, const uint8_t* key, uint8_t out[Iface::MGMT_FP_BYTES]);
+  static bool mgmtReadSlot(void* self, int slot, char name[Iface::CHANNEL_NAME_MAX + 1],
+                           uint8_t key[Iface::CHANNEL_SECRET_BYTES]);
   Link* linkFor(const BaseSerialInterface* src, bool create);
   int dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
+  int dispatchNow(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
+  static void dispatchJob(void* job);
   int runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap,
                   Iface::ResultCache* cache);
+  int dispatchInner(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out, size_t cap);
   int dispatchSigned(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                      size_t cap);
   struct SignedRun;
@@ -161,17 +205,40 @@ private:
   Iface::LogFeed _logs;
   void sendEvent(int stream, const char* ev, size_t n);
   void drainLogs();
+  // The inventory stream's snapshot (TELEMETRY.md): started when the stream is due (a new subscription, each period),
+  // then one page per pass, at most INV_PAGES_PER_S a second, so a long contact list never holds the RF loop.
+  void startInventory(uint32_t now);
+  void inventoryTick(uint32_t now);
+  static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
+  static const uint32_t INV_PAGE_MS = 200;
+  bool _inv_active = false;
+  uint32_t _inv_snapshot = 0, _inv_part = 0, _inv_next = 0;
+  int _inv_channel = 0;
+  int _inv_cursor = 0;   // the contact store's cursor (record ids), kept between pages
+  bool _inv_again = false;   // another snapshot is due once this one ends
+  Cli::Context _link_ctx;   // the transport's own context of the request being handled (a signature replaces _ctx)
   ConnWriteFn _conn_write = nullptr;
   ConnSignatureFn _conn_sig = nullptr;
   uint64_t _conn_last = 0;
   bool _env_ok = false;          // the environment stream has something to report (sensors start after the mesh)
+  bool _loc_ok = false;          // the build has a location provider (the location stream)
   bool _env_checked = false;
   void refreshEnvironment(uint32_t now);
   uint32_t _env_at = 0;
   bool writeStream(int stream, Iface::JsonWriter& w);
   uint8_t _caller = 0;                      // its audit identity (Posture::CALLER_*)
+  Iface::Provenance _prov;                  // signs every result and event while a record exists (section 3.4)
+  mesh::LocalIdentity* _old_id = nullptr;   // the key identity.rotate retired: signs that one result, then is wiped
+  void sendSmall(Link& l, Iface::Status st, const char* error);
   Iface::DeployAuth _auth;                  // the record, its marks and the signed-request checks (shared with the servers)
   DataStoreCopies _copies;
+  Iface::JobService _jobs;                  // config.apply with confirm creates the jobs (OPERATIONS.md 3.4)
+  Upd::UpdateService _updates;              // the update operations and their install (UPDATES.md sections 5 to 8)
+  Iface::ConfirmHost _confirm = {};         // filled by jobsLoad(); until then nothing can be applied tentatively
+  bool _jobs_booting = false;
+  Iface::ChannelHost _chan_host = {};       // the table mgmtHost() hands out
+  uint8_t _public_fp[Iface::MGMT_FP_BYTES] = {0};   // the public channel's key fingerprint, set by mgmtLoad()
+  uint32_t _reboot_at = 0;                  // a revert restored a key, or an update activated or reverted an image (0: none)
   const char* _deny = nullptr;              // why authorize() refused, when it has a contract code for it
   char _mqtt_nonce[33] = {0};               // the MQTT session is one link
   char _id_hex[33] = {0};

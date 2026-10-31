@@ -1,6 +1,7 @@
 #include "UITask.h"
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
+#include <helpers/DisplayPrivacy.h>   // issue #113: what the screen shows per posture
 #include "target.h"
 #include "u8g2_icons.h"
 
@@ -184,7 +185,8 @@ public:
         display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, display.height()-8, "< Connected >");
 
-      } else if (the_mesh.getBLEPin() != 0) { // BT pin
+      } else if (DisplayPrivacy::showsPairingPin(the_mesh.getNodePrefs()->posture, the_mesh.getBLEPin(),   // issue #113
+                                                 _task->isBluetoothEnabled(), _task->isBleConnected())) { // BT pin
         display.setColor(UIColor::warning_txt);
         display.setTextSize(2);
         sprintf(tmp, "Pin:%d", the_mesh.getBLEPin());
@@ -211,7 +213,8 @@ public:
 
         char filtered_recent_name[sizeof(a->name)];
         display.translateUTF8ToBlocks(filtered_recent_name, a->name, sizeof(filtered_recent_name));
-        display.drawTextEllipsized(0, y, max_name_width, filtered_recent_name);
+        display.drawTextEllipsized(0, y, max_name_width,   // issue #113: names hidden in Hardened
+                                   DisplayPrivacy::showsNames(the_mesh.getNodePrefs()->posture) ? filtered_recent_name : DisplayPrivacy::HIDDEN_NAME);
         display.setCursor(display.width() - timestamp_width - 1, y);
         display.print(tmp);
       }
@@ -696,9 +699,19 @@ void UITask::loop() {
 
   if (curr) curr->poll();
 
+  // Issue #113: on a posture change, redraw now; on e-ink the full refresh also clears the retained image.
+  if (_display != NULL && _posture_watch.changed(the_mesh.getNodePrefs()->posture)) {
+    _display->forceFullRefresh();
+    _next_refresh = 0;
+  }
+
   if (_display != NULL && _display->isOn()) {
+        // Issue #113: the status bar's node name carries the posture marker in Hardened.
+        char titled_name[sizeof(_node_prefs->node_name) + 8];
+        const char* badge = DisplayPrivacy::postureBadge(the_mesh.getNodePrefs()->posture);
+        snprintf(titled_name, sizeof(titled_name), "%s%s", badge ? badge : "", _node_prefs->node_name);
         _statusBar.update(*_display,
-        _node_prefs->node_name,
+        titled_name,
         _cached_batt_mv,
         isBuzzerQuiet(),
         getGPSState(),

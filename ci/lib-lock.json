@@ -1,0 +1,2650 @@
+{
+ "about": "The exact libraries each release environment links (tools/lib_lock.py). CI installs these before a build and fails when a build resolves anything else.",
+ "envs": {
+  "Heltec_v3_companion_radio_ble": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "NimBLE-Arduino",
+    "owner": "h2zero",
+    "version": "2.3.9"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "Heltec_v3_companion_radio_standalone": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "NimBLE-Arduino",
+    "owner": "h2zero",
+    "version": "2.3.9"
+   },
+   {
+    "name": "PubSubClient",
+    "owner": "knolleary",
+    "version": "2.8.0"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "Heltec_v3_companion_radio_usb": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "Heltec_v3_companion_radio_wifi": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "PubSubClient",
+    "owner": "knolleary",
+    "version": "2.8.0"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "Heltec_v3_repeater": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "AsyncElegantOTA",
+    "uri": "file://arch/esp32/AsyncElegantOTA"
+   },
+   {
+    "name": "AsyncTCP",
+    "owner": "esp32async",
+    "version": "3.5.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "CRC32",
+    "owner": "bakercp",
+    "version": "2.0.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "ESPAsyncWebServer",
+    "owner": "esp32async",
+    "version": "3.10.3"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "Heltec_v3_room_server": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "AsyncElegantOTA",
+    "uri": "file://arch/esp32/AsyncElegantOTA"
+   },
+   {
+    "name": "AsyncTCP",
+    "owner": "esp32async",
+    "version": "3.5.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "ESPAsyncWebServer",
+    "owner": "esp32async",
+    "version": "3.10.3"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "LilyGo_TLora_V2_1_1_6_companion_radio_ble": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "NimBLE-Arduino",
+    "owner": "h2zero",
+    "version": "2.3.9"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "WioTrackerL1_companion_radio_ble": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "NonBlockingRTTTL",
+    "owner": "end2endzone",
+    "version": "1.4.0"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "WioTrackerL1_companion_radio_usb": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "NonBlockingRTTTL",
+    "owner": "end2endzone",
+    "version": "1.4.0"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "WioTrackerL1_repeater": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "heltec_v4_companion_radio_ble": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "NimBLE-Arduino",
+    "owner": "h2zero",
+    "version": "2.3.9"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "heltec_v4_companion_radio_standalone": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "NimBLE-Arduino",
+    "owner": "h2zero",
+    "version": "2.3.9"
+   },
+   {
+    "name": "PubSubClient",
+    "owner": "knolleary",
+    "version": "2.8.0"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "heltec_v4_companion_radio_usb": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "heltec_v4_companion_radio_wifi": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "PubSubClient",
+    "owner": "knolleary",
+    "version": "2.8.0"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "heltec_v4_repeater": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "AsyncElegantOTA",
+    "uri": "file://arch/esp32/AsyncElegantOTA"
+   },
+   {
+    "name": "AsyncTCP",
+    "owner": "esp32async",
+    "version": "3.5.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "CRC32",
+    "owner": "bakercp",
+    "version": "2.0.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "ESPAsyncWebServer",
+    "owner": "esp32async",
+    "version": "3.10.3"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "heltec_v4_room_server": [
+   {
+    "name": "Adafruit AHTX0",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BME280 Library",
+    "owner": "adafruit",
+    "version": "2.3.0"
+   },
+   {
+    "name": "Adafruit BME680 Library",
+    "owner": "adafruit",
+    "version": "2.0.6"
+   },
+   {
+    "name": "Adafruit BMP085 Library",
+    "owner": "adafruit",
+    "version": "1.2.4"
+   },
+   {
+    "name": "Adafruit BMP280 Library",
+    "owner": "adafruit",
+    "version": "2.6.8"
+   },
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit GFX Library",
+    "owner": "adafruit",
+    "version": "1.13.0"
+   },
+   {
+    "name": "Adafruit INA219",
+    "owner": "adafruit",
+    "version": "1.2.3"
+   },
+   {
+    "name": "Adafruit INA260 Library",
+    "owner": "adafruit",
+    "version": "1.5.4"
+   },
+   {
+    "name": "Adafruit INA3221 Library",
+    "owner": "adafruit",
+    "version": "1.0.1"
+   },
+   {
+    "name": "Adafruit MLX90614 Library",
+    "owner": "adafruit",
+    "version": "2.1.7"
+   },
+   {
+    "name": "Adafruit NeoPixel",
+    "owner": "adafruit",
+    "version": "1.15.5"
+   },
+   {
+    "name": "Adafruit SH110X",
+    "owner": "adafruit",
+    "version": "2.1.15"
+   },
+   {
+    "name": "Adafruit SHTC3 Library",
+    "owner": "adafruit",
+    "version": "1.0.2"
+   },
+   {
+    "name": "Adafruit SSD1306",
+    "owner": "adafruit",
+    "version": "2.5.17"
+   },
+   {
+    "name": "Adafruit Unified Sensor",
+    "owner": "adafruit",
+    "version": "1.1.15"
+   },
+   {
+    "name": "Adafruit_VL53L0X",
+    "owner": "adafruit",
+    "version": "1.2.5"
+   },
+   {
+    "name": "Arduino_LPS22HB",
+    "owner": "arduino-libraries",
+    "version": "1.0.3"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "AsyncElegantOTA",
+    "uri": "file://arch/esp32/AsyncElegantOTA"
+   },
+   {
+    "name": "AsyncTCP",
+    "owner": "esp32async",
+    "version": "3.5.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "ESPAsyncWebServer",
+    "owner": "esp32async",
+    "version": "3.10.3"
+   },
+   {
+    "name": "INA226",
+    "owner": "robtillaart",
+    "version": "0.6.6"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Sensirion Core",
+    "owner": "sensirion",
+    "version": "0.7.3"
+   },
+   {
+    "name": "Sensirion I2C SHT4x",
+    "owner": "sensirion",
+    "version": "1.1.2"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "t1000e_companion_radio_ble": [
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "NonBlockingRTTTL",
+    "owner": "end2endzone",
+    "version": "1.4.0"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "t1000e_companion_radio_usb": [
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "NonBlockingRTTTL",
+    "owner": "end2endzone",
+    "version": "1.4.0"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "t1000e_repeater": [
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "MicroNMEA",
+    "owner": "stevemarple",
+    "version": "2.0.6"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ],
+  "wio-e5-mini_companion_radio_usb": [
+   {
+    "name": "Adafruit BusIO",
+    "owner": "adafruit",
+    "version": "1.17.4"
+   },
+   {
+    "name": "Adafruit Little File System Libraries",
+    "uri": "file://arch/stm32/Adafruit_LittleFS_stm32"
+   },
+   {
+    "name": "ArduinoJson",
+    "owner": "bblanchon",
+    "version": "7.4.3"
+   },
+   {
+    "name": "base64",
+    "owner": "densaugeo",
+    "version": "1.4.0"
+   },
+   {
+    "name": "BME280",
+    "owner": "finitespace",
+    "version": "3.0.0"
+   },
+   {
+    "name": "CayenneLPP",
+    "owner": "electroniccats",
+    "version": "1.6.1"
+   },
+   {
+    "name": "Crypto",
+    "owner": "rweather",
+    "version": "0.4.0"
+   },
+   {
+    "name": "Melopero RV3028",
+    "owner": "melopero",
+    "version": "1.2.0"
+   },
+   {
+    "name": "RTClib",
+    "owner": "adafruit",
+    "version": "2.1.4"
+   },
+   {
+    "name": "Unity",
+    "owner": "throwtheswitch",
+    "version": "2.6.1"
+   }
+  ]
+ }
+}

@@ -1,11 +1,16 @@
 #include "MeconIface.h"
+#include <helpers/Uptime.h>
+#include <helpers/iface/DevIdHello.h>
+#include <helpers/iface/Wipe.h>
 #ifdef ENABLE_MECON_IFACE
 #include "MyMesh.h"
 #include <helpers/MeconVersion.h>
 #include <helpers/MemStats.h>
+#include <helpers/NrfWorker.h>
 #include <helpers/HeapFloor.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliPolicy.h>
+#include <helpers/cli/MeconCli.h>
 #include <helpers/cli/CliRegistry.h>
 #include <helpers/BaseSerialInterface.h>
 #include <helpers/CryptoRNG.h>
@@ -32,7 +37,14 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock"};
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
+                                    "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
+                                    "update.manifest", "update.status", "update.offer", "update.chunk"
+#ifdef MAX_GROUP_CHANNELS
+                                    , "channel.list", "channel.get", "channel.put", "channel.remove",
+                                    "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
+#endif
+                                    };
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
@@ -41,6 +53,23 @@ Status opGet(OpContext& c);
 Status opApply(OpContext& c);
 Status opSubStart(OpContext& c);
 Status opSubStop(OpContext& c);
+Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
+Status opJobList(OpContext& c) { return self(c)->jobs().opList(c); }
+Status opJobAck(OpContext& c) { return self(c)->jobs().opAck(c); }
+Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
+Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
+Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, millis()); }
+Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
+Status opUpdOffer(OpContext& c) { return self(c)->updates().opOffer(c, millis()); }
+Status opUpdChunk(OpContext& c) { return self(c)->updates().opChunk(c, millis()); }
+Status opChanList(OpContext& c);
+Status opChanGet(OpContext& c);
+Status opChanPut(OpContext& c);
+Status opChanRemove(OpContext& c);
+Status opMgmtGetW(OpContext& c);
+Status opMgmtBindW(OpContext& c);
+Status opMgmtRotateW(OpContext& c);
+Status opMgmtUnbindW(OpContext& c);
 
 // The operation's class is the least it needs; each config key is decided again by its own CLI line (IfaceConfig).
 const OpEntry OPS[] = {
@@ -59,6 +88,35 @@ const OpEntry OPS[] = {
   // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
   {"deployment.unlock_challenge", MeconIface::opDeployUnlockChallenge, PRIV_WRITE, false},
   {"deployment.unlock", MeconIface::opDeployUnlock, PRIV_WRITE, false},
+  {"identity.rotate", MeconIface::opIdentityRotate, PRIV_WRITE, false},   // never answered from the cache: it must run once
+  {"identity.rotation", MeconIface::opIdentityRotation, PRIV_READ, false},
+  // Reading a job and acknowledging its result are of the read class (the result belongs to whoever may read it);
+  // cancelling and confirming change the device. The three that change something keep their result (OPERATIONS.md 5.1).
+  {"job.get", opJobGet, PRIV_READ, false},
+  {"job.list", opJobList, PRIV_READ, false},
+  {"job.ack", opJobAck, PRIV_READ, true},
+  {"job.cancel", opJobCancel, PRIV_WRITE, true},
+  {"job.confirm", opJobConfirm, PRIV_WRITE, true},
+  // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
+  {"update.manifest", opUpdManifest, PRIV_READ, false},
+  {"update.status", opUpdStatus, PRIV_READ, false},
+  // The offer is of the update class and keeps its result: a retry gets the same job and transfer token back. A chunk
+  // is authorised by that token (DeployAuth::preAuthorize lets it through to the handler) and is not kept: its answer
+  // is the offset expected next, which a retry asks again.
+  {"update.offer", opUpdOffer, PRIV_UPDATE, true},
+  {"update.chunk", opUpdChunk, PRIV_READ, false},
+#ifdef MAX_GROUP_CHANNELS
+  // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
+  {"channel.list", opChanList, PRIV_READ, false},
+  {"channel.get", opChanGet, PRIV_READ, false},
+  {"channel.put", opChanPut, PRIV_WRITE, true},
+  {"channel.remove", opChanRemove, PRIV_WRITE, true},
+  // The management channel binding (MANAGEMENT_CHANNEL.md); bind, rotate and unbind confirm-or-revert for a remote caller.
+  {"mgmt.channel.get", opMgmtGetW, PRIV_READ, false},
+  {"mgmt.channel.bind", opMgmtBindW, PRIV_WRITE, true},
+  {"mgmt.channel.rotate", opMgmtRotateW, PRIV_WRITE, true},
+  {"mgmt.channel.unbind", opMgmtUnbindW, PRIV_WRITE, true},
+#endif
 };
 
 }  // namespace
@@ -76,11 +134,14 @@ Status opHello(OpContext& c) {
   w.key("interface"); w.str("1.0");
   w.key("device_id"); w.str(m->deviceIdHex());
   w.key("node_key"); w.str(key);
+  const Status ds = writeDeviceIdSig(c, mesh->self_id, m->deviceIdHex());
+  if (ds != ST_OK) return ds;
   w.key("role"); w.str("companion");
   w.key("hardware"); w.str(mesh->hardwareName());
   w.key("firmware"); w.str(mecon::versionFull());
   w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
   w.key("epoch"); w.unum(m->epoch());
+  m->updates().writeAttestation(w);   // the image of an update job, while it awaits confirmation (UPDATES.md section 7)
   // The channel nonce of the link this reply goes to, only once a Deployment record exists (AUTHORITY.md section 7.1).
   const char* nonce = m->helloNonce();
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
@@ -93,7 +154,7 @@ Status opHello(OpContext& c) {
 
 // The health fields, shared by status.get and the health stream so the two never disagree.
 void writeHealth(JsonWriter& w, MyMesh* mesh) {
-  w.key("uptime_s"); w.unum(millis() / 1000);
+  w.key("uptime_s"); w.unum(Uptime::secs(millis()));
   const MemStats ms = memStats();
   w.key("heap");
   if (!ms.known) w.null();
@@ -126,6 +187,8 @@ Status opStatus(OpContext& c) {
 #endif
   w.key("posture"); w.str(Posture::isHardened(mesh->postureValue()) ? "hardened" : "normal");
   m->writeDeploymentStatus(w, Posture::isHardened(mesh->postureValue()));
+  m->jobs().writeStatus(w);
+  m->updates().writeAttestation(w);
   return ST_OK;
 }
 
@@ -156,7 +219,92 @@ Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
 
+Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
+  ChannelHost host = self(c)->channelHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opChanList(OpContext& c) { return withChannels(c, opChannelList); }
+Status opChanGet(OpContext& c) { return withChannels(c, opChannelGet); }
+// A write to the management channel's own slot goes through the binding: confirm-or-revert for a remote caller.
+Status opChanPut(OpContext& c) {
+  MgmtHost h = self(c)->mgmtHost();
+  return mgmtGuardChannel(c, h, opChannelPut, "channel.put");
+}
+Status opChanRemove(OpContext& c) {
+  MgmtHost h = self(c)->mgmtHost();
+  return mgmtGuardChannel(c, h, opChannelRemove, "channel.remove");
+}
+
+Status withMgmt(OpContext& c, Status (*op)(OpContext&)) {
+  MgmtHost host = self(c)->mgmtHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opMgmtGetW(OpContext& c) { return withMgmt(c, opMgmtGet); }
+Status opMgmtBindW(OpContext& c) { return withMgmt(c, opMgmtBind); }
+Status opMgmtRotateW(OpContext& c) { return withMgmt(c, opMgmtRotate); }
+Status opMgmtUnbindW(OpContext& c) { return withMgmt(c, opMgmtUnbind); }
+
 }  // namespace
+
+// ---- channels: the native table
+
+ChannelHost MeconIface::channelHost() {
+#ifdef MAX_GROUP_CHANNELS
+  return ChannelHost{MAX_GROUP_CHANNELS, chanGet, chanSet, chanFind, this};
+#else
+  return ChannelHost{0, chanGet, chanSet, chanFind, this};
+#endif
+}
+
+bool MeconIface::chanGet(void* user, int slot, ChannelInfo& out) {
+  ChannelDetails ch;
+  if (!static_cast<MeconIface*>(user)->_mesh->getChannel(slot, ch)) return false;
+  memcpy(out.name, ch.name, CHANNEL_NAME_MAX);
+  out.name[CHANNEL_NAME_MAX] = 0;
+  out.hash = ch.channel.hash[0];
+  static const uint8_t ZERO[16] = {0};
+  out.key_bytes = memcmp(&ch.channel.secret[16], ZERO, 16) == 0 ? 16 : 32;   // as setChannel() hashes it
+  out.keyed = memcmp(ch.channel.secret, ZERO, 16) != 0 || out.key_bytes == 32;
+  wipe(&ch, sizeof(ch));
+  return true;
+}
+
+// Writes the slot and saves the table, as the native CMD_SET_CHANNEL frame does. When the save fails, the slot's
+// previous contents go back into RAM, so RAM and flash agree and a removed key cannot return after a reboot. An
+// empty name with an all-zero key is how the app clears a slot.
+bool MeconIface::chanSet(void* user, int slot, const char* name, const uint8_t* secret) {
+  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
+  ChannelDetails ch, before;
+  if (!mesh->getChannel(slot, before)) return false;
+  memset(&ch, 0, sizeof(ch));
+  StrHelper::strncpy(ch.name, name, sizeof(ch.name));
+  memcpy(ch.channel.secret, secret, CHANNEL_SECRET_BYTES);
+  bool ok = mesh->setChannel(slot, ch);
+  if (ok && !mesh->saveChannels()) {
+    mesh->setChannel(slot, before);
+    ok = false;
+  }
+  wipe(&ch, sizeof(ch));
+  wipe(&before, sizeof(before));
+  return ok;
+}
+
+int MeconIface::chanFind(void* user, const uint8_t* secret) {
+  mesh::GroupChannel g;
+  memset(&g, 0, sizeof(g));
+  memcpy(g.secret, secret, CHANNEL_SECRET_BYTES);
+  const int slot = static_cast<MeconIface*>(user)->_mesh->findChannelIdx(g);
+  wipe(&g, sizeof(g));
+  return slot;
+}
 
 // ---- settings: the caller's CLI
 
@@ -185,7 +333,8 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   MeconIface* self = static_cast<MeconIface*>(user);
   self->_deny = nullptr;
   // Open to any caller that can reach the interface: the read of the stored set (it reveals nothing secret), and the
-  // DAK-signed authority update (it carries its own proof; AUTHORITY.md sections 6.2 and 6.3).
+  // DAK-signed authority update (it carries its own proof; AUTHORITY.md sections 6.2 and 6.3). identity.rotation is not:
+  // the rotation statement names device_id, which an untrusted link must not learn (section 3.5).
   if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return true;
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
@@ -195,8 +344,15 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
     case Iface::DeployAuth::PRE_DENY: return false;
     case Iface::DeployAuth::PRE_TABLE: break;
   }
-  const uint8_t cls = op.priv == PRIV_READ ? Cli::C_READ : op.priv == PRIV_WRITE ? Cli::C_WRITE : Cli::C_POSTURE;
-  return Cli::decide(self->_ctx, cls).allow;
+  const uint8_t cls = op.priv == PRIV_READ    ? Cli::C_READ
+                      : op.priv == PRIV_WRITE  ? Cli::C_WRITE
+                      : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
+                                               : Cli::C_POSTURE;
+  // A refusal says why, in the CLI's words (broker-not-verified, untrusted-transport, enrolled-unsigned, ...): a bare
+  // "refused" cannot be told from any other.
+  const Cli::Verdict v = Cli::decide(self->_ctx, cls);
+  if (!v.allow) self->_deny = Cli::reasonName(v.reason);
+  return v.allow;
 }
 
 const char* MeconIface::denyReason(void* user) { return static_cast<MeconIface*>(user)->_deny; }
@@ -209,13 +365,67 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
   _auth.setContext(_ctx);
   _caller = caller;
   _cur_link = link;
+  (link ? link->may_read : _mqtt_may_read) = Cli::decide(ctx, Cli::C_READ).allow;
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
+  d.setAnswering(&_auth.answering());
   return d.handle(msg, len, out, cap, cache);
+}
+
+// Every result of the interface is signed while a record exists (AUTHORITY.md section 3.4), whichever path produced it.
+namespace {
+struct DispatchJob {
+  MeconIface* m;
+  const Cli::Context* ctx;
+  uint8_t caller;
+  void* link;
+  const char* msg;
+  size_t len;
+  char* out;
+  size_t cap;
+  int n;
+};
+}  // namespace
+
+// The request's whole work runs on the nRF52 worker's stack (helpers/NrfWorker.h, #158); elsewhere it runs inline.
+__attribute__((noinline)) void MeconIface::dispatchJob(void* p) {
+  DispatchJob* j = static_cast<DispatchJob*>(p);
+  j->n = j->m->dispatchNow(*j->ctx, j->caller, static_cast<Link*>(j->link), j->msg, j->len, j->out, j->cap);
 }
 
 int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
                          size_t cap) {
+  DispatchJob j = {this, &ctx, caller, link, msg, len, out, cap, -1};
+  if (NrfWorker::run(dispatchJob, &j, 15000)) {
+#ifdef ENABLE_CONNMODE
+    // The reply is written and goes out on this pass: a restart the request asked for (connectivity.mode) counts its
+    // 1.5 s from here, not from the line inside the request. A nine-key config.apply took 5.6 s on a Heltec V3.
+    _mesh->restartConnectivityClock();
+#endif
+    _updates.replyWritten(millis());   // the reply goes out on this pass: a DFU reset the request asked for waits for it
+    return j.n;
+  }
+  // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature.
+  static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
+  if (cap <= sizeof(W)) return -1;
+  memcpy(out, W, sizeof(W));
+  return (int)sizeof(W) - 1;
+}
+
+__attribute__((noinline)) int MeconIface::dispatchNow(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg,
+                                                      size_t len, char* out, size_t cap) {
+  _auth.answering().clear();
+  const bool was_enrolled = _auth.enrolled();
+  int n = dispatchInner(ctx, caller, link, msg, len, out, cap);
+  if (n > 0) n = _prov.signResult(out, (size_t)n, cap, _old_id, &_auth.answering(), was_enrolled);
+  _auth.answering().clear();
+  if (_old_id) { Iface::wipe(_old_id, sizeof(*_old_id)); delete _old_id; _old_id = nullptr; }   // the retired key lives for one result
+  return n;
+}
+
+int MeconIface::dispatchInner(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg, size_t len, char* out,
+                              size_t cap) {
+  _link_ctx = ctx;   // the transport's own context, before any signature replaces it
   _ctx = ctx;
   _auth.setContext(ctx);
   _caller = caller;
@@ -234,18 +444,27 @@ size_t MeconIface::onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t le
   return n > 0 ? (size_t)n : 0;
 }
 
-void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch) {
+void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch, bool epoch_saved) {
   _mesh = mesh;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   deployLoad();
+  _prov.begin(&_mesh->self_id, &_auth, epoch, epoch_saved);
+  _updates.begin(_mesh->hardwareName(), "companion", _mesh->hardwareNames());
   observeSink().fn = onObserve;
   observeSink().user = this;
 }
 
 // Whether the caller of the request being handled may use a stream of this class: the CLI privilege table with its
 // real context, as for the CLI line the data would come from.
-bool MeconIface::streamAllow(void* user, uint8_t cls) { return Cli::decide(static_cast<MeconIface*>(user)->_ctx, cls).allow; }
+// A stream beyond read (logs, the private streams) also needs the link that will carry it to be allowed it by itself: a
+// signature authorises the request, not the wire, so a signed sub.start on the open TCP port or a default-PIN BLE link
+// does not send positions or contacts over that link.
+bool MeconIface::streamAllow(void* user, uint8_t cls) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  if (!Cli::decide(m->_ctx, cls).allow) return false;
+  return cls == Cli::C_READ || Cli::decide(m->_link_ctx, cls).allow;
+}
 
 // One received packet: an observations event to every transport subscribed, within the stream's rate.
 void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
@@ -258,8 +477,10 @@ void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
   if (!ev) { m->_obs.dropped++; return; }
   const uint32_t ts = m->_mesh->getRTCClock()->getCurrentTime();
-  const int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts >= 1704067200, ts, snr, rssi, raw, len,
+  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts >= 1704067200, ts, snr, rssi, raw, len,
                                  m->_obs.dropped);
+  if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);   // -1: not signable, so not sent
+  if (n <= 0) m->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing
   if (n > 0) {
     m->_obs.dropped = 0;
     for (Link& l : m->_links) {
@@ -290,9 +511,18 @@ bool MeconIface::ensureQueue(Link& l) {
 bool MeconIface::queueResult(Link& l, const char* msg, size_t len) {
   if (!ensureQueue(l)) return false;
   if (l.q->push(OutQueue::RESULT, reinterpret_cast<const uint8_t*>(msg), len) == OutQueue::PUSH_OK) return true;
-  char busy[96];   // fits what events must leave free (RESULT_RESERVE)
+  char busy[320];   // signed, still well inside what events must leave free (RESULT_RESERVE)
   int n = writeResult(busy, sizeof(busy), "", ST_BUSY, nullptr, "queue-full");
+  if (n > 0) n = _prov.signResult(busy, (size_t)n, sizeof(busy));
   return n > 0 && l.q->push(OutQueue::RESULT, reinterpret_cast<const uint8_t*>(busy), (size_t)n) == OutQueue::PUSH_OK;
+}
+
+// A short result the interface itself raises (no request ran): signed like any other.
+void MeconIface::sendSmall(Link& l, Status st, const char* error) {
+  char msg[320];
+  int n = writeResult(msg, sizeof(msg), "", st, nullptr, error);
+  if (n > 0) n = _prov.signResult(msg, (size_t)n, sizeof(msg));
+  if (n > 0) queueResult(l, msg, (size_t)n);
 }
 
 void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, size_t len, uint32_t now) {
@@ -301,14 +531,10 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
   RxResult r = l->rx.feed(frame, len, now);
   uint8_t xid;
   if (l->rx.takeDiscard(&xid)) {
-    char msg[96];
-    int n = writeResult(msg, sizeof(msg), "", ST_INVALID, nullptr, "incomplete");
-    if (n > 0) queueResult(*l, msg, (size_t)n);
+    sendSmall(*l, ST_INVALID, "incomplete");
   }
   if (r == RX_NOMEM) {
-    char msg[96];
-    int n = writeResult(msg, sizeof(msg), "", ST_BUSY, nullptr, "no-memory");
-    if (n > 0) queueResult(*l, msg, (size_t)n);
+    sendSmall(*l, ST_BUSY, "no-memory");
     return;
   }
   if (r != RX_COMPLETE) return;
@@ -319,9 +545,7 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
     int n = dispatch(ctx, caller, l, reinterpret_cast<const char*>(l->rx.data()), l->rx.size(), out, RESULT_MAX + 1);
     if (n > 0) queueResult(*l, out, (size_t)n);
   } else {
-    char msg[96];
-    int n = writeResult(msg, sizeof(msg), "", ST_BUSY, nullptr, "no-memory");
-    if (n > 0) queueResult(*l, msg, (size_t)n);
+    sendSmall(*l, ST_BUSY, "no-memory");
   }
   free(out);
   l->rx.release();
@@ -332,6 +556,7 @@ void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, s
 void MeconIface::refreshEnvironment(uint32_t now) {
   if (_env_checked && now - _env_at < 60000) return;
   _env_ok = countEnvironment(sensors, board) > 0;
+  _loc_ok = sensors.getLocationProvider() != nullptr;   // the location stream: a build with a GNSS provider
   _env_checked = true;
   _env_at = now;
 }
@@ -359,18 +584,13 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
     case SID_ENVIRONMENT:
       if (writeEnvironment(w, sensors, board) == 0) return false;   // nothing to report this time
       break;
-    case SID_INVENTORY: {
-      writeCount(w, "contacts", _mesh->getNumContacts(), _mesh->getContactCapacity());
-      int channels = 0, capacity = 0;
-#ifdef MAX_GROUP_CHANNELS
-      capacity = MAX_GROUP_CHANNELS;
-      ChannelDetails ch;
-      for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
-        if (_mesh->getChannel(i, ch) && ch.name[0]) channels++;
-#endif
-      writeCount(w, "channels", channels, capacity);
+    case SID_LOCATION: {
+      LocationFix fix;
+      if (!readLocation(sensors.getLocationProvider(), fix)) return false;
+      writeLocation(w, fix);
       break;
     }
+    case SID_INVENTORY: return false;   // paged: streamTick hands it to startInventory, and inventoryTick builds the pages
     case SID_CONNECTIVITY:
       if (!_conn_write) return false;
       _conn_write(w);
@@ -406,11 +626,13 @@ void MeconIface::streamTick(uint32_t now) {
   const bool ts_known = ts >= 1704067200;   // 2024-01-01: an RTC that has never been set reads far earlier
   for (int s = 0; s < STREAM_COUNT; s++) {
     if (!(due & (1u << s))) continue;
+    if (s == SID_INVENTORY) { startInventory(now); continue; }   // paged: inventoryTick sends it
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;
-    char ev[640];
-    const int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, ts_known, ts, data);
+    char ev[800];   // an event of up to 640 bytes, and its signature
+    int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, ts_known, ts, data);
+    if (n > 0) n = _prov.sign(STREAMS[s].name, ev, (size_t)n, sizeof(ev));   // -1: not signable, so not sent
     if (n <= 0) continue;
     sendEvent(s, ev, (size_t)n);
   }
@@ -462,21 +684,120 @@ void MeconIface::drainLogs() {
   }
 }
 
+void MeconIface::startInventory(uint32_t now) {
+  if (_inv_active) { _inv_again = true; return; }   // finish this one, then send another: never restarted, so no caller can
+                                                    // keep a Backend from ever completing a snapshot
+  _inv_active = true;
+  _inv_snapshot++;
+  _inv_part = 0;
+  _inv_channel = 0;
+  _inv_cursor = 0;
+  _inv_next = now;
+}
+
+void MeconIface::inventoryTick(uint32_t now) {
+  if (!_inv_active || (int32_t)(now - _inv_next) < 0) return;
+  bool any = _mqtt_subs.s[SID_INVENTORY].active;
+  for (Link& l : _links) {
+    if (!l.subs.s[SID_INVENTORY].active) continue;
+    any = true;
+    if (l.q && !l.q->eventFits(INV_EVENT)) { _inv_next = now + INV_PAGE_MS; return; }   // wait until the page fits
+  }
+  if (!any) { _inv_active = false; _inv_again = false; return; }
+  char* data = static_cast<char*>(malloc(INV_DATA));
+  char* ev = static_cast<char*>(malloc(INV_EVENT));
+  if (!data || !ev) { free(data); free(ev); _inv_next = now + 1000; return; }   // no heap now: try again in a second
+  int channels = 0, ch_cap = 0;
+#ifdef MAX_GROUP_CHANNELS
+  ch_cap = MAX_GROUP_CHANNELS;
+  {
+    ChannelDetails ch;
+    for (int i = 0; i < MAX_GROUP_CHANNELS; i++)
+      if (_mesh->getChannel(i, ch) && ch.name[0]) channels++;
+    Iface::wipe(&ch, sizeof(ch));   // the copy holds a channel's secret
+  }
+#endif
+  InventoryPage page(data, INV_DATA);
+  bool ok = page.begin(_inv_snapshot, ++_inv_part, _mesh->getNumContacts(), _mesh->getContactCapacity(), channels, ch_cap);
+  char entry[400];
+  bool full = false, done = false;
+#ifdef MAX_GROUP_CHANNELS
+  for (; ok && _inv_channel < MAX_GROUP_CHANNELS; _inv_channel++) {
+    ChannelDetails ch;
+    const bool got = _mesh->getChannel(_inv_channel, ch);
+    char name[sizeof(ch.name) + 1];
+    memcpy(name, ch.name, sizeof(ch.name)); name[sizeof(ch.name)] = 0;
+    Iface::wipe(&ch, sizeof(ch));   // the copy holds the channel's secret; only the name is used below
+    if (!got || !name[0]) continue;
+    JsonWriter w(entry, sizeof(entry));
+    writeChannelEntry(w, _inv_channel, name);   // the name only: never the channel's secret
+    if (!w.ok()) continue;
+    if (!page.add(entry, w.size())) { full = true; break; }   // this channel opens the next page
+  }
+#endif
+  while (ok && !full) {
+    const int before = _inv_cursor;
+    ContactInfo c;
+    if (!_mesh->contactStore().next(_inv_cursor, c)) { done = true; break; }
+    char name[sizeof(c.name) + 1];
+    memcpy(name, c.name, sizeof(c.name)); name[sizeof(c.name)] = 0;
+    ContactEntry e{};
+    memcpy(e.key, c.id.pub_key, 32);
+    e.name = name;
+    e.type = c.type;
+    e.fav = c.isFav();
+    e.last_advert = c.last_advert_timestamp;
+    e.hops = c.out_path_len == OUT_PATH_UNKNOWN ? -1 : (int16_t)(c.out_path_len & 63);
+    e.has_pos = c.gps_lat != 0 || c.gps_lon != 0;
+    e.lat_e6 = c.gps_lat;
+    e.lon_e6 = c.gps_lon;
+    Iface::wipe(&c, sizeof(c));   // the copy may hold a cached shared secret
+    JsonWriter w(entry, sizeof(entry));
+    writeContactEntry(w, e);   // no shared secret, no path bytes
+    if (!w.ok()) continue;
+    if (!page.add(entry, w.size())) {
+      if (page.count() == 0) continue;   // cannot fit even an empty page: skipped rather than stall the snapshot
+      _inv_cursor = before;              // this contact opens the next page
+      full = true;
+    }
+  }
+  const size_t dn = ok ? page.finish(done) : 0;
+  if (dn) {
+    const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
+    int n = writeEvent(ev, INV_EVENT, STREAMS[SID_INVENTORY].name, ++_clock.seq[SID_INVENTORY], _epoch, ts >= 1704067200,
+                       ts, data);
+    if (n > 0) n = _prov.sign(STREAMS[SID_INVENTORY].name, ev, (size_t)n, INV_EVENT);
+    if (n > 0) sendEvent(SID_INVENTORY, ev, (size_t)n);   // a page that is not sent is not retried: the next snapshot is
+  }
+  if (done || !ok || !dn) {
+    _inv_active = false;
+    if (_inv_again) { _inv_again = false; startInventory(now + INV_PAGE_MS); }
+  }
+  _inv_next = now + INV_PAGE_MS;
+  free(data);
+  free(ev);
+}
+
 void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
+  _jobs.tick(now);
+  _updates.loop(now);
+  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) board.reboot();
   streamTick(now);
+  inventoryTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
     if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it
       l.nonce[0] = 0;
       l.unlock.clear();
+      l.subs.clear();              // and its subscriptions and queued messages: the next client on it inherits nothing
+      if (l.q) l.q->clear();
+      l.may_read = false;
     }
     if (l.rx.tick(now)) {
       uint8_t xid;
       l.rx.takeDiscard(&xid);
-      char msg[96];
-      int n = writeResult(msg, sizeof(msg), "", ST_INVALID, nullptr, "incomplete");
-      if (n > 0) queueResult(l, msg, (size_t)n);
+      sendSmall(l, ST_INVALID, "incomplete");
     }
     if (!l.q || !l.q->count()) continue;
     uint8_t f[FRAME_MAX];

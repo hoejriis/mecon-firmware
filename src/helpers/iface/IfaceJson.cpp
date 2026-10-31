@@ -8,6 +8,8 @@ namespace Iface {
 bool charsetOk(Charset cs, char c) {
   uint8_t u = (uint8_t)c;
   switch (cs) {
+    case CS_JOB:  if (u == '#') return true;   // and the CS_ID set
+    // fall through
     case CS_ID:   return (u >= '0' && u <= '9') || (u >= 'A' && u <= 'Z') || (u >= 'a' && u <= 'z') || u == '.' || u == '_' || u == ':' || u == '-';
     case CS_NAME: return (u >= '0' && u <= '9') || (u >= 'A' && u <= 'Z') || (u >= 'a' && u <= 'z') || u == '.' || u == '_' || u == '-';
     default:      return u >= 0x20 && u != 0x7F;
@@ -255,14 +257,44 @@ void JsonWriter::key(const char* k) {
   _after_key = true;
 }
 
+// Length of the valid UTF-8 sequence at v (1 to 4 bytes), or 0 when it is not one: a stray or missing continuation byte,
+// an overlong form, a surrogate and a code point over U+10FFFF are all invalid.
+static size_t utf8Len(const uint8_t* v, size_t n) {
+  const uint8_t c = v[0];
+  if (c < 0x80) return 1;
+  size_t k;
+  uint32_t cp;
+  if (c >= 0xC2 && c <= 0xDF) { k = 2; cp = c & 0x1F; }
+  else if (c >= 0xE0 && c <= 0xEF) { k = 3; cp = c & 0x0F; }
+  else if (c >= 0xF0 && c <= 0xF4) { k = 4; cp = c & 0x07; }
+  else return 0;
+  if (n < k) return 0;
+  for (size_t j = 1; j < k; j++) {
+    if ((v[j] & 0xC0) != 0x80) return 0;
+    cp = cp << 6 | (v[j] & 0x3F);
+  }
+  if (k == 3 && (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF))) return 0;
+  if (k == 4 && (cp < 0x10000 || cp > 0x10FFFF)) return 0;
+  return k;
+}
+
+// Text from the air (a contact's advertised name, cut at a byte limit) need not be UTF-8: each byte that does not start
+// a valid sequence is written as U+FFFD, so the message stays valid JSON for a strict decoder.
 void JsonWriter::string(const char* v, size_t n) {
   put('"');
   static const char hex[] = "0123456789abcdef";
+  const uint8_t* b = reinterpret_cast<const uint8_t*>(v);
   for (size_t i = 0; i < n; i++) {
-    uint8_t c = (uint8_t)v[i];
+    uint8_t c = b[i];
     if (c == '"' || c == '\\') { put('\\'); put((char)c); }
     else if (c < 0x20) { put('\\'); put('u'); put('0'); put('0'); put(hex[c >> 4]); put(hex[c & 15]); }
-    else put((char)c);
+    else if (c < 0x80) put((char)c);
+    else {
+      const size_t k = utf8Len(b + i, n - i);
+      if (!k) { put('\\'); put('u'); put('f'); put('f'); put('f'); put('d'); continue; }
+      for (size_t j = 0; j < k; j++) put((char)b[i + j]);
+      i += k - 1;
+    }
   }
   put('"');
 }

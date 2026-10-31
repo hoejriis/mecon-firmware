@@ -3,8 +3,8 @@
 // device_id, the BLE PIN, the local unlock challenge and the channel nonces (docs/contract/AUTHORITY.md section 12).
 //
 // Not StdRNG (ArduinoHelpers.h), which is Arduino random(): on some cores a libc PRNG seeded once with 32 bits, so
-// everything drawn from it follows from one small seed. The node identity is not drawn from either: it comes from the
-// radio's noise (RadioNoiseListener).
+// everything drawn from it follows from one small seed. The node identity's seed (RadioNoiseListener) is this RNG, or
+// the CC310's TRNG, mixed with the radio's noise.
 //
 // Platforms without a cryptographic RNG here fall back to the RNG the caller passes, with a build warning, so a port
 // knows it has work to do.
@@ -17,6 +17,7 @@
   #include <esp_random.h>
 #elif defined(NRF52_PLATFORM)
   #include <nrf_soc.h>
+  #include <nrf_sdm.h>   // sd_softdevice_is_enabled: included here, not left to whatever a user included first
 #elif defined(ARDUINO_ARCH_RP2040)
   #include <Arduino.h>
 #elif defined(__linux__) || defined(__APPLE__)

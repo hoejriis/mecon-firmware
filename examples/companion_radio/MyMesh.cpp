@@ -1,8 +1,14 @@
 #include "MyMesh.h"
+#include <helpers/Uptime.h>
 #include <helpers/iface/Observe.h>
 #include <helpers/iface/DeviceId.h>
+#include <helpers/iface/DevIdSig.h>
+#include <helpers/iface/Provenance.h>
+#include <helpers/iface/Wipe.h>
 #include <helpers/AuditStore.h>
+#include <helpers/LazySaveRetry.h>
 #include <helpers/CryptoRNG.h>
+#include <helpers/NrfWorker.h>
 
 #include <Arduino.h> // needed for PlatformIO
 #ifdef ENABLE_WIFI_INTERFACE
@@ -157,6 +163,9 @@
 #define AUTO_ADD_CHAT             (1 << 1)  // 0x02 - auto-add Chat (Companion) (ADV_TYPE_CHAT)
 #define AUTO_ADD_REPEATER         (1 << 2)  // 0x04 - auto-add Repeater (ADV_TYPE_REPEATER)
 #define AUTO_ADD_ROOM_SERVER      (1 << 3)  // 0x08 - auto-add Room Server (ADV_TYPE_ROOM)
+
+// A contact's flags that grant it something: telemetry (base, location, environment) and the remote CLI.
+#define CONTACT_GRANT_FLAGS       0x1E
 #define AUTO_ADD_SENSOR           (1 << 4)  // 0x10 - auto-add Sensor (ADV_TYPE_SENSOR)
 
 void MyMesh::writeOKFrame() {
@@ -924,6 +933,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   next_ack_idx = 0;
   sign_data = NULL;
   dirty_contacts_expiry = 0;
+  _contacts_retries = 0;
   memset(advert_paths, 0, sizeof(advert_paths));
   memset(send_scope.key, 0, sizeof(send_scope.key));
   send_unscoped = false;
@@ -974,8 +984,9 @@ void MyMesh::begin() {
     uint8_t device_id[16];
     uint32_t epoch = 0;
     CryptoRNG crng(getRNG());   // device_id must not follow from a small seed (docs/contract/AUTHORITY.md section 12)
-    _store->bootDeviceMeta(&crng, device_id, &epoch);   // a failed save still leaves this boot's values
-    _iface.begin(this, device_id, epoch);
+    // A failed save still leaves this boot's values, but the epoch may repeat: nothing is signed then (section 3.4).
+    const bool saved = _store->bootDeviceMeta(&crng, device_id, &epoch);
+    _iface.begin(this, device_id, epoch, saved);
   }
 #endif
 
@@ -1024,6 +1035,10 @@ void MyMesh::begin() {
   loadContactsAtBoot();
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure public channel
   _store->loadChannels(this);
+#ifdef ENABLE_MECON_IFACE
+  recoverRotationAtBoot();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop
+  _iface.jobsLoad();   // after the prefs, before the radio and the links: a revert at boot takes effect at once
+#endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
   _radio_freq = _prefs.freq; _radio_bw = _prefs.bw;
@@ -1076,8 +1091,8 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   serial.enable();
 }
 
-// Which native frames the engine gates (src/helpers/cli/), and as what. Messaging, contact handling and reads are
-// not gated: the TCP port and BLE with a default PIN serve them, as the posture doc promises ("messaging only").
+// Which native frames the engine gates (src/helpers/cli/), and as what. Messaging, contact handling (short of a grant)
+// and reads are not gated: the TCP port and BLE with a default PIN serve them, as the posture doc promises ("messaging only").
 // Everything that manages the device is: settings, the radio, raw transmission, signing with the node key, reboot,
 // and the remote administration of another node under this node's identity (a CLI text, any text to a repeater,
 // which runs every text from an admin as a command, and binary requests). docs/CLI.md lists the frames.
@@ -1096,6 +1111,20 @@ uint8_t MyMesh::frameGate(size_t len) {
     case CMD_SIGN_START: case CMD_SIGN_DATA: case CMD_SIGN_FINISH:
     case CMD_SEND_BINARY_REQ:
       return Cli::FR_APP_WRITE;
+    case CMD_SET_DEVICE_TIME:
+      // The clock only moves forward here (the handler refuses an earlier time), so the app cannot undo a push ahead,
+      // and replay windows and ACLs compare against it: setting it is a setting. The first set since boot is open to
+      // any caller, as the app does on connecting; what the clock reads at boot (a contact's time, a stale RTC) may be
+      // far behind.
+      return _clock_set ? Cli::FR_APP_WRITE : Cli::FR_NONE;
+    case CMD_ADD_UPDATE_CONTACT: {
+      // Granting a contact telemetry or the remote CLI is a setting: the remote CLI runs that key's texts as commands.
+      // The rest of the record, and taking a grant away, is contact handling.
+      if (len < 1 + PUB_KEY_SIZE + 2) return Cli::FR_NONE;   // too short: the handler answers it
+      const ContactInfo* had = lookupContactByPubKey(&cmd_frame[1], PUB_KEY_SIZE);
+      const uint8_t held = had ? had->flags : 0;
+      return (cmd_frame[1 + PUB_KEY_SIZE + 1] & ~held & CONTACT_GRANT_FLAGS) ? Cli::FR_APP_WRITE : Cli::FR_NONE;
+    }
     case CMD_SEND_TXT_MSG: {
       if (len < 2) return Cli::FR_NONE;   // too short to send anything: the handler answers it
       const uint8_t txt_type = cmd_frame[1];
@@ -1409,6 +1438,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint32_t curr = getRTCClock()->getCurrentTime();
     if (secs >= curr) {
       getRTCClock()->setCurrentTime(secs);
+      _clock_set = true;
       writeOKFrame();
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
@@ -1444,18 +1474,28 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeErrFrame(ERR_CODE_NOT_FOUND); // unknown contact
     }
+  } else if (cmd_frame[0] == CMD_ADD_UPDATE_CONTACT && len >= 1 + 32 + 2 + 1 && cmd_frame[1 + PUB_KEY_SIZE] == ADV_TYPE_NONE) {
+    // Type 0 is the anonymous slot's (BaseChatMesh::addContact): a contact added with it is unlisted and overwritten
+    // by the next unknown sender, and an update to it would turn a stored contact into one. Refused, as stock did not.
+    writeErrFrame(ERR_CODE_ILLEGAL_ARG);
   } else if (cmd_frame[0] == CMD_ADD_UPDATE_CONTACT && len >= 1 + 32 + 2 + 1) {
     uint8_t *pub_key = &cmd_frame[1];
     ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
-    uint32_t last_mod = getRTCClock()->getCurrentTime();  // fallback value if not present in cmd_frame
+    const uint32_t curr = getRTCClock()->getCurrentTime();
+    uint32_t last_mod = curr;  // fallback value if not present in cmd_frame
+    // The newest lastmod sets the clock at boot (bootstrapRTCfromContacts): a caller that may not set the clock does
+    // not set one ahead of it here either.
+    const bool clamp = !serialTrusted();
     if (recipient) {
       updateContactFromFrame(*recipient, last_mod, cmd_frame, len);
+      if (clamp && last_mod > curr) last_mod = curr;
       recipient->lastmod = last_mod;
       dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
       writeOKFrame();
     } else {
       ContactInfo contact;
       updateContactFromFrame(contact, last_mod, cmd_frame, len);
+      if (clamp && last_mod > curr) last_mod = curr;
       contact.lastmod = last_mod;
       contact.sync_since = 0;
       if (addContact(contact)) {
@@ -1919,7 +1959,13 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeOKFrame();
     }
   } else if (cmd_frame[0] == CMD_SIGN_FINISH) {
-    if (sign_data) {
+    if (sign_data && sign_data_len >= 6 && memcmp(sign_data, "MECON-", 6) == 0) {
+      // The MECON protocols sign under their own domain prefixes ("MECON-UPLINK-v1", "MECON-NODEROT-v1"); the native signer
+      // never signs bytes that begin that way, enrolled or not (AUTHORITY.md section 3.4).
+      free(sign_data);
+      sign_data = NULL;
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (sign_data) {
       self_id.sign(&out_frame[1], sign_data, sign_data_len);
 
       free(sign_data); // don't need sign_data now
@@ -2038,7 +2084,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       out_frame[i++] = RESP_CODE_STATS;
       out_frame[i++] = STATS_TYPE_CORE;
       uint16_t battery_mv = board.getBattMilliVolts();
-      uint32_t uptime_secs = _ms->getMillis() / 1000;
+      uint32_t uptime_secs = (uint32_t)Uptime::secs(_ms->getMillis());
       uint8_t queue_len = (uint8_t)_mgr->getOutboundTotal();
       memcpy(&out_frame[i], &battery_mv, 2); i += 2;
       memcpy(&out_frame[i], &uptime_secs, 4); i += 4;
@@ -2242,6 +2288,201 @@ void MyMesh::reloadContactSecrets() {
 #endif
 }
 
+#ifdef ENABLE_MECON_IFACE
+namespace {
+// Replays 32 bytes already drawn and checked, so the key is built from exactly the seed that was tested for zeros.
+class SeedRng : public mesh::RNG {
+public:
+  explicit SeedRng(const uint8_t* s) { memcpy(_s, s, sizeof(_s)); }
+  ~SeedRng() { Iface::wipe(_s, sizeof(_s)); }
+  void random(uint8_t* dest, size_t sz) override {
+    for (size_t i = 0; i < sz; i++) dest[i] = i < sizeof(_s) ? _s[i] : 0;
+  }
+private:
+  uint8_t _s[32];
+};
+}  // namespace
+
+namespace {
+const char ROT_DOMAIN[] = "MECON-NODEROT-v1";   // + 0x00 + the statement text, signed with the key being retired
+// The stored file: the statement text, '\n', the base64 signature, and a third line "P" while the drop is pending. The
+// flag is outside the signed text because the retired key is gone by the time it is cleared.
+const size_t ROT_FILE_MAX = 512;
+
+void hex32(char* out, const uint8_t* k) {
+  static const char H[] = "0123456789abcdef";
+  for (int i = 0; i < PUB_KEY_SIZE; i++) { out[2 * i] = H[k[i] >> 4]; out[2 * i + 1] = H[k[i] & 15]; }
+  out[2 * PUB_KEY_SIZE] = 0;
+}
+
+size_t rotFile(char* out, size_t cap, const char* text, const char* sig_b64, bool pending) {
+  const int n = snprintf(out, cap, "%s\n%s\n%s", text, sig_b64, pending ? "P" : "");
+  return n > 0 && (size_t)n < cap ? (size_t)n : 0;
+}
+
+// Splits a stored file: false when it is not whole. text and sig_b64 are copied out NUL terminated.
+bool rotSplit(char* file, size_t n, const char** text, const char** sig_b64, bool* pending) {
+  file[n] = 0;
+  char* nl = strchr(file, '\n');
+  if (!nl) return false;
+  *nl = 0;
+  char* sig = nl + 1;
+  char* nl2 = strchr(sig, '\n');
+  if (!nl2 || nl2 - sig != 88) return false;
+  *nl2 = 0;
+  *text = file;
+  *sig_b64 = sig;
+  *pending = nl2[1] == 'P';
+  return true;
+}
+}  // namespace
+
+bool MyMesh::readRotation(char* text, size_t tcap, char* sig_b64, size_t scap) {
+  char file[ROT_FILE_MAX + 1];
+  const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
+  const char *t, *s;
+  bool pending;
+  if (!n || !rotSplit(file, n, &t, &s, &pending) || strlen(t) >= tcap || strlen(s) >= scap) return false;
+  strcpy(text, t);
+  strcpy(sig_b64, s);
+  return true;
+}
+
+// Drops what belonged to the old key: contacts (their shared secrets), the message queue and what was cached from them.
+bool MyMesh::dropOldKeyState() {
+  bool dropped = true;
+  {
+    ContactStore& cs = contactStore();
+    int cursor = 0;
+    ContactInfo ci;
+    while (cs.next(cursor, ci)) _store->deleteBlobByKey(ci.id.pub_key, PUB_KEY_SIZE);
+    dropped = cs.clearAll();
+    resetContacts();   // the transient anon slots
+#ifdef CONTACTS_STOCK_ARRAY
+    saveContacts();   // the stock array is a file: write the empty list
+#endif
+  }
+  offline_queue_len = 0;
+  memset(advert_paths, 0, sizeof(advert_paths));
+  clearPendingReqs();
+  dirty_contacts_expiry = 0;
+  if (_listener) _listener->onQueueSizeChanged(0);
+  return dropped;
+}
+
+// On nRF52 on the worker: two 512 B statement buffers and a save through LittleFS are deeper than the loop task's 4 KB
+// has room for (#172). Kept out of line so the stack gate can check the hand-off (stack-gate.yml).
+__attribute__((noinline)) void MyMesh::recoverRotationAtBoot() {
+  if (!NrfWorker::run(recoverRotationJob, this, 30000)) recoverRotationOnLoop();
+}
+
+__attribute__((noinline)) void MyMesh::recoverRotationJob(void* self) { static_cast<MyMesh*>(self)->recoverRotation(); }
+
+// No worker (no memory at boot): the recovery runs on the loop task's small stack, as before #172. A degraded mode, as
+// for received packets (Dispatcher::recvOnLoop); the stack gate does not count it (stack-gate.yml).
+__attribute__((noinline)) void MyMesh::recoverRotationOnLoop() { recoverRotation(); }
+
+void MyMesh::recoverRotation() {
+  char file[ROT_FILE_MAX + 1];
+  const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
+  if (!n) return;
+  const char *text, *sig;
+  bool pending;
+  if (!rotSplit(file, n, &text, &sig, &pending)) { _store->removeRotation(); return; }
+  char cur[2 * PUB_KEY_SIZE + 1];
+  hex32(cur, self_id.pub_key);
+  char want[2 * PUB_KEY_SIZE + 16];
+  snprintf(want, sizeof(want), "\"new\":\"%s\"", cur);
+  if (!strstr(text, want)) { _store->removeRotation(); return; }   // the key change never took effect
+  if (!pending) return;
+  if (!dropOldKeyState()) return;   // stays pending: tried again at the next boot
+  char out[ROT_FILE_MAX + 1];
+  const size_t m = rotFile(out, sizeof(out), text, sig, false);
+  if (m) _store->saveRotation(reinterpret_cast<uint8_t*>(out), m);
+}
+
+int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t job_id) {
+  // 1. Generate. The cryptographic RNG (AUTHORITY.md section 12); a source that delivers nothing is a refusal, never a
+  // fixed key. The reserved id hashes and the current key are redrawn.
+  CryptoRNG crng;
+  mesh::LocalIdentity fresh;
+  bool ok = false;
+  uint8_t prev[32] = {0};
+  for (int tries = 0; tries < 10 && !ok; tries++) {
+    uint8_t seed[32];
+    memset(seed, 0, sizeof(seed));
+    crng.random(seed, sizeof(seed));
+    bool nonzero = false;
+    for (uint8_t b : seed) nonzero = nonzero || b != 0;
+    // A source stuck at a constant or a short pattern passes the zero test: a draw with fewer than 16 distinct byte values, or
+    // one equal to the previous draw, is a failing source too (a random 32 bytes has about 28 distinct values).
+    bool seen[256];
+    memset(seen, 0, sizeof(seen));
+    int distinct = 0;
+    for (uint8_t b : seed) { if (!seen[b]) { seen[b] = true; distinct++; } }
+    if (!nonzero || distinct < 16 || (tries > 0 && memcmp(seed, prev, sizeof(seed)) == 0)) { Iface::wipe(seed, sizeof(seed)); Iface::wipe(prev, sizeof(prev)); Iface::wipe(&fresh, sizeof(fresh)); *err = "rng"; return 0; }
+    memcpy(prev, seed, sizeof(prev));
+    SeedRng r(seed);
+    Iface::wipe(seed, sizeof(seed));
+    fresh = mesh::LocalIdentity(&r);
+    ok = fresh.pub_key[0] != 0x00 && fresh.pub_key[0] != 0xFF && !fresh.matches(self_id);
+  }
+  Iface::wipe(prev, sizeof(prev));
+  if (!ok) { *err = "rng"; Iface::wipe(&fresh, sizeof(fresh)); return 0; }
+  // 2. The rotation statement: the old key signs "old key is replaced by new key" before anything changes, and it is
+  // stored (marked drop-pending) before the key is. A manager that lost the result reads it back (identity.rotation).
+  {
+    char oldhex[2 * PUB_KEY_SIZE + 1], newhex[2 * PUB_KEY_SIZE + 1];
+    hex32(oldhex, self_id.pub_key);
+    hex32(newhex, fresh.pub_key);
+    char msg[sizeof(ROT_DOMAIN) + 256];
+    memcpy(msg, ROT_DOMAIN, sizeof(ROT_DOMAIN));   // with its NUL
+    char* text = msg + sizeof(ROT_DOMAIN);
+    const int tl = snprintf(text, 256, "{\"v\":1,\"old\":\"%s\",\"new\":\"%s\",\"device_id\":\"%s\",\"job_id\":%lu}", oldhex,
+                            newhex, device_id_hex, (unsigned long)job_id);
+    if (tl <= 0 || tl >= 256) { *err = "failed"; Iface::wipe(&fresh, sizeof(fresh)); return 0; }
+    uint8_t sig[64];
+    self_id.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));
+    char sig_b64[89];
+    Iface::base64Encode(sig_b64, sig, 64);
+    char file[ROT_FILE_MAX + 1];
+    const size_t fl = rotFile(file, sizeof(file), text, sig_b64, true);
+    if (!fl || !_store->saveRotation(reinterpret_cast<uint8_t*>(file), fl)) {
+      _store->removeRotation();
+      *err = "storage";
+      Iface::wipe(&fresh, sizeof(fresh));
+      return 0;
+    }
+  }
+  // 3. Save the key, atomically. A failed save leaves the old key in place and the device exactly as it was.
+  if (!_store->saveMainIdentity(fresh)) {
+    _store->removeRotation();
+    Iface::wipe(&fresh, sizeof(fresh));
+    *err = "storage";
+    return 0;
+  }
+  // 4. Swap.
+  self_id = fresh;
+  // 5. Drop what belonged to the old key. A cut before this ends is finished at the next boot (the statement is still
+  // marked drop-pending).
+  const bool dropped = dropOldKeyState();
+  if (dropped) {
+    char text[256], sig_b64[89];
+    char out[ROT_FILE_MAX + 1];
+    if (readRotation(text, sizeof(text), sig_b64, sizeof(sig_b64))) {
+      const size_t m = rotFile(out, sizeof(out), text, sig_b64, false);
+      if (m) _store->saveRotation(reinterpret_cast<uint8_t*>(out), m);
+    }
+  }
+  // 6. One self-advert, zero hop like the app's default.
+  mesh::Packet* pkt = _prefs.advert_loc_policy == ADVERT_LOC_NONE ? createSelfAdvert(_prefs.node_name)
+                                                                   : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
+  if (pkt) sendZeroHop(pkt);
+  Iface::wipe(&fresh, sizeof(fresh));
+  return dropped ? 1 : 2;
+}
+#endif
+
 // The command line over MQTT: the controller built the context from the broker session, the gate inside
 // handleCommand() decides, and a refusal is a reply. A remote caller always has a non-zero timestamp.
 uint8_t MyMesh::runMqttCli(const Cli::Context& ctx, const char* cmd, char* reply, size_t cap) {
@@ -2380,9 +2621,17 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     sprintf(reply, "> %s", _prefs.node_name);
     return true;
   }
-  if (strcmp(command, "get device.id") == 0) {   // the device interface's device_id (DEVICE_INTERFACE.md section 1)
-    if (*Iface::deviceIdHex()) sprintf(reply, "> %s", Iface::deviceIdHex());
-    else strcpy(reply, "Error: unsupported");
+  if (strcmp(command, "get device.id") == 0 || memcmp(command, "get device.id ", 14) == 0) {
+    // The device interface's device_id (DEVICE_INTERFACE.md section 1) and the node key's signature binding it
+    // (AUTHORITY.md section 3.5): "> <device_id> <sig>", or "> <device_id> <sig> <nonce>" for `get device.id <nonce>`.
+    const bool has_arg = command[13] == ' ';
+    const char* nonce = has_arg ? &command[14] : "";
+    char sig[89];
+    if (!*Iface::deviceIdHex()) strcpy(reply, "Error: unsupported");
+    else if (has_arg && !*nonce) strcpy(reply, "Error: bad nonce");   // a space and no nonce is not the fixed form
+    else if (!Iface::signDeviceId(sig, self_id, Iface::deviceIdHex(), nonce)) strcpy(reply, "Error: bad nonce");
+    else if (*nonce) snprintf(reply, Iface::DEVID_REPLY_CAP, "> %s %s %s", Iface::deviceIdHex(), sig, nonce);
+    else snprintf(reply, Iface::DEVID_REPLY_CAP, "> %s %s", Iface::deviceIdHex(), sig);
     return true;
   }
 
@@ -2533,15 +2782,22 @@ void MyMesh::checkCLIRescueCmd() {
   }
   while (Serial.available() && len < sizeof(cli_command)-1) {
     char c = Serial.read();
+    if (cli_command_dropping) {   // inside an over-long line: discarded up to its end, never run (#165)
+      if (c == '\r') { cli_command_dropping = false; Serial.println("\n  -> ERR: line too long"); }
+      continue;
+    }
     if (c != '\n') {
       cli_command[len++] = c;
       cli_command[len] = 0;
     }
     Serial.print(c);  // echo
   }
-  if (len == sizeof(cli_command)-1) {  // buffer full: treat as a completed line
-    cli_command[sizeof(cli_command)-2] = '\r';  // place end-of-line marker inside the buffer
-    cli_command[sizeof(cli_command)-1] = 0;     // keep the buffer NUL-terminated
+  if (len == sizeof(cli_command)-1 && cli_command[len - 1] != '\r') {  // buffer full with no end of line: an over-long line
+    // Stock ran the first part as a line and then the rest as a new command. The line is dropped up to its end
+    // instead, and answered once there (#165).
+    cli_command[0] = 0;
+    len = 0;
+    cli_command_dropping = true;
   }
 
   if (len > 0 && cli_command[len - 1] == '\r') {  // received complete line
@@ -2797,6 +3053,7 @@ bool MyMesh::requestConnectivityMode(uint8_t want, uint8_t caller) {
 #endif
 
 void MyMesh::loop() {
+  Uptime::ms(millis());   // every pass, so the 64-bit uptime never misses a wrap of millis() (#165)
   BaseChatMesh::loop();
   auditStore().service(millis());
 #ifdef ENABLE_CONNMODE
@@ -2822,8 +3079,24 @@ void MyMesh::loop() {
 
   // is there are pending dirty contacts write needed?
   if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
+#ifdef CONTACTS_STOCK_ARRAY
     saveContacts();
     dirty_contacts_expiry = 0;
+#else
+    // One bucket per pass: after a burst of adds, a flush of every bucket at once held the loop for seconds.
+    // The timer stays due until the last changed bucket is written. After a write error it is set again a few
+    // times, further apart each time (LazySaveRetry); then the save waits for the next change.
+    bool more = false;
+    bool ok = contactStore().flushSome(1, &more);
+    if (ok) _contacts_retries = 0;
+    uint32_t retry = ok ? 0 : LazySaveRetry::delayMs(++_contacts_retries);
+    if (retry) {
+      dirty_contacts_expiry = futureMillis((int)retry);
+    } else if (!ok || !more) {
+      dirty_contacts_expiry = 0;
+      _contacts_retries = 0;
+    }
+#endif
   }
 }
 

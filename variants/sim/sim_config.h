@@ -14,6 +14,7 @@ struct SimConfig {
   bool lockstep = false;      // --lockstep: time is granted by the ether broker (variants/sim/sim_radio.cpp), not the wall clock
   uint32_t quantum_us = 1000; // --quantum-us: how far a lock-step node runs between two barriers
   uint32_t rtc_epoch = 1760000000;  // RTC value at process start (unix seconds)
+  uint32_t millis_start = 0;        // millis() at process start (--millis-start), to cross its 49.7-day wrap in a test
   std::string wifi_env;       // file listing the simulated Wi-Fi access points (variants/sim/sim_wifi.cpp)
   std::string mqtt_env;       // file with the simulated DNS names and mDNS responders (variants/sim/sim_mqtt_net.cpp)
   std::string ui_frames;      // file the recording display appends its frames to (variants/sim/sim_display.cpp)
@@ -23,10 +24,12 @@ struct SimConfig {
   std::string heap_file;      // file "FREE [LARGEST]" the test rewrites to change the heap the node reports at run time (--heap-file)
   uint32_t fs_size = 1536 * 1024;  // size of the simulated file system (--fs-size)
   std::string fs_calls;       // file rewritten after every file system call with the running counts (--fs-calls)
+  uint32_t fs_write_ms = 0;   // --fs-write-ms: each written file's close holds the node this long, as a flash save does
   std::string fault_path;     // fault injection: file path (as the app sees it) ...
   long fault_after = -1;      // ... and bytes after which the process is killed
   std::string fault_op;       // power cut just BEFORE a filesystem operation: "rename" or "remove" ...
   std::string fault_op_path;  // ... on this path (the source path for a rename)
+  std::string write_fail;     // file holding a path prefix: while it exists, writes to matching files fail (--write-fail)
 };
 // Function-local static so it is safe to touch from other translation units' static
 // initialisers (the examples build their global mesh object before main()).

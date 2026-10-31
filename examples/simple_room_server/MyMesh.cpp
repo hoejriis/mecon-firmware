@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/Uptime.h>
 #include <helpers/iface/Observe.h>
 #include <helpers/AuditStore.h>
 
@@ -165,7 +166,7 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
     stats.n_packets_recv = radio_driver.getPacketsRecv();
     stats.n_packets_sent = radio_driver.getPacketsSent();
     stats.total_air_time_secs = getTotalAirTime() / 1000;
-    stats.total_up_time_secs = uptime_millis / 1000;
+    stats.total_up_time_secs = (uint32_t)Uptime::secs(millis());
     stats.n_sent_flood = getNumSentFlood();
     stats.n_sent_direct = getNumSentDirect();
     stats.n_recv_flood = getNumRecvFlood();
@@ -369,6 +370,9 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
 
       client = acl.putClient(sender, 0);  // add to known clients (if not already known)
       if (sender_timestamp <= client->last_timestamp) {
+        // Issue #112: audited as on the repeater; the watermark is RAM only, so a reboot clears it.
+        Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_LOGIN_FAILED, Posture::CALLER_REMOTE_ADMIN,
+                             Posture::W_STALE_LOGIN);
         MESH_DEBUG_PRINTLN("possible replay attack!");
         return;
       }
@@ -646,8 +650,6 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       _cli(board, rtc, sensors, region_map, acl, &_prefs, this),
       telemetry(MAX_PACKET_PAYLOAD - 4)
 {
-  last_millis = 0;
-  uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
   dirty_contacts_expiry = 0;
   _logging = false;
@@ -1110,7 +1112,5 @@ void MyMesh::loop() {
   // TODO: periodically check for OLD/inactive entries in known_clients[], and evict
 
   // update uptime
-  uint32_t now = millis();
-  uptime_millis += now - last_millis;
-  last_millis = now;
+  Uptime::ms(millis());   // every pass, so the 64-bit uptime never misses a wrap of millis()
 }

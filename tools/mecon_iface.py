@@ -25,6 +25,18 @@ def fragment(msg: bytes, xid: int):
             for i in range(count)]
 
 
+class Msg(dict):
+    """A decoded interface message that remembers the exact bytes it arrived as (`raw`): a signature (AUTHORITY.md section
+    3.4) is over those bytes, so a checker must not re-serialise the JSON."""
+    raw = b""
+
+
+def _msg(raw: bytes) -> "Msg":
+    m = Msg(json.loads(raw.decode("utf-8")))
+    m.raw = raw
+    return m
+
+
 class Reassembler:
     """One inbound message at a time, as the device does: frames in any order, duplicates ignored."""
 
@@ -84,7 +96,7 @@ class IfaceClient:
                 continue
             msg = self.rx.feed(f)
             if msg is not None:
-                return json.loads(msg.decode("utf-8"))
+                return _msg(bytes(msg))
         return None
 
     def request(self, op, args=None, rid=None, timeout=5.0, **extra):
@@ -139,7 +151,7 @@ class ConsoleClient:
             if not line.startswith(CONSOLE_PREFIX + "{"):
                 continue
             try:
-                return json.loads(line[len(CONSOLE_PREFIX):])
+                return _msg(line[len(CONSOLE_PREFIX):].encode("utf-8"))
             except ValueError:
                 continue
         return None

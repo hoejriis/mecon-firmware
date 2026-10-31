@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ed_25519.h"
+#include "DepVerify.h"
 #include "helpers/iface/IfaceJson.h"
 
 namespace Dep {
@@ -41,7 +42,7 @@ static bool verifyBody(const char* body, size_t len, const uint8_t sig[SIG_LEN],
   memcpy(msg + dl + 1, SUFFIX, sl);
   msg[dl + 1 + sl] = 0;
   memcpy(msg + dl + sl + 2, body, len);
-  bool ok = ed25519_verify(sig, msg, n, key) == 1;
+  bool ok = verifySig(sig, msg, n, key);
   free(msg);
   return ok;
 }
@@ -62,7 +63,7 @@ static bool u32Field(const JsonDoc& d, const char* key, uint32_t* out) {
 }
 
 static bool streamIsPrivate(const JsonDoc& d) {
-  static const char* const PRIVATE[] = { "screen", "location", "logs", "inventory.entries" };
+  static const char* const PRIVATE[] = { "screen", "location", "logs", "inventory" };   // inventory carries the entries
   char name[33];
   int ta = jsonFind(d, 0, "args");
   int ts = ta >= 0 ? jsonFind(d, ta, "stream") : -1;
@@ -74,13 +75,15 @@ static bool streamIsPrivate(const JsonDoc& d) {
 
 OpClass contractOpClass(const char* op, const JsonDoc& body) {
   static const char* const PLAIN[] = { "hello", "status.get", "config.schema", "config.get", "deployment.get",
-                                       "job.get", "job.list" };
+                                       "identity.rotation", "job.get", "job.list" };
   for (const char* p : PLAIN)
     if (strcmp(op, p) == 0) return OPC_PLAIN;
   if (strcmp(op, "sub.start") == 0 || strcmp(op, "sub.stop") == 0)
     return streamIsPrivate(body) ? (strcmp(op, "sub.start") == 0 ? OPC_SENSITIVE : OPC_JOB) : OPC_PLAIN;
-  // deployment.set_unlock carries the local unlock secret: sensitive, so it also needs the link's channel nonce.
-  if (strcmp(op, "identity.key.export") == 0 || strcmp(op, "ble.pin.get") == 0 || strcmp(op, "deployment.set_unlock") == 0)
+  // deployment.set_unlock carries the local unlock secret, and identity.rotate retires the node key: sensitive, so each also
+  // needs the link's channel nonce.
+  if (strcmp(op, "identity.key.export") == 0 || strcmp(op, "ble.pin.get") == 0 || strcmp(op, "deployment.set_unlock") == 0 ||
+      strcmp(op, "identity.rotate") == 0)
     return OPC_SENSITIVE;
   return OPC_JOB;
 }

@@ -15,6 +15,7 @@ public:
   uint32_t fs_total = 0xFFFFFFFFu;   // size of the file system (unknown by default)
   int fail_after = -1;            // writes allowed before every further write fails (-1 = never fail)
   int writes = 0;
+  int fail_bucket = -1;
 
   bool can_list = false;          // a backend that lists its files once at boot
   int exists_calls = 0;
@@ -32,6 +33,7 @@ public:
   }
   bool writeBucket(uint16_t b, const uint8_t* buf, uint32_t len, bool) override {
     if (fail_after >= 0 && writes >= fail_after) return false;   // the old file stays, as with the atomic swap
+    if ((int)b == fail_bucket) return false;                      // one bucket that cannot be written
     writes++;
     files[b] = std::vector<uint8_t>(buf, buf + len);
     return true;
@@ -848,6 +850,57 @@ TEST(ContactWrites, AFlushCutBetweenBucketsLeavesEveryBucketWhole) {
   for (int i = 0; i < 24; i += 8) if (s.find(mk(i).id.pub_key, 32)->gps_lat == 9999) new_versions++;
   EXPECT_EQ(1, new_versions);
   for (int i = 0; i < 24; i++) ASSERT_NE(nullptr, s.find(mk(i).id.pub_key, 32)) << i;
+}
+
+TEST(ContactWrites, FlushSomeWritesAtMostTheBucketsAskedForAndSaysWhatIsLeft) {
+  MemBackend be;
+  ContactStore s;
+  ASSERT_TRUE(s.begin(&be, nullptr, cfg()));
+  for (int i = 0; i < 40; i++) add(s, mk(i));     // a burst of adds: five buckets changed
+  bool more = false;
+  for (int pass = 1; pass <= 4; pass++) {
+    ASSERT_TRUE(s.flushSome(1, &more));
+    EXPECT_EQ(pass, be.writes) << "one bucket per pass";
+    EXPECT_TRUE(more) << pass;
+  }
+  ASSERT_TRUE(s.flushSome(1, &more));
+  EXPECT_EQ(5, be.writes);
+  EXPECT_FALSE(more) << "the last changed bucket is written";
+  ASSERT_TRUE(s.flushSome(1, &more));
+  EXPECT_EQ(5, be.writes) << "nothing changed, nothing written";
+  EXPECT_FALSE(more);
+  ContactStore t;
+  ASSERT_TRUE(t.begin(&be, nullptr, cfg()));
+  EXPECT_EQ(40, t.count());
+}
+
+TEST(ContactWrites, FlushStillWritesEveryChangedBucketInOneCall) {
+  MemBackend be;
+  ContactStore s;
+  ASSERT_TRUE(s.begin(&be, nullptr, cfg()));
+  for (int i = 0; i < 40; i++) add(s, mk(i));
+  ASSERT_TRUE(s.flush());
+  EXPECT_EQ(5, be.writes);
+}
+
+TEST(ContactWrites, ABucketThatKeepsFailingDoesNotHoldBackTheOthers) {
+  MemBackend be;
+  ContactStore s;
+  ASSERT_TRUE(s.begin(&be, nullptr, cfg()));
+  for (int i = 0; i < 24; i++) add(s, mk(i));     // buckets 0, 1 and 2
+  be.fail_bucket = 0;
+  bool more = false;
+  EXPECT_FALSE(s.flushSome(1, &more));
+  EXPECT_TRUE(more);
+  EXPECT_TRUE(s.flushSome(1, &more));
+  EXPECT_TRUE(s.flushSome(1, &more));
+  EXPECT_EQ(1u, be.files.count(1)) << "the next pass goes on to the next bucket";
+  EXPECT_EQ(1u, be.files.count(2));
+  EXPECT_EQ(0u, be.files.count(0));
+  be.fail_bucket = -1;
+  EXPECT_TRUE(s.flushSome(1, &more));
+  EXPECT_EQ(1u, be.files.count(0)) << "the failed bucket is still changed and written once it can be";
+  EXPECT_FALSE(more);
 }
 
 // ---------------------------------------------------------------------------------------------- RAM only

@@ -56,7 +56,7 @@ struct Verified {
 typedef OpClass (*OpClassFn)(const char* op, const Iface::JsonDoc& body);
 // The contract's classification: hello, status.get, config.schema, config.get, deployment.get, job.get, job.list and
 // sub.start/sub.stop of a stream that is not private are plain; identity.key.export, ble.pin.get and sub.start of a
-// private stream (screen, location, logs, inventory.entries) are sensitive; everything else needs a job id.
+// private stream (screen, location, logs, inventory) are sensitive; everything else needs a job id.
 OpClass contractOpClass(const char* op, const Iface::JsonDoc& body);
 
 // Checks 1 to 6b for wire against the stored record and its parsed set. body_buf receives the decoded body (it must

@@ -98,14 +98,17 @@ TEST(IfaceJson, TrailingDataIsRejected) {
 
 TEST(IfaceJson, DepthLimit) {
   RequestDoc d;
-  std::string ok4 = R"({"a":{"b":{"c":{}}}})";           // 4 containers
-  std::string bad5 = R"({"a":{"b":{"c":{"d":{}}}}})";    // 5
-  EXPECT_EQ(J_OK, jsonParse(d, ok4.data(), ok4.size()));
-  EXPECT_EQ(J_TOO_DEEP, jsonParse(d, bad5.data(), bad5.size()));
-  std::string arr = R"({"a":[[[1]]]})";
+  std::string ok5 = R"({"a":{"b":{"c":{"d":{}}}}})";      // 5 containers
+  std::string bad6 = R"({"a":{"b":{"c":{"d":{"e":{}}}}}})";   // 6
+  EXPECT_EQ(J_OK, jsonParse(d, ok5.data(), ok5.size()));
+  EXPECT_EQ(J_TOO_DEEP, jsonParse(d, bad6.data(), bad6.size()));
+  // the deepest shape a contract defines: a provisioning's args.deployment.broker_roles[{...}]
+  std::string roles = R"({"v":1,"id":"p","op":"deployment.provision","args":{"deployment":{"broker_roles":[{"profile":0,"role":"primary"}]}}})";
+  EXPECT_EQ(J_OK, jsonParse(d, roles.data(), roles.size()));
+  std::string arr = R"({"a":[[[[1]]]]})";
   EXPECT_EQ(J_OK, jsonParse(d, arr.data(), arr.size()));
-  std::string arr5 = R"({"a":[[[[1]]]]})";
-  EXPECT_EQ(J_TOO_DEEP, jsonParse(d, arr5.data(), arr5.size()));
+  std::string arr6 = R"({"a":[[[[[1]]]]]})";
+  EXPECT_EQ(J_TOO_DEEP, jsonParse(d, arr6.data(), arr6.size()));
   // siblings do not accumulate depth
   std::string sib = R"({"a":{"x":{}},"b":{"x":{}},"c":[{},{}]})";
   EXPECT_EQ(J_OK, jsonParse(d, sib.data(), sib.size()));
@@ -288,35 +291,96 @@ TEST(IfaceEnvelope, EventSerialization) {
   EXPECT_EQ(-1, writeEvent(b, 20, "health", 1, 1, true, 1, nullptr));
 }
 
+// ---- the queue's room check (the inventory pages wait on it): it answers exactly what push() would do
+
+TEST(OutQueueRoom, EventFitsAgreesWithPushAtEveryFillLevel) {
+  for (size_t len : {(size_t)100, (size_t)500, (size_t)700, (size_t)1300, (size_t)1500}) {   // 500 reaches the reserve at 1,500 used
+    uint8_t store[2048];
+    OutQueue q(store, sizeof(store));
+    std::vector<uint8_t> msg(len, 'x');
+    for (int i = 0; i < 12; i++) {
+      const bool fits = q.eventFits(len);
+      const OutQueue::Push p = q.push(OutQueue::EVENT, msg.data(), len);
+      EXPECT_EQ(fits, p == OutQueue::PUSH_OK) << "len " << len << " step " << i;
+    }
+  }
+  uint8_t store[2048];
+  OutQueue q(store, sizeof(store));
+  std::vector<uint8_t> big(1400, 'y');
+  ASSERT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::EVENT, big.data(), big.size()));
+  EXPECT_FALSE(q.eventFits(1400)) << "a second page waits while the first is queued";
+  q.clear();
+  EXPECT_TRUE(q.eventFits(1400)) << "cleared on a disconnect";
+  EXPECT_EQ(0, q.count());
+}
+
+// ---- strings that are not UTF-8 (a contact name cut at a byte limit, or hostile)
+
+static std::string jsonOfBytes(const std::string& bytes) {
+  char b[200];
+  JsonWriter w(b, sizeof(b));
+  w.str(bytes.data(), bytes.size());
+  EXPECT_TRUE(w.ok());
+  return std::string(b, w.size());
+}
+
+TEST(IfaceJson, ValidUtf8PassesThroughUnchanged) {
+  EXPECT_EQ("\"\xc3\xa5se\"", jsonOfBytes("\xc3\xa5se"));                     // a 2-byte letter
+  EXPECT_EQ("\"\xe2\x82\xac\"", jsonOfBytes("\xe2\x82\xac"));               // 3 bytes
+  EXPECT_EQ("\"\xf0\x9f\x93\xa1\"", jsonOfBytes("\xf0\x9f\x93\xa1"));     // 4 bytes
+}
+
+TEST(IfaceJson, EachInvalidByteBecomesAReplacementCharacter) {
+  EXPECT_EQ("\"ab\\ufffd\"", jsonOfBytes("ab\xc3"));                // a sequence cut at the end
+  EXPECT_EQ("\"\\ufffdx\"", jsonOfBytes("\x80x"));                  // a stray continuation byte
+  EXPECT_EQ("\"\\ufffd\\ufffd\"", jsonOfBytes("\xc0\xaf"));       // an overlong '/'
+  EXPECT_EQ("\"\\ufffd\\ufffd\\ufffd\"", jsonOfBytes("\xed\xa0\x80"));   // a surrogate
+  EXPECT_EQ("\"\\ufffd\"", jsonOfBytes("\xff"));
+  EXPECT_EQ("\"\\ufffd\\ufffd\\ufffd\\ufffd\"", jsonOfBytes("\xf4\x90\x80\x80"));   // over U+10FFFF
+  EXPECT_EQ("\"\\ufffd\\ufffdA\"", jsonOfBytes("\xe2\x82" "A"));   // a 3-byte start cut short: per byte
+}
+
 // ---- result id cache
+
+TEST(IfaceCache, AnIdHeldByAnotherOperationIsAConflictNeverAHit) {
+  ResultCache c;
+  const char* d = nullptr; size_t l = 0;
+  c.store("p1", "deployment.provision", "READBACK", 8);
+  EXPECT_EQ(ResultCache::CONFLICT, c.find("p1", "deployment.get", &d, &l));   // an open read cannot fetch a write's result
+  EXPECT_EQ(ResultCache::HIT, c.find("p1", "deployment.provision", &d, &l));
+  EXPECT_EQ(std::string("READBACK"), std::string(d, l));
+  c.store("big", "config.apply", std::string(ResultCache::ENTRY_CAP + 1, 'z').c_str(), ResultCache::ENTRY_CAP + 1);
+  EXPECT_EQ(ResultCache::CONFLICT, c.find("big", "deployment.get", &d, &l));   // checked before expiry, too
+  EXPECT_EQ(ResultCache::EXPIRED, c.find("big", "config.apply", &d, &l));
+}
 
 TEST(IfaceCache, HitEvictionAndOversize) {
   ResultCache c;
   const char* d; size_t l;
-  EXPECT_EQ(ResultCache::MISS, c.find("a", &d, &l));
-  c.store("a", "RESULT-A", 8);
-  ASSERT_EQ(ResultCache::HIT, c.find("a", &d, &l));
+  EXPECT_EQ(ResultCache::MISS, c.find("a", "config.apply", &d, &l));
+  c.store("a", "config.apply", "RESULT-A", 8);
+  ASSERT_EQ(ResultCache::HIT, c.find("a", "config.apply", &d, &l));
   EXPECT_EQ(std::string("RESULT-A"), std::string(d, l));
 
   const int S = ResultCache::SLOTS;
-  for (int i = 0; i < S - 1; i++) c.store(("k" + std::to_string(i)).c_str(), "x", 1);   // all held, "a" is the oldest
-  EXPECT_EQ(ResultCache::HIT, c.find("a", &d, &l));
-  c.store("klast", "x", 1);                                                              // one more evicts it
-  EXPECT_EQ(ResultCache::EXPIRED, c.find("a", &d, &l));                                  // gone, but remembered
-  EXPECT_EQ(ResultCache::HIT, c.find("k0", &d, &l));
-  EXPECT_EQ(ResultCache::HIT, c.find("klast", &d, &l));
+  for (int i = 0; i < S - 1; i++) c.store(("k" + std::to_string(i)).c_str(), "config.apply", "x", 1);   // all held, "a" is the oldest
+  EXPECT_EQ(ResultCache::HIT, c.find("a", "config.apply", &d, &l));
+  c.store("klast", "config.apply", "x", 1);                                                              // one more evicts it
+  EXPECT_EQ(ResultCache::EXPIRED, c.find("a", "config.apply", &d, &l));                                  // gone, but remembered
+  EXPECT_EQ(ResultCache::HIT, c.find("k0", "config.apply", &d, &l));
+  EXPECT_EQ(ResultCache::HIT, c.find("klast", "config.apply", &d, &l));
 
-  c.store("k0", "NEW", 3);   // same id overwrites in place and does not evict anybody
-  ASSERT_EQ(ResultCache::HIT, c.find("k0", &d, &l));
+  c.store("k0", "config.apply", "NEW", 3);   // same id overwrites in place and does not evict anybody
+  ASSERT_EQ(ResultCache::HIT, c.find("k0", "config.apply", &d, &l));
   EXPECT_EQ(std::string("NEW"), std::string(d, l));
-  EXPECT_EQ(ResultCache::HIT, c.find("k1", &d, &l));
+  EXPECT_EQ(ResultCache::HIT, c.find("k1", "config.apply", &d, &l));
 
   std::string exact(ResultCache::ENTRY_CAP, 'z'), over(ResultCache::ENTRY_CAP + 1, 'z');
-  c.store("exact", exact.data(), exact.size());
-  c.store("over", over.data(), over.size());
-  ASSERT_EQ(ResultCache::HIT, c.find("exact", &d, &l));
+  c.store("exact", "config.apply", exact.data(), exact.size());
+  c.store("over", "config.apply", over.data(), over.size());
+  ASSERT_EQ(ResultCache::HIT, c.find("exact", "config.apply", &d, &l));
   EXPECT_EQ(exact.size(), l);
-  EXPECT_EQ(ResultCache::EXPIRED, c.find("over", &d, &l));
+  EXPECT_EQ(ResultCache::EXPIRED, c.find("over", "config.apply", &d, &l));
 }
 
 // ---- dispatcher
@@ -453,7 +517,7 @@ TEST(IfaceDispatch, ADuplicateReadRunsAgain) {
   run(d, req("r1", "read.ok"), &c);
   EXPECT_EQ(2, p.ran);
   const char* data; size_t len;
-  EXPECT_EQ(ResultCache::MISS, c.find("r1", &data, &len));
+  EXPECT_EQ(ResultCache::MISS, c.find("r1", "config.apply", &data, &len));
 }
 
 // One cache for the device: the same write arriving over a second transport (a second dispatcher) is not run twice.
@@ -515,15 +579,15 @@ TEST(IfaceDispatch, OnlyExecutedOrAuthoritativeResultsAreRemembered) {
   ResultCache c;
   const char* data; size_t len;
   run(d, req("u", "nope"), &c);
-  EXPECT_EQ(ResultCache::MISS, c.find("u", &data, &len));
+  EXPECT_EQ(ResultCache::MISS, c.find("u", "nope", &data, &len));
   run(d, R"({"v":2,"id":"v","op":"read.ok"})", &c);
-  EXPECT_EQ(ResultCache::MISS, c.find("v", &data, &len));
+  EXPECT_EQ(ResultCache::MISS, c.find("v", "read.ok", &data, &len));
   p.allow = false;
   run(d, req("r", "write.ok"), &c);   // refused: nothing ran, so it is evaluated again next time
-  EXPECT_EQ(ResultCache::MISS, c.find("r", &data, &len));
+  EXPECT_EQ(ResultCache::MISS, c.find("r", "write.ok", &data, &len));
   p.allow = true;
   run(d, req("f", "write.fail"), &c);
-  EXPECT_EQ(ResultCache::HIT, c.find("f", &data, &len));
+  EXPECT_EQ(ResultCache::HIT, c.find("f", "write.fail", &data, &len));
 }
 
 // ---- framing

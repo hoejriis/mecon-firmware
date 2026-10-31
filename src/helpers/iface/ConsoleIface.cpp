@@ -1,4 +1,6 @@
 #include "ConsoleIface.h"
+#include <helpers/Uptime.h>
+#include "DevIdHello.h"
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,9 +8,14 @@
 #include "helpers/MeconVersion.h"
 #include "helpers/MemStats.h"
 #include "helpers/Posture.h"
+#include "helpers/SensorManager.h"
 #include "helpers/cli/CliPolicy.h"
+#include "helpers/cli/MeconCli.h"
 #include "helpers/cli/CliRegistry.h"
+#include "helpers/cli/CliCaller.h"
+#include "helpers/NrfWorker.h"
 #include "Observe.h"
+#include "Wipe.h"
 
 namespace Iface {
 
@@ -28,7 +35,9 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock"};
+                                    "deployment.unlock_challenge", "deployment.unlock", "job.get", "job.list",
+                                    "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
+                                    "update.offer", "update.chunk"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -38,11 +47,16 @@ Status opHello(OpContext& c) {
   w.key("interface"); w.str("1.0");
   w.key("device_id"); w.str(m->deviceIdHex());
   w.key("node_key"); w.str(key);
+  if (m->host().identity) {
+    const Status ds = writeDeviceIdSig(c, *m->host().identity, m->deviceIdHex());
+    if (ds != ST_OK) return ds;
+  }
   w.key("role"); w.str(m->host().role);
   w.key("hardware"); w.str(m->host().hardware);
   w.key("firmware"); w.str(mecon::versionFull());
   w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
   w.key("epoch"); w.unum(m->epoch());
+  m->updates().writeAttestation(w);   // the image of an update job, while it awaits confirmation (UPDATES.md section 7)
   // The channel nonce of the console link, only once a Deployment record exists (AUTHORITY.md section 7.1).
   const char* nonce = m->helloNonce();
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
@@ -55,7 +69,7 @@ Status opHello(OpContext& c) {
 
 // Shared by status.get and the health stream. A server has no contact list, so "contacts" is absent.
 void writeHealth(JsonWriter& w, ConsoleIface* m) {
-  w.key("uptime_s"); w.unum(millis() / 1000);
+  w.key("uptime_s"); w.unum(Uptime::secs(millis()));
   const MemStats ms = memStats();
   w.key("heap");
   if (!ms.known) w.null();
@@ -65,6 +79,7 @@ void writeHealth(JsonWriter& w, ConsoleIface* m) {
     w.key("largest"); w.unum(ms.largest);
     w.key("min_free"); if (ms.min_free) w.unum(ms.min_free); else w.null();
     w.key("loop_stack_free"); if (ms.loop_stack_free) w.unum(ms.loop_stack_free); else w.null();
+    if (const uint32_t ws = NrfWorker::workerStackFree()) { w.key("worker_stack_free"); w.unum(ws); }   // nRF52 (#158)
     if (ms.psram) { w.key("psram_free"); w.unum(ms.psram); }
     w.endObject();
   }
@@ -81,6 +96,8 @@ Status opStatus(OpContext& c) {
   const bool hardened = Posture::isHardened(m->host().posture(m->host().user));
   w.key("posture"); w.str(hardened ? "hardened" : "normal");
   m->auth().writeStatus(w, hardened);
+  m->jobs().writeStatus(w);
+  m->updates().writeAttestation(w);
   return ST_OK;
 }
 
@@ -113,6 +130,15 @@ Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
 Status opDeploySetUnlock(OpContext& c) { return self(c)->auth().opSetUnlock(c); }
 Status opDeployUnlockChallenge(OpContext& c) { return self(c)->auth().opUnlockChallenge(c); }
 Status opDeployUnlock(OpContext& c) { return self(c)->auth().opUnlock(c); }
+Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
+Status opJobList(OpContext& c) { return self(c)->jobs().opList(c); }
+Status opJobAck(OpContext& c) { return self(c)->jobs().opAck(c); }
+Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
+Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
+Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, millis()); }
+Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
+Status opUpdOffer(OpContext& c) { return self(c)->updates().opOffer(c, millis()); }
+Status opUpdChunk(OpContext& c) { return self(c)->updates().opChunk(c, millis()); }
 
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
@@ -130,15 +156,39 @@ const OpEntry OPS[] = {
   // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
   {"deployment.unlock_challenge", opDeployUnlockChallenge, PRIV_WRITE, false},
   {"deployment.unlock", opDeployUnlock, PRIV_WRITE, false},
+  // As on the Companion: ack is of the read class, cancel and confirm write; the three keep their result.
+  {"job.get", opJobGet, PRIV_READ, false},
+  {"job.list", opJobList, PRIV_READ, false},
+  {"job.ack", opJobAck, PRIV_READ, true},
+  {"job.cancel", opJobCancel, PRIV_WRITE, true},
+  {"job.confirm", opJobConfirm, PRIV_WRITE, true},
+  // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
+  {"update.manifest", opUpdManifest, PRIV_READ, false},
+  {"update.status", opUpdStatus, PRIV_READ, false},
+  // The offer is of the update class and keeps its result: a retry gets the same job and transfer token back. A chunk
+  // is authorised by that token (DeployAuth::preAuthorize lets it through to the handler) and is not kept: its answer
+  // is the offset expected next, which a retry asks again.
+  {"update.offer", opUpdOffer, PRIV_UPDATE, true},
+  {"update.chunk", opUpdChunk, PRIV_READ, false},
 };
 
 }  // namespace
 
-void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t epoch) {
+void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t epoch, bool epoch_saved) {
   _host = host;
   hexOf(_id_hex, device_id, 16);
   _epoch = epoch;
   _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
+  _updates.begin(_host.hardware, _host.role, _host.board ? _host.board->getManufacturerNames() : nullptr);
+  if (_host.snap_store)
+    _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
+                           confirmRunAs, confirmJobId};
+  _jobs.setClassCheck(jobClasses, this);
+  _jobs.setOnChange(jobChanged, this);
+  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot});
+  _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);
+  _updates.bootReconcile();   // an installed image attests, or the bootloader rolled it back
+  configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
   if (_host.dep_store) {
     DeployAuth::Env env;
     env.store = _host.dep_store;
@@ -147,6 +197,7 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
     env.now_s = _host.clock_s ? _host.clock_s : nullptr;
     env.user = _host.user;
     _auth.begin(env);
+    _prov.begin(_host.identity, &_auth, epoch, epoch_saved);
     Cli::serverCaller().unlocked = consoleUnlocked;   // the console lines of the stock CLI see the unlock too
     Cli::serverCaller().unlocked_user = this;
   }
@@ -172,7 +223,9 @@ void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* r
   static const size_t CAP = 1024;
   char* ev = static_cast<char*>(malloc(CAP));
   if (!ev) { s->_obs.dropped++; return; }
-  const int n = writeObservation(ev, CAP, s->_clock, s->_epoch, false, 0, snr, rssi, raw, len, s->_obs.dropped);
+  int n = writeObservation(ev, CAP, s->_clock, s->_epoch, false, 0, snr, rssi, raw, len, s->_obs.dropped);
+  if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);   // -1: not signable, so not sent
+  if (n <= 0) s->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing
   if (n > 0) {
     s->_obs.dropped = 0;
     s->printLine(*s->_out, ev, (size_t)n);
@@ -185,7 +238,84 @@ bool ConsoleIface::consoleUnlocked(void* self) {
   return s->_auth.unlocked(&s->_unlock);
 }
 
-ConfigHost ConsoleIface::configHost() { return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS}; }
+ConfigHost ConsoleIface::configHost() {
+  return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS, &_confirm};
+}
+
+// ---- commit-or-revert (OPERATIONS.md 3.4). The console is the cable: a signed request on it is a signed caller.
+
+bool ConsoleIface::confirmCable(void* user) {
+  return Cli::principalOf(static_cast<ConsoleIface*>(user)->_ctx) == Cli::P_CABLE;
+}
+
+uint8_t ConsoleIface::confirmLineClass(void*, const char* line) { return Cli::resolve(line, Cli::ROLE_REPEATER).cls; }
+
+void ConsoleIface::confirmRecordCaller(void* user, Job& j) {
+  const ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  j.who_transport = s->_ctx.transport;
+  j.who_auth = s->_ctx.auth;
+  j.who_posture = s->_ctx.posture;
+  j.who_mgmt = 0;
+  j.who_audit = 0;
+}
+
+// A revert line runs as the console did for the caller who applied it: the signed flag is set again for a signed
+// caller, so the CLI decides and audits it as that caller.
+bool ConsoleIface::confirmRunAs(void* user, const Job& j, const char* line, char* reply, size_t cap) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  const bool was = Cli::serverCaller().signed_line;
+  Cli::serverCaller().signed_line = j.who_auth == Cli::A_SIGNED;
+  const bool known = s->_host.run(s->_host.user, line, reply, cap);
+  Cli::serverCaller().signed_line = was;
+  return known;
+}
+
+bool ConsoleIface::confirmJobId(void* user, const Request& req, char* out, size_t cap) {
+  return JobService::identity(&static_cast<ConsoleIface*>(user)->_auth.answering(), req, out, cap);
+}
+
+bool ConsoleIface::jobRevert(void* user, Job& j) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (Upd::UpdateService::owns(j)) return s->_updates.jobRevert(j);
+  if (strcmp(j.op, "config.apply") != 0) return false;
+  bool reboot = false;
+  if (!configRevert(s->configHost(), j, &reboot)) return false;
+  s->_jobs.table()->setState(&j, JOB_REVERTED);
+  // The servers apply the radio only at boot, so a restored radio needs one more reboot, at boot too.
+  if (reboot) s->_reboot_at = millis() + 1500;
+  return true;
+}
+
+bool ConsoleIface::jobConfirm(void* user, Job& j) {
+  if (Upd::UpdateService::owns(j)) return static_cast<ConsoleIface*>(user)->_updates.jobConfirm(j);
+  if (strcmp(j.op, "config.apply") != 0) return false;
+  configConfirmed(static_cast<ConsoleIface*>(user)->configHost());
+  return true;
+}
+
+bool ConsoleIface::updSigned(void* user) { return static_cast<ConsoleIface*>(user)->_auth.isSigned(); }
+
+// After the answer has gone out: an activated image boots, or a reverted one goes back to the previous image.
+void ConsoleIface::updReboot(void* user) { static_cast<ConsoleIface*>(user)->_reboot_at = millis() + 1500; }
+
+// The console is one link, and its caller may always read: each change of a job's state is a line on it, unless a
+// request is being typed (then it is still in job.get and job.list).
+void ConsoleIface::jobChanged(void* user, const Job& j) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (!s->_out || s->_collecting) return;
+  char ev[512 + Job::RESULT_CAP];
+  const uint32_t ts = s->_host.clock_s ? s->_host.clock_s(s->_host.user) : 0;
+  int n = s->_jobs.writeEvent(ev, sizeof(ev), s->_epoch, ts >= 1704067200, ts, j);
+  if (n > 0) n = s->_prov.sign("job", ev, (size_t)n, sizeof(ev));
+  if (n > 0) s->printLine(*s->_out, ev, (size_t)n);
+}
+
+bool ConsoleIface::jobClasses(void* user, uint8_t cls) {
+  const ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  for (uint8_t c = 0; c < Cli::C_COUNT; c++)
+    if ((cls & (1u << c)) && !Cli::decide(s->_ctx, c).allow) return false;
+  return true;
+}
 
 bool ConsoleIface::cliRun(void* user, const char* line, char* reply, size_t cap) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
@@ -206,8 +336,13 @@ bool ConsoleIface::authorize(void* user, const OpEntry& op, const Request&) {
     case DeployAuth::PRE_DENY: return false;
     case DeployAuth::PRE_TABLE: break;
   }
-  const uint8_t cls = op.priv == PRIV_READ ? Cli::C_READ : op.priv == PRIV_WRITE ? Cli::C_WRITE : Cli::C_POSTURE;
-  return Cli::decide(s->_ctx, cls).allow;
+  const uint8_t cls = op.priv == PRIV_READ    ? Cli::C_READ
+                      : op.priv == PRIV_WRITE  ? Cli::C_WRITE
+                      : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
+                                               : Cli::C_POSTURE;
+  const Cli::Verdict v = Cli::decide(s->_ctx, cls);   // a refusal says why, as on the Companion
+  if (!v.allow) s->_deny = Cli::reasonName(v.reason);
+  return v.allow;
 }
 
 const char* ConsoleIface::denyReason(void* user) { return static_cast<ConsoleIface*>(user)->_deny; }
@@ -222,6 +357,7 @@ int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char
   _auth.setContext(_ctx);
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
+  d.setAnswering(&_auth.answering());
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -259,29 +395,32 @@ void ConsoleIface::printLine(Print& out, const char* msg, size_t len) {
 void ConsoleIface::refreshEnvironment(uint32_t now) {
   if (!_host.sensors || (_env_checked && now - _env_at < 60000)) return;
   _env_ok = countEnvironment(*_host.sensors, *_host.board) > 0;
+  _loc_ok = _host.sensors->getLocationProvider() != nullptr;
   _env_checked = true;
   _env_at = now;
 }
 
-void ConsoleIface::answer(Print& out) {
-  _collecting = false;
-  if (!_env_checked) refreshEnvironment(millis());
-  out.print("\r\n");   // ends the console's echo of the prefix, as the stock console ends an echoed line
-  static const size_t OUT_MAX = 1600;
-  char* res = static_cast<char*>(malloc(OUT_MAX));
+// The request's whole work, from the parse to the signed result, on the nRF52 worker's stack (NrfWorker.h, #158): the
+// loop task only prints the line. res is OUT_MAX bytes, or null when it could not be allocated (then the small
+// no-memory answer is written into small).
+__attribute__((noinline)) int ConsoleIface::compute(char* res, char* small, size_t small_cap) {
+  bool was_enrolled = false;   // whether a record existed when the request began
   int n;
   if (!res) {
-    char small[96];
-    n = writeResult(small, sizeof(small), "", ST_BUSY, nullptr, "no-memory");
-    if (n > 0) printLine(out, small, (size_t)n);
-  } else {
+    n = writeResult(small, small_cap, "", ST_BUSY, nullptr, "no-memory");
+    if (n > 0) n = _prov.signResult(small, (size_t)n, small_cap);
+    return n;
+  }
+  {
     if (_overflow) {
       n = writeResult(res, OUT_MAX, "", ST_BUSY, nullptr, _line ? "line-too-long" : "no-memory");
     } else {
       if (!_cache) _cache = new (std::nothrow) ResultCache();
+      _auth.answering().clear();
       if (!_cache) {
         n = writeResult(res, OUT_MAX, "", ST_BUSY, nullptr, "no-memory");
       } else {
+        was_enrolled = _auth.enrolled();
         if (!_nonce[0]) DeployAuth::issueNonce(_nonce);   // issued when the link's first request arrives
         const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
         if (DeployAuth::isWrapper(_line, _len))
@@ -290,11 +429,45 @@ void ConsoleIface::answer(Print& out) {
           n = run(cable, _line, _len, res, OUT_MAX, _cache);
       }
     }
-    if (n > 0) printLine(out, res, (size_t)n);
-    free(res);
+    if (n > 0) n = _prov.signResult(res, (size_t)n, OUT_MAX, nullptr, &_auth.answering(), was_enrolled);
+    _auth.answering().clear();
   }
+  return n;
+}
+
+namespace {
+struct AnswerJob {
+  ConsoleIface* s;
+  char* res;
+  char* small;
+  size_t small_cap;
+  int n;
+};
+__attribute__((noinline)) void answerJob(void* p) {
+  AnswerJob* j = static_cast<AnswerJob*>(p);
+  j->n = j->s->compute(j->res, j->small, j->small_cap);
+}
+}  // namespace
+
+void ConsoleIface::answer(Print& out) {
+  _collecting = false;
+  if (!_env_checked) refreshEnvironment(millis());
+  out.print("\r\n");   // ends the console's echo of the prefix, as the stock console ends an echoed line
+  char* res = static_cast<char*>(malloc(OUT_MAX));
+  static char small[320];
+  AnswerJob job = {this, res, small, sizeof(small), -1};
+  if (NrfWorker::run(answerJob, &job, 15000)) {
+    if (job.n > 0) printLine(out, res ? res : small, (size_t)job.n);
+    _updates.replyWritten(millis());   // a DFU reset the request asked for waits for its reply
+  } else {
+    // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature, so the
+    // refusal goes out unsigned and says why. (A job that overran would have reset the device instead.)
+    static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
+    printLine(out, W, sizeof(W) - 1);
+  }
+  free(res);
   if (_line) {
-    memset(_line, 0, _len);   // a write may have carried a secret
+    wipe(_line, MAX_LINE + 1);   // a write may have carried a secret; a plain memset before free can be dropped
     free(_line);
     _line = nullptr;
   }
@@ -316,6 +489,12 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
     case SID_ENVIRONMENT:
       if (!_host.sensors || writeEnvironment(w, *_host.sensors, *_host.board) == 0) return false;
       break;
+    case SID_LOCATION: {
+      LocationFix fix;
+      if (!_host.sensors || !readLocation(_host.sensors->getLocationProvider(), fix)) return false;
+      writeLocation(w, fix);
+      break;
+    }
     case SID_INVENTORY:
       if (!_host.inventory) return false;
       _host.inventory(_host.user, w);
@@ -329,6 +508,9 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
   _gap.tick(now);
+  _jobs.tick(now);
+  _updates.loop(now);
+  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0 && _host.board) _host.board->reboot();
   refreshEnvironment(now);
   if (_collecting) return;   // an event never lands in the middle of a request being typed
   SubSet* sets[1] = { &_subs };
@@ -338,8 +520,9 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;
-    char ev[640];
-    const int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, false, 0, data);
+    char ev[800];   // an event of up to 640 bytes, and its signature
+    int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, false, 0, data);
+    if (n > 0) n = _prov.sign(STREAMS[s].name, ev, (size_t)n, sizeof(ev));   // -1: not signable, so not sent
     if (n > 0) printLine(out, ev, (size_t)n);
   }
   if (_boot_pending) {   // once per epoch, right after the first runtime snapshot

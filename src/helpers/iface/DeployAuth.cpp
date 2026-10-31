@@ -7,14 +7,20 @@
 #include <Arduino.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/Posture.h>
+#include "Wipe.h"
 #include <helpers/cli/CliCaller.h>
 #include <helpers/deployment/DepHmac.h>
 #include <helpers/deployment/DepMarker.h>
 #include <helpers/deployment/DepProvision.h>
 #include <helpers/deployment/DepReplay.h>
+#include "DeviceId.h"
 #include <new>
 #include <stdlib.h>
 #include <string.h>
+
+// The operation a signed request's cached result is stored under. '#' is outside the operation-name charset, so a plain
+// request can never name it: one reusing a signed key's text as its id gets a conflict, not the signed result.
+static const char SIGNED_OP[] = "#signed";
 
 namespace Iface {
 
@@ -284,11 +290,17 @@ DeployAuth::Pre DeployAuth::preAuthorize(const OpEntry& op, const char** deny) {
   if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return PRE_ALLOW;
   // The unlock handshake is for the unsigned cable, and its handlers decide the transport, the secret and the lockout.
   if (strcmp(op.name, "deployment.unlock_challenge") == 0 || strcmp(op.name, "deployment.unlock") == 0) return PRE_ALLOW;
+  // A chunk of an update is authorised by its job's transfer token, which the handler checks, in place of the class
+  // check: a member's signed offer opened the job, and whoever it gave the token may push (UPDATES.md sections 5 and 6).
+  if (strcmp(op.name, "update.chunk") == 0) return PRE_ALLOW;
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).
-  if (_dep_ls != Dep::LS_ABSENT && !_signed && op.priv != PRIV_READ && strcmp(op.name, "deployment.provision") != 0 &&
-      strcmp(op.name, "deployment.reset") != 0) {
+  // identity.rotate likewise: rotateGate() answers with the contract's code for each state. job.ack is of the read class
+  // but releases a result, so it is not a plain read (section 7): unsigned, it would let any link discard what is owed.
+  const bool plain_read = op.priv == PRIV_READ && strcmp(op.name, "job.ack") != 0;
+  if (_dep_ls != Dep::LS_ABSENT && !_signed && !plain_read && strcmp(op.name, "deployment.provision") != 0 &&
+      strcmp(op.name, "deployment.reset") != 0 && strcmp(op.name, "identity.rotate") != 0) {
     *deny = _dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";
     if (_dep) _dep->auth_rejections++;
     return PRE_DENY;
@@ -331,6 +343,12 @@ bool DeployAuth::isWrapper(const char* m, size_t n) {
   delete d;
   return w;
 }
+// The verified body of a signed request, freed wiped: a config.apply carries passwords in clear.
+static void freeBody(char* body) {
+  if (body) Iface::wipe(body, Dep::MAX_WRAPPED + 1);
+  free(body);
+}
+
 
 int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], const char* msg, size_t len,
                                ResultCache* cache, RunFn run, void* run_user, char* out, size_t cap) {
@@ -350,9 +368,13 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   if (e != Dep::WR_OK) {
     _dep->auth_rejections++;
     n = writeResult(out, cap, "", ST_REFUSED, nullptr, Dep::wrapErrCode(e));
-    free(body);
+    freeBody(body);
     return n;
   }
+  strncpy(_answering.op, v.op, sizeof(_answering.op) - 1);   // the verified request: its result names it
+  _answering.op[sizeof(_answering.op) - 1] = 0;
+  _answering.has_job = v.has_job;
+  _answering.job = v.job_id;
   char id[ID_MAX + 1];
   bodyId(v.body, v.body_len, id);
   char key[24];   // the result cache key of this request: '#' is outside the id charset, so no unsigned id can collide
@@ -362,19 +384,20 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     // Marks that could not be written back at boot, or after a set change, are retried before anything is accepted.
     if (_dep->marks_dirty && !persistMarks()) {
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
-      free(body);
+      freeBody(body);
       return n;
     }
     if (v.member < 0 || v.member >= _dep->marks.n ||
         memcmp(_dep->marks.m[v.member].instance_id, _dep->set.members[v.member].instance_id, Dep::ID_LEN) != 0) {
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "marks");   // marks and set disagree: run nothing
-      free(body);
+      freeBody(body);
       return n;
     }
     Dep::Watermark& wm = _dep->marks.m[v.member].wm;
     const Dep::ReplayVerdict rv = Dep::replayCheck(wm, v.job_id);
     key[0] = '#';
     hexTo(key + 1, _dep->set.members[v.member].instance_id, 6);
+    hexTo(_answering.issuer, _dep->set.members[v.member].instance_id, 6);   // the job identity (OPERATIONS.md 3.1)
     {
       uint8_t j[4] = { (uint8_t)(v.job_id >> 24), (uint8_t)(v.job_id >> 16), (uint8_t)(v.job_id >> 8), (uint8_t)v.job_id };
       hexTo(key + 13, j, 4);
@@ -382,20 +405,20 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (rv == Dep::RV_TOO_OLD) {
       _dep->auth_rejections++;
       n = writeResult(out, cap, id, ST_REFUSED, nullptr, "replay");
-      free(body);
+      freeBody(body);
       return n;
     }
     if (rv == Dep::RV_DUPLICATE) {
       const char* data;
       size_t dl;
-      if (cache && cache->find(key, &data, &dl) == ResultCache::HIT && dl < cap) {
+      if (cache && cache->find(key, SIGNED_OP, &data, &dl) == ResultCache::HIT && dl < cap) {
         memcpy(out, data, dl);
         out[dl] = 0;
         n = (int)dl;
       } else {
         n = writeResult(out, cap, id, ST_FAILED, nullptr, "duplicate");   // it ran (or a cut lost it); read the state
       }
-      free(body);
+      freeBody(body);
       return n;
     }
     // New: the mark is persisted BEFORE the request runs, so a redelivery after a power cut cannot run it twice. A write
@@ -405,7 +428,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (!persistMarks()) {
       wm.mark = old;
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
-      free(body);
+      freeBody(body);
       return n;
     }
   }
@@ -417,9 +440,9 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   n = run(run_user, sctx, v.body, v.body_len, out, cap);   // job ids guard replay; no id cache
   if (_env.publish_caller) Cli::serverCaller().signed_line = false;
   _signed = false;
-  if (n > 0 && key[0] && cache) cache->store(key, out, (size_t)n);
+  if (n > 0 && key[0] && cache) cache->store(key, SIGNED_OP, out, (size_t)n);
   if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);   // used once
-  free(body);
+  freeBody(body);
   return n;
 }
 
@@ -433,10 +456,21 @@ void hexOfId(char* out, const uint8_t id[Dep::ID_LEN]) { hexTo(out, id, Dep::ID_
 
 // The fields of a stored Deployment (AUTHORITY.md section 6.3), shared by deployment.get and the read-back of a
 // provisioning. Nothing secret: the unlock secret and the DAK-signed set's private side never exist here.
-static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record& rec, const char* set_text, bool full) {
+// bind_key: for a provisioning's read-back, this device's node key; the read-back then carries device_id and node_key,
+// so the manager records the pair at the trusted moment of enrolment (AUTHORITY.md section 3.5). Null elsewhere.
+static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record& rec, const char* set_text, bool full,
+                        const uint8_t* bind_key = nullptr) {
   char id[2 * Dep::ID_LEN + 1];
   hexOfId(id, rec.deployment_id);
   w.key("state"); w.str("provisioned");
+  if (bind_key) {
+    char key[2 * Dep::KEY_LEN + 1];
+    static const char H[] = "0123456789abcdef";
+    for (int i = 0; i < Dep::KEY_LEN; i++) { key[2 * i] = H[bind_key[i] >> 4]; key[2 * i + 1] = H[bind_key[i] & 15]; }
+    key[2 * Dep::KEY_LEN] = 0;
+    w.key("device_id"); w.str(Iface::deviceIdHex());
+    w.key("node_key"); w.str(key);
+  }
   w.key("deployment_id"); w.str(id);
   w.key("deployment_name"); w.str(rec.deployment_name);
   w.key("authority_epoch"); w.unum(rec.authority_epoch);
@@ -464,6 +498,18 @@ static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record
     w.key("instance_id"); w.str(id);
     w.key("admitted_revision"); w.unum(s.set.members[i].admitted_revision);
     w.key("mark"); w.unum(s.marks.m[i].wm.mark);   // MARK_BLOCKED (4294967295) until the member is re-admitted
+    w.endObject();
+  }
+  w.endArray();
+  // The broker roles the provisioning set (AUTHORITY.md 6.1): transport metadata the record keeps, read back so a manager
+  // can see what it stored. Empty when the provisioning set none.
+  w.key("broker_roles"); w.beginArray();
+  static const char* const ROLE[] = {"primary", "secondary", "local"};
+  for (int i = 0; i < rec.n_roles; i++) {
+    if (rec.roles[i].role > Dep::ROLE_LOCAL) continue;
+    w.beginObject();
+    w.key("profile"); w.unum(rec.roles[i].profile);
+    w.key("role"); w.str(ROLE[rec.roles[i].role]);
     w.endObject();
   }
   w.endArray();
@@ -588,7 +634,7 @@ Status DeployAuth::opProvision(OpContext& c) {
     }
     if (pe == Dep::P_DUPLICATE) {
       w.key("duplicate"); w.boolean(true);
-      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false);
+      writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false, _env.node_key);
       st = ST_OK;
       goto done;
     }
@@ -609,7 +655,7 @@ Status DeployAuth::opProvision(OpContext& c) {
     }
     if (!saveMarksFor(k->set)) { c.error = "marks"; st = ST_BUSY; goto done; }
     if (!readCurrent(k)) { c.error = "storage"; st = ST_FAILED; goto done; }
-    writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false);
+    writeFields(w, *_dep, k->cur.rec, k->cur.set_text, false, _env.node_key);
     st = ST_OK;
   }
 done:
@@ -829,6 +875,15 @@ done:
   memset(secret, 0, sizeof(secret));
   delete k;
   return st;
+}
+
+// identity.rotate may run only for a member's signature, and only while the record is readable: a device that cannot tell
+// who its managers are does not get a new owner's key (section 11).
+Status DeployAuth::rotateGate(OpContext& c) {
+  if (_dep_ls == Dep::LS_ABSENT) { c.error = "not_enrolled"; return ST_REFUSED; }
+  if (_dep_ls != Dep::LS_OK || !_dep) { if (_dep) _dep->auth_rejections++; c.error = "deployment_record_corrupt"; return ST_REFUSED; }
+  if (!_signed) { _dep->auth_rejections++; c.error = "unauthenticated"; return ST_REFUSED; }
+  return ST_OK;
 }
 
 // ---- unenrolment: reset, factory reset, and the rescue console's rebuild

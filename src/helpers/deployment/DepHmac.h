@@ -10,6 +10,17 @@ namespace Dep {
 
 const size_t HMAC_LEN = 32;
 
+// SHA-256 over data that arrives in pieces (an update image written or read back from flash).
+struct Sha256Ctx {
+  uint32_t h[8];
+  uint8_t buf[64];
+  size_t fill;
+  uint64_t total;
+};
+void sha256Init(Sha256Ctx* c);
+void sha256Update(Sha256Ctx* c, const uint8_t* data, size_t len);
+void sha256Finish(Sha256Ctx* c, uint8_t out[32]);   // clears the context
+
 void sha256(const uint8_t* data, size_t len, uint8_t out[32]);
 void hmacSha256(const uint8_t* key, size_t key_len, const uint8_t* msg, size_t msg_len, uint8_t out[32]);
 // n bytes compared in time that does not depend on where they differ.

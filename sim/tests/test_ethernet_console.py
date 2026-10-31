@@ -5,6 +5,8 @@ any host that could open the port ran `get prv.key`, `set prv.key`, `erase` and 
 and handlers run with the console's TCP transport replaced by a loopback listener (variants/sim/SimEthernetCLI.h);
 the serial console of the same node is the cable.
 """
+import time
+
 import pytest
 
 from sim.harness import CliClient, audit_entries, files_containing
@@ -158,3 +160,25 @@ def test_a_logged_in_connection_runs_as_a_remote_admin_not_as_timestamp_zero(nod
     assert eth.command("get acl") != ""                      # timestamp 0 would list the ACL on the serial port and answer nothing
     assert cable.command("get freq") == freq
     assert cable.command("stats-core").startswith("{")       # the cable still has them
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_an_over_long_line_is_refused_and_its_tail_never_runs(nodes, kind):
+    rep, cable, eth = _start(nodes, kind)
+    cable.command("password " + PW)
+    assert eth.command("x" * 400) == "ERR: line too long"                 # before login: the console is not wedged
+    assert eth.command("login " + PW) == "OK - logged in"
+    pub = eth.command("get public.key").lstrip("> ").strip()
+    assert eth.command("y" * 200 + " set name Tail") == "ERR: line too long"
+    assert "Tail" not in cable.command("get name")
+    assert eth.command("get public.key").lstrip("> ").strip() == pub      # the next line is read whole
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_new_connection_starts_an_empty_line(nodes, kind):
+    rep, cable, eth = _start(nodes, kind)
+    cable.command("password " + PW)
+    eth.sock.sendall(b"set name Leftover")                                # a partial line, never ended
+    time.sleep(1.0)                                                       # read into the line buffer first
+    eth2 = CliClient(rep, ethernet=True)                                  # replaces the first connection
+    assert eth2.command("login " + PW) == "OK - logged in"

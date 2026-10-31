@@ -41,6 +41,12 @@ def test_the_reference_signer_reproduces_the_vectors():
     assert base64.b64encode(sig).decode() == wire["sig"]
 
 
+def bare(r):
+    """A result without its provenance members (contract 3.4: usig_boot, usig_seq, usig) and the members that name what it
+    answers (op, job_id), for comparing what ran. test_provenance checks those members themselves."""
+    return {k: v for k, v in r.items() if not k.startswith("usig") and k not in ("op", "job_id")}
+
+
 def wrap(node_key, op, args=None, job=1, issuer=INST_A, rev=1, rid=None, nonce=None, target=None, deployment=DEP):
     """A signed request (contract 3.3): the body is signed as bytes, and travels as the wrapper's `body` string."""
     body = {"v": 1, "id": rid or "s-%s-%s" % (job, op), "op": op}
@@ -144,6 +150,29 @@ def test_provisioning_refusals(nodes):
     assert r["status"] == "refused" and r["error"] == "unauthenticated", r
 
 
+def test_broker_roles_are_parsed_over_the_cable_and_signed(nodes):
+    """A provisioning that binds a broker role nests five deep (args.deployment.broker_roles[{...}]); it must parse."""
+    d = boot(nodes, "dr", seed=23)
+    assert d.c.cli("set mqtt.profile 0 type static").startswith(">")
+    assert d.c.cli("set mqtt.profile 0 host 127.0.0.2").startswith(">")
+    bad = provision_args(d.node_key)
+    bad["deployment"]["broker_roles"] = [{"profile": 3, "role": "primary"}]   # no such profile: read, then refused
+    r = d.i.request("deployment.provision", bad)
+    assert r["status"] != "ok" and r.get("error") == "bad_broker_roles", r
+    good = provision_args(d.node_key)
+    good["deployment"]["broker_roles"] = [{"profile": 0, "role": "primary"}]
+    r = d.i.request("deployment.provision", good)
+    assert r["status"] == "ok", r
+    # Read back as stored, in the provisioning's read-back and in deployment.get (#201).
+    assert r["result"]["broker_roles"] == [{"profile": 0, "role": "primary"}], r
+    assert d.i.request("deployment.get")["result"]["broker_roles"] == [{"profile": 0, "role": "primary"}]
+    again = provision_args(d.node_key, 2)
+    again["deployment"]["broker_roles"] = [{"profile": 0, "role": "secondary"}]
+    r = d.send(wrap(d.node_key, "deployment.provision", again, job=1))
+    assert r["status"] == "ok" and d.i.request("deployment.get")["result"]["provision_revision"] == 2, r
+    assert d.i.request("deployment.get")["result"]["broker_roles"] == [{"profile": 0, "role": "secondary"}]
+
+
 def test_a_signed_provisioning_moves_the_provision_revision(nodes):
     d = boot(nodes, "dq")
     d.provision()
@@ -165,7 +194,7 @@ def test_a_signed_config_apply_runs_and_a_resend_runs_nothing(nodes):
     assert r["status"] == "ok" and r["result"]["complete"], r
     assert d.name() == "> Signed1"
     again = d.send(w)
-    assert again == r, "the same bytes get the stored result"
+    assert bare(again) == bare(r), "the same bytes get the stored result"
     # an unsigned change is refused once enrolled (contract section 9), the app's settings frame included: the change in
     # between is a second signed request, and the first one's bytes then run nothing
     assert d.c.request(bytes([8]) + b"Unsigned")[1] == 7, "an unsigned settings frame is refused once enrolled"
@@ -261,6 +290,16 @@ def test_unsigned_writes_are_refused_once_enrolled_but_reads_work(nodes):
     assert d.name() != "> Unsigned"
     assert d.i.request("config.get", {"keys": ["name"]})["status"] == "ok"
     assert d.i.request("status.get")["status"] == "ok"
+
+
+def test_an_unsigned_channel_put_is_refused_once_enrolled_and_channel_reads_work(nodes):
+    d = boot(nodes, "uc")
+    d.provision()
+    r = d.i.request("channel.put", {"slot": 3, "name": "x", "secret": "00112233445566778899aabbccddeeff"})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    assert d.c.get_channel(3) is None, "nothing was written"
+    assert d.i.request("channel.remove", {"slot": 0})["status"] == "refused"
+    assert d.i.request("channel.list")["status"] == "ok"
 
 
 def test_signed_requests_never_erase(nodes):
@@ -415,7 +454,7 @@ def test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after(nodes, t
     assert d.i.request("deployment.get")["result"] == {"state": "none"}, "nothing was written"
     assert d.provision()["status"] == "ok", "the cable may"
     r = b.iface_request(dev, {"v": 1, "id": "w1", "op": "config.apply", "args": apply_name("ViaMqtt")})
-    assert r == {"v": 1, "id": "w1", "status": "refused", "error": "unauthenticated"}, r
+    assert bare(r) == {"v": 1, "id": "w1", "status": "refused", "error": "unauthenticated"}, r
     assert d.name() != "> ViaMqtt"
     # a signed one is the authority, over the same verified broker session; its nonce is the session's own
     w = wrap(d.node_key, "config.apply", apply_name("ViaMqtt"), job=1)
@@ -423,7 +462,7 @@ def test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after(nodes, t
     assert r["status"] == "ok", r
     assert d.name() == "> ViaMqtt"
     r2 = b.iface_request(dev, w)
-    assert r2 == r, "a resend over MQTT gets the stored result, and nothing runs twice"
+    assert bare(r2) == bare(r), "a resend over MQTT gets the stored result, and nothing runs twice"
     # the USB link's nonce is not the broker session's
     h = b.iface_request(dev, {"v": 1, "id": "h1", "op": "hello"})["result"]
     assert len(h["channel_nonce"]) == 32 and h["channel_nonce"] != d.nonce()
@@ -512,6 +551,33 @@ def test_a_platform_with_no_marker_store_never_provisions_unsigned(nodes):
     revive(d)
     r = d.provision()
     assert r["status"] == "refused" and r["error"] == "unsupported", r
+    assert d.i.request("deployment.get")["result"] == {"state": "none"}, "nothing was written"
+    assert not os.path.exists(marker_path(d)) and record_files(d) == []
+
+
+def test_a_platform_with_no_marker_store_refuses_ble_and_signed_first_provisioning_too(nodes):
+    # Until #117's marker store, an nRF52 build has none, so no first provisioning succeeds there, whatever the path. The cable
+    # case is the test above; over BLE the transport check comes first, and a signed wrapper has no member key to
+    # verify against. Each is refused with the code the device actually gives, and nothing is written.
+    n = nodes("companion_standalone", "mk4", seed=36, rtc=RTC).start()
+    u = CompanionClient(n)
+    u.device_query()
+    u.app_start()
+    assert u.cli("set pin %d" % PIN).startswith("> pin is now")
+    u.close()
+    n.restart()
+    d = Dev(n)
+    d.n.stop()
+    open(marker_path(d) + ".unsupported", "wb").close()   # the simulated board behaving like an nRF52 build
+    revive(d)
+    r = d.send(wrap(d.node_key, "deployment.provision", provision_args(d.node_key), job=1))
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    b = n.connect_ble(PIN)
+    b.app_start()
+    bi = mecon_iface.IfaceClient(b._send, b._read_frame)
+    r = bi.request("deployment.provision", provision_args(d.node_key))
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    b.close()
     assert d.i.request("deployment.get")["result"] == {"state": "none"}, "nothing was written"
     assert not os.path.exists(marker_path(d)) and record_files(d) == []
 
@@ -881,7 +947,7 @@ def test_reset_and_unsigned_cli_writes_are_refused_over_mqtt(nodes, tmp_path, br
     assert r is not None and r["status"] == "ok" and r["reply"] == "> PreEnrol", "a read works: %s" % r
     # the reset: unsigned and signed, both refused over a broker
     r = b.iface_request(dev, {"v": 1, "id": "u1", "op": "deployment.reset"})
-    assert r == {"v": 1, "id": "u1", "status": "refused", "error": "unauthenticated"}, r
+    assert bare(r) == {"v": 1, "id": "u1", "status": "refused", "error": "unauthenticated"}, r
     r = b.iface_request(dev, wrap(d.node_key, "deployment.reset", job=1))
     assert r["status"] == "refused" and r["error"] == "usb_only", r
     assert d.i.request("deployment.get")["result"]["state"] == "provisioned"
@@ -1164,9 +1230,9 @@ def test_the_handshake_is_refused_over_mqtt_and_to_a_signed_request(nodes, tmp_p
     d, dev = mqtt_boot(nodes, tmp_path, "um", b)
     assert d.i.request("deployment.provision", with_secret(provision_args(d.node_key)))["status"] == "ok"
     r = b.iface_request(dev, {"v": 1, "id": "c1", "op": "deployment.unlock_challenge"})
-    assert r == {"v": 1, "id": "c1", "status": "refused", "error": "usb_only"}, r
+    assert bare(r) == {"v": 1, "id": "c1", "status": "refused", "error": "usb_only"}, r
     r = b.iface_request(dev, {"v": 1, "id": "c2", "op": "deployment.unlock", "args": {"response": "00" * 32}})
-    assert r == {"v": 1, "id": "c2", "status": "refused", "error": "usb_only"}, r
+    assert bare(r) == {"v": 1, "id": "c2", "status": "refused", "error": "usb_only"}, r
     ch = challenge(d.i.request)   # control: the cable has a challenge outstanding; the broker cannot answer it
     r = b.iface_request(dev, {"v": 1, "id": "c3", "op": "deployment.unlock", "args": {"response": unlock_answer(SECRET, ch)}})
     assert r["status"] == "refused" and r["error"] == "usb_only", r

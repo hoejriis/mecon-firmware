@@ -29,6 +29,7 @@ void halt() {
 }
 
 static char command[160];
+static bool command_dropping = false;   // inside an over-long console line (#165)
 
 #ifdef ENABLE_MECON_IFACE
   // The device interface on the console (docs/contract/DEVICE_INTERFACE.md section 7): "mecon> " lines.
@@ -36,8 +37,11 @@ static char command[160];
   #include <helpers/iface/DeviceMeta.h>
   #include <helpers/CryptoRNG.h>
   #include <helpers/deployment/DepFsStore.h>
+  #include <helpers/iface/JobFsStore.h>
   static Iface::ConsoleIface the_iface;
   static Dep::FsStore dep_store;   // the Deployment record's files, on the role's own file system
+  static Iface::JobFsStore job_store;   // the job table (OPERATIONS.md section 3), on the same file system
+  static Iface::SnapFsStore snap_store; // the commit-or-revert snapshot (OPERATIONS.md 3.4)
   static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
     char cmd[160], out[160];
     snprintf(cmd, sizeof(cmd), "%s", line);
@@ -157,13 +161,16 @@ void setup() {
     uint8_t device_id[16];
     uint32_t epoch = 0;
     CryptoRNG crng(&fast_rng);   // device_id must not follow from a small seed
-    Iface::bootDeviceMeta(fs, &crng, device_id, &epoch);   // a failed save still leaves this boot's values
+    // A failed save still leaves this boot's values, but the epoch may repeat: nothing is signed then (AUTHORITY.md 3.4).
+    const bool epoch_saved = Iface::bootDeviceMeta(fs, &crng, device_id, &epoch);
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "repeater", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
                                        &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
-                                       &dep_store, ifaceClock };
+                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store, &snap_store };
     dep_store.setFs(fs);
-    the_iface.begin(host, device_id, epoch);
+    job_store.setFs(fs);
+    snap_store.setFs(fs);
+    the_iface.begin(host, device_id, epoch, epoch_saved);
   }
 #endif
   BootPresence::end();
@@ -204,6 +211,10 @@ void loop() {
 #endif
   while (Serial.available() && len < sizeof(command)-1) {
     char c = Serial.read();
+    if (command_dropping) {   // inside an over-long line: discarded up to its end, never run (#165)
+      if (c == '\r') { command_dropping = false; Serial.println("\n  -> ERR: line too long"); }
+      continue;
+    }
     if (c != '\n') {
       command[len++] = c;
       command[len] = 0;
@@ -220,9 +231,12 @@ void loop() {
     }
 #endif
   }
-  if (len == sizeof(command)-1) {  // buffer full: treat as a completed line
-    command[sizeof(command)-2] = '\r';  // place end-of-line marker inside the buffer
-    command[sizeof(command)-1] = 0;     // keep the buffer NUL-terminated
+  if (len == sizeof(command)-1 && command[len - 1] != '\r') {  // buffer full with no end of line: an over-long line
+    // Stock ran the first part as a line and then the rest as a new command. The line is dropped up to its end
+    // instead, and answered once there (#165).
+    command[0] = 0;
+    len = 0;
+    command_dropping = true;
   }
 
   if (len > 0 && command[len - 1] == '\r') {  // received complete line

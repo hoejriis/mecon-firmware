@@ -251,6 +251,8 @@ private:
         key[0] = 'u'; def(key, q.user, sizeof(q.user));
         key[0] = 'w'; def(key, q.pwd, sizeof(q.pwd));
         key[0] = 'g'; def(key, q.manage);
+        key[0] = 'x'; def(key, q.ws);
+        key[0] = 'r'; def(key, q.path, sizeof(q.path));
         // A CA anchor, as base64 in pieces of CA_CHUNK characters (one prefs token holds 127). Only the pieces that
         // exist are written, so a profile without a CA adds nothing to the file. Keys: c<profile><piece, two digits>.
         char ck[6] = { 'c', (char)('0' + i), '0', '0', 0, 0 };

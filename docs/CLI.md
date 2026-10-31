@@ -34,15 +34,17 @@ A remote caller never inherits a local caller's privileges: a LoRa or MQTT calle
 | `posture` | `set posture ...`, `get audit`, `set connectivity.mode`, `set mqtt.profile <n> manage ...` |
 | `destructive` | `erase`, `poweroff`, `shutdown`; the Companion frame `CMD_FACTORY_RESET` (a powered-off device needs someone on site, so no remote caller, a managing broker included, may) |
 | `reboot` | `reboot` (exactly; `reboot now` is a `write`) |
+| `update` | no command line: the device-interface operation `update.offer`, and `job.confirm` and `job.cancel` of an update job ([signed updates](contract/UPDATES.md) section 5). `update.chunk` is authorised by its job's transfer token instead |
 
 The Companion frames that are not command lines are gated by the same table: `CMD_RUN_CLI_COMMAND` counts as `read` (may this caller reach the CLI at all), `CMD_SET_DEVICE_PIN` as `write`. So does every other frame that manages the device:
 
 - `write`: the frames that change settings (`CMD_SET_ADVERT_NAME`, `CMD_SET_ADVERT_LATLON`, `CMD_SET_RADIO_PARAMS`, `CMD_SET_RADIO_TX_POWER`, `CMD_SET_TUNING_PARAMS`, `CMD_SET_OTHER_PARAMS`, `CMD_SET_CHANNEL`, `CMD_SET_CUSTOM_VAR`, `CMD_SET_AUTOADD_CONFIG`, `CMD_SET_PATH_HASH_MODE`, `CMD_SET_DEFAULT_FLOOD_SCOPE`);
+- `write`: `CMD_SET_DEVICE_TIME` after it has once set the clock since boot (the clock only moves forward, so a push ahead is not undone from the app), and `CMD_ADD_UPDATE_CONTACT` when it grants the contact a flag it does not hold: telemetry (`0x02`, `0x04`, `0x08`) or the remote CLI (`0x10`). The first time set since boot, the rest of a contact record, and taking a grant away are not gated; a contact's modification time from an untrusted caller is held at the device's clock, since the newest one sets the clock at boot;
 - `write`: raw transmission (`CMD_SEND_RAW_DATA`, `CMD_SEND_RAW_PACKET`, `CMD_SEND_CONTROL_DATA`) and signing with the node key (`CMD_SIGN_START`, `CMD_SIGN_DATA`, `CMD_SIGN_FINISH`);
 - `write`: the administration of another node under this node's identity: `CMD_SEND_BINARY_REQ`, `CMD_SEND_TXT_MSG` with a CLI text type, and `CMD_SEND_TXT_MSG` of any type to a repeater, which runs every text from an admin as a command line;
 - `reboot`: `CMD_REBOOT`.
 
-Messaging, contact handling and reads are not gated, so the TCP port and a default-PIN BLE link keep serving the app's messaging. Two reads they are served carry no secret: the device info answers the BLE PIN as 0, and `CMD_GET_CHANNEL` answers a channel's secret as zeros (the name is enough to send and receive on it). A refused frame is audited as `app-frame` unless it has its own entry above. Wi-Fi and MQTT passwords are `write` commands whose *read* is answered `> wifi.pwd is write-only` by the engine, or shows only `set` / `unset`: no reply on any transport carries a secret of this kind.
+Messaging, contact handling (short of a grant) and reads are not gated, so the TCP port and a default-PIN BLE link keep serving the app's messaging. Two reads they are served carry no secret: the device info answers the BLE PIN as 0, and `CMD_GET_CHANNEL` answers a channel's secret as zeros (the name is enough to send and receive on it). A refused frame is audited as `app-frame` unless it has its own entry above. Wi-Fi and MQTT passwords are `write` commands whose *read* is answered `> wifi.pwd is write-only` by the engine, or shows only `set` / `unset`: no reply on any transport carries a secret of this kind.
 
 Lowering protection (`set posture normal`, and any `set posture` argument that is not `hardened`) carries a *cable only* flag: whatever the class cell says, no caller but the cable gets through.
 
@@ -50,21 +52,23 @@ Lowering protection (`set posture normal`, and any `set posture` argument that i
 
 Rows are the callers; per caller the left cell is Normal and the right is Hardened (a posture byte other than Normal counts as Hardened). A dash is allowed.
 
-| Caller (transport, authentication) | read | write | secret | posture | destructive | reboot |
-|---|---|---|---|---|---|---|
-| **cable** (USB / UART) | - / - | - / - | - / refused | - / - | - / - | - / - |
-| **paired phone** (BLE, a PIN of the device's own) | - / - | - / - | - / refused | - / - | - / refused | - / - |
-| **untrusted** (the Companion TCP port, BLE with a default PIN, the Ethernet console before `login`, an unset or inconsistent context) | refused | refused | refused | refused | refused | refused |
-| **remote admin** (LoRa login, password set) | - / - | - / refused | local only / refused | refused | local only / refused | - / - |
-| **remote admin, default password** | refused | refused | refused | refused | refused | refused |
-| **Ethernet admin** (repeater and room server Ethernet console, `login` with a set password) | - / off | - / off | local only / off | refused / off | local only / off | - / off |
-| **guest** (LoRa) | refused | refused | refused | refused | refused | refused |
-| **flagged contact** (Companion remote CLI) | - / off | limited / off | limited / off | refused / off | limited / off | - / off |
-| **MQTT, TLS verified** | - / - | - / flag | refused | refused | refused | - / flag |
-| **MQTT, plain or unverified TLS** | refused | refused | refused | refused | refused | refused |
-| **device button** | refused | refused | refused | allowed | refused | refused |
-| **signed request** (a current member of the Deployment authority set signed it, on any transport; [Management authority contract](contract/AUTHORITY.md)) | - / - | - / - | refused | - / - | refused | - / - |
+| Caller (transport, authentication) | read | write | secret | posture | destructive | reboot | private | update |
+|---|---|---|---|---|---|---|---|---|
+| **cable** (USB / UART) | - / - | - / - | - / refused | - / - | - / - | - / - | - / - | - / - |
+| **paired phone** (BLE, a PIN of the device's own) | - / - | - / - | - / refused | - / - | - / refused | - / - | - / - | refused |
+| **untrusted** (the Companion TCP port, BLE with a default PIN, the Ethernet console before `login`, an unset or inconsistent context) | refused | refused | refused | refused | refused | refused | refused | refused |
+| **remote admin** (LoRa login, password set) | - / - | - / refused | local only / refused | refused | local only / refused | - / - | refused | refused |
+| **remote admin, default password** | refused | refused | refused | refused | refused | refused | refused | refused |
+| **Ethernet admin** (repeater and room server Ethernet console, `login` with a set password) | - / off | - / off | local only / off | refused / off | local only / off | - / off | refused / off | refused / off |
+| **guest** (LoRa) | refused | refused | refused | refused | refused | refused | refused | refused |
+| **flagged contact** (Companion remote CLI) | - / off | limited / off | limited / off | refused / off | limited / off | - / off | refused / off | refused / off |
+| **MQTT, TLS verified** | - / - | - / flag | refused | refused | refused | - / flag | - / - | refused |
+| **MQTT, plain or unverified TLS** | refused | refused | refused | refused | refused | refused | refused | refused |
+| **device button** | refused | refused | refused | allowed | refused | refused | refused | refused |
+| **signed request** (a current member of the Deployment authority set signed it, on any transport; [Management authority contract](contract/AUTHORITY.md)) | - / - | - / - | refused | - / - | refused | - / - | - / - | - / - |
 
+- *update*: a firmware update ([signed updates](contract/UPDATES.md)). A signed request, or the cable of a device that holds no Deployment record; once it holds one, the unsigned cable is refused too, a local unlock included, as every unsigned change is on an enrolled device ([Management authority contract](contract/AUTHORITY.md) section 9). BLE is refused even with the device's own PIN, which the device cannot tell from one a user or a build chose.
+- *private*: the private telemetry streams (location, the contact and channel lists, screen frames). By the owner's rule of 2026-10-28, "All this should go via the broker to the backend": the TLS-verified broker session may, with the cable, the paired phone and a signed request; no LoRa caller and not the Ethernet console.
 - *limited*: a flagged contact reads and reboots only. *off*: Hardened turns the remote CLI (and the Ethernet console) off entirely, reads included.
 - *flag*: allowed only when the broker profile the session runs on is flagged for management (`set mqtt.profile <n> manage on`); otherwise the request is answered `refused` with `ERR: management is off for this broker profile`.
 - *local only* and *refused* are explicit replies and audit entries; `set prv.key` from the air is explained but, as it always was, not logged.
@@ -99,6 +103,7 @@ Before this was fixed the console passed its lines with sender timestamp 0, the 
 - **Wrong passwords** are answered `ERR: wrong password` and audited as `login-fail net bad-password`; the attempt itself is never stored or echoed. Five wrong attempts lock all logins for a minute, across connections. The default password gets `ERR: the Ethernet console is off until the admin password is set on the local console` and is audited as `default-password`.
 - **A login ends** with the connection (a new connection replaces the old one), with `logout`, when the posture is no longer Normal, or when the admin password is the default again.
 - **Hardened** refuses the login (`ERR: the Ethernet console is off in hardened posture`) and drops a live session.
+- **Lines** end at CR or LF, and hold up to 159 characters. A longer line is dropped up to its end and answered `ERR: line too long`; none of it runs, its tail included. A new connection starts with an empty line, whatever the previous one left unfinished (`helpers/LineAssembler.h`).
 
 Why a login and not a read-only or refused console: a console that refuses everything leaves a headless repeater on a rack with no way to be configured except by walking to it, and the Ethernet builds exist to be reached over the network. A login with the admin password is the same authentication the radio uses for remote admin, so the console is held to the same row, no higher. A refusal-only console was the alternative; it is safe but throws away the feature, and the stock `eth.status` and day-to-day tuning still work after a login.
 

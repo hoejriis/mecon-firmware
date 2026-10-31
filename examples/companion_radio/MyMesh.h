@@ -131,6 +131,7 @@ public:
 #ifdef ENABLE_MECON_IFACE
   // For the device interface (MeconIface): read-only facts, and frame output to one transport of the multiplexed serial.
   const char* hardwareName() const { return board.getManufacturerName(); }
+  const char* hardwareNames() const { return board.getManufacturerNames(); }
   uint16_t batteryMilliVolts() { return board.getBattMilliVolts(); }
   uint8_t postureValue() const { return _prefs.posture; }
   MeconIface& iface() { return _iface; }
@@ -147,6 +148,9 @@ public:
   uint8_t getConnectivityMode() { return ConnMode::sanitize(_prefs.connectivity_mode); }
   bool requestConnectivityMode(uint8_t want, uint8_t caller);
   bool connectivityRestartPending() const { return _connmode_restart_at != 0; }
+  // A pending restart counts its 1.5 s again from now: the interface calls this once a request's reply is written, so a
+  // long request that switched the mode early does not lose its reply to the restart it asked for.
+  void restartConnectivityClock() { if (_connmode_restart_at != 0) scheduleConnectivityRestart(); }
 #endif
   void handleCmdFrame(size_t len);
   bool advert();
@@ -255,11 +259,28 @@ public:
   // To check if there is pending work
   bool hasPendingWork() const;
 
+  // identity.rotate (docs/contract/AUTHORITY.md section 11): a new node key from the cryptographic RNG, saved atomically,
+  // then swapped in; contacts, the message queue and everything cached from the old key are dropped; one self-advert.
+  // Configuration, channels, the Deployment record, posture and device_id stay. 0: nothing changed (*err says why);
+  // 1: done; 2: the key is swapped but the contacts could not all be dropped.
+  // device_id_hex and job_id go into the rotation statement (the old key's signed statement of the change, stored before the
+  // swap and served by identity.rotation, so a manager that lost the result can still learn the new key).
+  int rotateIdentity(const char** err, const char* device_id_hex, uint32_t job_id);
+  // The stored statement: its signed text and the base64 signature. False when there is none.
+  bool readRotation(char* text, size_t tcap, char* sig_b64, size_t scap);
+
   // One command line from the broker (docs/CLI.md). `ctx` says how the session was authenticated; the engine's table
   // decides whether the line may run. Returns a Cli::Mqtt::Status.
   uint8_t runMqttCli(const Cli::Context& ctx, const char* cmd, char* reply, size_t cap);
 
 private:
+  // Boot: a statement whose new key is not the current key never took effect and is deleted; one that is the current key
+  // and still marked drop-pending finishes the drop of the old key's contacts and queue.
+  void recoverRotation();
+  void recoverRotationAtBoot();                 // on nRF52 on the worker (#172)
+  static void recoverRotationJob(void* self);
+  void recoverRotationOnLoop();
+  bool dropOldKeyState();
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);
   void writeDisabledFrame();
@@ -281,7 +302,7 @@ private:
   bool isValidClientRepeatFreq(uint32_t f) const;
 
   // helpers, short-cuts
-  void saveChannels() { _store->saveChannels(this); }
+  bool saveChannels() { return _store->saveChannels(this); }
   void saveContacts();
 
   DataStore* _store;
@@ -303,6 +324,7 @@ private:
   bool _cli_rescue;
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
+  bool cli_command_dropping = false;   // inside an over-long rescue-console line (#165)
 #ifdef ENABLE_CONNMODE
   uint32_t _connmode_restart_at = 0;   // millis() deadline of the restart after a mode switch (0 = none)
   void scheduleConnectivityRestart();
@@ -322,9 +344,11 @@ private:
   char reply_buf[166];
   float _radio_freq = 0, _radio_bw = 0;
   uint8_t app_target_ver;
+  bool _clock_set = false;        // CMD_SET_DEVICE_TIME has set the clock since boot (frameGate)
   uint8_t *sign_data;
   uint32_t sign_data_len;
   unsigned long dirty_contacts_expiry;
+  uint8_t _contacts_retries;      // retries of the delayed contacts save since its last good write
 
   TransportKey send_scope;
 

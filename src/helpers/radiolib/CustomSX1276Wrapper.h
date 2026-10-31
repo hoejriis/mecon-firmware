@@ -12,6 +12,7 @@ public:
   CustomSX1276Wrapper(CustomSX1276& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
   void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    idleIfReceiving();   // never retune the chip while it listens
     ((CustomSX1276 *)_radio)->setFrequency(freq);
     ((CustomSX1276 *)_radio)->setSpreadingFactor(sf);
     ((CustomSX1276 *)_radio)->setBandwidth(bw);

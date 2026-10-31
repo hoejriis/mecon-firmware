@@ -23,8 +23,9 @@ const StreamDef STREAMS[STREAM_COUNT] = {
   {"observations", 0, 0, 0, Cli::C_READ},
   {"connectivity", 10, 3600, 60, Cli::C_READ},
   {"environment", 30, 3600, 300, Cli::C_READ},
-  {"inventory", 300, 3600, 3600, Cli::C_READ},
+  {"inventory", 300, 3600, 3600, Cli::C_PRIVATE},   // entries on the Companion; counts only on the server roles
   {"logs", 0, 0, 0, Cli::C_POSTURE},   // the audit ring: the same class as `get audit`
+  {"location", 30, 3600, 300, Cli::C_PRIVATE},   // private: the broker, the device's own links, a signed request
 };
 
 int streamIndex(const char* name, size_t len) {
@@ -176,18 +177,7 @@ void writeRadio(JsonWriter& w, mesh::Dispatcher& d, mesh::Radio& r, const RadioC
 
 // ---- power
 
-void writePower(JsonWriter& w, mesh::MainBoard& b) {
-  const uint16_t mv = b.getBattMilliVolts();
-  w.key("battery_mv"); if (mv) w.unum(mv); else w.null();
-  // The defaults answer false whether or not the board can tell; only an initialised power manager can.
-  const bool can_tell = b.isPwrMgtInitialised();
-  w.key("external"); if (can_tell) w.boolean(b.isExternalPowered()); else w.null();
-  w.key("charging"); if (can_tell) w.boolean(b.isChargerActive()); else w.null();
-  if (b.hasUsbPowerDetect()) { w.key("usb_power"); w.boolean(b.isUsbPowered()); }
-  if (b.hasSolarChargerDetect()) { w.key("solar"); w.boolean(b.isSolarChargerActive()); }
-  const uint16_t boot_mv = b.getBootVoltage();
-  if (boot_mv) { w.key("boot_mv"); w.unum(boot_mv); }
-}
+void writePower(JsonWriter& w, mesh::MainBoard& b) { writePowerOf(w, b); }
 
 // ---- environment
 
@@ -217,6 +207,24 @@ int countEnvironment(SensorManager& s, mesh::MainBoard& b) {
   return writeEnvironment(w, s, b);
 }
 
+// ---- location
+
+bool readLocation(LocationProvider* p, LocationFix& out) {
+  if (!p) return false;
+  out = LocationFix();
+  out.fix = p->isValid();
+  const long sats = p->satellitesCount();
+  out.sats = (uint8_t)(sats < 0 ? 0 : sats > 255 ? 255 : sats);
+  if (out.fix) {
+    out.lat_e6 = (int32_t)p->getLatitude();   // millionths of a degree, as MicroNMEA keeps them
+    out.lon_e6 = (int32_t)p->getLongitude();
+    out.alt_m = (int32_t)(p->getAltitude() / 1000);   // MicroNMEA: thousandths of a metre
+  }
+  uint32_t ms = 0;
+  if (p->fixAgeMs(ms)) out.age_s = (int32_t)(ms / 1000);
+  return true;
+}
+
 // ---- inventory
 
 void writeCount(JsonWriter& w, const char* key, int count, int capacity) {
@@ -238,14 +246,20 @@ static bool containsNoCase(const char* s, const char* word) {
   return false;
 }
 
+int abnormalReset(mesh::MainBoard& b) {
+  const char* why = b.getResetReasonString(b.getResetReason());
+  if (!why || strcmp(why, "Not available") == 0) return -1;
+  return containsNoCase(why, "panic") || containsNoCase(why, "watchdog") || containsNoCase(why, "brownout") ||
+         containsNoCase(why, "lockup");
+}
+
 void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low) {
   const char* why = b.getResetReasonString(b.getResetReason());
   const bool known = why && strcmp(why, "Not available") != 0;
   w.key("reset_reason"); if (known) w.str(why); else w.null();
   w.key("abnormal_reset");
-  if (!known) w.null();
-  else w.boolean(containsNoCase(why, "panic") || containsNoCase(why, "watchdog") || containsNoCase(why, "brownout") ||
-                 containsNoCase(why, "lockup"));
+  const int ab = abnormalReset(b);
+  if (ab < 0) w.null(); else w.boolean(ab == 1);
   w.key("boot_ms"); w.beginObject();
   static const char* const STAGE[] = {"store", "mesh", "setup"};
   for (int s = 0; s < mecon::boot::N_STAGES; s++) {
@@ -258,6 +272,8 @@ void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low)
   w.key("max"); w.unum(gap.take());
   w.endObject();
   if (heap_low >= 0) { w.key("heap_low"); w.boolean(heap_low != 0); }
+  GnssHealth g;
+  if (b.getGnssHealth(g)) writeGnss(w, g);   // absent on a board without a receiver
 }
 
 void writeBoot(JsonWriter& w, mesh::MainBoard& b, const char* role, const char* hardware) {

@@ -19,6 +19,16 @@ enum Status {
 };
 const char* statusName(Status s);
 
+// What a result answers, named inside it before it is signed (AUTHORITY.md section 3.4): the operation, and the job id of a
+// signed request. Empty op: the request was not understood far enough to name one.
+struct Answering {
+  char op[OP_MAX + 1];
+  bool has_job;
+  uint32_t job;
+  char issuer[13];   // the issuer's instance id, its first 6 bytes in hex, for a request with a job id; else ""
+  void clear() { op[0] = 0; has_job = false; job = 0; issuer[0] = 0; }
+};
+
 struct Request {
   char id[ID_MAX + 1];
   char op[OP_MAX + 1];

@@ -2,11 +2,13 @@
 // with a power-cut fault hook for storage-integrity tests.
 #include "shims/SPIFFS.h"
 #include "sim_config.h"
+#include "sim_clock.h"
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
+#include <string.h>
 #include <algorithm>
 
 fs::SPIFFSFS SPIFFS;
@@ -125,8 +127,23 @@ bool FS::rmdir(const char* path) { return ::rmdir(hostPath(path).c_str()) == 0; 
 // ------------------------------------------------------------------ File
 size_t File::write(uint8_t b) { return write(&b, 1); }
 
+// A write error that the test can switch on and off (--write-fail FILE): while FILE exists, a write to a file whose
+// path starts with the prefix FILE holds writes nothing and returns 0, as a failing flash write does.
+static bool write_fails(const std::string& path) {
+  if (g_sim.write_fail.empty()) return false;
+  FILE* fp = fopen(g_sim.write_fail.c_str(), "r");
+  if (!fp) return false;
+  char prefix[128] = {0};
+  bool got = fgets(prefix, sizeof(prefix), fp) != nullptr;
+  fclose(fp);
+  if (!got) return false;
+  prefix[strcspn(prefix, "\r\n")] = 0;
+  return prefix[0] && path.compare(0, strlen(prefix), prefix) == 0;
+}
+
 size_t File::write(const uint8_t* buf, size_t n) {
   if (!_p || !_p->fp) return 0;
+  if (write_fails(_p->fs_path)) return 0;
   // Fault hook: after N bytes written to the named file, persist exactly those
   // N bytes and kill the process without closing anything (a power cut).
   if (g_sim.fault_after >= 0 && _p->fs_path == g_sim.fault_path) {
@@ -161,7 +178,14 @@ size_t File::size() const {
 }
 size_t File::position() const { return (_p && _p->fp) ? ftell(_p->fp) : 0; }
 bool File::seek(uint32_t pos) { return _p && _p->fp && fseek(_p->fp, pos, SEEK_SET) == 0; }
-void File::close() { if (_p && _p->fp) { fclose(_p->fp); _p->fp = nullptr; } }
+void File::close() {
+  if (!_p || !_p->fp) return;
+  fclose(_p->fp);
+  _p->fp = nullptr;
+  // A real board's flash save holds the loop (a Heltec V3 took about 0.6 s a key for a config.apply); --fs-write-ms makes
+  // the simulated one take time too, so a test can see what a slow save does to what follows it.
+  if (g_sim.fs_write_ms && _p->written) sim_clock()->sleepUs((uint64_t)g_sim.fs_write_ms * 1000);
+}
 const char* File::path() const { return _p ? _p->fs_path.c_str() : ""; }
 const char* File::name() const {
   if (!_p) return "";

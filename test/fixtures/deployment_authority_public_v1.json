@@ -25,6 +25,10 @@
     "device node": {
       "seed_hex": "dfcf5dd8bea5eb69a6c9f3b6aec86e0b28cb8b7af326d7384808cc32f9d30c58",
       "public_key": "c78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe"
+    },
+    "device node after rotation": {
+      "seed_hex": "071751ae6355895cae03a2049fdebdea47c8a430a7329b53213b10f0cb7cd11d",
+      "public_key": "d2ae9c749faa54c8c7234e806a2d0c5acfa72b186f9860947cf11fd88573a60b"
     }
   },
   "authority_set_rev1": {
@@ -56,10 +60,47 @@
     "signer": "instance b"
   },
   "uplink_health": {
-    "status": "provisional",
+    "status": "stable",
     "stream": "health",
     "wire": "{\"v\":1,\"ev\":\"health\",\"epoch\":7,\"seq\":3,\"ts\":null,\"data\":{\"uptime_s\":60},\"usig_boot\":7,\"usig_seq\":12,\"usig\":\"rvUU052Hin6a26/Vl5DfcFZtWtm8WUb7roXMARthUUuFrlYWbneC+azA7rDC3LeEX8zQEIcNJzyjWlKlkWqzCw==\"}",
     "signed_bytes_hex": "4d45434f4e2d55504c494e4b2d7631006865616c7468007b2276223a312c226576223a226865616c7468222c2265706f6368223a372c22736571223a332c227473223a6e756c6c2c2264617461223a7b22757074696d655f73223a36307d2c22757369675f626f6f74223a372c22757369675f736571223a31327d",
+    "signer": "device node"
+  },
+  "node_rotation": {
+    "status": "stable",
+    "statement": "{\"v\":1,\"old\":\"c78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe\",\"new\":\"d2ae9c749faa54c8c7234e806a2d0c5acfa72b186f9860947cf11fd88573a60b\",\"device_id\":\"00112233445566778899aabbccddeeff\",\"job_id\":5}",
+    "sig": "Eh0Hr4eyhsyV9Gec/J7m9wFmcMxZcv4qfqmgDXzoIyu6pT7uj/lXSwz02YJ8PwoD/NMpG+7tMZkbz3q3zPaEAQ==",
+    "signed_bytes_hex": "4d45434f4e2d4e4f4445524f542d7631007b2276223a312c226f6c64223a2263373861643166343266663634396537383061616138336233633965623136306536373066313333633933313039353934333335623930363966356234366665222c226e6577223a2264326165396337343966616135346338633732333465383036613264306335616366613732623138366639383630393437636631316664383835373361363062222c226465766963655f6964223a223030313132323333343435353636373738383939616162626363646465656666222c226a6f625f6964223a357d",
+    "signer": "device node"
+  },
+  "device_id_binding": {
+    "status": "stable",
+    "device_id": "00112233445566778899aabbccddeeff",
+    "sig": "hN4eFwJ7cydkeovXkHWB9wo9nu7bYNbDAd67ugTgz9HqoBUDqTQaNe/98am/dGBheZvqLyqmqmUBWQGWHZlKBw==",
+    "signed_bytes_hex": "4d45434f4e2d44455649442d76310000112233445566778899aabbccddeeffc78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe",
+    "signer": "device node"
+  },
+  "device_id_binding_nonce": {
+    "status": "stable",
+    "device_id": "00112233445566778899aabbccddeeff",
+    "nonce": "r-7.nonce_A",
+    "sig": "6wfM1vPbP0d986+f+WnvrYDUaoBl69qpJKZm9DLTTREC8vz9AilKH4Ox3T1NSU1Nj8GHNiDx/zVo/2+99FNRDw==",
+    "signed_bytes_hex": "4d45434f4e2d44455649442d76310000112233445566778899aabbccddeeffc78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe722d372e6e6f6e63655f41",
+    "signer": "device node"
+  },
+  "device_id_binding_foreign": {
+    "status": "stable",
+    "device_id": "00112233445566778899aabbccddeeff",
+    "sig": "hm1lYTpb990NmpETs6fu/zTUC0HkmbI5Efpv9+yfMEmoqcShH1veuII1VUwcvb51PBxHJDwCeMXJtwwEVdK1Bg==",
+    "signed_bytes_hex": "4d45434f4e2d44455649442d76310000112233445566778899aabbccddeeff0a4fd2193efbe65b1de067cfe0f653f1c7172d897dd9741de055779963397ea6",
+    "signer": "instance a",
+    "note": "a valid signature by another key over this device_id: a Backend that has bound device_id to 'device node' must refuse it"
+  },
+  "uplink_result": {
+    "status": "stable",
+    "stream": "result",
+    "wire": "{\"v\":1,\"id\":\"r-1\",\"status\":\"ok\",\"result\":{\"complete\":true},\"op\":\"config.apply\",\"job_id\":1,\"usig_boot\":7,\"usig_seq\":13,\"usig\":\"YnT/xY4gijYtrOwvQ8U6olAdOelH7g6b8mtwOsjJ6cpunuMQ9Vx6+N/IlcPn73CJhmKvyQj7oUbFuSSjtF+eCw==\"}",
+    "signed_bytes_hex": "4d45434f4e2d55504c494e4b2d763100726573756c74007b2276223a312c226964223a22722d31222c22737461747573223a226f6b222c22726573756c74223a7b22636f6d706c657465223a747275657d2c226f70223a22636f6e6669672e6170706c79222c226a6f625f6964223a312c22757369675f626f6f74223a372c22757369675f736571223a31337d",
     "signer": "device node"
   }
 }

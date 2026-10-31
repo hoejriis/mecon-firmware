@@ -31,6 +31,66 @@ bool SimSensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& t
   return any;
 }
 
+static SimLocationProvider sim_gps;
+
+LocationProvider* SimSensorManager::getLocationProvider() {
+  FILE* f = fopen((g_sim.dir + ".gps").c_str(), "r");
+  if (!f) return nullptr;
+  fclose(f);
+  return &sim_gps;
+}
+
+SimLocationProvider::State SimLocationProvider::read() const {
+  State s;
+  FILE* f = fopen((g_sim.dir + ".gps").c_str(), "r");
+  if (!f) return s;
+  char kind[8] = {0};
+  if (fscanf(f, "%7s", kind) == 1) {
+    if (!strcmp(kind, "fix")) {
+      s.fix = fscanf(f, "%ld %ld %ld %ld", &s.lat, &s.lon, &s.alt, &s.sats) == 4;
+      if (s.fix && fscanf(f, "%ld", &s.age) != 1) s.age = -1;
+    } else if (fscanf(f, "%ld", &s.sats) != 1) {
+      s.sats = 0;
+    }
+  }
+  fclose(f);
+  return s;
+}
+
+bool SimLocationProvider::fixAgeMs(uint32_t& out) const {
+  const State s = read();
+  if (s.age < 0) return false;
+  out = (uint32_t)s.age * 1000;
+  return true;
+}
+
+namespace {
+struct ResetKnob { bool read = false; std::string why; };
+ResetKnob& resetKnob() {
+  static ResetKnob k;
+  if (k.read) return k;
+  k.read = true;
+  std::string d = g_sim.dir;
+  while (d.size() > 1 && d.back() == '/') d.pop_back();
+  const std::string path = d + ".reset";
+  FILE* f = fopen(path.c_str(), "r");
+  if (!f) return k;
+  char line[64] = {0};
+  if (fgets(line, sizeof(line), f)) {
+    line[strcspn(line, "\r\n")] = 0;
+    k.why = line;
+  }
+  fclose(f);
+  remove(path.c_str());
+  return k;
+}
+}  // namespace
+
+uint32_t SimBoard::getResetReason() const { return resetKnob().why.empty() ? 0 : 1; }
+const char* SimBoard::getResetReasonString(uint32_t reason) {
+  return reason && !resetKnob().why.empty() ? resetKnob().why.c_str() : "Not available";
+}
+
 void SimBoard::reboot() { fflush(NULL); exit(75); }
 void SimBoard::powerOff() { fflush(NULL); exit(0); }
 

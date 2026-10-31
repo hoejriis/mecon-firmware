@@ -4,6 +4,9 @@
 #include <helpers/AtomicFile.h>
 #include <helpers/deployment/DepRecord.h>
 #include <helpers/deployment/DepFsStore.h>
+#ifdef ENABLE_MECON_IFACE
+  #include <helpers/updates/UpdFloor.h>
+#endif
 
 #if defined(EXTRAFS) || defined(QSPIFLASH)
   #define MAX_BLOBRECS 100
@@ -178,7 +181,14 @@ bool DataStore::formatFileSystem() {
   return LittleFS.format();
 #elif defined(ESP32)
   bool fs_success = ((fs::SPIFFSFS *)_fs)->format();
+#ifdef ENABLE_MECON_IFACE
+  uint32_t floor = 0;
+  const bool floor_known = Upd::floorRead(&floor);   // the security floor survives a factory reset (UPDATES.md 4)
+#endif
   esp_err_t nvs_err = nvs_flash_erase(); // no need to reinit, will be done by reboot
+#ifdef ENABLE_MECON_IFACE
+  if (floor_known && floor) Upd::floorRaise(floor);   // opens NVS again; at worst the next boot raises it to the image's
+#endif
   return fs_success && (nvs_err == ESP_OK);
 #else
   #error "need to implement format()"
@@ -191,6 +201,24 @@ bool DataStore::loadMainIdentity(mesh::LocalIdentity &identity) {
 
 bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
   return identity_store.save("_main", identity);
+}
+
+size_t DataStore::loadRotation(uint8_t* buf, size_t cap) {
+  AtomicFile::recover(_fs, "/rotation");   // finish or drop a save that was cut by a power loss
+  if (!AtomicFile::exists(_fs, "/rotation")) return 0;
+  File f = openRead(_fs, "/rotation");
+  if (!f) return 0;
+  const int n = f.read(buf, cap);
+  f.close();
+  return n > 0 ? (size_t)n : 0;
+}
+
+bool DataStore::saveRotation(const uint8_t* buf, size_t len) {
+  return AtomicFile::save(_fs, "/rotation", [buf, len](Stream& s) { return s.write(buf, len) == len; });
+}
+
+void DataStore::removeRotation() {
+  AtomicFile::discard(_fs, "/rotation");
 }
 
 void DataStore::loadPrefs(NodePrefs& prefs) {
@@ -478,9 +506,9 @@ void DataStore::loadChannels(DataStoreHost* host) {
     }
 }
 
-void DataStore::saveChannels(DataStoreHost* host) {
+bool DataStore::saveChannels(DataStoreHost* host) {
   // temp file + verify + swap: a power cut keeps the previous complete channel table
-  AtomicFile::save(_getContactsChannelsFS(), "/channels2", [host](Stream& file) {
+  return AtomicFile::save(_getContactsChannelsFS(), "/channels2", [host](Stream& file) {
     uint8_t channel_idx = 0;
     ChannelDetails ch;
     uint8_t unused[4];

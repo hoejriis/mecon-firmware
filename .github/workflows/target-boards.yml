@@ -9,10 +9,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# A newer push to the same branch makes this run obsolete: cancel it rather than queue behind it.
+# On a pull request a newer push makes this run obsolete: cancel it rather than queue behind it. On main every
+# commit's run finishes, so each merge gets a verdict (#146): a newer one waits, and GitHub keeps only the newest
+# pending run in the group, so a busy day does not queue a run per merge.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -43,6 +45,7 @@ jobs:
           - WioTrackerL1_companion_radio_ble
           - WioTrackerL1_repeater
           - LilyGo_TLora_V2_1_1_6_companion_radio_ble          # NimBLE, this board's default stack
+          - wio-e5-mini_companion_radio_usb                    # STM32WLE5, 224 KB for the app: the tightest target
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
@@ -54,11 +57,24 @@ jobs:
           key: pio-6.2.0-${{ matrix.env }}-${{ hashFiles('platformio.ini', 'variants/**/platformio.ini') }}
           restore-keys: pio-6.2.0-${{ matrix.env }}-
       - run: pip install "platformio==6.2.0" PyYAML   # PyYAML: the hybrid IDF library compile (docs/PLATFORM.md)
+      # The locked library set first (ci/lib-lock.json, tools/lib_lock.py): PlatformIO keeps an installed library that
+      # satisfies a lib_deps range, so the build links exactly these, whatever the registry offers today.
+      - name: Libraries from the lock
+        run: python3 tools/lib_lock.py install ${{ matrix.env }}
       - name: Rebuild the Arduino IDF libraries (Heltec V3 envs; skipped for the rest)
         run: bin/idf5_libs.sh ${{ matrix.env }}
       - run: |
           set -o pipefail   # a failed build must fail the step, not be hidden by tee
           pio run -e ${{ matrix.env }} | tee build.log
+      - name: The libraries this build linked are the locked ones
+        run: |
+          LIB_LOCK_FILE=resolved-libs.json python3 tools/lib_lock.py generate ${{ matrix.env }}
+          python3 tools/lib_lock.py check ${{ matrix.env }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: libs-${{ matrix.env }}
+          path: resolved-libs.json
       - name: Record RAM and flash
         run: |
           python3 - "${{ matrix.env }}" <<'PY'

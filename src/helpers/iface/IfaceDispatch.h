@@ -6,7 +6,8 @@
 
 namespace Iface {
 
-enum Priv { PRIV_READ, PRIV_WRITE, PRIV_ADMIN };
+// PRIV_UPDATE: the update class of the privilege table (UPDATES.md section 5).
+enum Priv { PRIV_READ, PRIV_WRITE, PRIV_ADMIN, PRIV_UPDATE };
 
 struct OpContext {
   const Request* req;
@@ -37,6 +38,8 @@ public:
     : _t(table), _n(n), _auth(auth), _auth_user(auth_user), _handler_user(handler_user) {}
 
   void setDenyReason(DenyFn f) { _deny = f; }
+  // Receives the operation name of each request that parses, for the result to name (Provenance).
+  void setAnswering(Answering* a) { _ans = a; }
 
   // Handles one complete request message and writes the response envelope into out. Returns its length, or -1
   // when even an error response does not fit out (the caller then answers busy through its own channel).
@@ -48,7 +51,7 @@ public:
 private:
   int handleWith(JsonDoc& doc, const char* msg, size_t len, char* out, size_t cap, ResultCache* cache);
   const OpEntry* find(const char* name) const;
-  const OpEntry* _t; size_t _n; AuthFn _auth; void* _auth_user; void* _handler_user; DenyFn _deny = nullptr;
+  const OpEntry* _t; size_t _n; AuthFn _auth; void* _auth_user; void* _handler_user; DenyFn _deny = nullptr; Answering* _ans = nullptr;
 };
 
 }  // namespace Iface

@@ -13,6 +13,13 @@
     "firmware": {"type": "string", "description": "mecon-firmware version, for example v1.18.0-mecon.0.1.3."},
     "upstream": {"type": "string", "description": "The MeshCore release it is built on, for example v1.18.0."},
     "epoch": {"type": "integer", "minimum": 1},
-    "capabilities": {"type": "array", "items": {"type": "string"}, "contains": {"const": "hello"}}
+    "capabilities": {"type": "array", "items": {"type": "string"}, "contains": {"const": "hello"}},
+    "update": {
+      "description": "Present only while the image of an update job runs unconfirmed: that job, and the version and SHA-256 of the running image (UPDATES.md section 7, step 3), with unconfirmed:true when its job is already over.",
+      "type": "object",
+      "required": ["job", "version", "sha256"],
+      "properties": {"job": {"type": "string"}, "version": {"type": "string"}, "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$", "description": "null on the nRF52, whose bootloader installs a package the device cannot hash: the version is the attestation (UPDATES.md section 6)."}, "unconfirmed": {"const": true, "description": "The job ended without a confirmation, yet this image runs: the image before it failed its trial each time it was sent back (UPDATES.md section 7, step 6)."}},
+      "additionalProperties": false
+    }
   }
 }

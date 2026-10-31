@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/channel.get.result.json",
+  "title": "Result of channel.get",
+  "description": "Request args: {\"slot\": n}. An empty slot is failed with error empty-slot; a slot outside the table is invalid. Companion only.",
+  "type": "object",
+  "required": [
+    "slot",
+    "name",
+    "hash",
+    "key_bits"
+  ],
+  "properties": {
+    "slot": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 31
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{2}$",
+      "description": "The channel hash on air: the first byte of SHA-256 of the key."
+    },
+    "key_bits": {
+      "enum": [
+        128,
+        256
+      ]
+    }
+  }
+}
