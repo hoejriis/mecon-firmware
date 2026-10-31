@@ -158,6 +158,8 @@ private:
   static bool confirmJobId(void* self, const Iface::Request& req, char* out, size_t cap);
   static bool jobRevert(void* self, Iface::Job& j);
   static bool jobConfirm(void* self, Iface::Job& j);
+  static bool updSigned(void* self);
+  static void updReboot(void* self);
   static bool jobClasses(void* self, uint8_t cls);
   static void jobChanged(void* self, const Iface::Job& j);
   bool _mqtt_may_read = false;
@@ -231,12 +233,12 @@ private:
   Iface::DeployAuth _auth;                  // the record, its marks and the signed-request checks (shared with the servers)
   DataStoreCopies _copies;
   Iface::JobService _jobs;                  // config.apply with confirm creates the jobs (OPERATIONS.md 3.4)
-  Upd::UpdateService _updates;              // update.manifest and update.status (UPDATES.md section 8)
+  Upd::UpdateService _updates;              // the update operations and their install (UPDATES.md sections 5 to 8)
   Iface::ConfirmHost _confirm = {};         // filled by jobsLoad(); until then nothing can be applied tentatively
   bool _jobs_booting = false;
   Iface::ChannelHost _chan_host = {};       // the table mgmtHost() hands out
   uint8_t _public_fp[Iface::MGMT_FP_BYTES] = {0};   // the public channel's key fingerprint, set by mgmtLoad()
-  uint32_t _reboot_at = 0;                  // a revert restored a key that needs a reboot (0: none)
+  uint32_t _reboot_at = 0;                  // a revert restored a key, or an update activated or reverted an image (0: none)
   const char* _deny = nullptr;              // why authorize() refused, when it has a contract code for it
   char _mqtt_nonce[33] = {0};               // the MQTT session is one link
   char _id_hex[33] = {0};

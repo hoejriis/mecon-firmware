@@ -63,6 +63,8 @@ UTF-8 JSON objects. Three shapes:
 | `job.ack` | releases an owed terminal result, `{"acked":true}` | read; once a device holds a Deployment record, signed with a `job_id` |
 | `job.cancel`, `job.confirm` | cancel a job, or revert it if it has applied; confirm a change awaiting confirmation | every CLI class the job's change needed |
 | `update.manifest` | stage a signed release manifest in RAM, checked against the release keys and this device ([UPDATES](UPDATES.md) section 8) | read |
+| `update.offer` | open an update job for a staged manifest, after preflight; a push offer answers the job's `transfer_token` ([UPDATES](UPDATES.md) sections 4 to 7) | update: signed, or the cable of a device with no Deployment record |
+| `update.chunk` | one piece of the image at the offset expected next; answers `{"next"}` ([UPDATES](UPDATES.md) section 6) | the job's transfer token, in place of a class |
 | `update.status` | the open update job, the security floor and the staged manifests | read |
 | `channel.list` / `channel.get` | the native channel table: per used slot its name, the one-byte channel hash and the key size, never the secret; `list` is paged by 8 used slots (`cursor` in, `next` out). Companion only | read |
 | `channel.put` / `channel.remove` | write or clear a slot of the native channel table, as the app's `CMD_SET_CHANNEL` does: a name of 1 to 31 bytes and a 128-bit key as 32 hex digits; a key another slot holds is `failed` `duplicate-secret`; a table that cannot be saved is `failed` `write-failed` with the slot unchanged, in RAM and on flash. A slot holding a key under an empty name counts as present for `remove`. Companion only | write |

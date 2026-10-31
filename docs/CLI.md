@@ -34,6 +34,7 @@ A remote caller never inherits a local caller's privileges: a LoRa or MQTT calle
 | `posture` | `set posture ...`, `get audit`, `set connectivity.mode`, `set mqtt.profile <n> manage ...` |
 | `destructive` | `erase`, `poweroff`, `shutdown`; the Companion frame `CMD_FACTORY_RESET` (a powered-off device needs someone on site, so no remote caller, a managing broker included, may) |
 | `reboot` | `reboot` (exactly; `reboot now` is a `write`) |
+| `update` | no command line: the device-interface operation `update.offer`, and `job.confirm` and `job.cancel` of an update job ([signed updates](contract/UPDATES.md) section 5). `update.chunk` is authorised by its job's transfer token instead |
 
 The Companion frames that are not command lines are gated by the same table: `CMD_RUN_CLI_COMMAND` counts as `read` (may this caller reach the CLI at all), `CMD_SET_DEVICE_PIN` as `write`. So does every other frame that manages the device:
 
@@ -51,21 +52,22 @@ Lowering protection (`set posture normal`, and any `set posture` argument that i
 
 Rows are the callers; per caller the left cell is Normal and the right is Hardened (a posture byte other than Normal counts as Hardened). A dash is allowed.
 
-| Caller (transport, authentication) | read | write | secret | posture | destructive | reboot | private |
-|---|---|---|---|---|---|---|---|
-| **cable** (USB / UART) | - / - | - / - | - / refused | - / - | - / - | - / - | - / - |
-| **paired phone** (BLE, a PIN of the device's own) | - / - | - / - | - / refused | - / - | - / refused | - / - | - / - |
-| **untrusted** (the Companion TCP port, BLE with a default PIN, the Ethernet console before `login`, an unset or inconsistent context) | refused | refused | refused | refused | refused | refused | refused |
-| **remote admin** (LoRa login, password set) | - / - | - / refused | local only / refused | refused | local only / refused | - / - | refused |
-| **remote admin, default password** | refused | refused | refused | refused | refused | refused | refused |
-| **Ethernet admin** (repeater and room server Ethernet console, `login` with a set password) | - / off | - / off | local only / off | refused / off | local only / off | - / off | refused / off |
-| **guest** (LoRa) | refused | refused | refused | refused | refused | refused | refused |
-| **flagged contact** (Companion remote CLI) | - / off | limited / off | limited / off | refused / off | limited / off | - / off | refused / off |
-| **MQTT, TLS verified** | - / - | - / flag | refused | refused | refused | - / flag | - / - |
-| **MQTT, plain or unverified TLS** | refused | refused | refused | refused | refused | refused | refused |
-| **device button** | refused | refused | refused | allowed | refused | refused | refused |
-| **signed request** (a current member of the Deployment authority set signed it, on any transport; [Management authority contract](contract/AUTHORITY.md)) | - / - | - / - | refused | - / - | refused | - / - | - / - |
+| Caller (transport, authentication) | read | write | secret | posture | destructive | reboot | private | update |
+|---|---|---|---|---|---|---|---|---|
+| **cable** (USB / UART) | - / - | - / - | - / refused | - / - | - / - | - / - | - / - | - / - |
+| **paired phone** (BLE, a PIN of the device's own) | - / - | - / - | - / refused | - / - | - / refused | - / - | - / - | refused |
+| **untrusted** (the Companion TCP port, BLE with a default PIN, the Ethernet console before `login`, an unset or inconsistent context) | refused | refused | refused | refused | refused | refused | refused | refused |
+| **remote admin** (LoRa login, password set) | - / - | - / refused | local only / refused | refused | local only / refused | - / - | refused | refused |
+| **remote admin, default password** | refused | refused | refused | refused | refused | refused | refused | refused |
+| **Ethernet admin** (repeater and room server Ethernet console, `login` with a set password) | - / off | - / off | local only / off | refused / off | local only / off | - / off | refused / off | refused / off |
+| **guest** (LoRa) | refused | refused | refused | refused | refused | refused | refused | refused |
+| **flagged contact** (Companion remote CLI) | - / off | limited / off | limited / off | refused / off | limited / off | - / off | refused / off | refused / off |
+| **MQTT, TLS verified** | - / - | - / flag | refused | refused | refused | - / flag | - / - | refused |
+| **MQTT, plain or unverified TLS** | refused | refused | refused | refused | refused | refused | refused | refused |
+| **device button** | refused | refused | refused | allowed | refused | refused | refused | refused |
+| **signed request** (a current member of the Deployment authority set signed it, on any transport; [Management authority contract](contract/AUTHORITY.md)) | - / - | - / - | refused | - / - | refused | - / - | - / - | - / - |
 
+- *update*: a firmware update ([signed updates](contract/UPDATES.md)). A signed request, or the cable of a device that holds no Deployment record; once it holds one, the unsigned cable is refused too, a local unlock included, as every unsigned change is on an enrolled device ([Management authority contract](contract/AUTHORITY.md) section 9). BLE is refused even with the device's own PIN, which the device cannot tell from one a user or a build chose.
 - *private*: the private telemetry streams (location, the contact and channel lists, screen frames). By the owner's rule of 2026-10-28, "All this should go via the broker to the backend": the TLS-verified broker session may, with the cable, the paired phone and a signed request; no LoRa caller and not the Ethernet console.
 - *limited*: a flagged contact reads and reboots only. *off*: Hardened turns the remote CLI (and the Ethernet console) off entirely, reads included.
 - *flag*: allowed only when the broker profile the session runs on is flagged for management (`set mqtt.profile <n> manage on`); otherwise the request is answered `refused` with `ERR: management is off for this broker profile`.

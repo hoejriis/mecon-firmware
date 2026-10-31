@@ -15,7 +15,7 @@ using namespace Cli;
 namespace {
 
 // ---- the expected table, written out independently of CliPolicy.h
-// One character per class, in the order READ WRITE SECRET POSTURE DESTRUCTIVE REBOOT:
+// One character per class, in the order READ WRITE SECRET POSTURE DESTRUCTIVE REBOOT PRIVATE UPDATE:
 //   .  allowed          U  untrusted transport      P  not permitted          L  flagged contact limited to reads and reboot
 //   H  hardened remote  O  remote CLI off           D  admin password is default
 //   K  key refused in Hardened      Y  local console only      V  broker session not verified
@@ -28,18 +28,18 @@ struct Expect {
   const char* hardened;
 };
 const Expect EXPECT_TABLE[] = {
-  {P_UNTRUSTED,       "untrusted",        "UUUUUUU", "UUUUUUU"},
-  {P_CABLE,           "cable",            ".......", "..K...."},
-  {P_PAIRED,          "paired BLE",       ".......", "..K.P.."},
-  {P_ADMIN,           "remote admin",     ". . Y P Y . P", ". H H P H . P"},
-  {P_ADMIN_DEFAULT,   "admin, default pw", "DDDDDDD", "DDDDDDD"},
-  {P_GUEST,           "guest",            "PPPPPPP", "PPPPPPP"},
-  {P_CONTACT,         "flagged contact",  ".LLPL.P", "OOOOOOO"},
-  {P_MQTT,            "MQTT verified",    "..PPP..", ".FPPPF."},
-  {P_MQTT_UNVERIFIED, "MQTT unverified",  "VVVVVVV", "VVVVVVV"},
-  {P_BUTTON,          "button",           "PPP.PPP", "PPP.PPP"},
-  {P_NETCON_ADMIN,    "Ethernet admin",   ". . Y P Y . P", "NNNNNNN"},
-  {P_SIGNED,          "signed",           "..P.P..", "..P.P.."},
+  {P_UNTRUSTED,       "untrusted",        "UUUUUUUU", "UUUUUUUU"},
+  {P_CABLE,           "cable",            "........", "..K....."},
+  {P_PAIRED,          "paired BLE",       ".......P", "..K.P..P"},
+  {P_ADMIN,           "remote admin",     ". . Y P Y . P P", ". H H P H . P P"},
+  {P_ADMIN_DEFAULT,   "admin, default pw", "DDDDDDDD", "DDDDDDDD"},
+  {P_GUEST,           "guest",            "PPPPPPPP", "PPPPPPPP"},
+  {P_CONTACT,         "flagged contact",  ".LLPL.PP", "OOOOOOOO"},
+  {P_MQTT,            "MQTT verified",    "..PPP..P", ".FPPPF.P"},
+  {P_MQTT_UNVERIFIED, "MQTT unverified",  "VVVVVVVV", "VVVVVVVV"},
+  {P_BUTTON,          "button",           "PPP.PPPP", "PPP.PPPP"},
+  {P_NETCON_ADMIN,    "Ethernet admin",   ". . Y P Y . P P", "NNNNNNNN"},
+  {P_SIGNED,          "signed",           "..P.P...", "..P.P..."},
 };
 
 std::string squeeze(const char* s) {
@@ -96,7 +96,7 @@ Principal expectedPrincipal(uint8_t t, uint8_t a, bool remote) {
 
 const Expect& rowFor(Principal p) {
   for (const Expect& e : EXPECT_TABLE) if (e.p == p) return e;
-  static Expect none = {P_UNTRUSTED, "?", "UUUUUUU", "UUUUUUU"};
+  static Expect none = {P_UNTRUSTED, "?", "UUUUUUUU", "UUUUUUUU"};
   return none;
 }
 
@@ -166,6 +166,25 @@ TEST(PrivilegeProperties, PrivateTelemetryGoesToTheBrokerAndTheDevicesOwnLinksOn
       const bool want = p == P_CABLE || p == P_PAIRED || p == P_MQTT || p == P_SIGNED;
       EXPECT_EQ(tableCell((Principal)p, hardened, C_PRIVATE) == R_ALLOW, want) << "principal " << (int)p << " hardened " << hardened;
     }
+}
+
+TEST(PrivilegeProperties, AnUpdateTakesASignatureOrTheCableOfADeviceWithNoRecord) {
+  // UPDATES.md section 5: a signed request on any transport, or the cable while the device holds no Deployment record.
+  // BLE is refused even with the device's own PIN, which it cannot tell from a chosen one.
+  for (bool hardened : {false, true})
+    for (uint8_t p = 0; p < P_COUNT; p++)
+      EXPECT_EQ(tableCell((Principal)p, hardened, C_UPDATE) == R_ALLOW, p == P_CABLE || p == P_SIGNED)
+          << "principal " << (int)p << " hardened " << hardened;
+  Context cable(T_USB, A_CABLE, 0);
+  EXPECT_TRUE(decide(cable, C_UPDATE).allow);
+  cable.enrolled = true;   // the enrolled rule: unsigned, the cable no longer installs
+  EXPECT_EQ(decide(cable, C_UPDATE).reason, R_ENROLLED);
+  cable.unlocked = true;   // nor does a local unlock open it
+  EXPECT_EQ(decide(cable, C_UPDATE).reason, R_ENROLLED);
+  Context signed_usb(T_USB, A_SIGNED, 1);
+  signed_usb.enrolled = true;
+  EXPECT_TRUE(decide(signed_usb, C_UPDATE).allow);
+  EXPECT_EQ(decide(Context(T_BLE, A_PAIRED_PIN, 0), C_UPDATE).reason, R_NOT_PERMITTED);
 }
 
 TEST(PrivilegeProperties, ASignedCallerNeverEraseNorReadsKeysOnAnyTransport) {

@@ -290,6 +290,9 @@ DeployAuth::Pre DeployAuth::preAuthorize(const OpEntry& op, const char** deny) {
   if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return PRE_ALLOW;
   // The unlock handshake is for the unsigned cable, and its handlers decide the transport, the secret and the lockout.
   if (strcmp(op.name, "deployment.unlock_challenge") == 0 || strcmp(op.name, "deployment.unlock") == 0) return PRE_ALLOW;
+  // A chunk of an update is authorised by its job's transfer token, which the handler checks, in place of the class
+  // check: a member's signed offer opened the job, and whoever it gave the token may push (UPDATES.md sections 5 and 6).
+  if (strcmp(op.name, "update.chunk") == 0) return PRE_ALLOW;
   // Once a device holds a record, a transport is not authority: an unsigned request may read, and nothing more. A first
   // or repeated provisioning is decided by its handler (it knows the transport and the stored record).
   // Likewise the reset, whose handler knows the record's state, the transport and the posture (section 11).

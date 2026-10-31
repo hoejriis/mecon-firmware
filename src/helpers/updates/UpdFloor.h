@@ -1,7 +1,8 @@
 #pragma once
 // The security floor (docs/contract/UPDATES.md section 4): the lowest security_version this device installs. It only
-// rises, it is raised at every boot to the security version compiled into the running image, and a factory reset
-// keeps it.
+// rises, it is raised to the security version compiled into the running image once that image is proven (at boot, or
+// for a fresh install once its start-up checks pass or it is confirmed: Upd::UpdateService), and a factory reset keeps
+// it.
 //
 //   ESP32 (ESP_PLATFORM)   NVS namespace "mecon", key "secfloor". The Companion's factory reset erases all of NVS, so
 //                          it reads the floor first and raises it back after the erase. A power cut between the two
@@ -22,6 +23,6 @@ namespace Upd {
 bool floorRead(uint32_t* out);
 // Stores max(stored, v); true once the stored value reads back at least v. An unreadable store is left as it is.
 bool floorRaise(uint32_t v);
-inline bool floorAtBoot() { return floorRaise(MECON_SECURITY_VERSION); }
+inline bool floorAtBoot() { return floorRaise(MECON_SECURITY_VERSION); }   // to this image's compiled version
 
 }  // namespace Upd

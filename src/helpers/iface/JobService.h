@@ -46,6 +46,8 @@ public:
   // twice.
   typedef void (*ChangeFn)(void* user, const Job& j);
   void setOnChange(ChangeFn f, void* user) { _on_change = f; _change_user = user; }
+  // Tells a change that is not a change of state (a firmware update's attestation in its result) as a job event.
+  void announce(const Job& j) { if (_on_change) _on_change(_change_user, j); }
   // The job event: {"job","op","state","result"} as an event envelope "job", with the service's own sequence.
   int writeEvent(char* buf, size_t cap, uint32_t epoch, bool ts_known, int64_t ts, const Job& j);
 

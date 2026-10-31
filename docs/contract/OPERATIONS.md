@@ -27,7 +27,8 @@ Every operation carries one class of the CLI table: `read`, `write`, `secret`, `
 - `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm` and `status.get`'s `jobs` member answer it.
 - `config.apply` with `confirm` (3.4) is the operation that creates jobs. `job.cancel` and `job.confirm` need every CLI class the job's lines needed, so a `write` caller cannot confirm or revert a `posture` change such as `connectivity.mode`.
 - A job's identity is the request `id`, or `#<issuer>:<job_id>` for a signed request, where `<issuer>` is the first 6 bytes of the issuer's instance id in hex.
-- The `job` event stream and `update.offer` are planned (#109, #110).
+- Each change of a job's state is a `job` event on every link whose caller may read, and over a TLS-verified broker session.
+- `update.offer` creates the other kind of job: a firmware update, which spans the reboot into the new image and is confirmed or reverted under its own rules ([UPDATES](UPDATES.md) section 7).
 
 ### 3.1 States
 

@@ -21,6 +21,11 @@ public:
   const char* getManufacturerName() const override { return "Simulated Board"; }
   uint8_t getStartupReason() const override { return BD_STARTUP_NORMAL; }
   void reboot() override;     // exits with status 75 so the runner can restart the node
+  // The reset that started this node, from "<dir>.reset" (one line, the reason as the ESP32 board words it, such as
+  // "Panic / exception reset"), read at the first look and removed, so a test stages an abnormal reset for one boot.
+  // No file: "Not available", as a board that cannot tell.
+  uint32_t getResetReason() const override;
+  const char* getResetReasonString(uint32_t reason) override;
   void powerOff() override;   // exits with status 0
 };
 

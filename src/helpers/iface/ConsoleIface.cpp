@@ -1,5 +1,4 @@
 #include "ConsoleIface.h"
-#include "helpers/updates/UpdFloor.h"
 #include <helpers/Uptime.h>
 #include "DevIdHello.h"
 #include <new>
@@ -36,7 +35,8 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "job.get", "job.list",
-                                    "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status"};
+                                    "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
+                                    "update.offer", "update.chunk"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -55,6 +55,7 @@ Status opHello(OpContext& c) {
   w.key("firmware"); w.str(mecon::versionFull());
   w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
   w.key("epoch"); w.unum(m->epoch());
+  m->updates().writeAttestation(w);   // the image of an update job, while it awaits confirmation (UPDATES.md section 7)
   // The channel nonce of the console link, only once a Deployment record exists (AUTHORITY.md section 7.1).
   const char* nonce = m->helloNonce();
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
@@ -95,6 +96,7 @@ Status opStatus(OpContext& c) {
   w.key("posture"); w.str(hardened ? "hardened" : "normal");
   m->auth().writeStatus(w, hardened);
   m->jobs().writeStatus(w);
+  m->updates().writeAttestation(w);
   return ST_OK;
 }
 
@@ -134,6 +136,8 @@ Status opJobCancel(OpContext& c) { return self(c)->jobs().opCancel(c); }
 Status opJobConfirm(OpContext& c) { return self(c)->jobs().opConfirm(c); }
 Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, millis()); }
 Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
+Status opUpdOffer(OpContext& c) { return self(c)->updates().opOffer(c, millis()); }
+Status opUpdChunk(OpContext& c) { return self(c)->updates().opChunk(c, millis()); }
 
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
@@ -160,6 +164,11 @@ const OpEntry OPS[] = {
   // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
   {"update.manifest", opUpdManifest, PRIV_READ, false},
   {"update.status", opUpdStatus, PRIV_READ, false},
+  // The offer is of the update class and keeps its result: a retry gets the same job and transfer token back. A chunk
+  // is authorised by that token (DeployAuth::preAuthorize lets it through to the handler) and is not kept: its answer
+  // is the offset expected next, which a retry asks again.
+  {"update.offer", opUpdOffer, PRIV_UPDATE, true},
+  {"update.chunk", opUpdChunk, PRIV_READ, false},
 };
 
 }  // namespace
@@ -170,13 +179,14 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _epoch = epoch;
   _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
   _updates.begin(_host.hardware, _host.role);
-  Upd::floorAtBoot();   // the floor rises to the security version compiled into this image (UPDATES.md section 4)
   if (_host.snap_store)
     _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
                            confirmRunAs, confirmJobId};
   _jobs.setClassCheck(jobClasses, this);
   _jobs.setOnChange(jobChanged, this);
+  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot});
   _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);
+  _updates.bootReconcile();   // an installed image attests, or the bootloader rolled it back
   configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
   if (_host.dep_store) {
     DeployAuth::Env env;
@@ -265,6 +275,7 @@ bool ConsoleIface::confirmJobId(void* user, const Request& req, char* out, size_
 
 bool ConsoleIface::jobRevert(void* user, Job& j) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (Upd::UpdateService::owns(j)) return s->_updates.jobRevert(j);
   if (strcmp(j.op, "config.apply") != 0) return false;
   bool reboot = false;
   if (!configRevert(s->configHost(), j, &reboot)) return false;
@@ -275,10 +286,16 @@ bool ConsoleIface::jobRevert(void* user, Job& j) {
 }
 
 bool ConsoleIface::jobConfirm(void* user, Job& j) {
+  if (Upd::UpdateService::owns(j)) return static_cast<ConsoleIface*>(user)->_updates.jobConfirm(j);
   if (strcmp(j.op, "config.apply") != 0) return false;
   configConfirmed(static_cast<ConsoleIface*>(user)->configHost());
   return true;
 }
+
+bool ConsoleIface::updSigned(void* user) { return static_cast<ConsoleIface*>(user)->_auth.isSigned(); }
+
+// After the answer has gone out: an activated image boots, or a reverted one goes back to the previous image.
+void ConsoleIface::updReboot(void* user) { static_cast<ConsoleIface*>(user)->_reboot_at = millis() + 1500; }
 
 // The console is one link, and its caller may always read: each change of a job's state is a line on it, unless a
 // request is being typed (then it is still in job.get and job.list).
@@ -318,7 +335,10 @@ bool ConsoleIface::authorize(void* user, const OpEntry& op, const Request&) {
     case DeployAuth::PRE_DENY: return false;
     case DeployAuth::PRE_TABLE: break;
   }
-  const uint8_t cls = op.priv == PRIV_READ ? Cli::C_READ : op.priv == PRIV_WRITE ? Cli::C_WRITE : Cli::C_POSTURE;
+  const uint8_t cls = op.priv == PRIV_READ    ? Cli::C_READ
+                      : op.priv == PRIV_WRITE  ? Cli::C_WRITE
+                      : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
+                                               : Cli::C_POSTURE;
   return Cli::decide(s->_ctx, cls).allow;
 }
 
@@ -485,6 +505,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
   _gap.tick(now);
   _jobs.tick(now);
+  _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0 && _host.board) _host.board->reboot();
   refreshEnvironment(now);
   if (_collecting) return;   // an event never lands in the middle of a request being typed

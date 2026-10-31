@@ -16,3 +16,37 @@ mutate upd_slot_size_unchecked src/helpers/updates/UpdPreflight.h '  if (m.kind 
 mutate upd_stage_not_rate_limited src/helpers/updates/UpdService.cpp '  if (_staged_once && (uint32_t)(now_ms - _last_stage_ms) < STAGE_GAP_MS) { c.error = "rate"; return ST_BUSY; }' '' "$UP::test_one_stage_a_second_and_two_slots_the_older_evicted"
 mutate upd_stage_evicts_the_newer src/helpers/updates/UpdService.cpp '<= 0 ? &_s[0] : &_s[1];   // evict the older' '<= 0 ? &_s[1] : &_s[0];   // evict the older' "$UP::test_one_stage_a_second_and_two_slots_the_older_evicted"
 mutate upd_unreadable_floor_reads_as_none src/helpers/updates/UpdService.cpp '  d.security_floor = floorRead(&floor) ? floor : 0xFFFFFFFFu;   // unreadable: no install passes (fail closed)' '  floorRead(&floor); d.security_floor = floor;' "$UP::test_an_unreadable_floor_fails_closed"
+
+# slice 2: the offer, the push transfer, the install and its confirmation (UPDATES.md sections 5 to 7)
+UI=sim/tests/test_update_install.py
+U=src/helpers/updates/UpdService.cpp
+mutate upd_chunk_token_unchecked $U '  if (!ours || !match) { c.error = "bad-token"; return ST_REFUSED; }' '  if (!ours) { c.error = "bad-token"; return ST_REFUSED; }' "$UI::test_a_chunk_needs_the_jobs_token"
+mutate upd_chunk_overlong_written $U '  if ((uint32_t)n > _size - _received) { free(bytes); c.error = "too-large"; return ST_REFUSED; }' '' "$UI::test_a_chunk_needs_the_jobs_token"
+mutate upd_chunk_offset_ignored $U '  if ((uint32_t)offset != _received) { w.key("next"); w.unum(_received); return ST_OK; }   // resume where it stands' '' "$UI::test_a_pushed_image_installs_attests_and_is_confirmed"
+mutate upd_digest_unchecked $U '  if (!Dep::constTimeEqual(got, _image_sha, 32)) { failJob("digest-mismatch"); return; }' '' "$UI::test_a_wrong_digest_fails_and_activates_nothing"
+mutate upd_image_format_unchecked $U '  if (!slotFinish()) { failJob("bad-image"); return; }   // the platform'"'"'s own check of the image format' '  slotFinish();' "$UI::test_an_image_the_platform_does_not_accept_fails"
+mutate upd_offer_rate_unlimited $U '  if (_offered_once && (uint32_t)(now_ms - _last_offer_ms) < OFFER_GAP_MS) { c.error = "rate"; return ST_BUSY; }   // 2' '' "$UI::test_offers_that_preflight_refuses"
+mutate upd_stall_ignored $U '    if ((uint32_t)(now_ms - _last_chunk_ms) >= STALL_MS) failJob("stalled");' '' "$UI::test_a_transfer_with_no_chunk_for_ten_minutes_fails"
+mutate upd_any_reboot_reverts $U '  t->awaitConfirm(j, _within_s, false, BOOT_ABNORMAL);' '  t->awaitConfirm(j, _within_s, false, BOOT_SECOND);' "$UI::test_a_normal_reboot_does_not_revert"
+mutate upd_never_marked_valid $U '    if (runningState() == RS_PENDING) markProven();
+  }' '  }' "$UI::test_an_abnormal_reset_reverts_at_once"
+mutate upd_confirm_leaves_the_rollback_window $U '  markProven();   // a reset must not take a confirmed image back' '' "$UI::test_a_pushed_image_installs_attests_and_is_confirmed"
+mutate upd_rollback_not_noticed $U '    if (run && run == r.prev_id) {   // the bootloader returned to the previous slot (a reset before it was marked valid)' '    if (false) {' "$UI::test_a_reset_before_the_image_is_marked_valid_rolls_back"
+mutate upd_revert_keeps_the_new_image $U '    if (run == r->new_id) return slotSetBoot(r->prev_id) ? BACK_REBOOT : BACK_FAILED;' '    if (run == r->new_id) return BACK_REBOOT;' "$UI::test_the_deadline_reverts_to_the_previous_image"
+mutate upd_confirm_without_attestation $U '  if (!_attested || strcmp(_attested_job, j.id) != 0) return false;' '' "$UI::test_no_confirmation_before_the_new_image_runs"
+mutate upd_offer_read_class examples/companion_radio/MeconIface.cpp '  {"update.offer", opUpdOffer, PRIV_UPDATE, true},' '  {"update.offer", opUpdOffer, PRIV_READ, true},' "$UI::test_an_enrolled_device_installs_only_on_a_signed_offer"
+mutate upd_chunk_needs_a_class src/helpers/iface/DeployAuth.cpp '  if (strcmp(op.name, "update.chunk") == 0) return PRE_ALLOW;' '' "$UI::test_the_token_not_the_link_authorises_a_chunk"
+mutate upd_class_open_to_ble src/helpers/cli/CliPolicy.h '    /* paired BLE     N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW, ALLOW, NOT_PERMITTED),' '    /* paired BLE     N */ { CLI_ROW(ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW,           ALLOW, ALLOW, ALLOW),' unit:test_cli_engine
+mutate upd_base64_leftover_bits_ignored src/helpers/updates/UpdB64.h '    if (last && pad == 2 && (g & 0xFFFF) != 0) return -1;   // the leftover bits of "xx==" are zero' '' unit:test_updates "$UI::test_a_chunk_needs_the_jobs_token"
+# the security review's findings (revert by slot identity, never by a hash alone; confirmation written down first)
+mutate upd_cancel_before_reboot_keeps_the_new_image $U '    if (run == r->prev_id) return slotBooting() == run || slotSetBoot(run) ? BACK_RUNS : BACK_FAILED;' '    if (run == r->prev_id) return BACK_RUNS;' "$UI::test_a_cancel_before_the_reboot_keeps_the_previous_image"
+mutate upd_lost_record_keeps_the_new_image $U '  if (runningState() == RS_PENDING) return slotSetBoot(slotWritten()) ? BACK_REBOOT : BACK_FAILED;' '' "$UI::test_an_image_whose_record_is_lost_goes_back_to_the_previous_one"
+mutate upd_attest_without_the_digest $U '    if (run && run == r.new_id && _running_known && memcmp(_running_sha, r.image_sha, 32) == 0) {' '    if (run && run == r.new_id) {' "$UI::test_an_image_that_is_not_the_installed_one_goes_back"
+mutate upd_lost_job_table_keeps_the_new_image $U '  if (backToPrevious(&r) == BACK_REBOOT && _host.reboot) _host.reboot(_host.user);' '' "$UI::test_a_lost_job_table_does_not_leave_an_unconfirmed_image"
+mutate upd_confirmed_image_reverted_when_the_table_is_lost $U '  if (!r.confirmed && run && run == r.new_id) {' '  if (run && run == r.new_id) {' "$UI::test_a_confirmed_image_stays_when_the_job_table_is_lost"
+mutate upd_recorded_confirmation_ignored $U '    if (r.confirmed && run && run == r.new_id) { confirmFromRecord(*j); persist(); return; }' '' "$UI::test_a_confirmation_the_job_table_never_saved_still_counts"
+mutate upd_offer_during_the_trial $U '  if (runningState() == RS_PENDING) { c.error = "verifying"; return ST_BUSY; }' '' "$UI::test_no_offer_while_the_new_image_is_on_trial"
+mutate upd_record_cleared_during_the_trial $U '  if (!recordLoad(&r) || runningState() != RS_VALID) return;   // on trial, or the state cannot be read: not settled' '  if (!recordLoad(&r)) return;' "$UI::test_a_reset_during_the_previous_images_trial_does_not_bring_the_new_one_back"
+mutate upd_confirmation_trusted_after_a_rollback $U '    if (r.confirmed && run && run == r.new_id) { confirmFromRecord(*j); persist(); return; }' '    if (r.confirmed) { confirmFromRecord(*j); persist(); return; }' "$UI::test_a_confirmation_that_did_not_survive_its_trial_is_a_rollback"
+mutate upd_send_back_unbounded $U '    if (r.attempts >= MAX_SEND_BACK) {   // the previous image failed its trial each time: stay, and say so' '    if (false) {' "$UI::test_after_three_send_backs_the_unconfirmed_image_stays_and_says_so"
+mutate upd_stranded_image_not_reported $U '      _stranded = true;' '' "$UI::test_after_three_send_backs_the_unconfirmed_image_stays_and_says_so"

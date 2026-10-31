@@ -35,6 +35,13 @@
       "type": "object",
       "required": ["open", "owed"],
       "properties": {"open": {"type": "integer", "minimum": 0, "maximum": 1}, "owed": {"type": "integer", "minimum": 0}}
+    },
+    "update": {
+      "description": "Present only while the image of an update job runs unconfirmed: that job, and the version and SHA-256 of the running image (UPDATES.md section 7, step 3), with unconfirmed:true when its job is already over.",
+      "type": "object",
+      "required": ["job", "version", "sha256"],
+      "properties": {"job": {"type": "string"}, "version": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "unconfirmed": {"const": true, "description": "The job ended without a confirmation, yet this image runs: the image before it failed its trial each time it was sent back (UPDATES.md section 7, step 6)."}},
+      "additionalProperties": false
     }
   }
 }

@@ -17,12 +17,7 @@ const uint32_t K[64] = {
 
 inline uint32_t rotr(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
 
-struct Ctx {
-  uint32_t h[8];
-  uint8_t buf[64];
-  size_t fill;
-  uint64_t total;
-};
+typedef Sha256Ctx Ctx;
 
 void block(Ctx* c, const uint8_t* p) {
   uint32_t w[64];
@@ -77,6 +72,10 @@ void finish(Ctx* c, uint8_t out[32]) {
 }
 
 }  // namespace
+
+void sha256Init(Sha256Ctx* c) { init(c); }
+void sha256Update(Sha256Ctx* c, const uint8_t* data, size_t len) { update(c, data, len); }
+void sha256Finish(Sha256Ctx* c, uint8_t out[32]) { finish(c, out); }
 
 void sha256(const uint8_t* data, size_t len, uint8_t out[32]) {
   Ctx c;
