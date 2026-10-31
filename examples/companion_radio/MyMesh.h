@@ -131,6 +131,7 @@ public:
 #ifdef ENABLE_MECON_IFACE
   // For the device interface (MeconIface): read-only facts, and frame output to one transport of the multiplexed serial.
   const char* hardwareName() const { return board.getManufacturerName(); }
+  const char* hardwareNames() const { return board.getManufacturerNames(); }
   uint16_t batteryMilliVolts() { return board.getBattMilliVolts(); }
   uint8_t postureValue() const { return _prefs.posture; }
   MeconIface& iface() { return _iface; }

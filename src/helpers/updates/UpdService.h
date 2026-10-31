@@ -85,7 +85,8 @@ public:
 
   // hardware and role as hello reports them; both outlive the service. Runs the simulated bootloader's slot switch and
   // hashes the running image, so call it before the job table is loaded (its revert hook needs both).
-  void begin(const char* hardware, const char* role);
+  // `hardware_names`: every name the board can report, '|'-separated (MainBoard::getManufacturerNames), or null.
+  void begin(const char* hardware, const char* role, const char* hardware_names = nullptr);
   void setHost(const Host& h) { _host = h; }
 
   // After the job table is loaded: an update job that activated learns whether its image runs (attestation) or the
@@ -133,6 +134,7 @@ private:
   uint32_t _last_offer_ms = 0;
   bool _offered_once = false;
   const char* _hardware = "";
+  const char* _hardware_names = nullptr;
   const char* _role = "";
   Host _host = {};
 

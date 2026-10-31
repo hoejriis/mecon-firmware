@@ -62,3 +62,7 @@ mutate upd_download_https_heap_as_http $U '  if (by_url) dev.heap_needed = url.t
 mutate upd_download_hands_out_a_token $U '  if (!by_url) { w.key("transfer_token"); w.str(tok); }' '  { w.key("transfer_token"); w.str(tok); }' "$UD::test_an_image_downloads_by_name_installs_and_attests"
 mutate upd_download_host_without_port $U '  if (_url.port != (_url.tls ? 443 : 80)) snprintf(port, sizeof(port), ":%u", (unsigned)_url.port);' '' "$UD::test_an_image_downloads_by_name_installs_and_attests"
 mutate upd_url_userinfo_accepted src/helpers/updates/UpdUrl.h '  if (*p != '"'"'/'"'"') return false;   // user info ("@"), an IPv6 literal, anything else between host and path' '  if (*p != '"'"'/'"'"') { strcpy(out->path, "/"); return true; }' unit:test_updates
+# a board that reports one of several names (Heltec V4 / V4.3) takes a manifest for any of them, and only a whole name
+UPF=src/helpers/updates/UpdPreflight.h
+mutate upd_hardware_name_prefix_matches $UPF '    if (len == n && n && memcmp(p, want, n) == 0) return true;' '    if (n && memcmp(p, want, n) == 0) return true;' unit:test_updates
+mutate upd_hardware_names_ignored $UPF '  if (!d.hardware_names) return false;' '  return false;' unit:test_updates

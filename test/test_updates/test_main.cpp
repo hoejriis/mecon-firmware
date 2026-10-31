@@ -153,6 +153,29 @@ TEST(UpdTarget, EveryMismatchIsWrongTarget) {
   EXPECT_TRUE(checkTarget(bm, d).ok);
 }
 
+TEST(UpdTarget, ABoardWithSeveralNamesTakesAManifestForAnyOfThem) {
+  // A Heltec V4 reports "Heltec V4 OLED" or "Heltec V4.3 OLED" by the front end it finds: one manifest serves both.
+  Manifest m = valid();
+  Device d = testDevice();
+  d.hardware = "Heltec V4.3 OLED";
+  d.hardware_names = "Heltec V4 OLED|Heltec V4.3 OLED";
+  for (const char* name : {"Heltec V4 OLED", "Heltec V4.3 OLED"}) {
+    strcpy(m.hardware, name);
+    EXPECT_TRUE(checkTarget(m, d).ok) << name;
+  }
+  for (const char* name : {"Heltec V4", "Heltec V4 OLED|Heltec", "Heltec V4.3 OLED ", "Heltec V4 TFT", "OLED"}) {
+    ASSERT_LT(strlen(name), sizeof(m.hardware));
+    strcpy(m.hardware, name);
+    EXPECT_STREQ("wrong-target", checkTarget(m, d).error) << "a whole name only: " << name;
+  }
+  d.hardware_names = nullptr;
+  strcpy(m.hardware, "Heltec V4 OLED");
+  EXPECT_STREQ("wrong-target", checkTarget(m, d).error) << "without the list, only the name it reports now";
+  d.hardware_names = "Heltec V4 OLED|";
+  m.hardware[0] = 0;
+  EXPECT_STREQ("wrong-target", checkTarget(m, d).error) << "an empty name matches nothing";
+}
+
 TEST(UpdPreflight, TheInstallChecksInOrder) {
   const Manifest m = valid();   // 0.3.0, security 1, min_from 0.1.0, 1234 bytes
   const Device base = testDevice();   // runs 0.2.0, floor 1

@@ -41,4 +41,5 @@ public:
   }
   float getAdcMultiplier() const override { return adc_mult; }
   const char* getManufacturerName() const override;
+  const char* getManufacturerNames() const override;
 };
