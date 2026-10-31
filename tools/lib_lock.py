@@ -91,7 +91,9 @@ def install(env):
     specs = ["%s/%s@%s" % (l["owner"], l["name"], l["version"]) for l in libs if "uri" not in l]
     if not specs:
         return 0
-    cmd = ["pio", "pkg", "install", "-e", env, "--no-save"]
+    # The lock holds the whole transitive set, so each library's own dependencies are not resolved again: that resolve
+    # ignores a dependency's platform filter (ESPAsyncWebServer would bring RPAsyncTCP, an RP2040 library, to an ESP32).
+    cmd = ["pio", "pkg", "install", "-e", env, "--no-save", "--skip-dependencies"]
     for s in specs:
         cmd += ["-l", s]
     return subprocess.run(cmd).returncode

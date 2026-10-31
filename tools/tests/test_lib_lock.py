@@ -78,4 +78,5 @@ def test_install_asks_platformio_for_exact_versions(tmp_path):
     r = subprocess.run([sys.executable, TOOL, "install", "boardA"], capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert (tmp_path / "pio-args").read_text().split() == [
-        "pkg", "install", "-e", "boardA", "--no-save", "-l", "densaugeo/base64@1.4.0"], "an in-repo library is not fetched"
+        "pkg", "install", "-e", "boardA", "--no-save", "--skip-dependencies", "-l", "densaugeo/base64@1.4.0"], (
+        "exactly the locked set: no dependency resolve, and an in-repo library is not fetched")
