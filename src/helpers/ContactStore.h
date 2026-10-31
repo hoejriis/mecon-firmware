@@ -67,6 +67,7 @@ struct ContactStoreConfig {
   uint16_t store_floor = 100;      // fewest records the store tries to hold when the filesystem allows
   uint16_t store_ceiling = 1000;
   uint32_t fs_reserve = 8192;      // filesystem bytes left alone for prefs, identity, channels, blobs and a bucket swap
+  uint32_t reclaimable_bytes = 0;  // file-system bytes the caller will free as the store fills (a stock file being migrated)
   uint16_t fs_bytes_per_record = 200;   // flash cost of one record including file system overhead (estimate)
   bool     stock_policy = false;   // evict the oldest lastmod (stock) instead of the lowest meaningful score
 };

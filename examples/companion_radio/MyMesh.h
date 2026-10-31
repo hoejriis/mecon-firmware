@@ -227,8 +227,10 @@ protected:
   bool getChannelForSave(uint8_t channel_idx, ChannelDetails& ch) override { return getChannel(channel_idx, ch); }
 
   // Contact memory (docs/CONTACTS.md)
-  enum { MIGRATE_NONE = 0, MIGRATE_BULK, MIGRATE_MERGE };
+  enum { MIGRATE_NONE = 0, MIGRATE_BULK, MIGRATE_MERGE, MIGRATE_COUNT };
   uint8_t _migrate = MIGRATE_NONE;
+  bool _migrate_full = false;   // the store filled during a migration: the old file is kept
+  uint16_t _unmigrated = 0;      // contacts left in the old file that the store does not hold (get contacts.capacity)
   void loadContactsAtBoot();
   void migrateLegacyContacts();
   void reloadContactSecrets();

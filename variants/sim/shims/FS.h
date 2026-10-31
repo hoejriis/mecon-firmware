@@ -44,6 +44,7 @@ public:
   size_t size() const;
   size_t position() const;
   bool seek(uint32_t pos);
+  bool truncate(uint32_t pos);   // as Adafruit LittleFS on nRF52: cut the file to pos bytes
   void close();
   const char* name() const;
   const char* path() const;

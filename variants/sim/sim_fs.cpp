@@ -178,6 +178,10 @@ size_t File::size() const {
 }
 size_t File::position() const { return (_p && _p->fp) ? ftell(_p->fp) : 0; }
 bool File::seek(uint32_t pos) { return _p && _p->fp && fseek(_p->fp, pos, SEEK_SET) == 0; }
+bool File::truncate(uint32_t pos) {
+  if (!_p || !_p->fp || fflush(_p->fp) != 0) return false;
+  return ftruncate(fileno(_p->fp), (off_t)pos) == 0 && fseek(_p->fp, pos, SEEK_SET) == 0;
+}
 void File::close() {
   if (!_p || !_p->fp) return;
   fclose(_p->fp);

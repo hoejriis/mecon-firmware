@@ -303,10 +303,11 @@ bool DataStore::savePrefs(NodePrefs& _prefs) {
   return AtomicFile::save(_fs, "/prefs.json", [&_prefs](Stream& s) { return _prefs.saveSerial(s); });
 }
 
-void DataStore::loadContacts(DataStoreHost* host) {
+void DataStore::loadContacts(DataStoreHost* host, uint32_t from) {
     AtomicFile::recover(_getContactsChannelsFS(), "/contacts3");   // finish or drop a save that was cut by a power loss
     if (!AtomicFile::exists(_getContactsChannelsFS(), "/contacts3")) return;   // at boot: not in the listing (BootPresence.h)
     File file = openRead(_getContactsChannelsFS(), "/contacts3");
+    if (file && from > 0 && !file.seek(from * LEGACY_CONTACT_BYTES)) { file.close(); return; }
     if (file) {
       bool full = false;
       while (!full) {
@@ -376,6 +377,32 @@ bool DataStore::legacyContactsExist() {
 
 bool DataStore::removeLegacyContacts() {
   return _getContactsChannelsFS()->remove("/contacts3");
+}
+
+uint32_t DataStore::legacyContactsBytes() {
+  if (!legacyContactsExist()) return 0;
+  File file = openRead(_getContactsChannelsFS(), "/contacts3");
+  if (!file) return 0;
+  uint32_t n = file.size();
+  file.close();
+  return n;
+}
+
+bool DataStore::truncateLegacyContacts(uint32_t records) {
+#ifdef LEGACY_CONTACTS_TRUNCATE
+#if defined(NRF52_PLATFORM)
+  File file = _getContactsChannelsFS()->open("/contacts3", FILE_O_WRITE);
+#else
+  File file = _getContactsChannelsFS()->open("/contacts3", "a");
+#endif
+  if (!file) return false;
+  bool ok = file.truncate(records * LEGACY_CONTACT_BYTES);
+  file.close();
+  return ok;
+#else
+  (void)records;
+  return false;
+#endif
 }
 
 // ---- contact store buckets (docs/CONTACTS.md): "/ct<N>", replaced through the same temp-verify-swap as prefs

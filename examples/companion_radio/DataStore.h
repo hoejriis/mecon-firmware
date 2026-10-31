@@ -6,6 +6,14 @@
 #include <helpers/ContactStore.h>
 #include "NodePrefs.h"
 
+#define LEGACY_CONTACT_BYTES 152   // one record of the stock /contacts3 file
+// Where the file system can cut a file short (Adafruit LittleFS on nRF52, and the simulator), the stock file is migrated
+// a bucket at a time from its end, so the old file and the store never need room at once (a 100 KB ExtraFS cannot hold
+// both for 350 contacts).
+#if defined(NRF52_PLATFORM) || defined(SIM_FREE_HEAP)
+  #define LEGACY_CONTACTS_TRUNCATE
+#endif
+
 class DataStoreHost {
 public:
   virtual bool onContactLoaded(const ContactInfo& contact) =0;
@@ -57,10 +65,14 @@ public:
   bool savePrefs(NodePrefs& prefs);
   // The stock whole-table file (/contacts3): read for the migration into the contact store, and kept as the
   // persistence of the CONTACTS_STOCK_ARRAY fallback, where it is now saved atomically.
-  void loadContacts(DataStoreHost* host);
+  void loadContacts(DataStoreHost* host, uint32_t from = 0);   // from: the first record to read
   void saveContacts(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);
   bool legacyContactsExist();
   bool removeLegacyContacts();
+  uint32_t legacyContactsBytes();
+  // Cut the stock file back to its first `records` records, so a migration can move it into the store a bucket at a
+  // time from the end, freeing space as it goes. Only where the file system can truncate (LEGACY_CONTACTS_TRUNCATE).
+  bool truncateLegacyContacts(uint32_t records);
   // ContactBackend: the contact store's bucket files (/ct<N>), each replaced atomically
   bool bucketExists(uint16_t b) override;
   bool listBuckets(uint16_t limit, uint8_t* present) override;   // one directory pass at boot
