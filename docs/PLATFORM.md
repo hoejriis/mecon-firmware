@@ -6,8 +6,8 @@ Which framework, ESP-IDF and BLE stack each supported target builds on, and what
 
 | Target family | PlatformIO platform | Framework | ESP-IDF | BLE stack (Companion) | Section in `platformio.ini` |
 |---|---|---|---|---|---|
-| Heltec V3 (ESP32-S3) | pioarduino `53.03.13-1` (Espressif 32 53.3.13) | Arduino-ESP32 3.1.3 | 5.3.0 | NimBLE-Arduino 2.3.9 | `esp32_idf5_base` |
-| Heltec V4 (ESP32-S3) | pioarduino `53.03.13-1` | Arduino-ESP32 3.1.3 | 5.3.0 | NimBLE-Arduino 2.3.9 | `esp32_idf5_base` |
+| Heltec V3 (ESP32-S3) | pioarduino `53.03.13-1` (Espressif 32 53.3.13) | Arduino-ESP32 3.1.3 | 5.3.0 | NimBLE-Arduino 2.3.9 | `esp32s3_idf5_base` |
+| Heltec V4 (ESP32-S3) | pioarduino `53.03.13-1` | Arduino-ESP32 3.1.3 | 5.3.0 | NimBLE-Arduino 2.3.9 | `esp32s3_v4_idf5_base` |
 | LilyGo T-LoRa V2.1-1.6 (ESP32) | `platformio/espressif32@6.11.0` | Arduino-ESP32 2.0.17 | 4.4 | NimBLE-Arduino 2.3.9 | `esp32_base` (board exception below) |
 | Seeed Wio Tracker L1, SenseCAP T1000-E (nRF52840) | `nordicnrf52` with the pinned Adafruit core | Adafruit nRF52 Arduino | none | Bluefruit (SoftDevice) | `nrf52_base` |
 | Every other ESP32 board in the tree | `platformio/espressif32@6.11.0` | Arduino-ESP32 2.0.17 | 4.4 | Bluedroid | `esp32_base` |
@@ -66,7 +66,7 @@ The Heltec V3 envs (`esp32s3_idf5_base` in `platformio.ini`) carry a `custom_sdk
 
 What is set:
 
-- **Wi-Fi TX buffers are dynamic** (`CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER=y`, 16 buffers), not a static pool of 8 buffers of about 1.6 KB. `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n` goes with it: Arduino's base config puts Wi-Fi and LWIP buffers in PSRAM, which locks out dynamic TX. The V3 has no PSRAM, so nothing else moves there. On a board with PSRAM Wi-Fi and LWIP buffers would come from internal RAM instead, which is why the V4 does not take this (below).
+- **Wi-Fi TX buffers are dynamic** (`CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER=y`, 16 buffers), not a static pool of 8 buffers of about 1.6 KB. `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n` goes with it: Arduino's base config puts Wi-Fi and LWIP buffers in PSRAM, which locks out dynamic TX. The V3 has no PSRAM, so nothing else moves there. On a board with PSRAM Wi-Fi and LWIP buffers would come from internal RAM instead, which is why the V4's set leaves this out (below).
 - **The IPC tasks get a 2,048-byte stack** (`CONFIG_ESP_IPC_TASK_STACK_SIZE=2048`) instead of the stock 1,024. Installing the GPIO ISR service at boot runs on the IPC task, and with heap poisoning on it overran the 1,024-byte stack in 4 of 304 resets on v3test (`Stack canary watchpoint triggered (ipc0/ipc1)`, Issue #216). Upstream's library builder made the same change. It costs 2 KB of internal heap (two tasks).
 - **13 unused managed components are removed** from the library build: esp_insights, esp_rainmaker, rmaker_common, esp_diagnostics, esp_diag_data_store, esp_schedule, esp-sr, esp-zboss-lib, esp-zigbee-lib, esp_modem, esp-modbus, esp_rcp_update and esp-libhelix-mp3.
 
@@ -87,11 +87,11 @@ Flash and static RAM of the V3 envs, main (bafb88d5) against this build (local b
 
 Flash drops by about 57-63 KB on the BLE, standalone and Wi-Fi Companions and by about 39-40 KB on the USB Companion, the repeater and the room server; static RAM by about 1.3-1.6 KB. The V3 budgets in `ci/size-budget.txt` are set from these builds (use + 4 KB).
 
-### The Heltec V4 stays on the stock libraries
+### The Heltec V4 has its own rebuilt libraries
 
-The V4 envs extend `esp32_idf5_base`, without the section. Measured on v4test with Wi-Fi + TLS MQTT, the hybrid build cost internal heap: free 101,472 B against 102,568 B on main, largest block 34,804 B against 38,900 B, low-water 91,816 B against 97,832 B. The cause is `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n`, which the dynamic TX buffers need and which moves Wi-Fi and LWIP out of the V4's PSRAM. The rule set before the run was that a build which costs the V4 does not go to the V4. The V4 builds and budgets are unchanged from main.
+The V4 envs extend `esp32s3_v4_idf5_base`, whose rebuilt set holds the 2,048-byte IPC stack and the same 13 removed components, and nothing else. The V3's dynamic Wi-Fi TX buffers are left out. They need `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n`, which moves Wi-Fi and LWIP out of the V4's PSRAM. Measured on v4test with Wi-Fi + TLS MQTT, the V3's set cost the V4 internal heap: free 101,472 B against 102,568 B on main, largest block 34,804 B against 38,900 B, low-water 91,816 B against 97,832 B. In the V4's set `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` stays on, and the linked `esp_ipc_init` creates the IPC tasks with 2,048 bytes.
 
-V3 and V4 are both ESP32-S3, so one PlatformIO core directory cannot hold both library sets: building a V3 then a V4 (or the reverse) in one directory reinstalls the stock package and rebuilds the hybrid one again (about 6 minutes). Use separate volumes locally, or separate core directories (`all-boards.yml` gives the V4 and C6 envs their own). `target-boards` and `pr-build-check` build one env per runner, so they cannot mix.
+The V3 and the V4 are both ESP32-S3, so one PlatformIO core directory holds only one of the two sets. Building a V3 then a V4 (or the reverse) in one directory rebuilds the other set (about 6 minutes). Use separate volumes locally, or separate core directories: `all-boards.yml` gives the V4 envs and the C6 envs one each. `target-boards` and `pr-build-check` build one env per runner, so they cannot mix. `bin/idf5_libs.sh <env>` builds the stub env with that env's set (`idf5_hybrid_libs` for the V3, `idf5_hybrid_libs_v4` for the V4).
 
 ### Building
 

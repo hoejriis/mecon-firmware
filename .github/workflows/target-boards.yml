@@ -61,7 +61,7 @@ jobs:
       # satisfies a lib_deps range, so the build links exactly these, whatever the registry offers today.
       - name: Libraries from the lock
         run: python3 tools/lib_lock.py install ${{ matrix.env }}
-      - name: Rebuild the Arduino IDF libraries (Heltec V3 envs; skipped for the rest)
+      - name: Rebuild the Arduino IDF libraries (Heltec V3 and V4 envs; skipped for the rest)
         run: bin/idf5_libs.sh ${{ matrix.env }}
       - run: |
           set -o pipefail   # a failed build must fail the step, not be hidden by tee
