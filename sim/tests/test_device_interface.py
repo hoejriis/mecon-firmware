@@ -128,7 +128,7 @@ def test_the_default_pin_is_refused_like_its_cli_line(nodes):
     b = n.connect_ble(123456)
     b.app_start()
     r = mecon_iface.IfaceClient(b._send, b._read_frame).request("hello")
-    assert r == {"v": 1, "id": r["id"], "status": "refused"}, r
+    assert r == {"v": 1, "id": r["id"], "status": "refused", "error": "untrusted-transport"}, r
     f = b.request(bytes([harness.CMD_RUN_CLI_COMMAND]) + b"get name")
     assert f == bytes([1, 7]), "the CLI frame is refused on the same link (ERR not permitted): the same table decides"
 
@@ -411,7 +411,7 @@ def test_an_unverified_broker_is_refused(nodes, tmp_path, broker):
     b = broker()
     n, c, i, dev = mqtt_boot(nodes, tmp_path, "uv", b, anchor=False)   # TLS without an anchor: not verified
     r = b.iface_request(dev, {"v": 1, "id": "u1", "op": "hello"})
-    assert r == {"v": 1, "id": "u1", "status": "refused"}, r
+    assert r == {"v": 1, "id": "u1", "status": "refused", "error": "broker-not-verified"}, r
 
 
 # ------------------------------------------------------------------ subscriptions: the health stream

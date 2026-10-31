@@ -81,7 +81,7 @@ Indexes in keys are **0-based**, as in the CLI: `wifi.profile.0.ssid` is the fir
 
 ### 6. Authorization
 
-Every operation and every key is checked by the CLI privilege engine (`src/helpers/cli/`) with the caller's real context: transport, how it authenticated, and the posture. The same table decides for a CLI line and for an interface request, so a transport change never upgrades a permission and a bridge cannot add any. A request refused by the table never executes and is audited like a refused CLI line. #95 adds signed authority as one more caller kind in that table.
+Every operation and every key is checked by the CLI privilege engine (`src/helpers/cli/`) with the caller's real context: transport, how it authenticated, and the posture. The same table decides for a CLI line and for an interface request, so a transport change never upgrades a permission and a bridge cannot add any. A request refused by the table never executes and is audited like a refused CLI line. Its `error` names the reason in the CLI's words: `untrusted-transport`, `not-permitted`, `broker-not-verified`, `broker-read-only`, `enrolled-unsigned`, `hardened`, `local-only`, `remote-limited`, `remote-cli-off`, `default-password`, `key-hardened`, `ethernet-console-off` or `no-unlock-secret`. A refusal that the authority checks make before the table (`unauthenticated`, `deployment_record_corrupt`) keeps that code. #95 adds signed authority as one more caller kind in that table.
 
 ### 7. Framing per transport
 

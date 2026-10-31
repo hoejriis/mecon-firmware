@@ -10,6 +10,7 @@
 #include "helpers/Posture.h"
 #include "helpers/SensorManager.h"
 #include "helpers/cli/CliPolicy.h"
+#include "helpers/cli/MeconCli.h"
 #include "helpers/cli/CliRegistry.h"
 #include "helpers/cli/CliCaller.h"
 #include "helpers/NrfWorker.h"
@@ -339,7 +340,9 @@ bool ConsoleIface::authorize(void* user, const OpEntry& op, const Request&) {
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
                                                : Cli::C_POSTURE;
-  return Cli::decide(s->_ctx, cls).allow;
+  const Cli::Verdict v = Cli::decide(s->_ctx, cls);   // a refusal says why, as on the Companion
+  if (!v.allow) s->_deny = Cli::reasonName(v.reason);
+  return v.allow;
 }
 
 const char* ConsoleIface::denyReason(void* user) { return static_cast<ConsoleIface*>(user)->_deny; }

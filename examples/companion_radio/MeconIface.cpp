@@ -10,6 +10,7 @@
 #include <helpers/HeapFloor.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliPolicy.h>
+#include <helpers/cli/MeconCli.h>
 #include <helpers/cli/CliRegistry.h>
 #include <helpers/BaseSerialInterface.h>
 #include <helpers/CryptoRNG.h>
@@ -347,7 +348,11 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
                                                : Cli::C_POSTURE;
-  return Cli::decide(self->_ctx, cls).allow;
+  // A refusal says why, in the CLI's words (broker-not-verified, untrusted-transport, enrolled-unsigned, ...): a bare
+  // "refused" cannot be told from any other.
+  const Cli::Verdict v = Cli::decide(self->_ctx, cls);
+  if (!v.allow) self->_deny = Cli::reasonName(v.reason);
+  return v.allow;
 }
 
 const char* MeconIface::denyReason(void* user) { return static_cast<MeconIface*>(user)->_deny; }
