@@ -13,7 +13,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && (systemctl disable mosquitto 2>/dev/null || true)
 
-RUN pip install --no-cache-dir "platformio==${PLATFORMIO_VERSION}" pytest
+RUN pip install --no-cache-dir "platformio==${PLATFORMIO_VERSION}" pytest PyYAML
 
 RUN useradd -m -u 1000 dev \
  && mkdir -p /home/dev/.platformio \
