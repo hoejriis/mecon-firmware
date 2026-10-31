@@ -74,6 +74,16 @@ TEST(JobService, AnEmptyTableListsNothingAndDoesNotAllocate) {
   JsonWriter w(b, sizeof(b));
   w.beginObject(); s.writeStatus(w); w.endObject();
   EXPECT_STREQ(R"({"jobs":{"open":0,"owed":0}})", b);
+  EXPECT_EQ(nullptr, s.peek()) << "asking about jobs never allocates the table";
+}
+
+TEST(JobService, ABootWithNoSavedTableHoldsNoTable) {
+  RamStore st;
+  JobService s;
+  s.begin(&st, false, nullptr, nullptr, nullptr);
+  EXPECT_EQ(nullptr, s.peek()) << "about 4.4 KB of heap stays free until a job opens";
+  ASSERT_NE(nullptr, s.table());
+  EXPECT_EQ(s.table(), s.peek());
 }
 
 TEST(JobService, GetListAndAckFollowTheTable) {

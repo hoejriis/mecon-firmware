@@ -335,6 +335,7 @@ TEST(MgmtChannel, ASnapshotNoAwaitingJobOwnsIsRemovedAtBoot) {
   r.snap.file = {9, 9, 9};
   mgmtSnapBoot(r.host);
   EXPECT_TRUE(r.snap.file.empty());
+  EXPECT_EQ(nullptr, r.jobs.peek()) << "the boot check allocates no job table";
 }
 
 TEST(MgmtChannel, TheImagesRefuseAFlippedByte) {

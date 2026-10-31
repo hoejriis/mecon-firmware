@@ -507,7 +507,7 @@ bool mgmtRevert(const MgmtHost& h, const Job& j) {
 void mgmtConfirmed(const MgmtHost& h) { h.snap->discard(); }
 
 void mgmtSnapBoot(const MgmtHost& h) {
-  JobTable* t = h.jobs ? h.jobs->table() : nullptr;
+  JobTable* t = h.jobs ? h.jobs->peek() : nullptr;   // at boot: no table, no job to keep
   const Job* open = t ? t->openJob() : nullptr;
   bool keep = false;
   if (open && open->state == JOB_AWAITING && mgmtOwnsJob(*open)) {
