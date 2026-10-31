@@ -113,8 +113,13 @@ bool MqttCore::usable(uint8_t i) const {
   return _profiles->configured(i) && MqttProfiles::permitted(_profiles->p[i], _posture);
 }
 
+void MqttCore::setTiers(const uint8_t* tiers, uint8_t n) {
+  for (uint8_t i = 0; i < MqttProfiles::COUNT; i++) _tier[i] = i < n && tiers[i] <= TIER_NONE ? tiers[i] : TIER_NONE;
+}
+
 bool MqttCore::better(uint8_t a, uint8_t b) const {
   if (b == NONE) return true;
+  if (_tier[a] != _tier[b]) return _tier[a] < _tier[b];   // the Deployment's roles first (#218)
   uint8_t pa = _profiles->p[a].prio, pb = _profiles->p[b].prio;
   return pa > pb || (pa == pb && a < b);
 }

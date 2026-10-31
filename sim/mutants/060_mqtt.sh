@@ -159,3 +159,7 @@ mutate mqtt_close_does_not_raise_the_cancel_flag $MQ_CTRL "    _job_cancel = tru
   if (_open && _psc.connected())" "$MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-edit] $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-disable]"
 mutate mqtt_posture_does_not_raise_the_cancel_flag $MQ_CTRL "    cancelAttempt();
     _core.onConnectCancelled();" "    _core.onConnectCancelled();" $MQ_IL::test_a_cancel_between_the_steps_stops_the_job_at_the_next_check[tcp-posture]
+# The Deployment's broker roles order the brokers (#218): the role outranks the priority, and the roles reach the core
+mutate mqtt_roles_ignored src/helpers/mqtt/MqttCore.cpp "  if (_tier[a] != _tier[b]) return _tier[a] < _tier[b];   // the Deployment's roles first (#218)" '' unit:test_mqtt_core
+mutate mqtt_roles_never_reach_the_core examples/companion_radio/main.cpp '      the_mesh.iface().setRolesListener([](const uint8_t* t, uint8_t n, void*) { mqttController().setBrokerTiers(t, n); }, nullptr);' '' sim/tests/test_mqtt_broker_roles.py
+mutate mqtt_roles_mapped_wrong src/helpers/iface/DeployAuth.cpp '      t[e.profile] = e.role == Dep::ROLE_LOCAL ? 0 : e.role == Dep::ROLE_PRIMARY ? 1 : e.role == Dep::ROLE_SECONDARY ? 2' '      t[e.profile] = e.role == Dep::ROLE_LOCAL ? 0 : e.role == Dep::ROLE_PRIMARY ? 3 : e.role == Dep::ROLE_SECONDARY ? 2' sim/tests/test_mqtt_broker_roles.py

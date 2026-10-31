@@ -92,6 +92,68 @@ TEST(MqttCore, EqualPrioritiesGoToTheLowerProfileNumber) {
   EXPECT_EQ(0, r.cur());
 }
 
+// ------------------------------------------------------------------ the Deployment's broker roles (#218)
+
+static void tiers(Rig& r, std::vector<uint8_t> t) { r.core.setTiers(t.data(), (uint8_t)t.size()); }
+const uint8_t LOCAL = 0, PRIMARY = 1, SECONDARY = 2, NOROLE = MqttCore::TIER_NONE;
+
+TEST(MqttCore, TheRolesOrderTheBrokersBeforeAnyPriority) {
+  Rig r;
+  r.stat(0, "unroled", 90); r.stat(1, "primary", 10); r.stat(2, "secondary", 50); r.stat(3, "local", 5);
+  tiers(r, {NOROLE, PRIMARY, SECONDARY, LOCAL});
+  r.outcome = [](uint8_t p, uint32_t) { return p == 0 ? MqttFail::None : MqttFail::Tcp; };   // only the unroled one works
+  r.start();
+  r.runUntilConnected();
+  EXPECT_EQ((std::vector<uint8_t>{3, 1, 2, 0}), r.connects) << "local, primary, secondary, then the profile with no role";
+}
+
+TEST(MqttCore, PriorityStillDecidesWithinARole) {
+  Rig r;
+  r.stat(0, "p-low", 20); r.stat(1, "p-high", 80);
+  tiers(r, {PRIMARY, PRIMARY});
+  r.start();
+  r.runUntilConnected();
+  EXPECT_EQ(1, r.cur());
+}
+
+TEST(MqttCore, NoLocalPriorityLiftsAProfileAboveASignedRole) {
+  Rig r;
+  r.stat(0, "unroled", 255); r.stat(1, "secondary", 1);
+  tiers(r, {NOROLE, SECONDARY});
+  r.start();
+  r.runUntilConnected();
+  EXPECT_EQ(1, r.cur()) << "the highest possible priority on a profile with no role still loses to a role";
+}
+
+TEST(MqttCore, TiersSetBeforeTheControllerStartsAreKept) {
+  Rig r;   // the device interface pushes the roles at boot, before the controller configures the core
+  r.stat(0, "unroled", 90); r.stat(1, "primary", 10);
+  tiers(r, {NOROLE, PRIMARY});
+  r.start();   // configure() and begin()
+  r.runUntilConnected();
+  EXPECT_EQ(1, r.cur());
+}
+
+TEST(MqttCore, WithNoRolesThePrioritiesDecideAsBefore) {
+  Rig r;
+  r.stat(0, "low", 10); r.stat(1, "high", 90);
+  tiers(r, {NOROLE, NOROLE});
+  r.start();
+  r.runUntilConnected();
+  EXPECT_EQ(1, r.cur());
+}
+
+TEST(MqttCore, ARoleGivenWhileConnectedMovesTheSessionAfterTheHoldDown) {
+  Rig r;
+  r.stat(0, "unroled", 90); r.stat(1, "primary-to-be", 10);
+  r.start();
+  r.runUntilConnected();
+  ASSERT_EQ(0, r.cur());
+  tiers(r, {NOROLE, PRIMARY});   // a provisioning names profile 1 primary
+  r.run(r.t.hold_down_ms + r.t.rescan_ms + 5000);
+  EXPECT_EQ(1, r.cur()) << "the signed role is the better profile, so the usual return-to-better rule moves there";
+}
+
 TEST(MqttCore, AnIncompleteProfileIsNeverUsed) {
   Rig r;
   r.prof.p[0].kind = MqttProfile::Static; r.prof.p[0].prio = 99;   // no host

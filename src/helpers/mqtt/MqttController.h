@@ -50,6 +50,8 @@ public:
   typedef size_t (*IfaceFn)(void* user, const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap);
   // One interface event on mecon/<device_id>/ev/<stream>, QoS 0, never retained. False when no session is up.
   bool publishIfaceEvent(const char* stream, const char* payload, size_t len);
+  // The broker tiers from the Deployment record (MqttCore::setTiers), pushed by the device interface when it changes.
+  void setBrokerTiers(const uint8_t* tiers, uint8_t n) { _core.setTiers(tiers, n); }
   bool sessionUp() const { return _started && _core.state() == MqttState::Connected; }
   void setIfaceHandler(IfaceFn fn, void* user, const char* device_id_hex) {
     _iface_fn = fn;
