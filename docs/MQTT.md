@@ -30,7 +30,7 @@ Up to six, each with a priority (0 to 255, default 50; higher is tried first, eq
 
 | Kind | Fields | Rule |
 |---|---|---|
-| **Static** | host name or IPv4 address, port (default 8883 with TLS, 1883 without), TLS on or off (default on), optional anchor | The name is resolved again on **every** connect attempt, so a dynamic-DNS name keeps working when its address changes. With TLS and an anchor the broker is authenticated; with TLS and no anchor the link is encrypted but **unauthenticated** and status says `tls=unverified`; without TLS status says `tls=plain`. |
+| **Static** | host name or IPv4 address, port (default 8883 with TLS, 1883 without; 443 and 80 over WebSocket), TLS on or off (default on), optional anchor, transport `tcp` (default) or `ws` with a path ([WebSocket](#websocket)) | The name is resolved again on **every** connect attempt, so a dynamic-DNS name keeps working when its address changes. With TLS and an anchor the broker is authenticated; with TLS and no anchor the link is encrypted but **unauthenticated** and status says `tls=unverified`; without TLS status says `tls=plain`. |
 | **Discovery** (an enrolled LAN broker) | site ID, anchor | The device browses mDNS for `_secure-mqtt._tcp` and `_mqtt._tcp`. A responder qualifies **only** if its TXT record carries `site=<site ID>` **and** the TLS certificate it presents satisfies the anchor. Always TLS. **Plain MQTT is never used for a discovered broker:** a responder that advertises `_mqtt._tcp` is recorded as `last=plain` and never contacted. |
 
 ### The anchor
@@ -65,6 +65,15 @@ A CA certificate is 600 to 1,900 characters and the console line takes 79, so it
 - `ca end` decodes the text and installs it only if it is one complete DER certificate (a SEQUENCE whose declared length is exactly what arrived), so a damaged or truncated paste is refused with `ERR: ca is not one complete base64 DER certificate; the profile is unchanged`. It then saves the prefs and replaces any fingerprint anchor. That check proves the shape; it does not prove the certificate is the right one or parses as X.509, which the connect finds out (and reports as `pin`).
 - A pasted `-----BEGIN CERTIFICATE-----` line is skipped, so the lines of a PEM file can be sent as they are. `ca begin` starts again; `ca clear` and `anchor clear` remove a CA; `set mqtt.profile <n> clear` removes the profile and its CA and drops its staging buffer. A second profile may stage only after the first finishes: there is one staging buffer.
 
+### WebSocket
+
+A static profile with `transport ws` speaks MQTT 3.1.1 over WebSocket (RFC 6455, subprotocol `mqtt`), for a broker served only that way, typically behind a reverse proxy on port 443. With TLS on it is WSS. Nothing about authentication changes:
+- **The order.** The TCP connection, the TLS handshake and the anchor check (fingerprint or CA, with the host-name check and SNI as above) run first. The upgrade request goes out only after the anchor has passed, inside that connection, so a broker that fails the anchor never sees it. `tls=verified` still means the anchor passed; the WebSocket layer adds no trust of its own. A `ws` profile without TLS is plain, shown as `tls=plain` and refused in Hardened, like plain TCP.
+- **The upgrade.** `GET <path> HTTP/1.1` with `Host` (the profile's host as written, with `:<port>` when it is not 80, or 443 with TLS), a random `Sec-WebSocket-Key`, version 13 and `Sec-WebSocket-Protocol: mqtt`. The answer must be `101` with `Upgrade: websocket`, a `Connection` that carries `upgrade`, the `Sec-WebSocket-Accept` the key calls for, `Sec-WebSocket-Protocol: mqtt`, and no extension. Anything else (another status, a wrong accept, no subprotocol, an answer over 512 bytes or slower than the open timeout) ends the attempt as `last=ws`.
+- **Frames.** Each write is one masked binary frame. From the server, binary frames, fragmented or not, carry the MQTT bytes; a ping is answered with a pong carrying its payload; a close is answered and ends the session. A text frame, a masked frame, a reserved bit or opcode, a fragmented or oversized control frame, or a continuation out of order is a protocol error: the device sends a close (1002) and the session ends.
+- **Path.** `/mqtt` unless set; at most 63 characters, starting with `/`, of the characters a URL path allows (no query or fragment). `get mqtt.profile <n> path` reads it; the listing shows only `transport=ws`, because a 63-character host and path together would outgrow the 150-byte reply.
+- **Not supported:** discovery profiles over WebSocket (a discovered broker is always MQTT over TLS), extensions such as compression, and HTTP authentication on the upgrade (MQTT's own user and password are sent as usual, inside the session).
+
 ## Selection, failover and return
 
 Timings are `MqttTiming` defaults in `MqttCore.h`.
@@ -92,6 +101,8 @@ All of them run on a trusted local transport; the TCP companion port refuses the
 | `set mqtt.profile <n> host <name-or-ipv4>` | static only; 1 to 63 characters: letters, digits, `.` `-` `_` |
 | `set mqtt.profile <n> port <0-65535>` | 0 means the default for the TLS setting |
 | `set mqtt.profile <n> tls on\|off` | static only; `off` is refused in Hardened |
+| `set mqtt.profile <n> transport tcp\|ws` | static only: MQTT over the connection, or over WebSocket ([above](#websocket)) |
+| `set mqtt.profile <n> path <path>` | the WebSocket path, `/mqtt` by default; kept when the transport is `tcp`, used only with `ws` |
 | `set mqtt.profile <n> anchor <64 hex>\|clear` | the SHA-256 fingerprint of the broker certificate; replaces a CA anchor; `clear` removes either kind |
 | `set mqtt.profile <n> ca begin` / `ca add <base64>` / `ca end` / `ca clear` | a CA certificate as the anchor, in pieces ([above](#setting-a-ca-anchor-over-the-console)); replaces a fingerprint |
 | `set mqtt.profile <n> site <id>` | discovery only; 1 to 23 characters |
@@ -99,12 +110,13 @@ All of them run on a trusted local transport; the TCP companion port refuses the
 | `set mqtt.profile <n> priority <0-255>` | higher is tried first |
 | `set mqtt.profile <n> manage on\|off` | lets this broker manage the device over MQTT even in Hardened ([Command-line engine](CLI.md)); only a local caller sets it, off by default, shown in the listing only when on |
 | `set mqtt.profile <n> clear` | removes the profile and its credentials |
-| `get mqtt.profile <n>` | `<n>: static <host>:<port> tls=on\|off anchor=fingerprint\|ca\|unset prio=<p> user=set\|unset pwd=set\|unset last=<reason>`, or the discovery form |
+| `get mqtt.profile <n>` | `<n>: static <host>:<port> tls=on\|off [transport=ws] anchor=fingerprint\|ca\|unset prio=<p> user=set\|unset pwd=set\|unset last=<reason>`, or the discovery form |
+| `get mqtt.profile <n> path` | the WebSocket path, `/mqtt` when none is set |
 | `get mqtt.profiles [from]` | every configured profile, paged with `... next:<n>` |
 | `get mqtt.status` | `connected profile=<n> broker=<ip>:<port> tls=verified\|unverified\|plain up=<s>`, or the state: `idle`, `connecting`, `backoff`, `no-link`, `off`, with ` browsing` while a browse runs |
 | `set mqtt.enabled 0\|1`, `get mqtt.enabled` | stop or resume without losing the profiles |
 
-`last=` is the last failure of that profile: `none`, `dns`, `tcp`, `tls` (the TCP or TLS connect failed), `pin` (the certificate does not satisfy the anchor), `auth`, `timeout`, `dropped`, `lost` (the responder vanished), `posture` (Hardened forbids it) or `plain` (a discovery profile saw only a plain responder). A profile edit applies at once (a session on it is redone) with no reboot, as long as the controller is running; the controller starts at boot when Wi-Fi does.
+`last=` is the last failure of that profile: `none`, `dns`, `tcp`, `tls` (the TCP or TLS connect failed), `pin` (the certificate does not satisfy the anchor), `ws` (the WebSocket upgrade was refused or not understood), `auth`, `timeout`, `dropped`, `lost` (the responder vanished), `posture` (Hardened forbids it) or `plain` (a discovery profile saw only a plain responder). A profile edit applies at once (a session on it is redone) with no reboot, as long as the controller is running; the controller starts at boot when Wi-Fi does.
 
 ## Status topic
 
@@ -112,7 +124,7 @@ On every connect, and again every 5 minutes, the device publishes a retained mes
 
 ## Storage
 
-The profiles are saved in the Companion prefs file under `mqtt` (`en` and, per profile `i`, the keys `k<i>` kind, `p<i>` priority, `t<i>` TLS, `o<i>` port, `h<i>` host, `s<i>` site, `a<i>` fingerprint anchor, `u<i>` user, `w<i>` password, and for a CA anchor `c<i><nn>` its base64 in pieces of 96 characters, only the pieces that exist, because one prefs token holds 127 characters), so they use the same atomic save. A prefs file without them loads with no profile. The whole prefs file is 955 bytes with no MQTT profile and 2,419 bytes with six profiles of the longest allowed host, site ID, anchor, user name and password (measured by the unit test). **A CA anchor adds its base64 text plus about 9 bytes of key and quotes per 96 characters**: 664 bytes for an EC P-256 CA (450 DER bytes), and 2.1 KB for the largest CA the profile accepts (1,440 DER bytes); six of the largest add 12.5 KB (measured: 13,435 bytes in all). A profile without a CA adds nothing to the file, so a device that does not use the feature keeps the sizes above. RAM: 1,536 bytes for six profiles (256 bytes each) plus about 300 bytes for the controller state, in builds that have MQTT.
+The profiles are saved in the Companion prefs file under `mqtt` (`en` and, per profile `i`, the keys `k<i>` kind, `p<i>` priority, `t<i>` TLS, `o<i>` port, `h<i>` host, `s<i>` site, `a<i>` fingerprint anchor, `u<i>` user, `w<i>` password, `x<i>` WebSocket transport, `r<i>` WebSocket path, and for a CA anchor `c<i><nn>` its base64 in pieces of 96 characters, only the pieces that exist, because one prefs token holds 127 characters), so they use the same atomic save. A prefs file without them loads with no profile. The whole prefs file is 1,021 bytes with no MQTT profile and 2,851 bytes with six profiles of the longest allowed host, site ID, anchor, user name, password and WebSocket path (measured by the unit test). **A CA anchor adds its base64 text plus about 9 bytes of key and quotes per 96 characters**: 664 bytes for an EC P-256 CA (450 DER bytes), and 2.1 KB for the largest CA the profile accepts (1,440 DER bytes); six of the largest add 12.5 KB (measured: 13,501 bytes in all). A profile without a CA adds nothing to the file, so a device that does not use the feature keeps the sizes above. RAM: 1,968 bytes for six profiles (328 bytes each on ESP32) plus about 300 bytes for the controller state and about 300 bytes for the WebSocket client, in builds that have MQTT.
 
 ## Memory
 
@@ -129,11 +141,13 @@ RAM is the static figure PlatformIO reports (data and bss): the profiles (1.5 KB
 
 **TLS heap while a session is open (estimate, not measured on hardware).** This estimate was made for Arduino-ESP32 2.0.17 (ESP-IDF 4.4); the Heltec V3 and V4 now build on 3.1.3 / ESP-IDF 5.3 ([PLATFORM](PLATFORM.md)), where the measured heap rows in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) are what counts. That core (2.0.17) is built with `CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=16384`, `CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN` off and `CONFIG_MBEDTLS_DYNAMIC_BUFFER` off, so mbedTLS keeps a 16 KiB input and a 16 KiB output record buffer (about 33 KB) for as long as the session lives, plus roughly 10 to 15 KB of handshake state that is released after the handshake (an ECDSA P-256 server certificate; an RSA-2048 certificate costs more during the handshake). The Espressif mbedTLS documentation ("Reducing heap usage") gives the same order of magnitude, 40 to 50 KB at the peak. The controller allocates the TLS client only when a session opens and frees it when it ends, so a device on a plain profile pays nothing. The cost of reducing the record buffers (`CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN`) needs a different core build and is not done here. Whether the free heap of the Companion Wi-Fi build leaves room for this at runtime next to the Wi-Fi stack is exactly what the hardware run has to show.
 
+**WebSocket, measured the same way against main:** RAM +864 B on the Heltec V3 and V4 Wi-Fi and standalone builds (the profiles' path and transport, the connect job's copy of them, and the WebSocket client's 128-byte receive buffer and 125-byte control-frame buffer); flash +5,308 B (V3 Wi-Fi), +5,388 B (V4 Wi-Fi), +5,888 B (V3 standalone) and +5,808 B (V4 standalone). A session over WebSocket adds no heap of its own: frames are masked and unmasked through those fixed buffers, with nothing allocated per message.
+
 ## Platforms
 
 - **ESP32 family** (Heltec V3 and V4 Wi-Fi builds): implemented in `MqttNetEsp32.cpp` over `WiFiClient` / `WiFiClientSecure` (both anchors are checked after a handshake that skips the library's own validation: a fingerprint with `WiFiClientSecure::verify`, a CA with `mbedtls_x509_crt_verify` on the peer's chain, with the host name when there is one; the connect uses `WiFiClientSecure::connect(ip, port, host, ...)` to reach the resolved address while presenting the name as SNI; the whole sequence runs on the worker task described above) and the ESP-IDF `mdns_query_async_*` calls. Other ESP32 Wi-Fi builds opt in with `-D ENABLE_MQTT`, `+<helpers/mqtt/*.cpp>` and the library line.
 - **RP2040: unsupported in this change.** The Companion builds for it keep working as before. The platform adapter would be a `MqttNet` over `WiFiClientSecure` (BearSSL, `setFingerprint`) and the core's LEAmDNS service query; neither is written, and the RP2040 mDNS responder cannot browse asynchronously the way this controller needs.
-- Simulated boards: `sim_companion_wifi` and `sim_companion_wifi_usb`.
+- Simulated boards: `sim_companion_wifi` and `sim_companion_wifi_usb`. The WebSocket tests reach a real Mosquitto through `sim/ws_front.py`, an independent WebSocket front (plain or TLS) that forwards to the broker's plain listener, because Ubuntu's Mosquitto is built without WebSocket listeners.
 
 ## Known limits
 
