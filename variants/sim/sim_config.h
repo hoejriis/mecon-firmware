@@ -24,6 +24,7 @@ struct SimConfig {
   std::string heap_file;      // file "FREE [LARGEST]" the test rewrites to change the heap the node reports at run time (--heap-file)
   uint32_t fs_size = 1536 * 1024;  // size of the simulated file system (--fs-size)
   std::string fs_calls;       // file rewritten after every file system call with the running counts (--fs-calls)
+  uint32_t fs_write_ms = 0;   // --fs-write-ms: each written file's close holds the node this long, as a flash save does
   std::string fault_path;     // fault injection: file path (as the app sees it) ...
   long fault_after = -1;      // ... and bytes after which the process is killed
   std::string fault_op;       // power cut just BEFORE a filesystem operation: "rename" or "remove" ...

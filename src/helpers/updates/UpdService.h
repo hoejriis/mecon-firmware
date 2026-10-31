@@ -103,6 +103,9 @@ public:
 
   // One piece of work: the stall deadline, a piece of the read-back, a sector of erase, the end of the rollback window.
   void loop(uint32_t now_ms);
+  // The interface calls this once a request's reply is written: an offered bootloader-dfu reset counts its delay from
+  // here, so a slow job-table save inside the offer cannot spend it before the answer goes out.
+  void replyWritten(uint32_t now_ms) { if (_dfu_pending) _dfu_at = now_ms + DFU_DELAY_MS; }
 
   // The role's job hooks, for a job whose op is OP. revert: puts the previous image back (or abandons the transfer) and
   // sets the terminal state; confirm: only once the new image runs.
@@ -184,6 +187,10 @@ private:
   void confirmFromRecord(Iface::Job& j);
   void settleRecord();
   void reconcile();
+  void dfuReconcile();
+  bool _dfu_pending = false;   // an offered bootloader-dfu image: reset into the bootloader at _dfu_at
+  uint32_t _dfu_at = 0;
+  static const uint32_t DFU_DELAY_MS = 1500;
   void finish(Iface::Job& j, uint8_t state, const char* members);
 };
 

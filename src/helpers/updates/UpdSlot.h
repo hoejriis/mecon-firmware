@@ -50,6 +50,12 @@ bool runningHash(uint8_t out[32]);
 // boot, because a build container without git tags compiles "unknown", which orders below every min_from.
 const char* runningVersion();
 
+// A target whose bootloader installs the image itself (UPDATES.md section 6, kind bootloader-dfu): the nRF52 with the
+// Adafruit bootloader, or a simulated board started as one ("<dir>.dfu-board" exists). slotEnterDfu() resets into the
+// bootloader's serial DFU (GPREGRET 0x4e); the simulated board exits with status 76 for the test to play the bootloader.
+bool slotIsDfuBoard();
+void slotEnterDfu();
+
 enum RunState : uint8_t { RS_VALID, RS_PENDING, RS_UNKNOWN };
 RunState runningState();   // pending: booted from an install and not yet marked valid (the bootloader's rollback window)
 bool markValid();          // ends the rollback window

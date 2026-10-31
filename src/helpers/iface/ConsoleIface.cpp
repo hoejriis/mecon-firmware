@@ -455,6 +455,7 @@ void ConsoleIface::answer(Print& out) {
   AnswerJob job = {this, res, small, sizeof(small), -1};
   if (NrfWorker::run(answerJob, &job, 15000)) {
     if (job.n > 0) printLine(out, res ? res : small, (size_t)job.n);
+    _updates.replyWritten(millis());   // a DFU reset the request asked for waits for its reply
   } else {
     // The worker could not be created (no memory): nothing runs on the small loop stack, not even a signature, so the
     // refusal goes out unsigned and says why. (A job that overran would have reset the device instead.)
