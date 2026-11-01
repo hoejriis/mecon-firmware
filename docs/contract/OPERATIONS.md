@@ -325,7 +325,7 @@ The device-interface operations are not carried over LoRa today. #115 carries th
 | Heltec V3 Repeater, Room server | yes (console) | no | no | |
 | Heltec V4 Repeater, Room server | yes (console) | no | no | |
 | Heltec V3/V4 Companion `_usb`, `_ble`, `_wifi` | no | `_wifi` only (CLI topic) | `_ble` | stock-shaped builds; native frames only |
-| SenseCAP T1000-E Companion (`_usb`, `_ble`), Repeater | yes (Companion: frames; Repeater: console) | no | Companion `_ble` | no Wi-Fi. The Companion keeps the stock contact array |
+| SenseCAP T1000-E Companion (`_usb`, `_ble`), Repeater | yes (Companion: frames; Repeater: console) | no | Companion `_ble` | no Wi-Fi. The Companion keeps the stock contact array, and refuses a first provisioning and every `update.offer` (`unsupported`) until its marker and floor pages exist; the Repeater takes both |
 | Wio Tracker L1 and other nRF52 builds | no | no | Companion builds | no Wi-Fi |
 | simulated Companion, Repeater, Room server | yes | Companion | simulated | the conformance target |
 
