@@ -117,6 +117,7 @@ public:
   // Whether the device holds a Deployment record, healthy or corrupt: an unsigned caller then changes nothing
   // (AUTHORITY.md section 9). The CLI privilege table takes it as Context.enrolled.
   bool enrolled() const { return _auth.enrolled(); }
+  void setRolesListener(Iface::DeployAuth::RolesListener f, void* user) { _auth.setRolesListener(f, user); }   // #218
   bool hasUnlockSecret() const { return _auth.hasUnlockSecret(); }
   // After a factory reset has formatted the storage: the provisioned marker goes with the record, and the state in
   // memory follows what is now stored.

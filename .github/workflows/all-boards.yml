@@ -96,8 +96,9 @@ jobs:
           failed=()
           for env in ${{ matrix.shard.envs }}; do
             echo "::group::$env"
-            # The ESP32-C6 and Heltec V4 envs use the stock IDF libraries, the Heltec V3 envs the rebuilt ones; one package cannot hold both.
-            case "$env" in *C6*|*c6*|heltec_v4_*) export PLATFORMIO_CORE_DIR="$HOME/.platformio-stock" ;; *) unset PLATFORMIO_CORE_DIR ;; esac
+            # One PlatformIO core directory holds one IDF library set per chip: the ESP32-C6 envs use the stock one, the Heltec
+            # V3 and V4 envs each their own rebuilt one (docs/PLATFORM.md).
+            case "$env" in *C6*|*c6*) export PLATFORMIO_CORE_DIR="$HOME/.platformio-stock" ;; heltec_v4_*) export PLATFORMIO_CORE_DIR="$HOME/.platformio-v4" ;; *) unset PLATFORMIO_CORE_DIR ;; esac
             if bin/idf5_libs.sh "$env" && pio run -e "$env"; then echo "OK $env" >> results.txt; else echo "FAIL $env" >> results.txt; failed+=("$env"); fi
             echo "::endgroup::"
           done

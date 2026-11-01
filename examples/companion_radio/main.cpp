@@ -383,6 +383,8 @@ void setup() {
       mqttController().setCliHandler(&mqttCliRun, &the_mesh);   // the command line over MQTT (docs/CLI.md)
 #ifdef ENABLE_MECON_IFACE
       mqttController().setIfaceHandler(&mqttIfaceRun, &the_mesh, the_mesh.iface().deviceIdHex());   // DEVICE_INTERFACE.md
+      // The Deployment's broker roles order the brokers (#218); pushed now and whenever the record changes.
+      the_mesh.iface().setRolesListener([](const uint8_t* t, uint8_t n, void*) { mqttController().setBrokerTiers(t, n); }, nullptr);
       the_mesh.iface().setMqttEvents(
           [](const char* stream, const char* payload, size_t len) { return mqttController().publishIfaceEvent(stream, payload, len); },
           []() { return mqttController().sessionUp(); });

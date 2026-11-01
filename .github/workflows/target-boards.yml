@@ -4,7 +4,17 @@ name: Target boards
 # The full upstream board set is compiled by the all-boards workflow.
 
 on:
+  # Documentation-only pull requests skip this workflow (#245). The docs files the tests read stay in: the CLI
+  # reference, the UI captures and everything under docs/contract (schemas, fixtures, release keys).
   pull_request:
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**/*.md'
+      - 'docs/CLI_REFERENCE.md'
+      - 'docs/UI.md'
+      - 'docs/ui/**'
+      - 'docs/contract/**'
   push:
     branches: [main]
   workflow_dispatch:
@@ -61,7 +71,7 @@ jobs:
       # satisfies a lib_deps range, so the build links exactly these, whatever the registry offers today.
       - name: Libraries from the lock
         run: python3 tools/lib_lock.py install ${{ matrix.env }}
-      - name: Rebuild the Arduino IDF libraries (Heltec V3 envs; skipped for the rest)
+      - name: Rebuild the Arduino IDF libraries (Heltec V3 and V4 envs; skipped for the rest)
         run: bin/idf5_libs.sh ${{ matrix.env }}
       - run: |
           set -o pipefail   # a failed build must fail the step, not be hidden by tee
@@ -83,7 +93,13 @@ jobs:
           def used(kind):
               m = re.search(kind + r':\s*\[[^\]]*\]\s*[\d.]+% \(used (\d+) bytes from (\d+) bytes\)', log)
               return [int(m.group(1)), int(m.group(2))] if m else None
-          json.dump({'env': env, 'ram': used('RAM'), 'flash': used('Flash')}, open('memory.json', 'w'))
+          # The image's SHA-256, so two builds of one commit on different days and runners can be compared (#220)
+          import hashlib, os
+          image = next((p for p in ('.pio/build/%s/firmware.bin' % env, '.pio/build/%s/firmware.hex' % env)
+                        if os.path.exists(p)), None)
+          sha = hashlib.sha256(open(image, 'rb').read()).hexdigest() if image else None
+          json.dump({'env': env, 'ram': used('RAM'), 'flash': used('Flash'), 'image': image and os.path.basename(image),
+                     'sha256': sha}, open('memory.json', 'w'))
           PY
           cat memory.json
       - uses: actions/upload-artifact@v4

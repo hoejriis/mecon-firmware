@@ -26,7 +26,7 @@ DNS, the TCP connect, the TLS handshake and the MQTT CONNECT/CONNACK wait are ea
 
 ## Profiles
 
-Up to six, each with a priority (0 to 255, default 50; higher is tried first, equal priorities go to the lower profile number) and optional credentials. A profile has one of two kinds.
+Up to six, each with a priority (0 to 255, default 50; higher is tried first, equal priorities go to the lower profile number) and optional credentials. On a device with a Deployment record, the record's broker roles come before the priorities: a `local` profile is tried first, then `primary`, then `secondary`, then any profile with no role, and the priority orders the profiles within each of those groups ([AUTHORITY](contract/AUTHORITY.md) section 6.1). A profile has one of two kinds.
 
 | Kind | Fields | Rule |
 |---|---|---|

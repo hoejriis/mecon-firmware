@@ -219,8 +219,24 @@ void DeployAuth::begin(const Env& env) {
 
 // The two facts the servers' command handlers read (Cli::ServerCaller): kept equal to the state in memory.
 void DeployAuth::syncCaller() {
+  notifyRoles();   // every change of the record in memory passes here
   if (!_env.publish_caller) return;
   Cli::serverCaller().enrolled = _dep_ls != Dep::LS_ABSENT;
+}
+
+void DeployAuth::notifyRoles() {
+  if (!_roles_cb) return;
+  uint8_t t[BROKER_TIERS];
+  memset(t, BROKER_TIER_NONE, sizeof(t));
+  if (_dep_ls == Dep::LS_OK && _dep) {
+    for (int i = 0; i < _dep->rec.n_roles; i++) {
+      const Dep::BrokerRoleEntry& e = _dep->rec.roles[i];
+      if (e.profile >= BROKER_TIERS) continue;
+      t[e.profile] = e.role == Dep::ROLE_LOCAL ? 0 : e.role == Dep::ROLE_PRIMARY ? 1 : e.role == Dep::ROLE_SECONDARY ? 2
+                                                                                                    : BROKER_TIER_NONE;
+    }
+  }
+  _roles_cb(t, BROKER_TIERS, _roles_user);
 }
 
 void DeployAuth::load() {

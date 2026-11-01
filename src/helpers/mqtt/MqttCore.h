@@ -4,8 +4,9 @@
 // time, it answers with one action at a time. Unit-tested natively (test/test_mqtt_core).
 //
 // Rules:
-//  * One session at a time. Among the usable profiles that are available, the highest priority wins; equal
-//    priorities go to the lower profile number. A static profile is available unless it is cooling down; a discovery
+//  * One session at a time. Among the usable profiles that are available, the Deployment's broker roles come first
+//    (local, then primary, then secondary, then a profile with no role), then the highest priority, then the lower
+//    profile number. A role is signed by the Deployment, so no local priority edit lifts a profile above it. A static profile is available unless it is cooling down; a discovery
 //    profile is available while a responder carrying its site ID is visible and not cooling down.
 //  * Failover: a failed connect (DNS, TCP, TLS, pinned certificate, credentials, timeout), a session that drops, a
 //    responder that vanishes from a browse, or a posture that forbids the profile ends the session and the next
@@ -53,13 +54,19 @@ public:
   static constexpr uint8_t NONE = 0xFF;
   static constexpr uint8_t MAX_CANDS = 6;
 
-  MqttCore() { }
+  MqttCore() { for (uint8_t i = 0; i < MqttProfiles::COUNT; i++) _tier[i] = TIER_NONE; }
   void configure(const MqttProfiles* profiles, const MqttTiming& timing = MqttTiming());
 
   // ---- lifecycle
   void begin(uint32_t now);                 // start (the link state is set separately)
   void stop();                              // Off; the caller drops the session
   void setPosture(uint8_t posture) { _posture = posture; }
+  // Each profile's broker tier from the Deployment record's broker_roles: 0 local, 1 primary, 2 secondary, TIER_NONE
+  // without a role. A profile past `n` gets TIER_NONE. Used from the next selection on (a better tier is a better profile,
+  // so the usual return-to-better rule moves a running session there once the hold-down allows).
+  static constexpr uint8_t TIER_NONE = 3;
+  void setTiers(const uint8_t* tiers, uint8_t n);
+  uint8_t tier(uint8_t i) const { return i < MqttProfiles::COUNT ? _tier[i] : TIER_NONE; }
   void setLink(uint32_t now, bool up);      // the Wi-Fi link
   // A profile was edited. `credentials`: anything but the priority. Re-evaluates without a reboot.
   void profileChanged(uint32_t now, uint8_t index, bool credentials);
@@ -127,6 +134,7 @@ private:
   uint32_t _connect_count = 0;
   bool _verified = false;
   bool _pending_disconnect = false;
+  uint8_t _tier[MqttProfiles::COUNT];   // TIER_NONE until setTiers(); kept across configure(), which may come later
   bool _browsing = false;
   uint32_t _browse_started = 0;
   uint32_t _next_browse = 0;
