@@ -5,7 +5,17 @@ name: Simulated boards
 # A pass is software verification on simulated boards, not a hardware claim.
 
 on:
+  # Documentation-only pull requests skip this workflow (#245). The docs files the tests read stay in: the CLI
+  # reference, the UI captures and everything under docs/contract (schemas, fixtures, release keys).
   pull_request:
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**/*.md'
+      - 'docs/CLI_REFERENCE.md'
+      - 'docs/UI.md'
+      - 'docs/ui/**'
+      - 'docs/contract/**'
   push:
     branches: [main]
   workflow_dispatch:
