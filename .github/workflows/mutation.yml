@@ -2,24 +2,33 @@ name: Mutation check
 
 # Each job breaks one piece of code (sim/mutate.sh) and requires the tests that
 # guard it to go red. A mutant that survives means a test that cannot fail.
+#
+# Owner's rule, 2026-11-01: the full set runs once a day, as a nightly on main; every other run is a spot check.
+# - full: the nightly, a run by hand, and a pull request that is ready and labelled full-ci (an opt-in for a risky change).
+# - spot: every other pull request and every merge to main. Only the mutants that the change touches run
+#   (sim/mutate_select.py: the file they mutate, their topic file or a test they name), plus a smoke set of one mutant
+#   per topic when the mutation machinery itself changed. A change that touches no mutant runs none.
 
 on:
   pull_request:
     # Not `opened`: a PR created with full-ci fires `labeled` as well, and two runs for one commit cancelled each other.
-    types: [synchronize, reopened, ready_for_review, labeled]
-    paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', '.github/workflows/mutation.yml']
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', 'test/**', 'platformio.ini', '.github/workflows/mutation.yml']
   push:
     branches: [main]
+    paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', 'test/**', 'platformio.ini', '.github/workflows/mutation.yml']
+  schedule:
+    - cron: '47 3 * * *'   # after the All boards nightly (02:17), so the two do not share the runners
   workflow_dispatch:
 
-# On a pull request a newer push makes this run obsolete: cancel it rather than queue behind it. On main every
-# commit's run finishes, so each merge gets a verdict (#146): a newer one waits, and GitHub keeps only the newest
-# pending run in the group, so a busy day does not queue a run per merge.
-# The group says whether the run will do the work (the same test as the list job's `if`): a run that will only skip
-# (a push without the label, another label added) must not cancel one that is an hour into the matrix, and a cancelled
-# run stays on the PR as a failed check that blocks the merge.
+# On a pull request a newer push makes this run obsolete: cancel it rather than queue behind it. On main every run
+# finishes, so each merge and each nightly gets a verdict (#146): a newer one waits, and GitHub keeps only the newest
+# pending run in the group.
+# The group is the run's mode, full or spot, so a spot run (a PR opened with full-ci fires `opened` and `labeled`) never
+# cancels a full one, and a run that only skips (another label added) has a group of its own and cancels nothing: a
+# cancelled run stays on the PR as a failed check that blocks the merge.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci')) }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))) && 'full' || ((github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name != 'full-ci') && format('skip-{0}', github.run_id) || 'spot') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -27,19 +36,33 @@ permissions:
 
 jobs:
   list:
-    # On main (after a merge) and by hand. A PR runs it only when it is ready and labelled full-ci (owner's
-    # choice, 2026-10-29: the matrix is most of the repo's Actions minutes); adding the label starts it.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
+    # Every run but one that another label fired (adding a label other than full-ci changes no code).
+    if: ${{ !(github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name != 'full-ci') }}
     runs-on: ubuntu-latest
     outputs:
       mutants: ${{ steps.list.outputs.mutants }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the spot set diffs the change against its base
       - id: list
         # Mutants run in batches: GitHub allows at most 256 jobs per matrix, and the suite has more mutants than that
         # (a matrix that is too large makes the whole run fail before any mutant job starts).
+        env:
+          FULL: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))) }}
+          BEFORE: ${{ github.event.before }}
         run: |
-          sh sim/mutate.sh --list > mutants.txt
+          if [ "$FULL" = true ]; then
+            echo "mode: full"; python3 sim/mutate_select.py full > mutants.txt
+          else
+            # a PR is checked out as its merge commit (parent 1 is the base); a push to main diffs from the previous head
+            if [ "${{ github.event_name }}" = pull_request ]; then git diff --name-only HEAD^1 HEAD > changed.txt
+            elif git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then git diff --name-only "$BEFORE" HEAD > changed.txt
+            else echo sim/mutate.sh > changed.txt; fi   # no usable base: the smoke set
+            echo "mode: spot, $(wc -l < changed.txt) changed paths"
+            python3 sim/mutate_select.py spot changed.txt > mutants.txt
+          fi
+          sed -i '/^$/d' mutants.txt
           echo "$(wc -l < mutants.txt) mutants"
           batches=$(jq -R -s -c 'split("\n") | map(select(length > 0)) | [range(0; length; 4) as $i | .[$i:$i+4] | join(" ")]' mutants.txt)
           n=$(echo "$batches" | jq length)
@@ -50,6 +73,7 @@ jobs:
 
   mutant:
     needs: list
+    if: needs.list.outputs.mutants != '[]'   # a change that touches no mutant: nothing to run (the check shows skipped)
     runs-on: ubuntu-latest
     # A batch takes 4.5 min typically and 9.7 min at the most (198 batches on main, 2026-10-30). A job that runs
     # three times that long is stuck or has lost its runner: it fails, and on main the alarm says so, rather than
@@ -94,11 +118,11 @@ jobs:
         run: for m in ${{ matrix.mutant }}; do echo "== $m"; tail -15 ".sim-logs/mut_$m.log" 2>/dev/null; done
 
   alarm:
-    # main is the only place the whole matrix runs (PRs only with full-ci): a failed or cancelled run there is as
-    # silent as a red nightly, so it opens or comments on one tracking Issue.
+    # The nightly is the only place the whole set runs, and a merge's spot run is main's verdict on that merge: a failed
+    # or cancelled run of either is as silent as a red nightly, so it opens or comments on one tracking Issue.
     needs: [list, mutant]
     if: >-
-      always() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      always() && (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' &&
       (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
     permissions:
       contents: read

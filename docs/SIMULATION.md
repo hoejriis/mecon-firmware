@@ -244,7 +244,7 @@ start_after=0)`, which puts both the `ether` fixture and every node made by `nod
 
 ## Mutation check
 
-In CI the mutation workflow runs on pushes to `main` and on pull requests that are ready (not drafts) and labelled `full-ci`. Adding the label starts it, and every later push re-runs it. Use the label on authority and security changes, where the mutants should pass before the merge. Elsewhere they are checked on `main` straight after it, and a red run there is fixed at once.
+In CI the full set of mutants runs once a day, as a nightly on `main`. Every pull request and every merge to `main` runs a spot check instead: only the mutants the change touches, chosen by `sim/mutate_select.py` from the file each one mutates, its topic file and the tests it names. When the mutation machinery itself changes (`sim/mutate.sh`, the sim build, the harness, `variants/sim/`, `platformio.ini`), the spot check adds one mutant per topic. A change that touches no mutant runs none. The `full-ci` label on a ready pull request runs the full set there as well; use it on a risky change, such as authority or security, where every mutant should pass before the merge. A failed or cancelled nightly or merge run on `main` opens a tracking Issue, or comments on the open one, and is fixed at once. `sim/mutate.sh --files` prints each mutant's name, topic file, mutated file and tests, which is what the selection reads.
 
 `sim/mutate.sh` breaks one thing per test group (a time-on-air constant, SimRadio dropping
 every packet, SimFS discarding writes, the fault hook disabled), rebuilds, expects that
