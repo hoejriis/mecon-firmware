@@ -17,7 +17,7 @@ The contracts a manager implements to manage mecon-firmware devices. They need n
 
 The [schemas](schema) and [fixtures](fixtures) belong to the device interface. `release-keys.json` lists the release keys that builds trust ([signed updates](UPDATES.md)).
 
-What a given device supports is never inferred from these pages: `hello` lists every operation and stream the build, board and role can run. A Status column in the operations and telemetry tables says whether an item is available or planned.
+What a given device supports is never inferred from these pages: `hello` lists every operation and stream its build, board and role can run. What each release contains is in its release notes.
 
 ## Principles
 
@@ -29,7 +29,7 @@ What a given device supports is never inferred from these pages: `hello` lists e
 6. Capabilities and independently versioned profiles describe behaviour.
 7. Authority is explicit and least-privilege. A transport is never authority.
 8. A state-changing job has a stable identity, an explicit result and replay protection.
-9. Unknown fields are ignored. Unknown authority is never granted.
+9. Unknown fields in a request envelope or a result are ignored, and an unknown operation is refused. Authority that is not understood is never granted. Signed objects (authority sets, signed requests, release manifests) are verified over their exact bytes, so a field added to one is either signed or rejected, never trusted ([authority](AUTHORITY.md) section 2).
 10. Resource limits, such as contact capacity, are reported by the running build, not assumed.
 
 ## Background pages

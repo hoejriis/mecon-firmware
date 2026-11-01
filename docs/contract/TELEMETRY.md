@@ -1,6 +1,6 @@
 # Telemetry catalogue
 
-This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server). Every transport gives a stream the same meaning: a transport may limit sizes and rates, never change what a field means. The Status column of section 2 says whether a stream is available or planned. At run time, `hello` is the truth: it lists every stream this build and board can produce.
+This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server). Every transport gives a stream the same meaning: a transport may limit sizes and rates, never change what a field means. Which streams a device produces depends on its build and board: `hello` lists `stream.<name>` for each one, and `sub.start` on any other answers `invalid` with `unknown-stream`.
 
 ## 1. Model
 
@@ -14,21 +14,20 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 
 ## 2. Streams
 
-Status column: **available** is in the firmware; **planned** is specified and not yet built; **unsupported** is what the hardware cannot provide.
 
-| Stream | Content | Class | Default / minimum period | Status |
-|---|---|---|---|---|
-| `health` | uptime, heap and stack, battery, contacts | read | 60 s / 5 s | available |
-| `runtime` | reset reason, abnormal reset, boot times, longest loop pass, heap-low state, a boot event | read | 300 s / 60 s | available |
-| `radio` | packet and error counters, noise floor, last RSSI and SNR, airtime, duty cycle | read | 60 s / 5 s | available |
-| `connectivity` | Wi-Fi, MQTT, BLE and USB link state; changes as events | read | 60 s / 10 s, plus an event at each change | available on Companion builds: Wi-Fi and MQTT where the build has a network, BLE and USB link state |
-| `power` | battery voltage, external power, charger, USB and solar detection | read | 300 s / 30 s | available |
-| `environment` | readings of the attached sensors, with units, and the MCU temperature | read | 300 s / 30 s | available |
-| `location` | GNSS position, fix, satellites and age | private | 300 s / 30 s | available on every role with a GNSS receiver; absent without one |
-| `observations` | each received packet: raw bytes, RSSI, SNR | read | event per packet, at most 10/s (no period) | available |
-| `logs` | each new audit-ring entry: posture changes, refusals, failed logins, resets, mode changes, low memory | posture | event per entry, at most 5/s (no period) | available (audit events; bounded diagnostics after trust) |
-| `inventory` | contacts, channels, neighbours, clients: counts; on the Companion a paged snapshot of the entries | private | 3600 s / 300 s | available: counts on every role, entries on the Companion |
-| `screen` | framebuffer snapshots of the device's own display | private | on request, at most 1 per 5 s | planned |
+| Stream | Content | Class | Default / minimum period |
+|---|---|---|---|
+| `health` | uptime, heap and stack, battery, contacts | read | 60 s / 5 s |
+| `runtime` | reset reason, abnormal reset, boot times, longest loop pass, heap-low state, a boot event | read | 300 s / 60 s |
+| `radio` | packet and error counters, noise floor, last RSSI and SNR, airtime, duty cycle | read | 60 s / 5 s |
+| `connectivity` | Wi-Fi, MQTT, BLE and USB link state; changes as events | read | 60 s / 10 s, plus an event at each change |
+| `power` | battery voltage, external power, charger, USB and solar detection | read | 300 s / 30 s |
+| `environment` | readings of the attached sensors, with units, and the MCU temperature | read | 300 s / 30 s |
+| `location` | GNSS position, fix, satellites and age | private | 300 s / 30 s |
+| `observations` | each received packet: raw bytes, RSSI, SNR | read | event per packet, at most 10/s (no period) |
+| `logs` | each new audit-ring entry: posture changes, refusals, failed logins, resets, mode changes, low memory | posture | event per entry, at most 5/s (no period) |
+| `inventory` | contacts, channels, neighbours, clients: counts; on the Companion a paged snapshot of the entries | private | 3600 s / 300 s |
+| `screen` | framebuffer snapshots of the device's own display | private | on request, at most 1 per 5 s |
 
 ## 3. Fields
 
@@ -144,8 +143,4 @@ Names, never codes. The audit ring holds no secret, password or command argument
 Integers, never floats: a microdegree is about 0.1 m. The stream is present only on a build whose board has a location provider (the receiver is detected at boot and rechecked once a minute); a board without one omits `stream.location` from `hello`. Class `private` (see **Access** above). No other stream or log entry carries a position. On the T1000-E and other NMEA receivers, `age_s` needs the provider's fix age; a provider that cannot tell reports `null`.
 
 ### `screen`
-- `screen`: diagnostic telemetry from the device to the manager, never a way to write onto the display. A snapshot of the device's own framebuffer, `{"width","height","format":"mono1","on","age_s","data"}`, fragmented to the transport's size. The Heltec boards' SSD1306 (128x64, 1,024 bytes a frame) exposes its buffer; e-ink and TFT drivers are reported per board when built. The display is never woken or changed by a capture. A frame can show messages and the BLE pairing PIN: the stream will be class `private`, and a frame is withheld while the pairing PIN is on screen.
-
-## 4. Per board and role
-
-Filled in as each stream is built and measured: implemented, unavailable on that board, or unsupported, for the Heltec V3 and V4 Companion standalone builds, the Heltec V3 Repeater and Room server, and the simulated boards.
+- `screen`: diagnostic telemetry from the device to the manager, never a way to write onto the display. A snapshot of the device's own framebuffer, `{"width","height","format":"mono1","on","age_s","data"}`, fragmented to the transport's size. The Heltec boards' SSD1306 (128x64, 1,024 bytes a frame) exposes its buffer; e-ink and TFT drivers are reported per board. The display is never woken or changed by a capture. A frame can show messages and the BLE pairing PIN: the stream will be class `private`, and a frame is withheld while the pairing PIN is on screen.
