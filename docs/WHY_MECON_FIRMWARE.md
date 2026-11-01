@@ -17,7 +17,7 @@ The public firmware (public releases from 0.1.0; release timing is a separate de
 - **Backend neutrality:** the public contract belongs to this project, not MeshContinuum.
 - **Measured resource limits:** contact capacity and other constraints are determined after the modern-runtime migration, not copied blindly from the private MVP.
 - **Upstream friendliness:** MECON maintains a small, documented patch surface ([Upstream delta register](UPSTREAM_DELTA.md)).
-- **Usable without MECON:** the standalone improvements (security postures, duty-cycle enforcement, atomic saves, Wi-Fi and MQTT controllers, contact memory, one CLI engine) need no backend, so other projects can use or borrow them ([README](../README.md#using-this-in-other-projects)).
+- **Usable without MECON:** the standalone improvements (security postures, duty-cycle enforcement, atomic saves, Wi-Fi and MQTT controllers, contact memory, one CLI engine) need no backend, so other projects can use or borrow them ([README](../README.md#why-use-it)).
 
 ## Relationship to MeshContinuum
 
