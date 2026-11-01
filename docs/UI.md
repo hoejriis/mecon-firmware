@@ -17,7 +17,7 @@ What the on-device display shows and how the button drives it, for the Companion
 | `examples/simple_repeater/UITask.cpp`, `simple_room_server`, `simple_sensor` | Repeater, Room server, Sensor on boards with a display | boot splash, then node name and radio settings | stock, unchanged |
 
 **What this firmware changed:**
-- **In every Companion UI (`ui-new`, `ui-orig`, `ui-tiny`) and every env:** the [screen privacy](#screen-privacy) rules, which apply in both postures (Issue #113).
+- **In every Companion UI (`ui-new`, `ui-orig`, `ui-tiny`) and every env:** the [screen privacy](#screen-privacy) rules, which apply in both postures.
 - **In `ui-new`, only when the build defines `ENABLE_CONNMODE`:** the connectivity page and a status line. Today that means the two **standalone Companion** envs (`Heltec_v3_companion_radio_standalone`, `heltec_v4_companion_radio_standalone`).
 
 Apart from those, every `ui-new` env (`_usb`, `_ble`, `_wifi`) draws the stock screens. The Repeater, Room server and Sensor screens are unchanged. See [Connectivity mode](CONNECTIVITY_MODE.md) for the feature and [Standalone security postures](STANDALONE_POSTURES.md) for the posture it displays.

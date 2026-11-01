@@ -2,7 +2,7 @@
 
 The Companion `_wifi` builds can keep one MQTT session open to a broker. This is transport and broker management only, standalone and independent of any MECON service. The controller sits on the Wi-Fi controller's link ([Wi-Fi profiles](WIFI.md)), holds up to **six broker profiles**, keeps **one session at a time**, fails over by priority and returns to a better profile without flapping. It publishes a retained status message and carries the command line over MQTT ([Command-line engine](CLI.md)). The MECON topics ([MQTT/network contract](contract/MQTT_PROTOCOL.md)) are separate work.
 
-What is verified, and how: the decision rules by unit tests against a fake network and by the simulated-board suite against real Mosquitto brokers, plain and TLS, with a simulated mDNS responder and DNS ([Simulated-board test harness](SIMULATION.md)). **Not verified on hardware:** the ESP32 mDNS query, the `WiFiClientSecure` fingerprint check, the CA-anchor verification and SNI on the ESP32, and the TLS heap figure below. They are written from the platform sources and compiled for the Heltec V3 and V4, but no board has joined a network and no real broker has been reached. **RP2040 is not supported** (see Platforms).
+What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED.md), and what the simulated-board suite covers is in the [test harness](SIMULATION.md). RP2040 is not supported (see [Platforms](#platforms)).
 
 ## The MQTT client library
 
@@ -156,4 +156,3 @@ RAM is the static figure PlatformIO reports (data and bss): the profiles (1.5 KB
 - A lost discovery responder is noticed by a browse, which runs only while a better discovery profile exists; on the best profile the session dropping is the signal.
 - No client certificates. One CA certificate per profile, not a CA store or bundle (see "The anchor"). The CA anchor's validity-date check is skipped on an ESP32 whose clock is unset.
 - Besides the retained status, the device subscribes to its own command-line request topic and answers on its response topic ([Command-line engine](CLI.md)); it subscribes to nothing else.
-- Hardware: nothing here has run on a board. In particular the worker task (its stack figure, its core pinning, the Wi-Fi and mbedTLS calls from a task other than the loop task) is verified only in the simulator.

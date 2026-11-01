@@ -4,7 +4,7 @@ Every command line this firmware accepts, on every role, with where it works, wh
 
 This page is checked against the source: `sim/tests/test_cli_reference_sync.py` fails when a command registered in `src/helpers/cli/CliRegistry.h`, or a `mecon.` command or a MECON Wi-Fi, MQTT, posture, audit, connectivity or contacts command in the source, has no row below, and when a row marked MECON names a command the source no longer has. It checks names, not behaviour: the prose in the Notes column is maintained by hand.
 
-What has run where: the sections below describe what the code does. The simulated-board suite exercises the Companion and the Repeater and Room server paths; **nothing here has run on a board**, and the Sensor role is not exercised in the simulator at all.
+What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED.md), and what the simulated-board suite covers is in the [test harness](SIMULATION.md).
 
 ## How a command reaches the device
 
