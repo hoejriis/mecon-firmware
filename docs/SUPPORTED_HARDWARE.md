@@ -35,7 +35,7 @@ The four hardware test targets, with the role builds that carry the managed-devi
 ## Practical limits
 
 - **Physical access bypasses signatures.** No board's bootloader checks signatures, and no secure boot or flash encryption is configured. Someone with the device and a cable can enter the bootloader (BOOT button, double reset or a 1200-baud touch) and install any image. Signed updates protect the remote paths only.
-- **Companion contact capacity varies by board.** On the Heltec boards and the Wio Tracker L1 it follows free flash and heap, and never drops below the stock count while space allows ([contacts](CONTACTS.md)). The T1000-E Companion keeps the stock fixed table.
+- **Companion contact capacity varies by board.** On the Heltec boards and the Wio Tracker L1 it follows free flash and heap, and never drops below the stock count while space allows ([contacts](CONTACTS.md)). The T1000-E Companion keeps the stock fixed table, a hardware limit: its small file system cannot hold the store beside the stock data.
 - **Memory headroom is tighter on the Heltec V3.** During a TLS MQTT session it has less free heap than the V4 ([runtime platform](PLATFORM.md)).
 - **BLE bonds do not carry over from older builds.** On the Heltec boards, firmware built on the earlier Bluedroid stack keeps its bonds apart from this one, and the Bluetooth address changes. Forget the device on the phone and pair again ([runtime platform](PLATFORM.md)).
 
