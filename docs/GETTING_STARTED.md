@@ -12,7 +12,7 @@ sim/run.sh bin/idf5_libs.sh Heltec_v3_companion_radio_standalone
 sim/run.sh pio run -e Heltec_v3_companion_radio_standalone
 ```
 
-Replace the environment name with the one for your board and role, from the table in [supported hardware](SUPPORTED_HARDWARE.md#boards-and-roles). On a Heltec V3 or V4, run `bin/idf5_libs.sh <env>` before the first `pio run`: it rebuilds that board's ESP-IDF libraries (about 6 minutes the first time, seconds after that). A plain `pio run` without it fails. The V3 and V4 use different library sets, so build them in separate PlatformIO core directories ([runtime platform](PLATFORM.md#building)). The nRF52 boards need only `pio run`.
+Replace the environment name with the one for your board and role, from the table in [supported hardware](SUPPORTED_HARDWARE.md#boards-and-roles). On a Heltec V3 or V4, run `bin/idf5_libs.sh <env>` before the first build, and again after building another board in the same PlatformIO directory. It rebuilds that board's ESP-IDF libraries (about 6 minutes, and seconds when nothing changed), and without it the build fails. It is idempotent and prints "nothing to do" for any environment that does not need it, so running it before every build is safe. Keeping each board in its own PlatformIO directory (`PLATFORMIO_CORE_DIR=<dir>`) avoids the rebuild when you switch ([runtime platform](PLATFORM.md#building)).
 
 Flash with `pio run -e <env> -t upload`, or write the built image with your usual tool. Use a spare board the first time, and keep a USB cable to hand: USB is the recovery path on every board.
 
