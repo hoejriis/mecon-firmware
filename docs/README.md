@@ -6,7 +6,7 @@ mecon-firmware is MeshCore 1.18.0 with standalone improvements; it needs no back
 
 - [CLI reference](CLI_REFERENCE.md): every stock and MECON command, who may run it, and from where
 - [Screens and buttons](UI.md)
-- [Getting started](../README.md#getting-started) and [status and hardware](../README.md#status-and-hardware)
+- [Getting it](../README.md#getting-it) and [hardware](../README.md#hardware)
 
 ## Reference (built)
 
