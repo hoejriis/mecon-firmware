@@ -647,8 +647,9 @@ void MeconIface::streamTick(uint32_t now) {
       w.beginObject();
       writeBoot(w, board, "companion", _mesh->hardwareName());
       w.endObject();
-      char ev[512];
-      const int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, ts_known, ts, data) : -1;
+      char ev[640];   // the event and its signature
+      int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, ts_known, ts, data) : -1;
+      if (n > 0) n = _prov.sign(STREAMS[SID_RUNTIME].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)
       if (n > 0) sendEvent(SID_RUNTIME, ev, (size_t)n);
     }
   }
@@ -678,8 +679,9 @@ void MeconIface::drainLogs() {
   if (!k) return;
   const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
   for (int j = 0; j < k; j++) {
-    char ev[320];
-    const int n = writeLog(ev, sizeof(ev), _clock, _epoch, ts >= 1704067200, ts, a[j], j == 0 ? dropped : 0);
+    char ev[480];   // the event and its signature
+    int n = writeLog(ev, sizeof(ev), _clock, _epoch, ts >= 1704067200, ts, a[j], j == 0 ? dropped : 0);
+    if (n > 0) n = _prov.sign(STREAMS[SID_LOGS].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)
     if (n > 0) sendEvent(SID_LOGS, ev, (size_t)n);
   }
 }

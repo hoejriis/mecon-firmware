@@ -12,6 +12,7 @@ import time
 
 import pytest
 from sim import ed25519_ref
+from sim import harness
 from sim.harness import CliClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
@@ -117,6 +118,50 @@ def test_console_results_and_events_are_signed_once_a_record_exists(nodes, kind)
     assert d.provision()["status"] == "ok"
     boot_n = d.i.request("hello")["result"]["epoch"]
     check_provenance(d.i, d.node_key, boot_n)
+
+
+def events_until(i, stream, pred, timeout=20.0):
+    """The first `stream` event for which pred(event) holds, collecting what arrives meanwhile."""
+    end = time.time() + timeout
+    while time.time() < end:
+        for e in list(i.events):
+            if e.get("ev") == stream and pred(e):
+                i.events.remove(e)
+                return e
+        m = i.read_message(0.5)
+        if m and m.get("ev") == stream and pred(m):
+            return m
+        if m and "ev" in m:
+            i.events.append(m)
+    raise AssertionError("no matching %s event" % stream)
+
+
+def check_boot_and_log_events(d, make_log_entry):
+    """#234: the boot runtime record and an audit-log event are signed like every other event."""
+    assert d.i.request("sub.start", {"stream": "runtime", "period_s": 3600, "lifetime_s": 120})["status"] == "ok"
+    boot = events_until(d.i, "runtime", lambda e: e["data"].get("boot") is True)
+    assert members(boot)[-3:] == ["usig_boot", "usig_seq", "usig"], boot.raw
+    assert verifies(boot.raw, d.node_key, "runtime"), boot.raw
+    assert d.i.request("sub.start", {"stream": "logs", "lifetime_s": 120})["status"] == "ok"   # an event stream: no period
+    make_log_entry(d)
+    log = events_until(d.i, "logs", lambda e: True)
+    assert members(log)[-3:] == ["usig_boot", "usig_seq", "usig"], log.raw
+    assert verifies(log.raw, d.node_key, "logs"), log.raw
+
+
+def test_companion_boot_and_log_events_are_signed(nodes):
+    d = boot_companion(nodes, "pb", 37)
+    assert d.provision()["status"] == "ok"
+    d.reboot()   # the boot record goes out once per epoch, after the first runtime snapshot
+    check_boot_and_log_events(d, lambda d: d.c._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY])))   # refused: audited
+
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_console_boot_and_log_events_are_signed(nodes, kind):
+    d = boot_server(nodes, kind, "pb" + kind, 39)
+    assert d.provision()["status"] == "ok"
+    d.reboot()
+    check_boot_and_log_events(d, lambda d: d.cli.sock.sendall(b"set posture hardened\r"))   # a change or a refusal: audited
 
 
 def test_an_unsaved_boot_epoch_signs_nothing(nodes):
