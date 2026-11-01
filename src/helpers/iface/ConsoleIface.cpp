@@ -529,13 +529,15 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
     _boot_pending = false;
     if (_subs.s[SID_RUNTIME].active) {
       _boot_sent = true;
-      char data[384];
+      // static: the loop task's stack has no room for these next to the signer (the stack gate, #234); loop only
+      static char data[384];
       JsonWriter w(data, sizeof(data));
       w.beginObject();
       writeBoot(w, *_host.board, _host.role, _host.hardware);
       w.endObject();
-      char ev[512];
-      const int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, false, 0, data) : -1;
+      static char ev[640];   // the event and its signature
+      int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, false, 0, data) : -1;
+      if (n > 0) n = _prov.sign(STREAMS[SID_RUNTIME].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)
       if (n > 0) printLine(out, ev, (size_t)n);
     }
   }
@@ -546,8 +548,9 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
     uint32_t dropped = 0;
     const int k = _logs.poll(now, Posture::audit(), a, &dropped);
     for (int j = 0; j < k; j++) {
-      char ev[320];
-      const int n = writeLog(ev, sizeof(ev), _clock, _epoch, false, 0, a[j], j == 0 ? dropped : 0);
+      static char ev[480];   // the event and its signature; static for the loop task's stack (#234), loop only
+      int n = writeLog(ev, sizeof(ev), _clock, _epoch, false, 0, a[j], j == 0 ? dropped : 0);
+      if (n > 0) n = _prov.sign(STREAMS[SID_LOGS].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)
       if (n > 0) printLine(out, ev, (size_t)n);
     }
   }

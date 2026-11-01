@@ -620,7 +620,6 @@ void MeconIface::streamTick(uint32_t now) {
   for (int i = 0; i < LINKS; i++) sets[i] = &_links[i].subs;
   sets[LINKS] = &_mqtt_subs;
   const uint32_t due = _clock.due(sets, LINKS + 1, now);
-  drainLogs();
   if (!due && !_boot_pending) return;
   const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
   const bool ts_known = ts >= 1704067200;   // 2024-01-01: an RTC that has never been set reads far earlier
@@ -642,13 +641,15 @@ void MeconIface::streamTick(uint32_t now) {
     for (Link& l : _links) any = any || l.subs.s[SID_RUNTIME].active;
     if (any) {
       _boot_sent = true;
-      char data[384];
+      // static: the loop task's stack has no room for these next to the signer (the stack gate, #234); loop only
+      static char data[384];
       JsonWriter w(data, sizeof(data));
       w.beginObject();
       writeBoot(w, board, "companion", _mesh->hardwareName());
       w.endObject();
-      char ev[512];
-      const int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, ts_known, ts, data) : -1;
+      static char ev[640];   // the event and its signature
+      int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, ts_known, ts, data) : -1;
+      if (n > 0) n = _prov.sign(STREAMS[SID_RUNTIME].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)
       if (n > 0) sendEvent(SID_RUNTIME, ev, (size_t)n);
     }
   }
@@ -678,8 +679,9 @@ void MeconIface::drainLogs() {
   if (!k) return;
   const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
   for (int j = 0; j < k; j++) {
-    char ev[320];
-    const int n = writeLog(ev, sizeof(ev), _clock, _epoch, ts >= 1704067200, ts, a[j], j == 0 ? dropped : 0);
+    static char ev[480];   // the event and its signature; static for the loop task's stack (#234), loop only
+    int n = writeLog(ev, sizeof(ev), _clock, _epoch, ts >= 1704067200, ts, a[j], j == 0 ? dropped : 0);
+    if (n > 0) n = _prov.sign(STREAMS[SID_LOGS].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)
     if (n > 0) sendEvent(SID_LOGS, ev, (size_t)n);
   }
 }
@@ -784,6 +786,7 @@ void MeconIface::loop(uint32_t now) {
   _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) board.reboot();
   streamTick(now);
+  drainLogs();   // beside streamTick, not inside it: a signed log event on top of its frame overran the loop stack (#234)
   inventoryTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
