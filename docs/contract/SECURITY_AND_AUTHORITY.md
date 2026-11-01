@@ -65,6 +65,8 @@ Hardened is a managed-infrastructure posture. It MUST:
 
 A Hardened Companion does not expose message content/identity or user send functionality locally. Authenticated management may retain applicable detailed telemetry/configuration.
 
+The device UI of a Hardened device shows operational status and sanitized diagnostics. Its only control beyond the stock ones is the connectivity-mode switch, which needs physical possession and a confirming long press (an owner decision of 2026-11-01: possession already allows a USB reflash). No UI control changes the posture or other security settings.
+
 Posture changes require authenticated management and a controlled reboot.
 
 If persisted posture is invalid, firmware enters fail-secure recovery rather than Normal.
@@ -112,9 +114,9 @@ The backend needs the private key to decrypt direct messages addressed to the de
 
 The Reader's single unsigned readiness probe on attach is answered but not counted as an authentication rejection. Every other unsigned request on a Deployment-aware device is refused and counted.
 
-## Reference firmware authority classes
+## Reference firmware authority classes (the private 0.9x line, not this firmware)
 
-The reference firmware's vocabulary maps the classes above to five codes: **S** (Deployment-signed, accepted on any transport), **P** (physical possession over USB or a repeater console, unsigned), **R** (an authenticated Reader over USB in a restricted posture), **open** (reads that disclose nothing secret) and **L** (a device with no Deployment record). A device must hold a USB-auth secret before it can enter Hardened, so that a Reader can always unlock it; the secret is write-once over USB and never the enrolment credential. Unsigned exceptions are listed in [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) and in [Security model](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
+The reference firmware's vocabulary maps the classes above to five codes: **S** (Deployment-signed, accepted on any transport), **P** (physical possession over USB or a repeater console, unsigned), **R** (an authenticated Reader over USB in a restricted posture), **open** (reads that disclose nothing secret) and **L** (a device with no Deployment record). A device must hold a USB-auth secret before it can enter Hardened, so that a Reader can always unlock it; the secret is write-once over USB and never the enrolment credential. Unsigned exceptions are listed in [Current-to-target adjustments](../migration/CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) and in [Security model](../migration/CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
 
 ## Restricted-posture recovery boundary
 

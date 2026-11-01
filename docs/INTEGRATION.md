@@ -31,4 +31,4 @@ Subscribe to streams with `sub.start` and renew them before their lifetime runs 
 
 ## Compatibility
 
-Gate on the interface version and the capabilities in `hello`, never on firmware version numbers. The `upstream` field identifies the MeshCore base. Unknown fields are ignored, and an unknown capability never implies authority. A Backend moving from the private reference firmware has a [migration guide](BACKEND_MIGRATION.md).
+Gate on the interface version and the capabilities in `hello`, never on firmware version numbers. The `upstream` field identifies the MeshCore base. Unknown fields are ignored, and an unknown capability never implies authority. A Backend moving from the private reference firmware has a [migration guide](migration/BACKEND_MIGRATION.md).

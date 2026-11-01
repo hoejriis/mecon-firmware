@@ -197,7 +197,7 @@ An update replaces the application only. It keeps the node identity and `device_
 - writes the new format alongside the old one;
 - keeps the old one authoritative until the job is `confirmed`;
 - removes the old one only after that.
-A revert therefore always finds data the previous image can read. A forced revert can never corrupt the record or lock the device out. The public and private lines keep separate data formats where they differ ([BACKEND_MIGRATION](../BACKEND_MIGRATION.md)).
+A revert therefore always finds data the previous image can read. A forced revert can never corrupt the record or lock the device out. The public and private lines keep separate data formats where they differ ([BACKEND_MIGRATION](../migration/BACKEND_MIGRATION.md)).
 
 ## 10. Resource rules
 

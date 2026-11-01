@@ -34,11 +34,4 @@ What a given device supports is never inferred from these pages: `hello` lists e
 
 ## Background pages
 
-These pages predate the normative set and are kept for context. Where they differ from a normative page, the normative page wins.
-
-- [Core device and health contract](CORE_DEVICE_CONTRACT.md)
-- [MQTT protocol](MQTT_PROTOCOL.md)
-- [Direct USB/BLE protocol](DIRECT_READER_PROTOCOL.md)
-- [Device settings](DEVICE_SETTINGS.md)
-- [Target firmware contract 0.9](TARGET_FIRMWARE_CONTRACT_0.9.md)
-- [Second authority review: decisions](AUTHORITY_REVIEW_2.md)
+- [Second authority review: decisions](AUTHORITY_REVIEW_2.md): the outcome of a security review of the authority layer. Where it differs from a normative page, the normative page wins.

@@ -6,7 +6,7 @@ The public line is rebuilt from **MeshCore 1.18.0**, released on upstream `main`
 
 ## Foundational reset (history)
 
-These steps were the original plan before porting MECON features. Steps 1 to 5 are done on `main` for the Heltec V3 and V4 ([PLATFORM](PLATFORM.md), [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md)); the resource limits of step 6 are reported by the running build.
+These steps were the original plan before porting MECON features. Steps 1 to 5 are done on `main` for the Heltec V3 and V4 ([PLATFORM](../PLATFORM.md), [HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md)); the resource limits of step 6 are reported by the running build.
 
 The original steps:
 
@@ -88,7 +88,7 @@ This audit is necessary because the public documentation must be sufficient to i
 - Every MQTT publish from a gateway is signed (domain `MECON-UPLINK-v1`); the Backend latches per device.
 - In a restricted posture an authenticated Reader unlocks USB with an HMAC challenge over a write-once USB-auth secret (single-use nonce valid for 60 s, five failures lock the unlock for five minutes, ten minutes idle ends the session).
 - Repeaters take a compact signed RF line, `mecon !<issuer>.<revision>.<signature> <verb> id=N` (domain `MECON-RFCMD-v1`), with replies of at most 159 characters. Verbs include `info`, `get`, `list`, `status`, `set`, `reboot`, `sync`, `pw`, `dep`, `ota`, `writes`, `posture`, `clock` and `radiotemp`.
-- Stock key import is refused on the companion protocol; the stock repeater console `set prv.key` works only while no valid Deployment record is held. Key export, identity rotation, BLE passkey set and bond clear are described in [Security and authority](contract/SECURITY_AND_AUTHORITY.md).
+- Stock key import is refused on the companion protocol; the stock repeater console `set prv.key` works only while no valid Deployment record is held. Key export, identity rotation, BLE passkey set and bond clear are described in [Security and authority](../contract/SECURITY_AND_AUTHORITY.md).
 
 **Direct Reader.** USB and BLE carry the stock companion frames plus a JSON tunnel (`CMD_MECON_JSON`, 120) that carries the same signed requests as the broker. Device information is paged so a device can list more capabilities than fit in one frame. USB provisioning uses a key/value command (46) for Wi-Fi (three slots), broker, label, connectivity mode and the write-once identifier and secrets; a first bare Deployment provisioning follows, after which every write is signed.
 
@@ -98,7 +98,7 @@ This audit is necessary because the public documentation must be sufficient to i
 
 **Settings.** The settings namespace is `mesh.*` (native keys) and `mecon.*` (`wifi_profiles[N]`, `mqtt.*`, `connectivity.mode`, `posture`, `companion_ble.enabled`, `companion_tcp.enabled`, `ble_passkey`). Wi-Fi and MQTT changes are committed in two phases and reverted if the device does not come back. Connectivity mode is `mqtt`, `ble` or `both`; `both` is not offered on Heltec V3 (memory).
 
-**Health additions** beyond [the core contract](contract/CORE_DEVICE_CONTRACT.md): `battery_level` (`ok|low|critical|unknown`), a `radio` object, duty-cycle fields (`duty_limit_permille`, `duty_legal_permille`, `tx_budget_ms`, `tx_shed`), uplink-signing counters (`usig_*`), `ble_events`, `crash_history`, a `power` object, `location`, `connection_path`, `deployment` (with `auth_rejections`), and the network fields `wifi_ip`, `wifi_gateway`, `wifi_netmask` and `wifi_bssid`. Status still carries a `brokers[]` array of per-profile entries, of which only one is connected.
+**Health additions** beyond [the telemetry contract](../contract/TELEMETRY.md): `battery_level` (`ok|low|critical|unknown`), a `radio` object, duty-cycle fields (`duty_limit_permille`, `duty_legal_permille`, `tx_budget_ms`, `tx_shed`), uplink-signing counters (`usig_*`), `ble_events`, `crash_history`, a `power` object, `location`, `connection_path`, `deployment` (with `auth_rejections`), and the network fields `wifi_ip`, `wifi_gateway`, `wifi_netmask` and `wifi_bssid`. Status still carries a `brokers[]` array of per-profile entries, of which only one is connected.
 
 **Resilience and clock.** The periodic private-channel report is a signed status beacon (group-data type 0x4402, schema 4), sent at a random time every 20 to 23 hours, plus one at boot if the last automatic one is 12 hours old. `set_clock` moves a clock forward to any time at or after 2026-01-01 and back by at most 600 s per command.
 
