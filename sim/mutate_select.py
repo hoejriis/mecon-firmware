@@ -20,9 +20,11 @@ SMOKE_TRIGGERS = ("sim/mutate.sh", "sim/mutate_select.py", "sim/build.sh", "sim/
 
 def mutants():
     out = subprocess.run(["sh", "sim/mutate.sh", "--files"], check=True, capture_output=True, text=True).stdout
-    for line in out.splitlines():
-        name, topic, path, targets = (line.split("\t") + [""])[:4]
-        yield name, topic, path, targets.split()
+    rows = [line.split("\t") for line in out.splitlines()]
+    bad = [r for r in rows if len(r) != 4]
+    if bad:   # anything else on stdout would silently drop or invent mutants
+        sys.exit("mutate.sh --files printed a line that is not a mutant: %r" % ("\t".join(bad[0]),))
+    return [(name, topic, path, targets.split()) for name, topic, path, targets in rows]
 
 
 def tests_of(targets):

@@ -23,7 +23,8 @@ if [ "$DRY" = 0 ] && [ "$FILES" = 0 ] && [ "$ONLY" != "--list" ]; then
 fi
 if [ "$ONLY" = "--list" ]; then cat sim/mutants/*.sh | grep -o "^mutate [a-z0-9_]*" | cut -d" " -f2; exit 0; fi
 
-build() { BUILD_OK=1; sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { BUILD_OK=0; echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
+# --files only lists: the topic files that rebuild after their own mutants (on a full run) must not build here.
+build() { [ "$FILES" = 1 ] && return 0; BUILD_OK=1; sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { BUILD_OK=0; echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
 
 # name | file | old text | new text | pytest target
 mutate() {
