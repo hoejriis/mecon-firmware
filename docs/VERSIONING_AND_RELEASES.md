@@ -21,7 +21,7 @@ One source: the build script `bin/mecon_version.py` (a PlatformIO `pre:` script 
 - The Companion device-info frame has a 20-byte version field (19 characters and the terminator), so it carries the short form, cut at 19 characters. A release tag of the form `v0.1.2` fills it exactly; a tag with two-digit components is cut. The frame does not grow.
 - `ver` prints the full form on the Companion, Repeater, Room server and Sensor. `get mecon.version` answers `> <full> (describe <git describe>, upstream <base>)`.
 - `FIRMWARE_VER_CODE` (the Companion protocol level) is a separate number and does not change with the version string.
-- A build with `-D FIRMWARE_VERSION=...` still overrides the string. Release artifacts take their version from the tag they are built from.
+- A build with `-D FIRMWARE_VERSION=...` overrides only the short form that the Companion app and the screen show. `hello`, the runtime stream and the console still report the described version. Release artifacts take their version from the tag they are built from.
 - A development or dirty build carries `+N.g<hash>` or `+dirty` in the full form, so it cannot be mistaken for a release artifact.
 
 ## Release artifacts
