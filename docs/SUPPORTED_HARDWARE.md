@@ -6,7 +6,7 @@ Which board to choose, which role to run on it, and what each combination can do
 
 | You want | Choose |
 |---|---|
-| A Companion that you also manage over Wi-Fi and MQTT, or a Repeater or Room server with an IP link | **Heltec V3** or **Heltec V4** |
+| A Companion that you also manage over Wi-Fi and MQTT | **Heltec V3** or **Heltec V4** |
 | More memory headroom on an ESP32 board (PSRAM, larger flash) | **Heltec V4** |
 | A small, low-power device with GNSS, used over USB and Bluetooth | **SenseCAP T1000-E** (no screen) or **Seeed Wio Tracker L1** (with a screen) |
 | Management of a node with no IP link | Any of the four, over LoRa (point to point or a private management channel) |
@@ -30,7 +30,7 @@ The four hardware test targets, with the role builds that carry the managed-devi
 - **IP and MQTT.** Heltec Companions only: up to 10 Wi-Fi profiles and 6 MQTT broker profiles, with TLS ([Wi-Fi](WIFI.md), [MQTT](MQTT.md)). The nRF52 boards have no Wi-Fi.
 - **LoRa management.** Authenticated device-interface operations point to point on every role, and on a Companion also over a private management channel bound to one of its channels, with compact, low-rate telemetry. It needs no IP link, and it is subject to the duty-cycle limits.
 - **Screen.** Boards with a screen can send diagnostic screen snapshots to a manager. That is telemetry from the device. A manager never draws on the physical display. Boards without a screen do not offer the stream.
-- **Firmware update.** An update installs only if it is signed by a release key and authorised for the device. Each board takes updates only over the paths in the table: a board without an IP link has no IP update, and BLE never stands in for a missing path. On ESP32 boards, a new image boots on trial and rolls back unless it is confirmed. On nRF52 boards, the bootloader writes the image over USB: the device is checked by its reported version afterwards, and there is no previous image to roll back to ([updates](contract/UPDATES.md)).
+- **Firmware update.** An update installs only if it is signed by a release key and authorised for the device. Each board takes updates only over the paths in the table: a board without an IP link has no IP update, and BLE never stands in for a missing path. On ESP32 boards, a new image boots on trial and rolls back unless it is confirmed. On nRF52 boards, the bootloader writes the image over USB: the device is checked by its reported version afterwards, and there is no previous image to roll back to ([updates](contract/UPDATES.md)). Stock MeshCore's unsigned Wi-Fi updater (`start ota`) is refused in every build with the managed-device interface and on nRF52. Only a build of your own without the interface can opt into it (`ENABLE_WIFI_OTA`), and that path is unsigned.
 
 ## Practical limits
 
