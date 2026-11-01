@@ -83,7 +83,13 @@ jobs:
           def used(kind):
               m = re.search(kind + r':\s*\[[^\]]*\]\s*[\d.]+% \(used (\d+) bytes from (\d+) bytes\)', log)
               return [int(m.group(1)), int(m.group(2))] if m else None
-          json.dump({'env': env, 'ram': used('RAM'), 'flash': used('Flash')}, open('memory.json', 'w'))
+          # The image's SHA-256, so two builds of one commit on different days and runners can be compared (#220)
+          import hashlib, os
+          image = next((p for p in ('.pio/build/%s/firmware.bin' % env, '.pio/build/%s/firmware.hex' % env)
+                        if os.path.exists(p)), None)
+          sha = hashlib.sha256(open(image, 'rb').read()).hexdigest() if image else None
+          json.dump({'env': env, 'ram': used('RAM'), 'flash': used('Flash'), 'image': image and os.path.basename(image),
+                     'sha256': sha}, open('memory.json', 'w'))
           PY
           cat memory.json
       - uses: actions/upload-artifact@v4

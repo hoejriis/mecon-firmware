@@ -57,9 +57,14 @@ def _git(d, *args):
 
 
 class _FakeEnv:
-    def __init__(self, d):
+    def __init__(self, d, environ=None):
         self.d = d
         self.defs = []
+        self.environ = dict(environ or {})
+
+    def __getitem__(self, key):   # env["ENV"]: the environment the compiler runs in
+        assert key == "ENV", key
+        return self.environ
 
     def subst(self, s):
         return self.d
@@ -94,3 +99,12 @@ def test_build_script_defines_the_describe_string_for_tag_dev_dirty_and_no_git(t
     env = _FakeEnv(d)
     m.apply(env)
     assert env.defs[0][0] == "MECON_VERSION" and env.defs[0][1].startswith('"v0.1.2-1-g'), env.defs
+    # #220: the compiler's clock is the commit's, so __DATE__/__TIME__ are the same in every build of one commit
+    when = subprocess.run(["git", "show", "-s", "--format=%ct", "HEAD"], cwd=d, capture_output=True, text=True).stdout.strip()
+    assert env.environ["SOURCE_DATE_EPOCH"] == when and when.isdigit(), env.environ
+    kept = _FakeEnv(d, {"SOURCE_DATE_EPOCH": "12345"})
+    m.apply(kept)
+    assert kept.environ["SOURCE_DATE_EPOCH"] == "12345", "a caller's own value is kept"
+    nogit = _FakeEnv(str(tmp_path))
+    m.apply(nogit)
+    assert "SOURCE_DATE_EPOCH" not in nogit.environ, "without git nothing is pinned"
