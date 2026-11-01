@@ -1,8 +1,8 @@
 # Managed operations (design and matrix)
 
-Every management action a device offers, on which board, role and transport, under which authority, and with which result. This page extends the [device interface](DEVICE_INTERFACE.md) rather than adding a second command model: an operation is a device-interface `op`, its authority is the CLI privilege table ([Command-line engine](../CLI.md)) plus Deployment authority ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)), and its settings are the CLI's settings.
+Every management action a device offers, on which board, role and transport, under which authority, and with which result. This page extends the [device interface](DEVICE_INTERFACE.md) rather than adding a second command model: an operation is a device-interface `op`, its authority is the CLI privilege table ([Command-line engine](../CLI.md)) plus Deployment authority, and its settings are the CLI's settings.
 
-> **Status: design recorded before the code ([#109](https://github.com/hoejriis/mecon-firmware/issues/109)).** Section 5 is the matrix of what exists today, read from the code, with every planned row marked as planned and its owning Issue. Sections 1 to 4 are decisions for the operations still to be built; the code will follow them, and this page will say where it does not. LoRa delivery of these operations is [#115](https://github.com/hoejriis/mecon-firmware/issues/115), the management channel is [#114](https://github.com/hoejriis/mecon-firmware/issues/114), and firmware updates are [#110](https://github.com/hoejriis/mecon-firmware/issues/110); this page defines the operations they carry.
+> The Status column of section 5 says whether an operation is available or planned. At run time, `hello` is the truth: it lists `op.<name>` for every operation this build, board and role can run.
 
 ## 1. One operation, every transport
 
@@ -47,7 +47,7 @@ A request that finishes at once answers its result as in v1.0. A request that ca
 
 `refused`, `invalid`, `unknown-op`, `unsupported-version` and `busy` stay synchronous statuses: a refused request never becomes a job.
 
-Each change of state is an event on the `job` stream (`ev/job` on MQTT), `{"job", "op", "state", "progress", "error", "result"}`. It goes to every connected transport whose caller may read it, and `job.get` and `job.list` read it on request. A job's identity is the request `id`, or for a signed request its `(issuer, job_id)` (#95), so the same job has the same identity on every transport.
+Each change of state is an event on the `job` stream (`ev/job` on MQTT), `{"job", "op", "state", "progress", "error", "result"}`. It goes to every connected transport whose caller may read it, and `job.get` and `job.list` read it on request. A job's identity is the request `id`, or for a signed request its `(issuer, job_id)`, so the same job has the same identity on every transport.
 
 ### 3.2 Results owed across a disconnect or a reboot
 
@@ -58,7 +58,7 @@ Each change of state is an event on the `job` stream (`ev/job` on MQTT), `{"job"
 
 ### 3.3 Never twice
 
-- A signed request is deduplicated by its persisted per-issuer watermark (#95). That holds across reboots, transports and broker changes, so a state-changing signed request runs at most once.
+- A signed request is deduplicated by its persisted per-issuer watermark. That holds across reboots, transports and broker changes, so a state-changing signed request runs at most once.
 - An unsigned request is deduplicated by the v1.0 id cache, which a reboot clears. A job that can span a reboot also has its id in the owed-results table, so a duplicate after the reboot gets the job's current state instead of a second run.
 - One state-changing job runs at a time. A second state-changing request while one is open answers `busy` with `error` `job-open:<job>`, and nothing runs. Reads, `job.get`, `job.list`, `job.ack`, `job.confirm` and `job.cancel` are always served.
 - **A failed or pending job never blocks recovery.** A reset scope (3.5) or `job.cancel` from a caller allowed to run it first reverts an `awaiting-confirm` job, then runs. A job that never ends is impossible by construction: every non-terminal state has a deadline (3.4) or belongs to an operation that ends by itself.
@@ -70,7 +70,7 @@ A change that can cut the path its caller uses is applied **tentatively**, and r
 - the broker profile in use, or its host, port, TLS, anchor or credentials;
 - `connectivity.mode`;
 - the radio (`radio`, `tx`, and any key that changes frequency, bandwidth, spreading factor or coding rate);
-- over LoRa, the admin password and the management channel (#114).
+- over LoRa, the admin password and the management channel.
 
 Rules:
 1. **When.** A remote caller (MQTT, LoRa, a Reader bridge) must ask for confirmation: `config.apply` and the other operations above take `"confirm":{"within_s":N}`, N from 30 to 900, default 300. Without it, a remote caller is refused `confirm-required` for those keys. A local cable caller may omit it, because it does not lose its path.
@@ -135,7 +135,7 @@ A reset scope that removes the caller's own path (`network` over MQTT) is not a 
 
 ```
 transport adapter ──► envelope (v1.0; signed wrapper per #95) ──► caller context ──► operation table
-     MQTT req / 0x7F frame / console line / LoRa (#115)              │                    │
+     MQTT req / 0x7F frame / console line / LoRa              │                    │
                                                                       ▼                    ▼
                                                     CLI privilege table cell ◄── class (+ per-line check)
                                                                       │
@@ -147,7 +147,7 @@ transport adapter ──► envelope (v1.0; signed wrapper per #95) ──► ca
 ```
 
 1. The adapter frames bytes and builds the caller context (transport, how it authenticated, posture), as today.
-2. A signed wrapper (#95) is verified first. A request that fails verification is refused before anything else and consumes no identifier.
+2. A signed wrapper is verified first. A request that fails verification is refused before anything else and consumes no identifier.
 3. The operation table gives the class. The privilege table decides with the caller's context; an operation that maps to a CLI line also checks that line.
 4. Deduplication, then execution through the native function or CLI line. The result is either immediate, or a job (section 3).
 
@@ -170,35 +170,35 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `job.ack` | release an owed result | | read; not a plain read once enrolled | yes | C R S | all | built |
 | `job.confirm` | confirm a tentative change | | the job's classes | yes | C R S | all | built |
 | `job.cancel` | cancel, or revert if applied | | the job's classes | yes | C R S | all | built |
-| `device.reboot` | reboot | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | all | planned #109 |
-| `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope | planned #109, #95 |
-| `contact.list`, `contact.get` | contact table (paged) | native contact table | read | no | C | all | planned #109 |
-| `contact.put`, `contact.remove` | add, update, remove | `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` | write | yes | C | all | planned #109 |
-| `contact.protect` | protect from auto-removal (favourite flag) | contact flags | write | yes | C | all | planned #109 |
+| `device.reboot` | reboot | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | all | planned |
+| `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope | planned |
+| `contact.list`, `contact.get` | contact table (paged) | native contact table | read | no | C | all | planned |
+| `contact.put`, `contact.remove` | add, update, remove | `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` | write | yes | C | all | planned |
+| `contact.protect` | protect from auto-removal (favourite flag) | contact flags | write | yes | C | all | planned |
 | `channel.list`, `channel.get` | channels (name, one-byte hash, key size; `list` paged by 8); the secret never | native channel table | read | no | C | C: USB BLE MQTT | built |
 | `channel.put`, `channel.remove` | add, rotate, remove a channel; 128-bit keys only, a key held by another slot refused | `CMD_SET_CHANNEL` | write | yes | C | C: USB BLE MQTT | built; the management channel's slot confirms or reverts (MANAGEMENT_CHANNEL.md) |
 | `mgmt.channel.get` | the management channel binding: none, bound or stale | the native channel table plus its own record | read | no | C | C: USB BLE MQTT | built ([MANAGEMENT_CHANNEL](MANAGEMENT_CHANNEL.md)) |
 | `mgmt.channel.bind`, `mgmt.channel.rotate`, `mgmt.channel.unbind` | bind a slot, rotate its key, end the binding; confirm-or-revert for anyone but the cable | `CMD_SET_CHANNEL` for a rotation | write | yes | C | C: USB BLE MQTT | built ([MANAGEMENT_CHANNEL](MANAGEMENT_CHANNEL.md)) |
-| `acl.list`, `acl.put` | remote-admin ACL | CLI `setperm`; REQ `GET_ACCESS_LIST` | read / write | `acl.put` | R S | Con, MQTT where built, RF | planned #109 |
-| `password.set` | admin or guest password (write-only) | CLI `password`, `set guest.password` | write; commit-or-revert over RF | yes | R S | Con, RF | planned #109 |
-| `clock.get`, `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | read / write | `set` | C R S | all | planned #109 |
-| `advert.send` | self advert (zero-hop or flood) | `CMD_SEND_SELF_ADVERT`, CLI `advert` | write | yes | C R S | all | planned #109 |
+| `acl.list`, `acl.put` | remote-admin ACL | CLI `setperm`; REQ `GET_ACCESS_LIST` | read / write | `acl.put` | R S | Con, MQTT where built, RF | planned |
+| `password.set` | admin or guest password (write-only) | CLI `password`, `set guest.password` | write; commit-or-revert over RF | yes | R S | Con, RF | planned |
+| `clock.get`, `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | read / write | `set` | C R S | all | planned |
+| `advert.send` | self advert (zero-hop or flood) | `CMD_SEND_SELF_ADVERT`, CLI `advert` | write | yes | C R S | all | planned |
 | `identity.get` | node key, device id | | read | no | C R S | all | built as part of `hello` |
-| `identity.rotate` | new node key on the device | | per #95 | yes | C R S | per #95 | planned #95 |
-| `identity.rotation` | the old key's signed statement of the rotation | | read | no | C | all | planned #95 |
-| `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per #95 | planned #95 |
-| `ble.bonds` | bond count | | read | no | C (BLE builds) | all | planned #109 |
-| `ble.pin.get` | the BLE PIN | device info, CLI | secret | no | C (BLE builds) | USB, MQTT (SECURITY_AND_AUTHORITY) | planned #109 |
-| `posture.get`, `posture.set` | posture (controlled reboot) | CLI `get/set posture` | read / posture | `set` | C R S | per table (raising: cable, paired BLE; lowering: cable) | planned #109 |
-| `deployment.*` | provisioning, authority updates, record | | per #95 | | C R S | per #95 | planned #95 |
-| `update.*` | firmware update lifecycle ([UPDATES.md](UPDATES.md)) | | per #110 | | C R S | per #110 | planned #110 |
-| `rf.request` | administer another node over LoRa from this one | | per #115 | | C | per #115 | planned #115 |
+| `identity.rotate` | new node key on the device | | per [AUTHORITY](AUTHORITY.md) | yes | C | per [AUTHORITY](AUTHORITY.md) | available |
+| `identity.rotation` | the old key's signed statement of the rotation | | read | no | C | all | available |
+| `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per [AUTHORITY](AUTHORITY.md) | planned |
+| `ble.bonds` | bond count | | read | no | C (BLE builds) | all | planned |
+| `ble.pin.get` | the BLE PIN | device info, CLI | secret | no | C (BLE builds) | USB, MQTT (SECURITY_AND_AUTHORITY) | planned |
+| `posture.get`, `posture.set` | posture (controlled reboot) | CLI `get/set posture` | read / posture | `set` | C R S | per table (raising: cable, paired BLE; lowering: cable) | planned |
+| `deployment.*` | provisioning, authority updates, record, local unlock | | per [AUTHORITY](AUTHORITY.md) | | C R S | per [AUTHORITY](AUTHORITY.md) | available |
+| `update.*` | firmware update lifecycle ([UPDATES.md](UPDATES.md)) | | per [UPDATES](UPDATES.md) | | C R S | per [UPDATES](UPDATES.md) | available |
+| `rf.request` | administer another node over LoRa from this one | | per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) | | C | per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) | planned |
 
 **Keys `config.*` reaches.**
 - Companion: 17 key patterns, 84 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|site|user|pwd|priority`. The 22 password and user keys are write-only.
 - Repeater and Room server: 12 keys: `name`, `tx`, `radio`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`.
 
-Planned for #109, each from its existing CLI line:
+Planned, each from its existing CLI line:
 - **Companion:** `mqtt.profile.N.anchor` (with the CA lines as one operation), `tz.offset`, and the remaining radio preferences (`af`, `rxdelay`, `txdelay`, `direct.txdelay`, `int.thresh`, `cad`, `radio.rxgain`, `agc.reset.interval`, `path.hash.mode`, `multi.acks`, `dutycycle`).
 - **Repeater and Room server:** the same radio preferences, plus `flood.max.advert`, `flood.max.unscoped` and `guest.password` (write-only).
 - **Stays a separate posture-class operation:** `mqtt.profile.N.manage`, which is set locally, never remotely.
@@ -210,7 +210,7 @@ Planned for #109, each from its existing CLI line:
 | Code | Frame | Class | Untrusted | Operation |
 |---|---|---|---|---|
 | 1 | `CMD_APP_START` | messaging | served | `hello` |
-| 2 | `CMD_SEND_TXT_MSG` | messaging; **write** with a CLI text type or to a repeater | served / refused | native; `rf.request` (#115) for the CLI forms |
+| 2 | `CMD_SEND_TXT_MSG` | messaging; **write** with a CLI text type or to a repeater | served / refused | native; `rf.request` for the CLI forms |
 | 3 | `CMD_SEND_CHANNEL_TXT_MSG` | messaging | served | native |
 | 4 | `CMD_GET_CONTACTS` | read | served | `contact.list` |
 | 5 | `CMD_GET_DEVICE_TIME` | read | served | `clock.get` |
@@ -234,8 +234,8 @@ Planned for #109, each from its existing CLI line:
 | 23 | `CMD_EXPORT_PRIVATE_KEY` | secret | refused | `identity.key.export` |
 | 24 | `CMD_IMPORT_PRIVATE_KEY` | secret | refused | none (refused once provisioned, #95) |
 | 25 | `CMD_SEND_RAW_DATA` | write | refused | none |
-| 26 | `CMD_SEND_LOGIN` | messaging (the client supplies the password) | served | `rf.request` (#115) |
-| 27 | `CMD_SEND_STATUS_REQ` | messaging (a guest-level request) | served | `rf.request` (#115) |
+| 26 | `CMD_SEND_LOGIN` | messaging (the client supplies the password) | served | `rf.request` |
+| 27 | `CMD_SEND_STATUS_REQ` | messaging (a guest-level request) | served | `rf.request` |
 | 28 | `CMD_HAS_CONNECTION` | read | served | native |
 | 29 | `CMD_LOGOUT` | messaging | served | native |
 | 30 | `CMD_GET_CONTACT_BY_KEY` | read | served | `contact.get` |
@@ -245,18 +245,18 @@ Planned for #109, each from its existing CLI line:
 | 36 | `CMD_SEND_TRACE_PATH` | messaging | served | native |
 | 37 | `CMD_SET_DEVICE_PIN` | write | refused | `config.apply` (PIN key, planned) |
 | 38 | `CMD_SET_OTHER_PARAMS` | write | refused | `config.apply` (planned keys) |
-| 39 | `CMD_SEND_TELEMETRY_REQ` | messaging | served | native; `rf.request` (#115) |
+| 39 | `CMD_SEND_TELEMETRY_REQ` | messaging | served | native; `rf.request` |
 | 40 | `CMD_GET_CUSTOM_VARS` | read | served | `config.get` (planned keys) |
 | 41 | `CMD_SET_CUSTOM_VAR` | write | refused | `config.apply` (planned keys) |
 | 42 | `CMD_GET_ADVERT_PATH` | read | served | native |
 | 43 | `CMD_GET_TUNING_PARAMS` | read | served | `config.get` |
-| 50 | `CMD_SEND_BINARY_REQ` | write (requests another node answers by its ACL) | refused | `rf.request` (#115) |
+| 50 | `CMD_SEND_BINARY_REQ` | write (requests another node answers by its ACL) | refused | `rf.request` |
 | 51 | `CMD_FACTORY_RESET` | destructive | refused | `device.reset factory` |
 | 52 | `CMD_SEND_PATH_DISCOVERY_REQ` | messaging | served | native |
 | 54 | `CMD_SET_FLOOD_SCOPE_KEY` | messaging (the send scope, not persisted) | served | native |
 | 55 | `CMD_SEND_CONTROL_DATA` | write | refused | none |
 | 56 | `CMD_GET_STATS` | read | served | `status.get`, telemetry |
-| 57 | `CMD_SEND_ANON_REQ` | messaging (anonymous) | served | `rf.request` (#115) |
+| 57 | `CMD_SEND_ANON_REQ` | messaging (anonymous) | served | `rf.request` |
 | 58 | `CMD_SET_AUTOADD_CONFIG` | write | refused | `config.apply` (planned keys) |
 | 59 | `CMD_GET_AUTOADD_CONFIG` | read | served | `config.get` |
 | 60 | `CMD_GET_ALLOWED_REPEAT_FREQ` | read | served | `config.schema` |
@@ -284,7 +284,7 @@ Every CLI line is classed by the registry; a line the registry does not name is 
 |---|---|---|---|---|---|
 | posture | `get posture`; `get audit`; `set posture` | read; posture | read only | read only | `posture.*` |
 | settings | `get`/`set` of the role's keys | read / write | yes | reads only | `config.*` |
-| secrets | `get prv.key`, `set prv.key` | secret | refused (local only) | refused | `identity.key.export` (#95) |
+| secrets | `get prv.key`, `set prv.key` | secret | refused (local only) | refused | `identity.key.export` |
 | reboot | `reboot` (exact) | reboot | yes | yes | `device.reboot` |
 | power | `poweroff`, `shutdown` | destructive | refused (local only) | refused | none (needs someone on site) |
 | erase | `erase` (console only) | destructive | refused | refused | `device.reset factory` |
@@ -293,7 +293,7 @@ Every CLI line is classed by the registry; a line the registry does not name is 
 | actions | `advert`, `advert.zerohop`, `clock sync`, `time`, `clkreboot`, `neighbor.remove`, `discover.neighbors`, `clear stats`, `log start/stop/erase` | write (unregistered) | yes | refused | `advert.send`, `clock.set`; the rest stay CLI |
 | region | `region` (list), `region get`, and the region writes | read; write | yes | reads only | `config.*` (region keys, planned) |
 | reads | `ver`, `board`, `clock`, `neighbors`, `power`, `get mecon.*`, `sensor get/list` | read | yes | yes | `hello`, `status.get`, telemetry |
-| OTA | `start ota` | write | yes | refused | `update.*` (#110) |
+| OTA | `start ota` | write | yes | refused | `update.*` |
 
 Notes the matrix depends on, as the code stands:
 - `start ota` on an ESP32 Repeater or Room server opens an unauthenticated Wi-Fi access point that accepts an image. This is stock behaviour. It is unsigned and is not the update path #110 builds. Under #110 a remote caller will not be able to start it on a Deployment-aware device.
@@ -314,7 +314,7 @@ Notes the matrix depends on, as the code stands:
 | `REQ_TYPE_GET_OWNER_INFO` 0x07 | yes | no | no | ACL client |
 | CLI text | any text from an admin (plain, CLI data, CLI command) | CLI data or CLI command from an admin; plain text is a post | CLI command from a flagged contact (reads and `reboot`) | admin / flagged contact |
 
-The device-interface operations are not carried over LoRa today. #115 carries them, point-to-point and over the management channel of #114. A channel key, an RF route or a proxy is never authority there: the request carries its own signature (#95). Until then, LoRa management is the native facilities above under the CLI table's remote-admin row.
+The device-interface operations are not carried over LoRa today. #115 carries them, point-to-point and over the management channel of #114. A channel key, an RF route or a proxy is never authority there: the request carries its own signature. Until then, LoRa management is the native facilities above under the CLI table's remote-admin row.
 
 ### 5.5 Boards and roles
 
@@ -323,9 +323,10 @@ The device-interface operations are not carried over LoRa today. #115 carries th
 | Heltec V3 Companion standalone | yes | yes | yes | connectivity mode, USB, all section 5.1 built rows |
 | Heltec V4 Companion standalone | yes | yes | yes | as V3 |
 | Heltec V3 Repeater, Room server | yes (console) | no | no | |
-| Heltec V4 Repeater, Room server | **no** | no | no | the interface is not enabled in these builds yet ([#117](https://github.com/hoejriis/mecon-firmware/issues/117)) |
+| Heltec V4 Repeater, Room server | yes (console) | no | no | |
 | Heltec V3/V4 Companion `_usb`, `_ble`, `_wifi` | no | `_wifi` only (CLI topic) | `_ble` | stock-shaped builds; native frames only |
-| nRF52 (Wio Tracker L1, T1000-E, RAK4631, ...) | **no** | no | Companion builds | no Wi-Fi; MECON on these is #1 and #117 |
+| SenseCAP T1000-E Companion (`_usb`, `_ble`), Repeater | yes (Companion: frames; Repeater: console) | no | Companion `_ble` | no Wi-Fi. The Companion keeps the stock contact array |
+| Wio Tracker L1 and other nRF52 builds | no | no | Companion builds | no Wi-Fi |
 | simulated Companion, Repeater, Room server | yes | Companion | simulated | the conformance target |
 
 ### 5.6 Not supported, and why
@@ -333,11 +334,10 @@ The device-interface operations are not carried over LoRa today. #115 carries th
 | Case | Why |
 |---|---|
 | Any device-interface operation over the TCP port or default-PIN BLE | an untrusted caller; messaging only (5.2) |
-| Interface operations over LoRa | #115 |
+| Interface operations over LoRa | planned ([LORA_MANAGEMENT](LORA_MANAGEMENT.md)) |
 | MQTT on the Repeater and Room server | no build has an MQTT client in these roles; the console and LoRa are their paths |
 | Remote `poweroff` | a powered-off device needs someone on site |
 | Raw transmission and data signing as operations | not management (5.2) |
 | BLE bond clear over any path but physical USB | SECURITY_AND_AUTHORITY: bonds are cleared over USB only |
-| Signed RF writes, the signed-writes switch, enrollment, identity rotation | not in the code yet; #95 and #115 |
-| Firmware update as an operation | #110; `start ota` is stock and unsigned (5.3) |
-| Messaging, backfill and outage forwarding over the interface | #119, #120, #121 |
+| Signed writes over RF | planned with interface operations over LoRa |
+| Messaging, backfill and outage forwarding over the interface | not generic firmware: a manager application's concern. Native messaging stays native |

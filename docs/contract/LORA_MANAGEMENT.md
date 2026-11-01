@@ -1,11 +1,9 @@
 # Management over LoRa
 
-> **Status: draft contract, not built ([#115](https://github.com/hoejriis/mecon-firmware/issues/115)).** It carries
-> the [device interface](DEVICE_INTERFACE.md) over LoRa, point to point and over the
-> [management channel](MANAGEMENT_CHANNEL.md) of #114, under the [Management authority contract](AUTHORITY.md) of #95.
-> It defines no new operation: the [managed operations](OPERATIONS.md) of #109 are what travels. Compact telemetry over
-> LoRa is #116, and firmware-image bytes over LoRa are #123; neither is defined here. Section 10 lists what is still
-> open for review.
+> **Draft contract.** It carries the [device interface](DEVICE_INTERFACE.md) over LoRa, point to point and over the
+> [management channel](MANAGEMENT_CHANNEL.md), under the [management authority contract](AUTHORITY.md).
+> It defines no new operation: the [managed operations](OPERATIONS.md) are what travels. Compact telemetry and
+> firmware-image bytes over LoRa are not defined here. Section 10 lists what is still open for review.
 
 ## 1. LoRa is a transport
 
