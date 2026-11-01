@@ -77,7 +77,8 @@ To build from source, use the project container:
 
 ```sh
 docker build -t mecon-firmware-dev .
-sim/run.sh pio run -e Heltec_v3_companion_radio_standalone   # build a target board
+sim/run.sh bin/idf5_libs.sh Heltec_v3_companion_radio_standalone   # Heltec V3/V4 only: rebuild the IDF libraries first
+sim/run.sh pio run -e Heltec_v3_companion_radio_standalone        # build a target board
 sim/run.sh python3 -m pytest sim/tests -q                    # simulated-board suite
 sim/run.sh pio test -e native                                # native unit tests
 ```
