@@ -17,4 +17,4 @@ MeshCore is valuable because the mesh keeps working without any infrastructure. 
 
 ## Relationship to MeshContinuum
 
-[MeshContinuum](https://github.com/hoejriis/MeshContinuum) is a sister project: a Backend with a browser Reader that manages mecon-firmware devices. It is one manager among any that implement the contracts, not a requirement. Fleet features it builds on top, such as connected messaging, backfill and LoRa image delivery, belong to it and are not part of this firmware's feature set.
+[MeshContinuum](https://github.com/hoejriis/MeshContinuum) is a sister project: a Backend with a browser Reader that manages mecon-firmware devices. It is one manager among any that implement the contracts, not a requirement. Connected messaging, backfill, outage forwarding and firmware-image delivery over LoRa are later MECON integration work, involving both the firmware and the manager, and are outside the product described here.
