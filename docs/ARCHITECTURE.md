@@ -25,7 +25,9 @@ mecon-firmware is MeshCore 1.18.0 (upstream commit `81dbae5`) with upstream hist
    atomic files, duty-cycle window, audit log, nRF52 worker
 ```
 
-Three rules hold everywhere:
+Four rules hold everywhere:
+
+- **The same everywhere.** The firmware works the same way in every mode, on every role and over every transport: the same operations, the same results and the same security rules. A difference is either a limit of the hardware, stated as such, or an exception the project owner has decided. It is never left by omission.
 
 - **Native state is authoritative.** Settings live in the role's own preferences, contacts in the native contact table, channels in the native channel table. An interface operation is implemented by the native function or CLI line it stands for, and nothing keeps a second copy.
 - **The CLI is the one management plane.** Every setting is a CLI setting. The device interface reads and writes through it, and each request is decided by the same privilege cell as the CLI line it maps to. The interface is an allowlist of named operations, never a raw shell.
