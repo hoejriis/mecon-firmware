@@ -2,7 +2,7 @@
 
 The Companion `_wifi` builds can keep one MQTT session open to a broker. This is transport and broker management only, standalone and independent of any MECON service. The controller sits on the Wi-Fi controller's link ([Wi-Fi profiles](WIFI.md)), holds up to **six broker profiles**, keeps **one session at a time**, fails over by priority and returns to a better profile without flapping. It publishes a retained status message and carries the command line over MQTT ([Command-line engine](CLI.md)). The MECON topics ([MQTT/network contract](contract/MQTT_PROTOCOL.md)) are separate work.
 
-What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED.md), and what the simulated-board suite covers is in the [test harness](SIMULATION.md). RP2040 is not supported (see [Platforms](#platforms)).
+What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED.md), and what the simulated-board suite covers is in the [test harness](SIMULATION.md). The ESP32 mDNS query has not been run on a board. RP2040 is not supported (see [Platforms](#platforms)).
 
 ## The MQTT client library
 

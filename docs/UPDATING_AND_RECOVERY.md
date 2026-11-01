@@ -22,7 +22,7 @@ No other caller may install firmware, a BLE link paired with the device's own PI
 
 | Board | Delivery | If the new image fails |
 |---|---|---|
-| Heltec V3, V4 | pushed over USB, BLE or MQTT, or downloaded over IP | The image boots on trial. It is reverted unless confirmed in time, and at once after a crash, watchdog or brownout reset |
+| Heltec V3, V4 | pushed over USB or BLE (a manager on MQTT offers it and a bridge pushes it), or downloaded by the device over IP | The image boots on trial. It is reverted unless confirmed in time, and at once after a crash, watchdog or brownout reset |
 | T1000-E, Wio Tracker L1 | a signed offer, then the bootloader's serial DFU over USB | There is no previous image to return to. The device reports its version. A failed image is replaced over USB |
 
 Stock MeshCore's unsigned Wi-Fi updater (`start ota`) is refused in these builds.
@@ -46,7 +46,7 @@ Resets come in explicit, named scopes, so clearing one kind of state does not cl
 |---|---|---|
 | Factory reset | Companion: the app's factory reset over USB, or `erase` on the rescue console. Repeater and Room server: `erase` on the console | Erases everything, a new node key included, and returns the device to Normal. It always works over USB in both postures. The audit log records it |
 | Rebuild (Companion) | `rebuild` on the rescue console | Rewrites identity, settings, channels and the audit log from memory and rebuilds the contact store. Keeps a Deployment record |
-| Leave a Deployment | `deployment.reset` | Removes the Deployment record. Keeps the node key, `device_id`, settings, contacts and channels. For a healthy record it must be signed and sent over USB |
+| Leave a Deployment | `deployment.reset` | Removes the Deployment record. Keeps the node key, `device_id`, settings, contacts and channels. For a healthy record: signed, over USB, in Normal. For a corrupt record: the unsigned cable in Normal, or after a local unlock in Hardened |
 
 To enter the rescue console on a Companion, long-press the user button within 8 seconds of the logo screen appearing ([CLI reference](CLI_REFERENCE.md#rescue-console)).
 
