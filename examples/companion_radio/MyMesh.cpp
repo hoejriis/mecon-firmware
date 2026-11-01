@@ -360,7 +360,7 @@ uint8_t MyMesh::getAutoAddMaxHops() const {
 
 void MyMesh::onContactOverwrite(const uint8_t* pub_key) {
     _store->deleteBlobByKey(pub_key, PUB_KEY_SIZE); // delete from storage
-  if (_serial->isConnected()) {
+  if (_serial && _serial->isConnected()) {   // the store can evict at boot, before startInterface sets _serial (#223)
     out_frame[0] = PUSH_CODE_CONTACT_DELETED;
     memcpy(&out_frame[1], pub_key, PUB_KEY_SIZE);
     _serial->writeFrame(out_frame, 1 + PUB_KEY_SIZE);
@@ -368,7 +368,7 @@ void MyMesh::onContactOverwrite(const uint8_t* pub_key) {
 }
 
 void MyMesh::onContactsFull() {
-  if (_serial->isConnected()) {
+  if (_serial && _serial->isConnected()) {
     out_frame[0] = PUSH_CODE_CONTACTS_FULL;
     _serial->writeFrame(out_frame, 1);
   }
@@ -2244,11 +2244,18 @@ void MyMesh::saveContacts() {
 }
 
 bool MyMesh::onContactLoaded(const ContactInfo& contact) {
-  if (_migrate == MIGRATE_BULK) return contactStore().importAdd(contact, 0, getRTCClock()->getCurrentTime());
-  if (_migrate == MIGRATE_MERGE) {
-    if (contactStore().find(contact.id.pub_key, PUB_KEY_SIZE)) return true;   // the store's version is newer
-    addContact(contact);
-    return true;   // a contact that does not fit is dropped; the walk of the old file goes on
+  if (_migrate == MIGRATE_COUNT) {
+    if (!contactStore().find(contact.id.pub_key, PUB_KEY_SIZE)) _unmigrated++;
+    return true;
+  }
+  if (_migrate != MIGRATE_NONE) {
+    ContactStore& cs = contactStore();
+    if (_migrate == MIGRATE_MERGE && cs.find(contact.id.pub_key, PUB_KEY_SIZE)) return true;   // the store's is newer
+    // A migration never evicts: a contact that does not fit stays in the old file, which is then kept (#223).
+    if (cs.count() >= cs.capacity()) { _migrate_full = true; return false; }
+    if (_migrate == MIGRATE_BULK) return cs.importAdd(contact, 0, getRTCClock()->getCurrentTime());
+    if (!addContact(contact)) { _migrate_full = true; return false; }
+    return true;
   }
   return addContact(contact);
 }
@@ -2270,13 +2277,23 @@ void MyMesh::loadContactsAtBoot() {
 
 void MyMesh::migrateLegacyContacts() {
   ContactStore& cs = contactStore();
+  _migrate_full = false;
   bool bulk = cs.count() == 0;
   _migrate = bulk ? MIGRATE_BULK : MIGRATE_MERGE;
   if (bulk) cs.importBegin();
   _store->loadContacts(this);
   bool ok = bulk ? cs.importEnd() : cs.flush();
   _migrate = MIGRATE_NONE;
-  if (ok) _store->removeLegacyContacts();
+  if (ok && !_migrate_full) _store->removeLegacyContacts();
+  // Whatever is left in the old file and not in the store is counted, and reported by get contacts.capacity, so a
+  // shortfall is visible rather than silent; the next boot tries again.
+  _unmigrated = 0;
+  if (_store->legacyContactsExist()) {
+    _migrate = MIGRATE_COUNT;
+    _store->loadContacts(this);
+    _migrate = MIGRATE_NONE;
+  }
+  if (_unmigrated) MESH_DEBUG_PRINTLN("contacts: %u stay in /contacts3, the store has no room for them", _unmigrated);
 }
 
 void MyMesh::reloadContactSecrets() {
@@ -2572,7 +2589,8 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
 
   if (strcmp(command, "get contacts.capacity") == 0) {   // docs/CONTACTS.md
-    contactStore().format(reply, 150);
+    int n = contactStore().format(reply, 150);
+    if (_unmigrated && n > 0 && n < 150) snprintf(reply + n, 150 - n, " unmigrated %u", (unsigned)_unmigrated);
     return true;
   }
 
@@ -3041,6 +3059,7 @@ void MyMesh::checkSerialInterface() {
 void MyMesh::scheduleConnectivityRestart() {
   _connmode_restart_at = millis() + 1500;
   if (_connmode_restart_at == 0) _connmode_restart_at = 1;
+  _connmode_reply_owed = true;   // the next reply written, the one to this request, counts the 1.5 s again (#226)
 }
 
 bool MyMesh::requestConnectivityMode(uint8_t want, uint8_t caller) {

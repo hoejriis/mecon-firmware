@@ -6,6 +6,8 @@
 #include <helpers/ContactStore.h>
 #include "NodePrefs.h"
 
+#define LEGACY_CONTACT_BYTES 152   // one record of the stock /contacts3 file
+
 class DataStoreHost {
 public:
   virtual bool onContactLoaded(const ContactInfo& contact) =0;

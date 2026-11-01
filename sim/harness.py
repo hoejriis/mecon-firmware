@@ -644,7 +644,8 @@ class CompanionClient:
         v = m.groups()
         return {"mode": v[0], "store": (int(v[1]), int(v[2])), "cache": (int(v[3]), int(v[4])), "pinned": int(v[5]),
                 "fav": int(v[6]), "evicted": int(v[7]), "refused_full": int(v[8]), "refused_fav": int(v[9]),
-                "loads": int(v[10]), "damaged": int(v[11]), "werr": int(v[12]), "ram": int(v[13])}
+                "loads": int(v[10]), "damaged": int(v[11]), "werr": int(v[12]), "ram": int(v[13]),
+                "unmigrated": int((re.search(r" unmigrated (\d+)", text) or [0, 0])[1])}
 
     def set_channel(self, idx, name, secret):
         assert len(secret) == 16
