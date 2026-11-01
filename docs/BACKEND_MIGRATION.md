@@ -243,6 +243,21 @@ Before replacing the private MVP fleet, which is a separate decision, demonstrat
 - backend handling of dynamic contact/resource capacity;
 - legacy adapters can be identified and later removed independently of the v1 implementation.
 
+## Moving a board from the private 0.90.x line
+
+The private reference firmware stores its Deployment record in files with the same names and frame header as this firmware's, but in a different layout. A board flashed from 0.90.x to this firmware with its file system kept therefore reads them as a **corrupt record**. That is deliberate: it fails closed, and it never treats another firmware's authority state as its own. Until the record is cleared, the board refuses provisioning, signed requests and unsigned configuration writes, Wi-Fi settings included.
+
+To move a board:
+
+1. Flash this firmware over the USB cable.
+2. Over the same cable, in Normal posture, send `deployment.reset`. It needs no signature, because a corrupt record may be reset from the cable (contract: [Management authority](contract/AUTHORITY.md), section 11). It removes the old record and keeps the node key, `device_id`, contacts and channels.
+3. Reboot the board. Right after the reset, the heap can stay fragmented until the next boot: a largest free block of about 15 KB, against about 30 KB normally.
+4. Configure and provision it as a new device. The first provisioning is accepted unsigned over the USB cable only.
+
+An erase over the cable (a factory reset) is the alternative. It removes everything, the node key included.
+
+This firmware does not recognise or import the private line's record. That decision may be revisited with MECON's own fleet migration.
+
 ## Removal criterion
 
 Legacy compatibility code may be removed only after no supported deployed device requires the private-MVP protocol. Removal should delete adapters, legacy topic subscriptions and legacy field aliases without changing the canonical MECON v1 contract.
