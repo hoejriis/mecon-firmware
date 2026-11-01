@@ -97,7 +97,7 @@ Release keys are listed in `docs/contract/release-keys.json`, and `tools/gen_rel
 | Locked library set | `ci/lib-lock.json`, `tools/lib_lock.py` | `tools/lib_lock.py check <env>` |
 | Tool tests | `tools/tests/` | `pytest tools/tests` |
 
-CI runs the unit tests, simulated boards and target-board builds with size budgets on every pull request, and the stack gate on pull requests that touch the code it measures. The mutation check runs on `main` and on pull requests labelled `full-ci`. Every board environment is compiled nightly, and passes only when its failures match the recorded upstream ones. A failed or cancelled run on `main` opens or updates a tracking issue. The [test harness](SIMULATION.md) says what the simulator can and cannot show. Real-board results are recorded in [hardware evidence](HARDWARE_VERIFIED.md).
+CI runs the unit tests, simulated boards and target-board builds with size budgets on pull requests that change code or the docs the tests read, and the stack gate on pull requests that touch the code it measures. Every pull request and merge runs a mutation spot check of the mutants its change touches. The full mutation set runs nightly on `main`, and on a pull request labelled `full-ci` ([mutation check](SIMULATION.md#mutation-check)). Every board environment is compiled nightly, and passes only when its failures match the recorded upstream ones. A failed or cancelled run on `main` opens or updates a tracking issue. The [test harness](SIMULATION.md) says what the simulator can and cannot show. Real-board results are recorded in [hardware evidence](HARDWARE_VERIFIED.md).
 
 ## Management over LoRa
 
