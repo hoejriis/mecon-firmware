@@ -48,6 +48,9 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | ESP-IDF 5.3: loop task stack (standalone) | least free since boot (`loop_stack_free`): BLE idle 5,472 B, after a PIN pairing and CLI over BLE 5,424 B, Wi-Fi + TLS MQTT 5,496 B (2.0.17 with the same reporting: 5,492 / 5,476 / 5,540 B) | 2026-10-24, 8c192a4a |
 | Device interface (standalone) | every request fixture of `docs/contract/fixtures/requests.json` plus the health stream, through `tools/mecon_iface_hw.py`: 24 of 24 over USB, 24 of 24 over BLE in three runs with no reset between them (so the retried `config.apply` got its stored result) | 2026-10-24, 9f7b2bb7 |
 | Device interface (Repeater build, USB console) | every request fixture for the Repeater role plus the health stream, `mecon> ` lines through `tools/mecon_iface_hw.py console`: 24 of 24 | 2026-10-25, 6b3f33fc |
+| Rebuilt IDF libraries, 2 KB IPC stack (standalone) | 300 resets, 0 IPC canary panics (stock libraries: 4 in 304). Heap with a pinned-TLS MQTT session, against main in one session: free 50,764 B (36,956 B), low-water 38,228 B (24,860 B) | 2026-10-31, 558dfd09 |
+| Signed update over BLE (standalone) | offer and confirm over the cable (a device with no record); all 1,719,040 bytes of the image pushed over BLE from a Linux host (BlueZ) in 1,524 s at the default 23-byte MTU, 13 transport retries; the new image attested its job over BLE and stayed after confirmation | 2026-10-31, bce8ef8c with the bench test key |
+| MQTT broker roles | two brokers; with no record the priority-90 profile is used; after a provisioning that names the priority-10 profile `primary`, that profile is used after a reboot; an unsigned priority edit is refused while enrolled | 2026-11-01, 28bc7d7d |
 
 ## Heltec V4 (v4test)
 
@@ -74,6 +77,9 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Device interface (Room server build, USB console) | the same suite for the Room server role: 24 of 24 | 2026-10-25, 866ece59 |
 | Authority layer (standalone, USB) | `tools/mecon_auth_hw.py` with the public test keys: unsigned first provisioning over USB; a signed `config.apply` runs, the same bytes return the stored result, a newer job runs, the older one is refused as replay; an unsigned write is refused once enrolled; after a reset of the board the mark is kept and the job at the mark is a duplicate; `channel_nonce` in `hello`; signed `set_unlock`, a wrong HMAC answer refused and the right one unlocks; the secret in no reply; signed `deployment.reset`. 17 of 17 | 2026-10-28, 30ef4e4d |
 | Authority layer: corrupt record over USB | flashed over the private firmware, the board read that firmware's Deployment files as a corrupt record and refused provisioning and signed requests (`deployment_record_corrupt`); an unsigned `deployment.reset` over the cable in Normal cleared it | 2026-10-28, 30ef4e4d |
+| Rebuilt IDF libraries, 2 KB IPC stack (standalone) | 300 software resets, 0 IPC canary panics (main on stock libraries: 6 in 303). Heap against main in one session: idle free 147,612 B (140,916 B); with a pinned-TLS MQTT session free 103,484 B (96,792 B), low-water 98,692 B (92,020 B); PSRAM unchanged | 2026-11-01, 08c1072b |
+| Connectivity-mode restart while a host polls | `config.apply` of `connectivity.mode` answered, then the restart 1.50 s after the reply with a `hello` every 0.33 s in between | 2026-10-31, 32cc0fb7 |
+| MQTT over WebSocket to a public broker | `wss://` on port 443 with a CA anchor (ISRG Root YR) loaded by `set mqtt.profile 0 ca …`: `tls: verified`, enrolled and online in 43 s | 2026-10-31, 32cc0fb7 |
 
 ## Seeed Wio Tracker L1 (wiotest)
 
@@ -85,10 +91,15 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 
 ## SenseCAP T1000-E
 
-Compiled only. Contacts capacity is derived, not measured: the Companion keeps contacts on the 100 KB ExtraFS, which
-gives about 450 at the capacity rule, above stock's 350.
+| Feature | Result | Date, build |
+|---|---|---|
+| Companion on a board carrying the private firmware's data | boots and stays up; 350 of 350 contacts and 40 of 40 channels identical to a prior backup (the stock contact table); a change to the full table survives a reboot; the private firmware, flashed back, reads every contact and channel unchanged | 2026-10-31, bce8ef8c |
+| Companion heap and loop stack (USB build) | idle free 54,160 B; loop stack free 816 B; 5 of 5 log events signed | 2026-11-01, 90d46a9f |
+| Management writes with the private firmware's Deployment record | refused `deployment_record_corrupt` (fail closed); the record itself left unchanged | 2026-10-31, bce8ef8c |
 
 ## Not yet verified on hardware
 
 - Wi-Fi failover when the access point itself goes off the air (the verified run breaks the joined profile instead).
+- MQTT broker discovery by mDNS on a real ESP32 (verified only in the simulator).
+- The Sensor role (neither on a board nor in the simulator).
 - Any board not listed above.
