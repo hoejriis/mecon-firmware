@@ -2,7 +2,7 @@
 
 ## Integration boundary — agreed 24 October 2026, updated 25 October 2026
 
-The [approved firmware programme](CLEAN_REFOUNDING_1_18.md#approved-programme--25-october-2026) divides the work into generic managed-device capabilities (P3: identity and authority, full telemetry, managed operations, signed updates, private management channels, authorized LoRa operations, compact LoRa telemetry, four-board conformance) and later MECON-specific work (P4: Deployment mapping, messaging, backfill, outage and sync behaviour, RF health policy, LoRa image delivery). Platform consolidation and the common device interface are done on `main`. Release timing, production fleet migration and public Backend publication are separate decisions; a standalone public release is not a dependency. The private Backend continues to improve and to adapt to the public firmware.
+The approved firmware programme divides the work into generic managed-device capabilities (P3: identity and authority, full telemetry, managed operations, signed updates, private management channels, authorized LoRa operations, compact LoRa telemetry, four-board conformance) and later MECON-specific work (P4: Deployment mapping, messaging, backfill, outage and sync behaviour, RF health policy, LoRa image delivery). Platform consolidation and the common device interface are done on `main`. Release timing, production fleet migration and public Backend publication are separate decisions; a standalone public release is not a dependency. The private Backend continues to improve and to adapt to the public firmware.
 
 The Reader currently **depends on a Backend** and bridges USB/BLE devices to it. Backend ingestion must normalize MQTT and bridged USB/BLE into the same capability/versioned device and telemetry model, preserving device provenance, authorization, event identity and correlation across path changes. Offline Reader design is outside this scope.
 
@@ -250,7 +250,7 @@ The private reference firmware stores its Deployment record in files with the sa
 To move a board:
 
 1. Flash this firmware over the USB cable.
-2. Over the same cable, in Normal posture, send `deployment.reset`. It needs no signature, because a corrupt record may be reset from the cable (contract: [Management authority](contract/AUTHORITY.md), section 11). It removes the old record and keeps the node key, `device_id`, contacts and channels.
+2. Over the same cable, in Normal posture, send `deployment.reset`. It needs no signature, because a corrupt record may be reset from the cable (contract: [Management authority](../contract/AUTHORITY.md), section 11). It removes the old record and keeps the node key, `device_id`, contacts and channels.
 3. Reboot the board. Right after the reset, the heap can stay fragmented until the next boot: a largest free block of about 15 KB, against about 30 KB normally.
 4. Configure and provision it as a new device. The first provisioning is accepted unsigned over the USB cable only.
 

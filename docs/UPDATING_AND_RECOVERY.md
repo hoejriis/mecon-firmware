@@ -55,4 +55,4 @@ To enter the rescue console on a Companion, long-press the user button within 8 
 - **Over BLE or Wi-Fi.** Use USB. It is trusted in every posture, and a factory reset there always works.
 - **A Hardened Companion in Wi-Fi mode** has no app transport, by owner decision. Use USB.
 - **A Repeater or Room server refusing a correct password.** The client's clock once ran ahead and left a watermark in the future. A restart of the device clears it and changes no setting ([postures](STANDALONE_POSTURES.md#recovery)).
-- **A device moved from the private reference firmware** reads that firmware's Deployment record as corrupt and refuses changes until it is cleared. [Backend migration](BACKEND_MIGRATION.md#moving-a-board-from-the-private-090x-line) gives the steps.
+- **A device moved from the private reference firmware** reads that firmware's Deployment record as corrupt and refuses changes until it is cleared. [Backend migration](migration/BACKEND_MIGRATION.md#moving-a-board-from-the-private-090x-line) gives the steps.
