@@ -81,7 +81,7 @@ Each board and role is a PlatformIO environment. The project's build flags:
 | `ENABLE_WIFI_OTA` | Opts a build without the interface into stock's unsigned Wi-Fi updater. Not set in any shipped environment |
 | `MECON_RELEASE_TEST_ANCHORS` | Builds the public test release key in. Simulated and native builds only: a firmware build with it fails to compile |
 
-The Heltec V3 and V4 build on Arduino-ESP32 3.1.3 / ESP-IDF 5.3 with libraries rebuilt for more heap ([runtime platform](PLATFORM.md)). The nRF52 boards keep the upstream Adafruit runtime. The version string comes from `git describe` at build time, with the upstream base first ([versioning and releases](VERSIONING_AND_RELEASES.md)).
+The Heltec V3 and V4 build on Arduino-ESP32 3.1.3 / ESP-IDF 5.3 with libraries rebuilt for more heap. Their build is two steps: `bin/idf5_libs.sh <env>` builds that board's library set, then `pio run -e <env>`. The V3 and V4 sets need separate PlatformIO core directories ([runtime platform](PLATFORM.md#building)). The nRF52 boards keep the upstream Adafruit runtime. The version string comes from `git describe` at build time, with the upstream base first ([versioning and releases](VERSIONING_AND_RELEASES.md)).
 
 Release keys are listed in `docs/contract/release-keys.json`, and `tools/gen_release_anchors.py` generates `src/helpers/updates/ReleaseAnchors.h` from it. CI checks that the two agree. A build trusts only the production keys in that list.
 
