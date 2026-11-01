@@ -1,94 +1,52 @@
 # Supported hardware and roles
 
-## Verification policy — owner decision, 25 October 2026
+Which board to choose, which role to run on it, and what each combination can do. A device also reports its own capabilities (`hello` lists every operation and telemetry stream the build and board support), so a manager should read those rather than infer them from the board name.
 
-Only four test boards are available: **Heltec V3, Heltec V4, Seeed Wio Tracker L1 and SenseCAP T1000-E**. Public firmware must be hardware-verified on these boards for their applicable roles, transports and advertised capabilities. Availability does not mean a check has passed; the evidence matrix records actual board, role, commit, test and result. T1000-E remains compile-only until #1 supplies hardware evidence.
+## Choosing a board
 
-All other repository board environments receive **software verification only**: compilation, size checks where configured, and applicable unit/simulation/conformance tests. Publish the checks actually run and their results, including exclusions and known upstream failures. A build pass proves compilation, not runtime behaviour; a shared-stack test on another board is not hardware evidence for this board. No additional board purchase or unavailable-board UAT is required to close software-only work.
+| You want | Choose |
+|---|---|
+| A Companion, Repeater or Room server that you also manage over Wi-Fi and MQTT | **Heltec V3** or **Heltec V4** |
+| More memory headroom on an ESP32 board (PSRAM, larger flash) | **Heltec V4** |
+| A small, low-power device with GNSS, used over USB and Bluetooth | **SenseCAP T1000-E** (no screen) or **Seeed Wio Tracker L1** (with a screen) |
+| Management of a node with no IP link | Any of the four, over LoRa (point to point or a private management channel) |
 
-Public documentation must distinguish **hardware verified**, **software verified (with checks specified)**, **failed**, and **not verified**, at board/role/feature level. Never silently promote a board or all its features from partial evidence. The four-board hardware gate applies to applicable capabilities as they are implemented, not unsupported features. This policy supersedes older requests to wait for hardware on other boards. Release timing remains separate.
+## Boards and roles
 
-> **Public availability:** this repository publishes source-only pre-releases (0.1.x) with no binaries; the tags are on ESP-IDF 4.4 and have no device interface. Current `main` is ahead of them. Hardware verification has started on a Heltec V3, a Heltec V4 and a Wio Tracker L1: what was checked on which board and build, and what is still only compiled, is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). No target has yet passed the full hardware gate below. The 18 Heltec V3/V4, T1000-E and Wio Tracker L1 environments (Companion, Repeater, Room server and, on the Heltec boards, the standalone Companion) compile on every pull request, and compiling is not support. Read the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for the private beta versus public distinction.
+The four hardware test targets, with the role builds that carry the managed-device interface. The other environments for these boards (for example the separate `_ble`, `_usb` and `_wifi` Companion builds) stay stock-derived builds without it.
 
-The public line is built on released **MeshCore 1.18.0 from upstream `main`**. The public line and the private 0.9x reference line are separate lines; their version numbers do not order across each other. Release timing is a separate decision. A target is called supported only after its derived build passes its real-hardware gate.
+| Board | Roles (environment) | Local management | IP and MQTT | LoRa management | Screen | Firmware update |
+|---|---|---|---|---|---|---|
+| Heltec V3 (ESP32-S3) | Companion (`Heltec_v3_companion_radio_standalone`), Repeater (`Heltec_v3_repeater`), Room server (`Heltec_v3_room_server`) | Companion: USB and BLE. Repeater, Room server: USB console | Wi-Fi, MQTT | Point to point, and over a private management channel | OLED | Signed, over USB, BLE or IP where the role has that link. Boots on trial and rolls back if not confirmed |
+| Heltec V4 (ESP32-S3, 2 MB PSRAM) | Companion (`heltec_v4_companion_radio_standalone`), Repeater (`heltec_v4_repeater`), Room server (`heltec_v4_room_server`) | As the V3 | As the V3 | As the V3 | OLED | As the V3 |
+| SenseCAP T1000-E (nRF52840) | Companion (`t1000e_companion_radio_usb`, `t1000e_companion_radio_ble`), Repeater (`t1000e_repeater`) | USB, and BLE on the BLE Companion | None | As the V3 | None | Signed offer, then the bootloader's serial DFU over USB. No previous image to return to |
+| Seeed Wio Tracker L1 (nRF52840) | Companion (`WioTrackerL1_companion_radio_usb`, `WioTrackerL1_companion_radio_ble`), Repeater (`WioTrackerL1_repeater`) | USB, and BLE on the BLE Companion | None | As the V3 | OLED | As the T1000-E |
 
-Roles are described by capability rather than by defining the product as ESP32/Wi-Fi/MQTT firmware. The table says what builds on `main` today, from the CI target matrix and [PLATFORM](PLATFORM.md); the evidence for each is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). The managed-device capabilities still planned (identity and authority, updates over IP, USB and BLE, management over LoRa) are in [CLEAN_REFOUNDING_1_18](CLEAN_REFOUNDING_1_18.md) and [ARCHITECTURE](ARCHITECTURE.md#management-over-lora-planned).
+## What each mechanism means
 
-| Hardware | Builds on `main` | Hardware evidence | IP/Wi-Fi | USB | BLE |
-|---|---|---|---|---|---|
-| Heltec V3 | Companion (USB, BLE, Wi-Fi, standalone), Repeater, Room server | Real rows | Yes | Yes | Companion: NimBLE; the standalone Companion runs BLE or Wi-Fi mode, one at a time |
-| Heltec V4 | Companion (USB, BLE, Wi-Fi, standalone), Repeater, Room server | Real rows | Yes | Yes | Companion: NimBLE; the standalone Companion runs BLE or Wi-Fi mode, one at a time |
-| Seeed Wio Tracker L1 | Companion (USB, BLE), Repeater | One Companion row (contacts capacity) | No | Yes | Companion: Bluefruit |
-| SenseCAP T1000-E | Companion (USB, BLE), Repeater | Compiled only ([#1](https://github.com/hoejriis/mecon-firmware/issues/1)) | No | Yes | Companion: Bluefruit |
+- **USB.** The cable is always a trusted link. It is the recovery path on every board and role: a factory reset over USB always works. Keep USB access to a device you depend on.
+- **BLE.** Companion builds only. The Repeater and Room server have no BLE, by owner decision: their local management is the USB console. A BLE link is trusted only when it is paired with a PIN other than 0 or the default 123456. On a default-PIN link the phone app can message, but management is refused. Heltec Companions show a per-session PIN on the screen. The T1000-E has no screen, so set its PIN over USB before you manage it over BLE.
+- **BLE or Wi-Fi, not both.** The Heltec Companion runs one radio stack per boot, by owner decision, to keep memory headroom. Switch with `set connectivity.mode` or a two-step long press on the device button. USB works in both modes ([connectivity mode](CONNECTIVITY_MODE.md)).
+- **IP and MQTT.** Every role on the Heltec boards: up to 10 Wi-Fi profiles and 6 MQTT broker profiles, with TLS ([Wi-Fi](WIFI.md), [MQTT](MQTT.md)). The nRF52 boards have no Wi-Fi.
+- **LoRa management.** Authenticated device-interface operations point to point or over a private management channel, on every role. A Companion binds one of its own channels. A Repeater or Room server holds a single management channel for this, not general channel messaging. Compact, low-rate telemetry travels the same paths. It needs no IP link, and it is subject to the duty-cycle limits.
+- **Screen.** Boards with a screen can send diagnostic screen snapshots to a manager. That is telemetry from the device. A manager never draws on the physical display. Boards without a screen do not offer the stream.
+- **Firmware update.** An update installs only if it is signed by a release key and authorised for the device. Each board takes updates only over the paths in the table: a board without an IP link has no IP update, and BLE never stands in for a missing path. On ESP32 boards, a new image boots on trial and rolls back unless it is confirmed. On nRF52 boards, updates are over USB only, by owner decision. The bootloader writes the image: the device is checked by its reported version afterwards, and there is no previous image to roll back to ([updates](contract/UPDATES.md)). Stock MeshCore's unsigned Wi-Fi updater (`start ota`) is refused in every build with the managed-device interface and on nRF52. Only a build of your own without the interface can opt into it (`ENABLE_WIFI_OTA`), and that path is unsigned.
 
-V3 and V4 are first-class targets and build on Arduino-ESP32 3.1.3 / ESP-IDF 5.3 with NimBLE today ([PLATFORM](PLATFORM.md)); this is current, not a future target. The T1000-E and the Wio Tracker L1 are the non-ESP (nRF52) targets. They are not Wi-Fi/MQTT devices. The Heltec V4 Repeater builds as a stock-derived Repeater; it has no MQTT Observer role, and the device interface is not compiled into it. The device interface is compiled into the V3 Repeater, Room server and standalone Companion and the V4 standalone Companion only, and not into any nRF52 build ([DEVICE_INTERFACE](contract/DEVICE_INTERFACE.md)).
+## Practical limits
 
-Only the four boards above are in scope for hardware verification. Every other board environment is software-verified only, and a board being available is not evidence that a check passed.
+- **Physical access bypasses signatures.** No board's bootloader checks signatures, and, by owner decision, no secure boot or flash encryption is configured. Someone with the device and a cable can enter the bootloader (BOOT button, double reset or a 1200-baud touch) and install any image. Signed updates protect the remote paths only.
+- **Companion contact capacity varies by board.** On the Heltec boards and the Wio Tracker L1 it follows free flash and heap, and never drops below the stock count while space allows ([contacts](CONTACTS.md)). The T1000-E Companion keeps the stock fixed table, a hardware limit: its small file system cannot hold the store beside the stock data.
+- **Memory headroom is tighter on the Heltec V3.** During a TLS MQTT session it has less free heap than the V4 ([runtime platform](PLATFORM.md)).
+- **BLE bonds do not carry over from older builds.** On the Heltec boards, firmware built on the earlier Bluedroid stack keeps its bonds apart from this one, and the Bluetooth address changes. Forget the device on the phone and pair again ([runtime platform](PLATFORM.md)).
 
-**Updates.** No managed update path is built in this repository. Signed updates over IP, USB and BLE are planned (Issue #110, with the T1000-E in #1); update over IP applies only to IP-capable hardware, and USB and BLE delivery are separate work, not a button or an undocumented fallback. LoRa image delivery is later, MECON-specific work (Issue #123). Real bootloader limits per board are documented when that work lands.
+## Verification policy
 
-## Capability layers
+Only the four boards above are hardware test targets. A capability is called supported on one of them only after it has been checked on that board, for that role and transport. What has been checked, and on which build, is recorded per board in [hardware evidence](HARDWARE_VERIFIED.md). A release states its own board and role support in its release notes.
 
-A board may advertise any applicable combination of:
+The other board environments in the tree (other Heltec variants such as the V4 TFT, LilyGo, RAK and others) build from the same source and are **software-verified only**: compilation, size checks where configured, and the applicable unit, simulation and conformance tests. A passing build shows that it compiles, not that it runs correctly on the board, and a test on a board with the same stack is not evidence for another board. The CI runs say which environments build and which fail, including the ones that already fail on stock MeshCore.
 
-- **Core:** identity/capabilities, common configuration and health/status. Built as device interface v1; messaging semantics, inventory and resilience are not part of it;
-- **USB:** direct Reader/configuration/recovery;
-- **BLE:** direct Reader/configuration/messaging;
-- **IP:** IP networking, broker discovery and MQTT/backend connectivity;
-- **display/attention:** screen/framebuffer or target-specific LED/buzzer/haptic notification behaviour;
-- **managed update:** target-specific supported OTA/DFU mechanism (planned, Issue #110).
+Evidence is recorded as **hardware verified**, **software verified** (with the checks named), **failed** or **not verified**, per board, role and feature. One check on a board never promotes the board's other features.
 
-A client must discover capabilities rather than infer them from board name or firmware version.
+## Screens and attention
 
-## Heltec Companion
-
-The Companion image preserves MeshCore 1.18 behaviour and adds ordered Wi-Fi profiles (up to ten), MQTT with failover, the unified CLI and, in the standalone build, the device interface over USB, BLE and MQTT. BLE uses NimBLE on Arduino-ESP32 3.1.3 / ESP-IDF 5.3. The standalone Companion runs BLE or Wi-Fi at a time ([CONNECTIVITY_MODE](CONNECTIVITY_MODE.md)).
-
-Companion contact capacity is **not fixed by the contract**. It follows free file-system space and heap, is measured after the pioarduino/Arduino-ESP32 3.x/IDF5 migration, and is reported by the running build ([CONTACTS](CONTACTS.md)).
-
-## Heltec Repeater
-
-The Repeater image preserves MeshCore 1.18 repeating behaviour, adds the unified CLI with postures, and on the V3 the device interface on the USB console. USB remains the recovery/configuration path. BLE support is explicitly advertised rather than assumed.
-
-## SenseCAP T1000-E Companion
-
-The T1000-E builds a Companion (USB and BLE) and a Repeater. On `main` it is compiled only; hardware evidence is tracked in Issue #1. The device interface is not compiled into it. It has no IP requirement: no Wi-Fi profiles, MQTT client, mDNS broker discovery or local/cloud broker failover. ESP32-specific IDF5/pioarduino/NimBLE requirements do not apply to this target.
-
-## Seeed Wio Tracker L1
-
-The Wio Tracker L1 (nRF52840) builds a Companion (USB and BLE) and a Repeater. The one hardware row is the Companion's contacts capacity of 1000 on its QSPI flash. It has no Wi-Fi or MQTT client. The device interface is not compiled into it.
-
-## Reference firmware (private)
-
-This note describes the private 0.9x reference firmware, not this repository's builds, and is not evidence for them. The private beta ships, among other things: Deployment-signed management, security posture, identity rotation/export, BLE bonds and an opaque continuity slot; on the T1000-E an update through the USB bootloader after a Deployment-signed offer (BLE DFU compiled out, no over-the-air update); on the Wio repeater RF management with Deployment-signed writes, a signed status beacon, USB DFU and a LoRa-staged update that is stored but not activated by the radio; the ESP32 Repeater Observer on the V3 only; and, on the V3 and V4 gateways, a fixed contact limit of 50 (350 on the T1000-E). Its hardware evidence is limited-scope bench testing in the private line. Its behaviour is summarised in [CONTRACT_MIGRATION_NOTES](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
-
-## Moving a board from the private 0.90.x line
-
-The private reference firmware stores its Deployment record in files with the same names and frame header as this firmware's, but in a different layout. A board flashed from 0.90.x to this firmware with its file system kept therefore reads them as a **corrupt record**. That is deliberate: it fails closed, and it never treats another firmware's authority state as its own. Until the record is cleared, the board refuses provisioning, signed requests and unsigned configuration writes, Wi-Fi settings included.
-
-To move a board:
-
-1. Flash this firmware over the USB cable.
-2. Over the same cable, in Normal posture, send `deployment.reset`. It needs no signature, because a corrupt record may be reset from the cable (contract: [Management authority](contract/AUTHORITY.md), section 11). It removes the old record and keeps the node key, `device_id`, contacts and channels.
-3. Reboot the board. Right after the reset, the heap can stay fragmented until the next boot: a largest free block of about 15 KB, against about 30 KB normally.
-4. Configure and provision it as a new device. The first provisioning is accepted unsigned over the USB cable only.
-
-An erase over the cable (a factory reset) is the alternative. It removes everything, the node key included.
-
-This firmware does not recognise or import the private line's record. That decision may be revisited with MECON's own fleet migration.
-
-## Other boards
-
-All other board environments are software-verification targets under the policy above. Use the current CI matrix for the environment count and actual results; describe build-only evidence as such. No hardware verification is claimed for these boards.
-
-## Device UI / attention
-
-Supported display targets retain the stock 1.18 front screen/button model with only the documented additions: the firmware version at boot, a connectivity page (mode, posture, PIN state, Wi-Fi and MQTT state), BLE PIN while unconnected, and DM/favourite wake filtering. See [UI](UI.md) and [CONNECTIVITY_MODE](CONNECTIVITY_MODE.md) for what is built.
-
-Non-display targets omit display/framebuffer requirements. If a target exposes LEDs, buzzer or haptics, notification mappings are target-specific but should follow the same attention principle: DMs/favourited messages may alert; ordinary observed/public traffic should not generate attention merely because it was received.
-
-## Hardware gate
-
-For each of the four boards above, the capabilities that exist on that board are verified on the hardware: stock-derived role behaviour, USB, BLE/NimBLE where the board has it, Wi-Fi profiles, broker discovery and failover, the device interface where compiled in, configuration/recovery, reconnect behaviour, memory headroom and UI. The gate covers a capability once it is implemented, not before; managed update is added when Issue #110 lands. Compilation alone is not a hardware gate. [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) records what has passed; it does not show mDNS broker discovery or the device interface over MQTT on a V3.
-
-Experimental targets have their own issue-defined MVP gate and are not added to the supported matrix until that gate passes on real hardware.
+Boards with a screen keep the stock MeshCore screen and button model with a few additions: the firmware version at boot, a connectivity page (mode, posture, PIN state, Wi-Fi and MQTT state), the BLE PIN while unconnected, and wake filtering for direct messages and favourites ([screens and buttons](UI.md)). On boards with LEDs, a buzzer or haptics, the same principle applies: direct messages and favourites may alert, and ordinary received traffic does not.
