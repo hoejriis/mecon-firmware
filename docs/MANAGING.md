@@ -12,7 +12,7 @@ A device can be managed in two ways, and both are decided by the same privilege 
 | USB | all | always | The recovery path. Companion: app frames. Repeater and Room server: text console |
 | BLE | Companion | only when paired with a PIN other than 0 or 123456 | A default-PIN link can message, not manage |
 | Wi-Fi TCP companion port | Heltec Companion | never | Messaging and reads only. Not started in Hardened |
-| MQTT | Heltec Companion | only a TLS-verified broker session | What a broker may change depends on the posture and the profile's `manage` flag ([postures](STANDALONE_POSTURES.md)) |
+| MQTT | Heltec boards, every role | only a TLS-verified broker session | What a broker may change depends on the posture and the profile's `manage` flag ([postures](STANDALONE_POSTURES.md)) |
 | LoRa, point to point | all | by authority, not by the link | Authenticated requests from a manager. Repeaters and Room servers also keep stock remote admin login |
 | LoRa, management channel | all | by authority, not by the link | Channel membership grants nothing |
 

@@ -1,10 +1,10 @@
 # Connect to Wi-Fi and MQTT
 
-Wi-Fi and MQTT are on the Heltec V3 and V4 Companion. The nRF52 boards have no Wi-Fi, and the Repeater and Room server have no IP link. Set these over a trusted link: the cable, or BLE paired with your own PIN.
+Wi-Fi and MQTT are on every role of the Heltec V3 and V4. The nRF52 boards have no Wi-Fi. Set these over a trusted link: the cable, or BLE paired with your own PIN.
 
 ## Choose BLE or Wi-Fi
 
-The Heltec Companion runs one radio stack per boot, BLE or Wi-Fi:
+The Heltec Companion runs one radio stack per boot, BLE or Wi-Fi, by owner decision, to keep memory headroom:
 
 ```text
 get connectivity.mode
