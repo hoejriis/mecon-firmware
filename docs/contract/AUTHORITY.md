@@ -1,8 +1,8 @@
 # Management authority contract v1
 
-Who may command a device, and how the device knows. This page is the public, generic contract: a device and any conforming manager can implement it from this page, the [device interface](DEVICE_INTERFACE.md), and the test vectors in this repository. It needs no particular Backend, broker, domain or product workflow. How MECON maps its own Deployments, ownership and federation onto it is [#118](https://github.com/hoejriis/mecon-firmware/issues/118). Checking conformance with any existing Backend is done there too, not here.
+Who may command a device, and how the device knows. This page is the public, generic contract: a device and any conforming manager can implement it from this page, the [device interface](DEVICE_INTERFACE.md), and the test vectors in this repository. It needs no particular Backend, broker, domain or product workflow. How a particular manager maps its own fleets, ownership and federation onto it is that manager's concern, not this page's.
 
-> **Status: on main, not yet in a release ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)).** The authority-set, rotation, record, replay and signed-request checks are enforced by the Companion (over MQTT, USB and BLE) and by the Repeater and Room server console. They are covered by unit tests, simulated-board tests, mutants and the public test vectors (`test/fixtures/deployment_authority_public_v1.json`), and a first provisioning, a signed `config.apply` and a signed `deployment.reset` have run on an nRF52 board. The first security review is folded in (section 15). The wire objects of this page are version 1 and fixed: a change to one is a new version (a new domain string, or `mecon_auth` 2), never an edit of version 1. The release manifest is still *planned* ([UPDATES](UPDATES.md)).
+> Version 1. The wire objects of this page are fixed: a change to one is a new version (a new domain string, or `mecon_auth` 2), never an edit of version 1. Public test vectors: `test/fixtures/deployment_authority_public_v1.json`.
 
 ## 1. Terms
 
@@ -216,7 +216,7 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 | — | a sensitive operation (7.1) carries the `channel_nonce` of this link | `bad_channel_nonce` |
 | 7 | the sequence (section 8) | `replay`; `duplicate` for the id at the mark |
 
-- The body is parsed only after check 3, so nothing unsigned is ever parsed past the wrapper. When a transport fragments a message (LoRa, [#115](https://github.com/hoejriis/mecon-firmware/issues/115)), check 3 runs on the reassembled body. Reassembly is bounded per message id, and parts of different messages are never combined.
+- The body is parsed only after check 3, so nothing unsigned is ever parsed past the wrapper. When a transport fragments a message (LoRa), check 3 runs on the reassembled body. Reassembly is bounded per message id, and parts of different messages are never combined.
 - A device whose record is corrupt answers every request except the recovery ones (section 11) with `deployment_record_corrupt`.
 - A request refused before execution consumes no `job_id` and moves no watermark.
 - Every refusal increments `auth_rejections` in `status.deployment`. A Reader's single unsigned readiness probe on attach is answered and is not counted.
@@ -242,7 +242,7 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 
 ## 9. Caller kinds
 
-#95 adds one principal to the [CLI privilege table](../CLI.md): **signed**, a request that passed section 7 on any transport. The table below is how unsigned callers change once a device holds a record, and it is the documented transition from the standalone postures ([Standalone postures](../STANDALONE_POSTURES.md)), not a silent change of what a posture means. Standalone devices (no record) keep today's table unchanged.
+This contract adds one principal to the [CLI privilege table](../CLI.md): **signed**, a request that passed section 7 on any transport. The table below is how unsigned callers change once a device holds a record, and it is the documented transition from the standalone postures ([Standalone postures](../STANDALONE_POSTURES.md)), not a silent change of what a posture means. Standalone devices (no record) keep today's table unchanged.
 
 | Caller | No record (standalone) | Record, Normal | Record, Hardened | Record corrupt |
 |---|---|---|---|---|
@@ -280,7 +280,7 @@ The unlock grants the reads and posture unlock shown in section 9. It never gran
 | `deployment.reset` (unenroll), healthy record | the record, watermarks, local unlock secret, provisioned marker | node key, `device_id`, configuration, contacts, channels | signed, over USB only, in Normal |
 | `deployment.reset`, corrupt record | the same | the same | USB cable in Normal; local unlock in Hardened |
 | posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed, or the cable |
-| `identity.rotate` (new owner) | node key, contacts, message queue | configuration, record, channels, posture, `device_id` | signed and sensitive; refused without a readable record. Companion only |
+| `identity.rotate` (new owner) | node key, contacts, message queue | configuration, record, channels, posture, `device_id` | signed and sensitive; refused without a readable record. Every role |
 | rescue `rebuild` | nothing: it reformats and saves everything back, the record included | everything | the cable |
 | factory reset | everything, the record, the provisioned marker and `device_id` included | nothing | the cable only; never remote, never BLE once enrolled |
 
@@ -298,14 +298,14 @@ Rules:
   - Requests aimed at the old key are then `wrong_device`; the authority state (DAK, set, revision, members and their marks) is untouched, and the node key, old or new, grants nothing.
   - The self-advert is one zero-hop advert, like the app's default.
   - A device whose contacts cannot all be dropped after the swap answers `failed` (`contacts_not_dropped`); the key has changed, `hello` shows it, the statement stays drop-pending (the next boot retries), and the manager recovers the new key from `identity.rotation` as above.
-  - The Repeater and Room server do not offer it: `identity.rotate` is an unknown operation there.
+  - Every role offers it (owner decision of 2026-11-01). What it drops and keeps on the Repeater and Room server is not yet specified here.
   - A revoked member's rotation is refused `issuer_revoked` like any other request of its.
 
 ## 12. Keys, randomness and secrets
 
 - **Device keys and secrets** come from the platform's cryptographic RNG, fed by the hardware RNG: `esp_fill_random` on ESP32, and the nRF52's hardware RNG peripheral. This covers the node key, `device_id`, the BLE PIN, the local unlock challenge and the channel nonces. Never Arduino `random()`, which is a seeded libc PRNG on some cores.
   - The node key's seed mixes that source with the LoRa radio's noise (`RadioNoiseListener`). On the nRF52 with the CC310 the source is the CC310's TRNG. On ESP32, `esp_fill_random` has full entropy only while Wi-Fi or BLE runs, and a node key is made in `setup()` before either starts, so it is drawn inside `bootloader_random_enable()`, which feeds the RNG from the SAR ADC's noise.
-- A signed update that names a minimum firmware version is bound to the record before a device enforces it, so downgrading the firmware cannot drop the rule ([#110](https://github.com/hoejriis/mecon-firmware/issues/110)).
+- A signed update that names a minimum firmware version is bound to the record before a device enforces it, so downgrading the firmware cannot drop the rule.
 - **Wiping.** Key material is cleared with a wipe the compiler may not drop (a volatile loop), on every exit path of a rotation. A rotation's new key is drawn from a source that must pass a health test: not all zero, at least 16 distinct byte values, and not equal to the previous draw; otherwise the refusal is `rng`. After a rotation the old private key can remain in unerased flash blocks until they are reused (the file system replaces files atomically and does not erase in place), so a rotation protects against later use of the old key by the device, not against someone who images the flash of the same unit.
 - **The DAK and manager keys** never exist on a device. Only public keys and signatures do.
 - **The node private key** leaves a device only under the custody rule in [Security and authority](SECURITY_AND_AUTHORITY.md):

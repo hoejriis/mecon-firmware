@@ -1,12 +1,10 @@
 # Security model
 
-> **Target documentation (planned and MECON-specific work; not implemented here unless a section says so).** The tagged releases v0.1.0 to v0.1.2 are source-only pre-releases without the device interface. Current `main` implements the generic [device interface v1](contract/DEVICE_INTERFACE.md) and the standalone features in the [README](../README.md), with real-board evidence in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). The generic work still planned (Issues #95, #96, #109, #110, #114 to #117) and the MECON-specific work (Issues #118 to #123) described here are not implemented. Release timing is a separate decision. This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> This page explains the security model. The rules a device enforces are normative in the [contract](contract/README.md), above all [management authority](contract/AUTHORITY.md).
 
-> **Generic authority and the MECON profile.** The generic authority layer (device identity, authorization, signatures, replay protection and recovery) is Issue #95, and any conforming manager can use it. MECON's Deployment mapping, membership and ownership workflow is Issue #118. Where this page describes Deployment-specific workflow, that is the MECON profile. Unsettled security design is decided in #95's review, not on this page.
+## Standalone postures
 
-## Built today: standalone postures
-
-The standalone Normal and Hardened postures are implemented, without a Deployment, verified on simulated boards and, for the checks listed in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md), on Heltec V3 and V4 hardware ([Standalone security postures](STANDALONE_POSTURES.md), [Command-line engine](CLI.md)). They are a smaller model than the one below: authority comes from the transport (cable, paired BLE, remote login) rather than from a Deployment Authority Key, Hardened keeps cable management, and there is no signed management, protected continuity storage or recovery package. On `main` since PR #124 (Issue #111), every native management frame is refused on the TCP port and over a default-PIN BLE link in Normal posture; the tagged pre-releases v0.1.0 to v0.1.2 still gate only 5 native frames there. Everything below this heading is the managed-fleet target, not built.
+A device that belongs to no Deployment follows the Normal and Hardened postures ([security postures](STANDALONE_POSTURES.md), [command-line engine](CLI.md)). There, authority comes from the transport: the cable, a BLE link paired with the device's own PIN, or a remote login. Hardened keeps management on the cable. Every native management frame is refused on the TCP port and over a default-PIN BLE link. Once a device is enrolled, the Deployment rules below apply.
 
 ## Principles
 
@@ -110,16 +108,6 @@ USB/full reflash remains the ultimate physical recovery path.
 Backend federation and device authority are complementary but distinct. Backends may replicate Deployment state between trusted Backend instances, but federation membership alone does not grant device authority: an instance still requires authorization under the Deployment authority contract.
 
 Firmware does not implement Backend-to-Backend state federation and does not need to understand federation HLCs, cursors, snapshots or replicated user/session semantics.
-
-## Reference firmware today
-
-The private 0.9x reference firmware already enforces much of this model; the mechanics below are shipped behaviour, not yet normative contract text (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)).
-
-- **Signed management on every transport.** Writes carry a Deployment-signed wrapper (issuer, authority revision, signature over the canonical body, which names the device or, for a repeater, its node public key); a wrong-device body is refused. Replay is per issuer and per job class. A message over the 3,072-byte slot is refused before parsing, and refusals are counted (`auth_rejections`). USB under physical possession is the one unsigned write path; in a restricted posture an authenticated Reader unlocks USB with a challenge over a write-once USB-auth secret.
-- **Record states.** A Deployment record is none, present or corrupt; corrupt fails closed. A device with no record accepts, from a broker, BLE or TCP, only reads, the first bare provisioning and bare contact protection.
-- **Signed uplink.** Every MQTT publish from a gateway carries a boot counter, sequence and Ed25519 signature, and the Backend latches per device, so device-to-backend traffic is authenticated as well.
-- **Unsigned exceptions.** A paired BLE central may reboot the device unsigned; a corrupt or missing record may be reset unsigned over USB; some counts and reads over USB, the Reader's attach probe and a guest RF `mecon info` are unsigned. MECON writes over USB are authorised by possession, not by signature.
-- **Passkey.** The reference firmware returns the BLE pairing passkey as a read-only entry of `get_config`; it is never in a status, an advertisement or a log.
 
 ## Backend independence
 

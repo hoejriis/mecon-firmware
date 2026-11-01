@@ -1,29 +1,34 @@
-# Integrating with mecon-firmware
+# Integrating a manager
 
-> **Target documentation (planned and MECON-specific work; not implemented here unless a section says so).** The tagged releases v0.1.0 to v0.1.2 are source-only pre-releases without the device interface. Current `main` implements the generic [device interface v1](contract/DEVICE_INTERFACE.md) and the standalone features in the [README](../README.md), with real-board evidence in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md). The generic work still planned (Issues #95, #96, #109, #110, #114 to #117) and the MECON-specific work (Issues #118 to #123) described here are not implemented. Release timing is a separate decision. This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
-
-The public line is based on released MeshCore 1.18.0 and is designed for MeshContinuum and independent integrations. **Start with [device interface v1](contract/DEVICE_INTERFACE.md): it is built on `main`, works with any conforming manager, and wins over the vocabulary below where they differ.** It uses `device_id` from `hello` (or the CLI line `get device.id`), the topics `mecon/<device_id>/req|resp|ev/<stream>|status`, command `0x7F` on USB and BLE, and `mecon> ` lines on the Repeater and Room server console. The vocabulary below is the target; a backend that must talk to the private 0.9x reference firmware today needs the legacy vocabulary described in [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
+A manager is any application that manages mecon-firmware devices through the public contracts: a Backend, a desktop tool, a script. None is required, and MeshContinuum is one implementation among any others. The normative pages are listed in the [contract index](contract/README.md).
 
 ## Start with capabilities
 
-Do not infer behaviour from board name, role or firmware version. Read protocol/profile versions, role, hardware target and capabilities. Native MeshCore 1.18 operations should be used where they already provide the required semantics; MECON-specific behaviour uses the public contract.
+Send `hello` first. It reports the interface version, `device_id` and the node key with a signature binding them, the role, the hardware and the firmware, and lists every operation (`op.<name>`) and stream (`stream.<name>`) this device can run. Do not infer behaviour from the board name, role or firmware version. An operation that is not listed answers `unknown-op`, and a listed one can still be `refused` for the caller ([device interface](contract/DEVICE_INTERFACE.md)).
 
-## Integration paths
+## Paths to a device
 
-1. **MQTT** — remote status, settings and the `health` stream through the active session (built); observations and messaging are target.
-2. **USB** — native/local access plus the interface in command `0x7F` (built). The private reference firmware instead carries MECON operations in a JSON tunnel (`CMD_MECON_JSON`, command 120); that is legacy wire, not the current contract.
-3. **BLE** — NimBLE-based local Companion access where advertised; the same `0x7F` frames as USB (built).
-4. **Hybrid browser bridge** — browser transports the same logical envelopes to a backend (the existing MECON Reader does this and requires a Backend; independent managers do not need one).
-5. **LoRa** — management over direct and channel LoRa and compact LoRa telemetry are planned and not built: see [Management over LoRa (planned)](ARCHITECTURE.md#management-over-lora-planned). Today, RF management is the stock remote-admin CLI ([CLI](CLI.md)).
+| Path | How | Notes |
+|---|---|---|
+| USB | `0x7F` app frames on a Companion; `mecon> ` lines on the Repeater and Room server console | The trusted local path, and the one used to enrol a device |
+| BLE | the same `0x7F` frames, on a Companion | Trusted only when paired with a PIN other than the default |
+| MQTT | `mecon/<device_id>/req`, `resp`, `ev/<stream>` and the retained `status` | Every role on the Heltec boards. Only a TLS-verified broker session counts |
+| LoRa | point to point, or on the device's management channel | Authenticated operations and compact telemetry ([management over LoRa](contract/LORA_MANAGEMENT.md)) |
 
-## Provisioning
+A bridge, such as a browser app relaying USB or BLE to a Backend, forwards envelopes verbatim. It adds no authority, and the device's signatures survive it.
 
-Public builds do not compile in a MeshContinuum service dependency. Provisioning supplies Wi-Fi profiles (the standalone firmware stores up to ten), cloud MQTT endpoint/credentials/namespace, local-broker discovery/authority configuration, device identity metadata and authorization grants.
+## Enrolment and authority
 
-The device maintains one MQTT session at a time. Local discovery changes the preferred endpoint, not the authority model.
+A device joins one Deployment over the USB cable. From then on, a state-changing request needs a manager's signature, whatever path it takes. The Deployment's authority key decides who the managers are. The device persists a replay watermark per manager and signs its results and events ([management authority](contract/AUTHORITY.md)).
 
-The reference firmware is provisioned over USB with a key/value companion command (46) for the Wi-Fi slots, broker, label, connectivity mode and the write-once identifier, enrolment and Reader-unlock secrets. A first bare Deployment provisioning follows, after which every write must be signed. It stores up to four broker profiles and opens one session at a time.
+## Configuration
+
+Settings are the device's CLI settings, read and written with `config.schema`, `config.get` and `config.apply`. A change that could cut the manager off (radio, transmit power, connectivity, Wi-Fi or broker settings) must ask for confirmation, and reverts unless `job.confirm` follows ([managed operations](contract/OPERATIONS.md)). Wi-Fi profiles, broker profiles with their TLS anchors, and the broker roles a Deployment assigns (local, primary, secondary) are all supplied this way or at provisioning. Broker credentials are write-only.
+
+## Telemetry and updates
+
+Subscribe to streams with `sub.start` and renew them before their lifetime runs out ([telemetry](contract/TELEMETRY.md)). Install firmware with a release manifest signed by a release key and an offer signed by a manager ([signed updates](contract/UPDATES.md)).
 
 ## Compatibility
 
-Integrations gate on contract/profile versions and capabilities, not MECON firmware numbers. `meshcore_base_version` identifies the exact 1.18-derived base. Unknown fields are forward-compatible; unknown capabilities never imply authority.
+Gate on the interface version and the capabilities in `hello`, never on firmware version numbers. The `upstream` field identifies the MeshCore base. Unknown fields are ignored, and an unknown capability never implies authority. A Backend moving from the private reference firmware has a [migration guide](BACKEND_MIGRATION.md).

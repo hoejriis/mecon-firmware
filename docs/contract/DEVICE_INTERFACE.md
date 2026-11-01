@@ -2,17 +2,13 @@
 
 One logical device model reached over MQTT, USB and BLE. A Backend talks to the device directly over MQTT, or through a Reader that bridges USB or BLE; the device answers the same requests with the same results either way. Native MeshCore 1.18 Companion frames and the Repeater console stay exactly as they are beside it.
 
-> **Status: v1.0 implemented for the Companion, the Repeater and the Room server.** The design was recorded here before the code, and the code follows it. Built: every operation of section 4 on the Companion, over USB and BLE (`0x7F` frames) and MQTT, on the Heltec V3 and V4 standalone builds (`ENABLE_MECON_IFACE`) and the simulated standalone Companion; and on the Repeater and Room server over the USB console (section 7), on the Heltec V3 and V4 Repeater and Room server builds and the simulated ones. Verified on the simulated boards, on real Heltec V3 and V4 Companions over all three transports, and on a real Heltec V3 Repeater over its console ([HARDWARE_VERIFIED](../HARDWARE_VERIFIED.md)); the V3 Room server build on the simulated board only; the V4 Repeater and Room server builds over their console on a real Heltec V4. The broader target contract is in the [contract set](README.md); where it and this page differ on wire details, this page is the newer decision and the contract set will be aligned to it as the implementation lands.
-
-## Starting point (history)
-
-Before v1.0, an inventory of the target contract against the fork (77 device-visible items) found 25 met by native MeshCore 1.18 operations, 15 by extensions already in this fork, and 37 missing. That inventory is not repeated. At that point, everything MECON-specific was reached as one line of text CLI: over the Companion's `CMD_RUN_CLI_COMMAND`, the Repeater console and the MQTT `cli/req` topic. There was no device identifier separate from the node key, no capability discovery, no structured settings read or write, no correlated job results and no event streams. This interface added those, and keeps the CLI as the single place where settings live and where authorization is decided.
+> Version 1.0. Implemented by the Companion over USB, BLE and MQTT, and by the Repeater and Room server over their console (section 7). Where another page of the contract set differs from this one on wire details, this page wins.
 
 ## Decisions
 
 ### 1. Identity
 
-- `device_id`: 16 random bytes generated on first boot, stored in their own file, written as 32 lowercase hex digits. Distinct from the native node public key, which a key rotation changes, and from any Backend row. Whether a reset scope keeps or regenerates it is decided with enrollment ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)); until then the native factory reset and the rescue `erase` regenerate it.
+- `device_id`: 16 random bytes generated on first boot, stored in their own file, written as 32 lowercase hex digits. Distinct from the native node public key, which a key rotation changes, and from any Backend row. Whether a reset scope keeps or regenerates it is decided with enrollment; until then the native factory reset and the rescue `erase` regenerate it.
 - Every `hello` and every status snapshot reports both `device_id` and `node_key` (the native public key, hex). `hello` also carries `device_id_sig`, the node key's signature binding the two, and, for `args.nonce`, `nonce` and `device_id_sig_nonce` ([authority contract](AUTHORITY.md) section 3.5).
 - **How a Backend learns it before MQTT.** The first `hello` travels over a direct path at enrolment: USB, or BLE through a Reader bridge. MQTT credentials reach a device only after that, so the Backend knows `device_id`, and can add `mecon/<device_id>/#` to the device's broker ACL, before the device ever publishes there. The broker username is the Backend's choice (it may rotate logins by generation): the device accepts any username and publishes under its `device_id` whatever it is.
 - **A device already on MQTT when it gets this interface** (an in-place upgrade) never makes that direct-path `hello`, and from its first boot on the new build it publishes under `mecon/<device_id>/`, which its broker ACL does not yet cover. The Backend asks it for its `device_id` with the CLI line `get device.id` (or `get device.id <nonce>`) on the device's legacy `mecon/<node id>/cli/req` topic, which its existing login already covers. The answer is `> <device_id> <sig>` (with `<nonce>` appended for the nonce form). The Backend verifies `<sig>` against the node key of that login ([authority contract](AUTHORITY.md) section 3.5), then adds `mecon/<device_id>/#` to that same login. Nothing is granted up front.
@@ -42,7 +38,7 @@ UTF-8 JSON objects. Three shapes:
 - `seq`: one sequence per stream per device, not per subscription. An event is produced once and the same `(epoch, seq)` goes to every transport subscribed to its stream, so a Backend receiving it over MQTT and over a Reader bridge can drop the second copy. An event dropped on one transport (its queue full) leaves a gap on that transport only.
 - Absent, `null` and `0` mean different things: absent = not supported by this build; `null` = supported but unknown now; `0` = measured zero.
 - Size bound: 4,096 bytes per message after reassembly. A result that would be larger is paged by the operation (`cursor` in, `next` out).
-- `auth`: reserved for signed authority ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)). A v1.0 device implements none, so a request that carries `auth` is `refused` rather than run as if it were unsigned.
+- `auth`: reserved for signed authority. A v1.0 device implements none, so a request that carries `auth` is `refused` rather than run as if it were unsigned.
 
 ### 4. Operations v1.0
 
@@ -145,12 +141,6 @@ Published so far (v1.0 first cut):
 
 The simulated-board suite (`sim/tests/test_device_interface.py`) runs every fixture against the firmware over USB, BLE and MQTT and checks each answer against the schemas; it fails if a recorded fixture drifts from the firmware.
 
-## Left to the implementation
+## Defined elsewhere
 
-- The JSON parser (a bounded in-tree parser like the MQTT CLI's, or a library) is chosen on measured flash and heap.
-- The exact capability names and the first schema key list come from the CLI registry when the code is written.
-- The status snapshot's field list is the one in [Core device contract](CORE_DEVICE_CONTRACT.md) restricted to what the build can measure; #96 extends it.
-
-## Out of scope for v1.0
-
-Signed authority, enrollment and reset scopes ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)); the full telemetry catalogue, logs and screen frames ([#96](https://github.com/hoejriis/mecon-firmware/issues/96)); managed operations ([#109](https://github.com/hoejriis/mecon-firmware/issues/109)); signed updates over IP, USB and BLE ([#110](https://github.com/hoejriis/mecon-firmware/issues/110)); private management channels, authorized LoRa operations and compact LoRa telemetry ([#114](https://github.com/hoejriis/mecon-firmware/issues/114), [#115](https://github.com/hoejriis/mecon-firmware/issues/115), [#116](https://github.com/hoejriis/mecon-firmware/issues/116)); and the MECON-specific messaging, backfill, outage sync and LoRa image delivery ([#119](https://github.com/hoejriis/mecon-firmware/issues/119) to [#121](https://github.com/hoejriis/mecon-firmware/issues/121), [#123](https://github.com/hoejriis/mecon-firmware/issues/123)).
+This page defines the envelope, framing, identity, versions, settings and the base operations. The rest of the interface is defined in its own pages: [management authority](AUTHORITY.md), [managed operations](OPERATIONS.md), [telemetry](TELEMETRY.md), [signed updates](UPDATES.md), the [management channel](MANAGEMENT_CHANNEL.md) and [management over LoRa](LORA_MANAGEMENT.md). Messaging, backfill, outage forwarding and image delivery over LoRa are not part of the generic interface.

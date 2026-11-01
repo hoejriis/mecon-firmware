@@ -1,6 +1,6 @@
 # Security and authority contract
 
-> **Target documentation (the later MECON-integrated stage; not implemented here).** The 0.1.x pre-releases of this repository are standalone MeshCore 1.18.0 improvements verified on simulated boards only, and implement none of the MECON-specific behaviour described on this page; what they do implement is in the [README](../../README.md) and the [documentation index](../README.md). The first version planned to serve a MECON fleet is 0.8.0 (see [Versioning and releases](../VERSIONING_AND_RELEASES.md)). This page describes the target for the public line, not the private 0.9x reference firmware, whose shipped behaviour differs in places (see [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). See the [shared capability matrix](https://github.com/hoejriis/MeshContinuum/blob/main/docs/CAPABILITIES.md) for current availability and acceptance; specifications do not certify hardware or release readiness.
+> The rules here that the [normative pages](README.md#normative-pages) cite (continuity material, BLE bonds) are normative. Where anything else here differs from a normative page, the normative page wins.
 
 ## Principles
 
@@ -114,7 +114,7 @@ The Reader's single unsigned readiness probe on attach is answered but not count
 
 ## Reference firmware authority classes
 
-The reference firmware's vocabulary maps the classes above to five codes: **S** (Deployment-signed, accepted on any transport), **P** (physical possession over USB or a repeater console, unsigned), **R** (an authenticated Reader over USB in a restricted posture), **open** (reads that disclose nothing secret) and **L** (a device with no Deployment record). A device must hold a USB-auth secret before it can enter Hardened, so that a Reader can always unlock it; the secret is write-once over USB and never the enrolment credential. Unsigned exceptions are listed in [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) and in [Security model](../SECURITY_MODEL.md#reference-firmware-today).
+The reference firmware's vocabulary maps the classes above to five codes: **S** (Deployment-signed, accepted on any transport), **P** (physical possession over USB or a repeater console, unsigned), **R** (an authenticated Reader over USB in a restricted posture), **open** (reads that disclose nothing secret) and **L** (a device with no Deployment record). A device must hold a USB-auth secret before it can enter Hardened, so that a Reader can always unlock it; the secret is write-once over USB and never the enrolment credential. Unsigned exceptions are listed in [Current-to-target adjustments](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line) and in [Security model](../CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line).
 
 ## Restricted-posture recovery boundary
 

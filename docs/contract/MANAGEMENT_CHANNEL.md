@@ -1,9 +1,6 @@
 # Management channel
 
-> **Status: built for the Companion** (`ENABLE_MECON_IFACE` builds with a channel table). The Repeater and the Room
-> server have no channel table: their `hello` does not list these operations ([#151](https://github.com/hoejriis/mecon-firmware/issues/151)).
-> Carrying operations over the channel is [#115](https://github.com/hoejriis/mecon-firmware/issues/115), and compact
-> telemetry over it is [#116](https://github.com/hoejriis/mecon-firmware/issues/116). Neither is built.
+> Every role has a management channel. A Companion binds one slot of its native channel table, as this page specifies. A Repeater or Room server, which has no channel table, holds a single management channel with the same operations and commit-or-revert, and no general channel messaging (owner decision of 2026-11-01; its storage and any differences are not yet specified here). A device lists these operations in `hello` only where it supports them. What travels over the channel is defined in [management over LoRa](LORA_MANAGEMENT.md).
 
 A device can mark one of its native channels as its **management channel**: the private channel a manager reaches it
 on over LoRa. This page defines how that channel is configured. It does not define what travels over it.
@@ -17,7 +14,7 @@ on over LoRa. This page defines how that channel is configured. It does not defi
   It holds the slot, a fingerprint of the bound key (the first 8 bytes of SHA-256 of the key: neither the key nor its
   on-air hash) and a generation that counts every bind, rotation and move of the binding.
 - **Membership is not authority.** Knowing the channel's key lets a node read and send on the channel, nothing more.
-  A command carried over it ([#115](https://github.com/hoejriis/mecon-firmware/issues/115)) needs its own authority
+  A command carried over it needs its own authority
   ([Management authority](AUTHORITY.md)), and a binding changes nothing about what any caller may do.
 - **Nothing starts.** Binding starts no forwarding, backfill, sync, reporting or extra airtime.
 - **Never the public channel.** A slot holding the well-known public key cannot be bound: everyone holds that key.
