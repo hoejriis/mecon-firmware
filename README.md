@@ -18,7 +18,7 @@ It is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore), built on t
 
 ## Stock MeshCore 1.18.0 and mecon-firmware compared
 
-The "Stock" column describes upstream MeshCore 1.18.0 as released. The "mecon-firmware" column is what this project adds or changes. Everything not listed behaves as stock. Each file this project changes upstream is listed in the [upstream delta register](docs/UPSTREAM_DELTA.md).
+The "Stock" column describes upstream MeshCore 1.18.0 as released. The "mecon-firmware" column is the finished product: what this project adds or changes. Not all of it is in a release yet: see [availability](#getting-it). Everything not listed behaves as stock. Each file this project changes upstream is listed in the [upstream delta register](docs/UPSTREAM_DELTA.md).
 
 ### Capabilities
 
