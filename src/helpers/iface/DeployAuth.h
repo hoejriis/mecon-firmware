@@ -125,11 +125,20 @@ public:
   bool restoreRecord(RecordSnapshot* s);
   static void freeSnapshot(RecordSnapshot* s);
 
+  // Each MQTT profile's broker tier from the record's broker_roles (#218): 0 local, 1 primary, 2 secondary,
+  // BROKER_TIER_NONE for a profile with no role, and for every profile while there is no healthy record. Called at once,
+  // then whenever the record in memory changes (boot load, a committed record, unenrolment, a factory reset).
+  static constexpr uint8_t BROKER_TIER_NONE = 3;
+  static constexpr uint8_t BROKER_TIERS = 16;
+  using RolesListener = void (*)(const uint8_t* tiers, uint8_t n, void* user);
+  void setRolesListener(RolesListener f, void* user) { _roles_cb = f; _roles_user = user; notifyRoles(); }
+
 private:
   struct DepWork;
   void load();
   void loadInner();
   void syncCaller();
+  void notifyRoles();
   bool viaCable() const;
   bool persistMarks();
   bool readCurrent(DepWork* w);
@@ -144,6 +153,8 @@ private:
   Cli::Context _ctx;                        // the caller of the request being handled
   Dep::DepState* _dep = nullptr;            // the loaded record; null with no record (a standalone device) or a corrupt one
   Dep::LoadState _dep_ls = Dep::LS_ABSENT;  // LS_ABSENT: no Deployment; LS_CORRUPT: something exists, nothing usable
+  RolesListener _roles_cb = nullptr;
+  void* _roles_user = nullptr;
   Answering _answering = {};
   bool _signed = false;                     // the request being dispatched passed AUTHORITY.md section 7
   uint32_t _last_update_ms = 0;             // rate limit of deployment.authority_update (flash wear)

@@ -178,7 +178,7 @@ Arguments, as one `deployment` object:
 - `dak` and `authority_epoch`;
 - `authority_set` and `authority_set_sig`;
 - `unlock_secret` (optional; section 10);
-- `broker_roles` (optional: `[{"profile":n,"role":"primary"|"secondary"|"local"}]`, each naming an existing MQTT profile, else `bad_broker_roles`). The record keeps them, and the read-back and `deployment.get` report them as stored. Broker selection does not use them yet: the profiles' own priorities decide.
+- `broker_roles` (optional: `[{"profile":n,"role":"primary"|"secondary"|"local"}]`, each naming an existing MQTT profile, else `bad_broker_roles`). The record keeps them, and the read-back and `deployment.get` report them as stored. **They order broker selection:** the device tries a `local` profile first, then `primary`, then `secondary`, then any profile with no role, and the profiles' own priorities decide only within one of those groups ([MQTT](../MQTT.md)). A role is signed with the provisioning, so no priority edit on the device lifts a profile above it, in any posture. A new record takes effect for the next connection choice; a running session moves to a better-placed broker by the usual return rule.
 
 Product profiles (section 14) may add fields; a device ignores fields it does not know.
 
