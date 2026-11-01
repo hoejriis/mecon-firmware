@@ -4,7 +4,7 @@ How mecon-firmware is built on MeshCore, where its code lives, where it may exte
 
 ## On top of MeshCore
 
-mecon-firmware is MeshCore 1.18.0 (upstream commit `81dbae5`) with upstream history kept. It is not a separate radio stack. The Companion, Repeater and Room server keep their upstream roles, and everything this project adds sits beside them:
+mecon-firmware is MeshCore 1.18.0 (upstream commit `81dbae5`) with upstream history kept. It is not a separate radio stack. The Companion, Repeater and Room server keep their upstream roles, native frames and CLI. Their behaviour changes only where documented: authorization, secret read-back and some command paths, listed in the [README comparison](../README.md#stock-meshcore-1180-and-mecon-firmware-compared) and the [upstream delta register](UPSTREAM_DELTA.md). Everything this project adds sits beside them:
 
 ```text
                   managers (any implementation of the contracts)
@@ -19,7 +19,7 @@ mecon-firmware is MeshCore 1.18.0 (upstream commit `81dbae5`) with upstream hist
               │  authority, records  │  Deployment, replay, signatures
               └──────────┬──────────┘
                          │
-   MeshCore 1.18 roles: Companion · Repeater · Room server   (native frames and CLI unchanged)
+   MeshCore 1.18 roles: Companion · Repeater · Room server   (native frames and CLI kept, with the documented restrictions)
                          │
    platform services: Wi-Fi, MQTT, connectivity mode, contact store,
    atomic files, duty-cycle window, audit log, nRF52 worker
