@@ -1,6 +1,6 @@
 # Management channel
 
-> Companion builds with a channel table. The Repeater and the Room server have no channel table, and their `hello` does not list these operations. What travels over the channel is defined in [management over LoRa](LORA_MANAGEMENT.md).
+> Every role has a management channel. A Companion binds one slot of its native channel table, as this page specifies. A Repeater or Room server, which has no channel table, holds a single management channel with the same operations and commit-or-revert, and no general channel messaging (owner decision of 2026-11-01; its storage and any differences are not yet specified here). A device lists these operations in `hello` only where it supports them. What travels over the channel is defined in [management over LoRa](LORA_MANAGEMENT.md).
 
 A device can mark one of its native channels as its **management channel**: the private channel a manager reaches it
 on over LoRa. This page defines how that channel is configured. It does not define what travels over it.
