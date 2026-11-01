@@ -5,7 +5,17 @@ on:
     branches:
       - main
       - master
+  # Documentation-only pull requests skip this workflow (#245). The docs files the tests read stay in: the CLI
+  # reference, the UI captures and everything under docs/contract (schemas, fixtures, release keys).
   pull_request:
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**/*.md'
+      - 'docs/CLI_REFERENCE.md'
+      - 'docs/UI.md'
+      - 'docs/ui/**'
+      - 'docs/contract/**'
   workflow_dispatch:
 
 # On a pull request a newer push makes this run obsolete: cancel it rather than queue behind it. On main every
