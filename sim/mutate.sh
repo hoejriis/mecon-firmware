@@ -3,6 +3,8 @@
 # usage: sim/mutate.sh [name]   (run from the repo root; needs a clean tree, restores with git checkout)
 #   name: run only that mutant. Exits 1 if any mutant SURVIVES (its tests still pass).
 #   sim/mutate.sh --list prints the mutant names.
+#   sim/mutate.sh --files prints, per mutant, its name, its topic file, the file it mutates and its test targets
+#   (tab-separated), for sim/mutate_select.py to pick the mutants a change touches.
 set -u
 cd "$(dirname "$0")/.."
 mkdir -p .sim-logs
@@ -11,8 +13,10 @@ SURVIVED=0
 MATCHED=0
 DRY=0
 if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; fi   # --dry: only check that every mutant's target text exists (no build, no tests)
+FILES=0
+if [ "$ONLY" = "--files" ]; then FILES=1; ONLY=""; fi
 # Each mutant is undone with `git checkout`, which would also throw away uncommitted work: refuse a dirty tree.
-if [ "$DRY" = 0 ] && [ "$ONLY" != "--list" ]; then
+if [ "$DRY" = 0 ] && [ "$FILES" = 0 ] && [ "$ONLY" != "--list" ]; then
   if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     echo "REFUSED: uncommitted changes in tracked files; commit or stash them first (mutants are undone with git checkout)"; exit 2
   fi
@@ -26,6 +30,7 @@ mutate() {
   name="$1"; file="$2"; old="$3"; new="$4"; target="$5"
   if [ -n "$ONLY" ] && [ "$ONLY" != "$name" ]; then return 0; fi
   MATCHED=1
+  if [ "$FILES" = 1 ]; then shift 4; printf '%s\t%s\t%s\t%s\n' "$name" "$TOPIC" "$file" "$*"; return 0; fi
   if [ "$DRY" = 1 ]; then
     python3 - "$file" "$old" "$new" <<'PY'
 import sys
@@ -80,7 +85,8 @@ PY
 
 # The mutants live in sim/mutants/*.sh, one file per topic. They are sourced in file-name order into this shell, so a
 # variable a file sets is seen by the files after it. A new topic gets its own file, numbered after the ones it uses.
-for f in sim/mutants/*.sh; do . "./$f"; done
+for f in sim/mutants/*.sh; do TOPIC="$f"; . "./$f"; done
+[ "$FILES" = 1 ] && exit 0
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
