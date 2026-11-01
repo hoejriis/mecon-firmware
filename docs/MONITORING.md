@@ -31,7 +31,7 @@ The device then sends a snapshot every `period_s` until `lifetime_s` runs out, s
 | `inventory` | contacts and channels | 3600 s / 300 s |
 | `screen` | a snapshot of the device screen | on request, at most one per 5 s |
 
-A board without a sensor, GNSS receiver, battery reading or screen does not offer that stream, and `hello` lists only the streams it can produce. Private streams (`location`, inventory entries, `screen`) and `logs` need more than a read permission: `logs`, for example, goes only to the cable or a BLE link paired with your own PIN. The [telemetry catalogue](contract/TELEMETRY.md) gives every field and the access rule for each stream.
+A board without a sensor, GNSS receiver, battery reading or screen does not offer that stream, and `hello` lists only the streams it can produce. Private streams (`location`, inventory entries, `screen`) and `logs` need more than a read permission: `logs`, for example, goes to the cable, to a BLE link paired with your own PIN, or over MQTT to a subscriber whose request a Deployment manager signed. A broker login by itself never gets it. The [telemetry catalogue](contract/TELEMETRY.md) gives every field and the access rule for each stream.
 
 A screen snapshot is a diagnostic copy of what the device shows, sent to the manager. Nothing is ever drawn on the device's screen by a manager.
 

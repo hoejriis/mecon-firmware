@@ -14,7 +14,7 @@ A device can be managed in two ways, and both are decided by the same privilege 
 | Wi-Fi TCP companion port | Heltec Companion | never | Messaging and reads only. Not started in Hardened |
 | MQTT | Heltec Companion | only a TLS-verified broker session | What a broker may change depends on the posture and the profile's `manage` flag ([postures](STANDALONE_POSTURES.md)) |
 | LoRa, point to point | all | by authority, not by the link | Authenticated requests from a manager. Repeaters and Room servers also keep stock remote admin login |
-| LoRa, management channel | Companion | by authority, not by the link | Channel membership grants nothing |
+| LoRa, management channel | all | by authority, not by the link | Channel membership grants nothing |
 
 A refusal is an explicit reply (for an app frame, error 7, `ERR_CODE_NOT_PERMITTED`) and an audit entry, never a silent drop.
 
@@ -53,7 +53,7 @@ The details, including manager rotation, revocation and local unlock, are in [ma
 
 ## A private management channel
 
-A Companion can mark one of its own channels as its **management channel**: the private channel a manager reaches it on over LoRa. The channel stays an ordinary channel and still carries messages.
+A device can have a **management channel**: the private channel a manager reaches it on over LoRa. A Companion marks one of its own channels, which stays an ordinary channel and still carries messages. A Repeater or Room server holds a single management channel for this purpose only, with the same bind, rotate and remove steps and the same confirmation rule. On a Companion:
 
 1. Create the channel in a free slot: `channel.put` with `slot`, `name` and a 128-bit `secret` (32 hex digits), or with the app.
 2. Bind it: `mgmt.channel.bind` with that `slot`.
