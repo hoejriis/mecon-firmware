@@ -183,8 +183,8 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `clock.get`, `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | read / write | `set` | C R S | all |
 | `advert.send` | self advert (zero-hop or flood) | `CMD_SEND_SELF_ADVERT`, CLI `advert` | write | yes | C R S | all |
 | `identity.get` | node key, device id | | read | no | C R S | all |
-| `identity.rotate` | new node key on the device | | per [AUTHORITY](AUTHORITY.md) | yes | C | per [AUTHORITY](AUTHORITY.md) |
-| `identity.rotation` | the old key's signed statement of the rotation | | read | no | C | all |
+| `identity.rotate` | new node key on the device | | per [AUTHORITY](AUTHORITY.md) | yes | C R S | per [AUTHORITY](AUTHORITY.md) |
+| `identity.rotation` | the old key's signed statement of the rotation | | read | no | C R S | all |
 | `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `ble.bonds` | bond count | | read | no | C (BLE builds) | all |
 | `ble.pin.get` | the BLE PIN | device info, CLI | secret | no | C (BLE builds) | USB, MQTT (SECURITY_AND_AUTHORITY) |
@@ -321,8 +321,8 @@ The device-interface operations are not carried over LoRa today. #115 carries th
 |---|---|---|---|---|
 | Heltec V3 Companion standalone | yes | yes | yes | connectivity mode, USB, the section 5.1 operations for the Companion |
 | Heltec V4 Companion standalone | yes | yes | yes | as V3 |
-| Heltec V3 Repeater, Room server | yes (console) | no | no | |
-| Heltec V4 Repeater, Room server | yes (console) | no | no | |
+| Heltec V3 Repeater, Room server | yes (console) | yes | no (owner decision) | |
+| Heltec V4 Repeater, Room server | yes (console) | yes | no (owner decision) | |
 | Heltec V3/V4 Companion `_usb`, `_ble`, `_wifi` | no | `_wifi` only (CLI topic) | `_ble` | stock-shaped builds; native frames only |
 | SenseCAP T1000-E Companion (`_usb`, `_ble`), Repeater | yes (Companion: frames; Repeater: console) | no | Companion `_ble` | no Wi-Fi. The Companion keeps the stock contact array |
 | Wio Tracker L1 and other nRF52 builds | no | no | Companion builds | no Wi-Fi |
@@ -333,7 +333,6 @@ The device-interface operations are not carried over LoRa today. #115 carries th
 | Case | Why |
 |---|---|
 | Any device-interface operation over the TCP port or default-PIN BLE | an untrusted caller; messaging only (5.2) |
-| MQTT on the Repeater and Room server | no build has an MQTT client in these roles; the console and LoRa are their paths |
 | Remote `poweroff` | a powered-off device needs someone on site |
 | Raw transmission and data signing as operations | not management (5.2) |
 | BLE bond clear over any path but physical USB | SECURITY_AND_AUTHORITY: bonds are cleared over USB only |

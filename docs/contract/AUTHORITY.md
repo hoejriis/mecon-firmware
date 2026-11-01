@@ -280,7 +280,7 @@ The unlock grants the reads and posture unlock shown in section 9. It never gran
 | `deployment.reset` (unenroll), healthy record | the record, watermarks, local unlock secret, provisioned marker | node key, `device_id`, configuration, contacts, channels | signed, over USB only, in Normal |
 | `deployment.reset`, corrupt record | the same | the same | USB cable in Normal; local unlock in Hardened |
 | posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed, or the cable |
-| `identity.rotate` (new owner) | node key, contacts, message queue | configuration, record, channels, posture, `device_id` | signed and sensitive; refused without a readable record. Companion only |
+| `identity.rotate` (new owner) | node key, contacts, message queue | configuration, record, channels, posture, `device_id` | signed and sensitive; refused without a readable record. Every role |
 | rescue `rebuild` | nothing: it reformats and saves everything back, the record included | everything | the cable |
 | factory reset | everything, the record, the provisioned marker and `device_id` included | nothing | the cable only; never remote, never BLE once enrolled |
 
@@ -298,7 +298,7 @@ Rules:
   - Requests aimed at the old key are then `wrong_device`; the authority state (DAK, set, revision, members and their marks) is untouched, and the node key, old or new, grants nothing.
   - The self-advert is one zero-hop advert, like the app's default.
   - A device whose contacts cannot all be dropped after the swap answers `failed` (`contacts_not_dropped`); the key has changed, `hello` shows it, the statement stays drop-pending (the next boot retries), and the manager recovers the new key from `identity.rotation` as above.
-  - The Repeater and Room server do not offer it: `identity.rotate` is an unknown operation there.
+  - Every role offers it (owner decision of 2026-11-01). What it drops and keeps on the Repeater and Room server is not yet specified here.
   - A revoked member's rotation is refused `issuer_revoked` like any other request of its.
 
 ## 12. Keys, randomness and secrets

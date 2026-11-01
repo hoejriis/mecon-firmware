@@ -12,7 +12,7 @@ Send `hello` first. It reports the interface version, `device_id` and the node k
 |---|---|---|
 | USB | `0x7F` app frames on a Companion; `mecon> ` lines on the Repeater and Room server console | The trusted local path, and the one used to enrol a device |
 | BLE | the same `0x7F` frames, on a Companion | Trusted only when paired with a PIN other than the default |
-| MQTT | `mecon/<device_id>/req`, `resp`, `ev/<stream>` and the retained `status` | Heltec Companions. Only a TLS-verified broker session counts |
+| MQTT | `mecon/<device_id>/req`, `resp`, `ev/<stream>` and the retained `status` | Every role on the Heltec boards. Only a TLS-verified broker session counts |
 | LoRa | point to point, or on the device's management channel | Authenticated operations and compact telemetry ([management over LoRa](contract/LORA_MANAGEMENT.md)) |
 
 A bridge, such as a browser app relaying USB or BLE to a Backend, forwards envelopes verbatim. It adds no authority, and the device's signatures survive it.
