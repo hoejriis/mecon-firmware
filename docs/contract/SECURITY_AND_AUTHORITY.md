@@ -65,7 +65,7 @@ Hardened is a managed-infrastructure posture. It MUST:
 
 A Hardened Companion does not expose message content/identity or user send functionality locally. Authenticated management may retain applicable detailed telemetry/configuration.
 
-The device UI of a Hardened device shows operational status and sanitized diagnostics. Its only control beyond the stock ones is the connectivity-mode switch, which needs physical possession and a confirming long press. No UI control changes the posture or other security settings.
+The device UI of a Hardened device shows operational status and sanitized diagnostics. Its only control beyond the stock ones is the connectivity-mode switch, which needs physical possession and a confirming long press (an owner decision of 2026-11-01: possession already allows a USB reflash). No UI control changes the posture or other security settings.
 
 Posture changes require authenticated management and a controlled reboot.
 
