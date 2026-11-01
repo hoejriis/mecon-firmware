@@ -9,7 +9,7 @@ It is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore), built on t
 ## Why use it
 
 - **MeshCore keeps working on its own.** Messaging, repeating and the stock phone apps need no Internet, account or management service.
-- **One set of rules for every way in.** USB, Bluetooth, MQTT and LoRa carry the same managed operations, and one privilege table decides what each caller may do. A transport never grants a permission by itself.
+- **The same everywhere.** Every role, every mode and every way in (USB, Bluetooth, MQTT and LoRa) gets the same operations and the same security rules, decided by one privilege table. A transport never grants a permission by itself. Where a board cannot do something, the docs say it is a hardware limit.
 - **You can see what the device is doing.** Battery and power, connectivity, radio health and airtime, logs, observations, inventories and diagnostic screen snapshots are all available. Over LoRa, the device sends compact telemetry at a lower rate.
 - **Changes can be undone, and recovery is explicit.** Signed firmware updates go over IP, USB and Bluetooth. A remote configuration change reverts unless it is confirmed, and each reset says exactly what it clears.
 - **Security is on by default.** Untrusted links cannot manage the device, default passwords and PINs do not open remote administration, and passwords are never read back. An optional Hardened posture tightens this further.
