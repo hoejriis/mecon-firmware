@@ -73,7 +73,7 @@ Each board and role is a PlatformIO environment. The project's build flags:
 |---|---|
 | `ENABLE_MECON_IFACE` | Compiles the device interface into a Companion, Repeater or Room server. Also turns off BLE DFU and stock `start ota` |
 | `ENABLE_MQTT` | The MQTT controller, and on ESP32 the device-side download for updates |
-| `ENABLE_CONNMODE` | The BLE-or-Wi-Fi standalone Companion. It needs `ENABLE_WIFI_INTERFACE`, `BLE_PIN_CODE` and `ENABLE_USB_INTERFACE` |
+| `ENABLE_CONNMODE` | The BLE-or-Wi-Fi standalone Companion, used together with `ENABLE_WIFI_INTERFACE`, `BLE_PIN_CODE` and `ENABLE_USB_INTERFACE` |
 | `CONTACTS_STOCK_ARRAY` | Keeps stock's fixed contact array instead of the adaptive store |
 | `MECON_MARKER_PAGE`, `MECON_FLOOR_PAGE` | nRF52 flash pages outside the file system for the provisioned marker and the security floor |
 | `ENABLE_WIFI_OTA` | Opts a build without the interface into stock's unsigned Wi-Fi updater. Not set in any shipped environment |
@@ -95,7 +95,7 @@ Release keys are listed in `docs/contract/release-keys.json`, and `tools/gen_rel
 | Locked library set | `ci/lib-lock.json`, `tools/lib_lock.py` | `tools/lib_lock.py check <env>` |
 | Tool tests | `tools/tests/` | `pytest tools/tests` |
 
-CI runs the unit tests, simulated boards, target-board builds with size budgets, and the stack gate on every pull request. The mutation check runs on `main` and on pull requests labelled `full-ci`. Every board environment is compiled nightly, and passes only when its failures match the recorded upstream ones. A failed or cancelled run on `main` opens or updates a tracking issue. The [test harness](SIMULATION.md) says what the simulator can and cannot show. Real-board results are recorded in [hardware evidence](HARDWARE_VERIFIED.md).
+CI runs the unit tests, simulated boards and target-board builds with size budgets on every pull request, and the stack gate on pull requests that touch the code it measures. The mutation check runs on `main` and on pull requests labelled `full-ci`. Every board environment is compiled nightly, and passes only when its failures match the recorded upstream ones. A failed or cancelled run on `main` opens or updates a tracking issue. The [test harness](SIMULATION.md) says what the simulator can and cannot show. Real-board results are recorded in [hardware evidence](HARDWARE_VERIFIED.md).
 
 ## Management over LoRa
 
