@@ -106,6 +106,8 @@ A `pio run` without step 1 stops at once and says to run it (`bin/idf5_check.py`
 
 Locally: `sim/run.sh bin/idf5_libs.sh`, then `sim/run.sh pio run -e Heltec_v3_repeater`. `build.sh` and the three build workflows (`target-boards`, `pr-build-check`, `all-boards`) call the script. The native sim envs are not affected. To check the result, read `packages/framework-arduinoespressif32-libs/esp32s3/sdkconfig` in the PlatformIO core directory (the options above) and the "Removing component" lines in the first build's log.
 
+After changing `custom_sdkconfig`, check the result in `esp32s3/sdkconfig` in the PlatformIO core directory. A firmware env does not relink when the libraries change, so delete `.pio/build/<env>` before building it. `bin/idf5_libs.sh` deletes the generated `sdkconfig.idf5_hybrid_libs` (or `_v4`) in the project root before it builds, because that file's old values win over `custom_sdkconfig`. Libraries already built from an old file are not rebuilt by this, since their hash still matches. To repair them, delete `sdkconfig.defaults`, `.pio/build/idf5_hybrid_libs` and `packages/framework-arduinoespressif32-libs` in the core directory, then run the script.
+
 Not done: a hardware run of the V4 and of the other roles with this build.
 
 ## On hardware

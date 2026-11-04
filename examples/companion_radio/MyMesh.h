@@ -1,6 +1,7 @@
 #pragma once
 
 #include <helpers/Posture.h>
+#include <helpers/PrefsBatch.h>
 #include <helpers/cli/CliMqtt.h>
 #include <helpers/ContactPlatform.h>
 #include <Arduino.h>
@@ -247,7 +248,9 @@ protected:
   }
 
 public:
+  static void savePrefsNow(void* self) { static_cast<MyMesh*>(self)->savePrefs(); }
   void savePrefs() {
+    if (PrefsBatch::defer(savePrefsNow, this)) return;   // config.apply: once, at its end
     _prefs.node_lat = sensors.node_lat;
     _prefs.node_lon = sensors.node_lon;
     _store->savePrefs(_prefs);

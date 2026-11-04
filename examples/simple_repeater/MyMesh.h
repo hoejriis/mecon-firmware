@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Mesh.h>
+#include <helpers/PrefsBatch.h>
 #include <RTClib.h>
 #include <target.h>
 
@@ -214,7 +215,9 @@ public:
     return _prefs.advert_interval == 0 && _prefs.flood_advert_interval == 0;
   }
 
+  static void savePrefsNow(void* self) { static_cast<MyMesh*>(self)->savePrefs(); }
   void savePrefs() override {
+    if (PrefsBatch::defer(savePrefsNow, this)) return;   // config.apply: once, at its end
     _cli.savePrefs(_fs);
   }
 
