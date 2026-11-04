@@ -29,12 +29,12 @@ def test_the_reply_to_a_long_apply_that_restarts_arrives_before_the_restart(node
 
 def test_the_reply_survives_a_slow_flash_after_the_mode_line(nodes, tmp_path):
     """On a Heltec V3 that apply took 5.6 s, and the restart fired 1.5 s after the connectivity.mode line however much of
-    the apply was still to run. Here the mode comes first and every later write holds the node 300 ms, as a flash save
-    does: the restart must still wait for the reply."""
+    the apply was still to run. An apply now saves the role's preferences once, at its end, so here the mode comes first and
+    each write holds the node 2 s, longer than the restart's delay: the restart must still wait for the reply."""
     wenv = WifiEnv(str(tmp_path / "cs.wifi"))
     wenv.set("sim")
     n = nodes("companion_standalone", "cs", wifi=wenv, mqtt=MqttEnv(str(tmp_path / "cs.mqtt")), seed=82, rtc=RTC,
-              extra=["--fs-write-ms", "300"]).start()
+              extra=["--fs-write-ms", "2000"]).start()
     c, i = client(n)
     assert "ssid is now" in c.cli("set wifi.profile 0 ssid sim")
     keys = {"connectivity.mode": "wifi", "mqtt.profile.0.type": "static", "mqtt.profile.0.host": "broker.example.test",
