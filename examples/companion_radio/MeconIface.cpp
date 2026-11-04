@@ -119,14 +119,14 @@ const OpEntry OPS[] = {
   {"update.chunk", opUpdChunk, PRIV_READ, false},
 #ifdef MAX_GROUP_CHANNELS
   // The native contact table (OPERATIONS.md section 5.1): no shared secret in a read, no grant in a write.
-  {"contact.list", opContList, PRIV_READ, false},
-  {"contact.get", opContGet, PRIV_READ, false},
+  {"contact.list", opContList, PRIV_PRIVATE, false},
+  {"contact.get", opContGet, PRIV_PRIVATE, false},
   {"contact.put", opContPut, PRIV_WRITE, true},
   {"contact.remove", opContRemove, PRIV_WRITE, true},
   {"contact.protect", opContProtect, PRIV_WRITE, true},
   // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
-  {"channel.list", opChanList, PRIV_READ, false},
-  {"channel.get", opChanGet, PRIV_READ, false},
+  {"channel.list", opChanList, PRIV_PRIVATE, false},
+  {"channel.get", opChanGet, PRIV_PRIVATE, false},
   {"channel.put", opChanPut, PRIV_WRITE, true},
   {"channel.remove", opChanRemove, PRIV_WRITE, true},
   // The management channel binding (MANAGEMENT_CHANNEL.md); bind, rotate and unbind confirm-or-revert for a remote caller.
@@ -488,6 +488,7 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   const uint8_t cls = op.priv == PRIV_READ    ? Cli::C_READ
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
+                      : op.priv == PRIV_PRIVATE ? Cli::C_PRIVATE
                                                : Cli::C_POSTURE;
   // A refusal says why, in the CLI's words (broker-not-verified, untrusted-transport, enrolled-unsigned, ...): a bare
   // "refused" cannot be told from any other.
