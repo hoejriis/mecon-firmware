@@ -72,8 +72,9 @@ jobs:
         # RECURSION, the recursions accepted (--recursion): a depth counts a recursion once, so anything whose depth comes
         # from stored data must not pass unnoticed. Every function in a recursion must match, so a new one fails:
         # - LittleFS: relocating a bad block recurses through lfs_dir_commit and lfs_deorphan (184 B a level, 376 B through
-        #   lfs_deorphan, docs/PLATFORM.md), bounded by the blocks that wear out. lfs_file_write and lfs_file_flush call
-        #   each other once, to flush a full cache.
+        #   lfs_deorphan, docs/PLATFORM.md), bounded by the blocks that wear out. lfs_file_flush copies a file's tail
+        #   through lfs_file_write, and lfs_file_write flushes only a handle that is reading, which flush has already
+        #   cleared; it also fills a hole by writing to itself, at a position that does not recurse again: one level each.
         # - The JSON grammar: Grammar::value stops at MAX_DEPTH, and skipTok walks only tokens that grammar has passed.
         # - Stream writes: an artefact of the --indirect map above, which sends File::write(uint8_t) to both the TeeStream
         #   and the File. A TeeStream writes to a File; a File never writes to a TeeStream.
