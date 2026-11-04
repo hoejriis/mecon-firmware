@@ -465,7 +465,10 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
 bool MeconIface::streamAllow(void* user, uint8_t cls) {
   MeconIface* m = static_cast<MeconIface*>(user);
   if (!Cli::decide(m->_ctx, cls).allow) return false;
-  return cls == Cli::C_READ || Cli::decide(m->_link_ctx, cls).allow;
+  if (cls == Cli::C_READ || Cli::decide(m->_link_ctx, cls).allow) return true;
+  // The logs (class posture) to a subscriber a Deployment member signed for, over a link that may carry private data:
+  // the owner's decision of 2026-11-01. A plain broker login never gets this far, it fails the first check.
+  return cls == Cli::C_POSTURE && m->_ctx.auth == Cli::A_SIGNED && Cli::decide(m->_link_ctx, Cli::C_PRIVATE).allow;
 }
 
 // One received packet: an observations event to every transport subscribed, within the stream's rate.

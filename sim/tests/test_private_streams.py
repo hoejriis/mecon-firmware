@@ -6,6 +6,7 @@ import json
 import os
 import struct
 import sys
+import threading
 import time
 
 import pytest
@@ -17,6 +18,7 @@ import mecon_schema  # noqa: E402
 
 from test_telemetry_streams import RTC, check, first_event
 from test_device_interface import broker, client, mqtt_boot  # noqa: F401  (broker is a fixture)
+from test_deployment_authority import Dev, wrap  # noqa: E402
 
 FIX = "fix 59913900 10752200 23456 9 4\n"   # Oslo, 23.456 m, 9 satellites, fix 4 s old
 FIX_DATA = {"fix": True, "lat_e6": 59913900, "lon_e6": 10752200, "alt_m": 23, "sats": 9, "age_s": 4}
@@ -237,7 +239,6 @@ def test_a_subscription_does_not_pass_to_the_next_client_on_the_link(nodes):
 
 def test_a_signed_request_on_an_untrusted_link_gets_no_private_stream_over_it(nodes):
     """The signature authorises the request; the link that would carry the data must be allowed it by itself."""
-    from test_deployment_authority import Dev, wrap
     n = nodes("companion_standalone", "locs", seed=69, rtc=RTC)
     gps(n, FIX)
     n.start()
@@ -272,6 +273,9 @@ def test_a_signed_request_on_an_untrusted_link_gets_no_private_stream_over_it(no
     h = signed("hello", None, None)
     r = signed_with_nonce("sub.start", {"stream": "inventory", "lifetime_s": 60}, 5, h["result"]["channel_nonce"])
     assert r["status"] == "refused" and r.get("error") != "bad_channel_nonce", r
+    h = signed("hello", None, None)
+    r = signed_with_nonce("sub.start", {"stream": "logs", "lifetime_s": 60}, 6, h["result"]["channel_nonce"])
+    assert r["status"] == "refused" and r.get("error") != "bad_channel_nonce", r   # #248: logs need a link fit for them
 
 
 def test_a_contact_name_that_is_not_utf8_leaves_the_snapshot_parseable(nodes):
@@ -293,3 +297,46 @@ def test_a_contact_name_that_is_not_utf8_leaves_the_snapshot_parseable(nodes):
 def harness_cmd_add():
     from sim import harness as h
     return h.CMD_ADD_UPDATE_CONTACT
+
+
+def _signed_over_broker(b, dev, key, op, args, job):
+    """A signed request carries the channel nonce of the link it goes over: the broker session's, from a hello on it."""
+    hello = b.iface_request(dev, {"v": 1, "id": "h%d" % job, "op": "hello"})
+    w = wrap(key, op, args, job=job, nonce=hello["result"]["channel_nonce"])
+    return b.iface_request(dev, w)
+
+
+def test_a_signed_subscriber_takes_the_logs_over_a_verified_broker(nodes, tmp_path, broker):
+    """Issue #248, the owner's decision of 2026-11-01: a Deployment member's signed sub.start gets the logs over MQTT, and
+    a plain broker login is still refused."""
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "logsgn", b)
+    c.close()
+    d = Dev(n)
+    assert d.provision()["status"] == "ok"
+    plain = {"v": 1, "id": "plain1", "op": "sub.start", "args": {"stream": "logs", "lifetime_s": 120}}
+    assert b.iface_request(dev, plain)["status"] == "refused", "a broker login, verified or not, gets no logs"
+    r = _signed_over_broker(b, dev, d.node_key, "sub.start", {"stream": "logs", "lifetime_s": 120}, 1)
+    assert r["status"] == "ok", r
+    got = []
+    t = threading.Thread(target=lambda: got.extend(b.next_message("mecon/%s/ev/logs" % dev, timeout=30, count=1)))
+    t.start()
+    time.sleep(1.0)   # the subscription must be in place before the entry is sent: it is not retained
+    d.c.cli("set posture hardened")   # any audited act: on an enrolled device it is refused, and that is an entry
+    t.join()
+    assert got and got[0]["ev"] == "logs", got
+    assert not mecon_schema.check(got[0]["data"], mecon_schema.load("event.logs.json"))
+
+
+def test_a_signed_subscriber_gets_no_logs_over_an_unverified_broker(nodes, tmp_path, broker):
+    """An unverified session gets no channel nonce (its hello is refused), so a signed request cannot pass on it at all."""
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "logsun", b, anchor=False)
+    c.close()
+    d = Dev(n)
+    assert d.provision()["status"] == "ok"
+    plain = b.iface_request(dev, {"v": 1, "id": "h1", "op": "hello"})
+    assert plain["status"] == "refused", plain
+    w = wrap(d.node_key, "sub.start", {"stream": "logs", "lifetime_s": 120}, job=1)
+    r = b.iface_request(dev, w)
+    assert r["status"] == "refused", r
