@@ -101,5 +101,5 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 
 - Wi-Fi failover when the access point itself goes off the air (the verified run breaks the joined profile instead).
 - MQTT broker discovery by mDNS on a real ESP32 (verified only in the simulator).
-- The Sensor role (neither on a board nor in the simulator).
+- The Sensor role on a board (in the simulator: boot, CLI and `get dutycycle` only).
 - Any board not listed above.
