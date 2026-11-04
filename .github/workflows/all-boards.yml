@@ -79,13 +79,6 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.platformio
-            ~/.platformio-stock
-          key: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-${{ hashFiles('platformio.ini', 'variants/**/platformio.ini') }}
-          restore-keys: pio-${{ env.PLATFORMIO_VERSION }}-shard-${{ matrix.shard.id }}-
       # One runner image starts with 14G free where another has 86G, and a shard's packages alone can take 21G. No env uses these.
       - name: Free disk
         run: |
