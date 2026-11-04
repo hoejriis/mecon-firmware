@@ -51,6 +51,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Rebuilt IDF libraries, 2 KB IPC stack (standalone) | 300 resets, 0 IPC canary panics (stock libraries: 4 in 304). Heap with a pinned-TLS MQTT session, against main in one session: free 50,764 B (36,956 B), low-water 38,228 B (24,860 B) | 2026-10-31, 558dfd09 |
 | Signed update over BLE (standalone) | offer and confirm over the cable (a device with no record); all 1,719,040 bytes of the image pushed over BLE from a Linux host (BlueZ) in 1,524 s at the default 23-byte MTU, 13 transport retries; the new image attested its job over BLE and stayed after confirmation | 2026-10-31, bce8ef8c with the bench test key |
 | MQTT broker roles | two brokers; with no record the priority-90 profile is used; after a provisioning that names the priority-10 profile `primary`, that profile is used after a reboot; an unsigned priority edit is refused while enrolled | 2026-11-01, 28bc7d7d |
+| Sensor role (`Heltec_v3_sensor`) | boots after a flash erase; `get role` reads `sensor`; `get dutycycle` reports the band and the 10.00 % floor; `get posture` answers `??: posture` | 2026-11-04, this PR's branch |
 
 ## Heltec V4 (v4test)
 
@@ -101,5 +102,5 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 
 - Wi-Fi failover when the access point itself goes off the air (the verified run breaks the joined profile instead).
 - MQTT broker discovery by mDNS on a real ESP32 (verified only in the simulator).
-- The Sensor role on a board (in the simulator: boot, CLI and `get dutycycle` only).
+- The Sensor role beyond boot, its console and `get dutycycle`.
 - Any board not listed above.
