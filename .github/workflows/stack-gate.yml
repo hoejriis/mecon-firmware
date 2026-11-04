@@ -69,8 +69,22 @@ jobs:
         #   limit alone would not catch receive moved back onto the loop.
         # - ^lfs_=File/TeeStream/Adafruit_LittleFS: LittleFS holds the file-system lock for the whole call and is not
         #   re-entrant, and its flash drivers' debug output goes to Serial, never to a file.
+        # RECURSION, the recursions accepted (--recursion): a depth counts a recursion once, so anything whose depth comes
+        # from stored data must not pass unnoticed. Every function in a recursion must match, so a new one fails:
+        # - LittleFS: relocating a bad block recurses through lfs_dir_commit and lfs_deorphan (184 B a level, 376 B through
+        #   lfs_deorphan, docs/PLATFORM.md), bounded by the blocks that wear out. lfs_file_write and lfs_file_flush call
+        #   each other once, to flush a full cache.
+        # - The JSON grammar: Grammar::value stops at MAX_DEPTH, and skipTok walks only tokens that grammar has passed.
+        # - Stream writes: an artefact of the --indirect map above, which sends File::write(uint8_t) to both the TeeStream
+        #   and the File. A TeeStream writes to a File; a File never writes to a TeeStream.
+        # - std::__introsort_loop: std::sort on the Repeater's neighbour table, whose size is fixed; the algorithm bounds
+        #   its depth by the log of that size.
         run: |
           set -o pipefail   # an over-limit exit must fail the step, not be hidden by tee
+          RECURSION='^lfs_(deorphan|dir_commit|dir_remove|file_flush)|lfs_file_write\('
+          RECURSION+='|Iface::.*Grammar::value\(|Iface::skipTok\('
+          RECURSION+='|Adafruit_LittleFS_Namespace::File::write\(uint8_t\)|AtomicFile::TeeStream::write\('
+          RECURSION+='|std::__introsort_loop'
           W='Adafruit_LittleFS_Namespace::File::(write|read|flush)\('
           LOOPBACK=()   # a Companion also feeds an imported contact's advert in as if received (BaseChatMesh::feedLoopback)
           case "${{ matrix.env }}" in *companion*) LOOPBACK=(--require 'BaseChatMesh::feedLoopback=NrfWorker::run') ;; esac
@@ -83,7 +97,7 @@ jobs:
             --indirect 'Dispatcher::handleWith=Iface::.*::op[A-Z][A-Za-z]*\(Iface::OpContext&\)|MeconIface::op[A-Z]|Iface::DeployAuth::op[A-Z]' \
             --indirect 'DeployAuth::dispatchSigned=ConsoleIface::runSigned|MeconIface::runSigned' \
             --indirect 'recvJob|Dispatcher::recvOnLoop=MyMesh::onRecvPacket|mesh::Mesh::onRecvPacket' \
-            --indirect 'mesh::Mesh::onRecvPacket=MyMesh::on[A-Za-z]*Recv|BaseChatMesh::on[A-Za-z]*Recv' \
+            --indirect 'mesh::Mesh::onRecvPacket=MyMesh::on[A-Za-z]*Recv\(|BaseChatMesh::on[A-Za-z]*Recv\(' \
             --indirect 'CommonCLI::savePrefs\(\)=MyMesh::savePrefs\(\)' \
             --indirect 'BaseChatMesh::onAdvertRecv=MyMesh::putBlobByKey' \
             --indirect "AtomicFile::TeeStream::=$W" \
@@ -94,5 +108,5 @@ jobs:
             --no-reentry 'loop_task=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|Dispatcher::recvOnLoop|MyMesh::recoverRotationOnLoop' \
             --require 'Dispatcher::processRecvPacket=NrfWorker::run' "${LOOPBACK[@]}" \
             --no-reentry '^lfs_=AtomicFile::TeeStream::|Adafruit_LittleFS_Namespace::File::|Adafruit_LittleFS::' \
-            --recursion "loop_task\\(void\\*\\)=^\$" --recursion "NrfWorker::.*body=^\$" \
+            --recursion "loop_task\\(void\\*\\)=$RECURSION" --recursion "NrfWorker::.*body=$RECURSION" \
             | tee -a "$GITHUB_STEP_SUMMARY"
