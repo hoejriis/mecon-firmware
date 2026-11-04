@@ -13,7 +13,7 @@ mutate inv_page_without_tail_room src/helpers/iface/Streams.h '    const size_t 
 mutate inv_contact_lost_at_page_boundary examples/companion_radio/MeconIface.cpp '      _inv_cursor = before;              // this contact opens the next page' '' $PS::test_inventory_snapshot_carries_every_contact_and_channel_once_and_no_secret
 mutate inv_snapshot_never_ends examples/companion_radio/MeconIface.cpp '  const size_t dn = ok ? page.finish(done) : 0;' '  const size_t dn = ok ? page.finish(false) : 0;' $PS::test_inventory_snapshot_carries_every_contact_and_channel_once_and_no_secret
 # the security review of the private streams
-mutate private_link_need_not_be_allowed examples/companion_radio/MeconIface.cpp '  return cls == Cli::C_READ || Cli::decide(m->_link_ctx, cls).allow;' '  return true;' $PS::test_a_signed_request_on_an_untrusted_link_gets_no_private_stream_over_it
+mutate private_link_need_not_be_allowed examples/companion_radio/MeconIface.cpp '  if (cls == Cli::C_READ || Cli::decide(m->_link_ctx, cls).allow) return true;' '  return true;' $PS::test_a_signed_request_on_an_untrusted_link_gets_no_private_stream_over_it
 mutate subs_survive_a_disconnect examples/companion_radio/MeconIface.cpp '      l.subs.clear();              // and its subscriptions and queued messages: the next client on it inherits nothing' '' $PS::test_a_subscription_does_not_pass_to_the_next_client_on_the_link
 mutate json_utf8_unchecked src/helpers/iface/IfaceJson.cpp '      const size_t k = utf8Len(b + i, n - i);' '      const size_t k = 1;' unit:test_iface
 mutate queue_room_check_too_generous src/helpers/iface/IfaceFrames.h '           len <= _cap - RESULT_RESERVE - _used;' '           len <= _cap - _used;' unit:test_iface
