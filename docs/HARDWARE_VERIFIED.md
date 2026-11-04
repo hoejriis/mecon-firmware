@@ -54,6 +54,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | TLS broker by address: no SNI | a static profile with host `10.0.0.69` connects (`tls=unverified`) and the broker sees the client; the TLS front recorded `SNI None` (the same front recorded a name from an `openssl s_client` control) | 2026-11-04, this PR's branch |
 | First boot after a flash erase | 0 `task_wdt` lines and no reboot in 60 s (3,268 lines before the change) | 2026-11-04, this PR's branch |
 | BLE MTU | ATT exchange: server RX MTU 179 (a 176-byte frame fits a notification), `status.get` `ble_started` true | 2026-11-04, this PR's branch |
+| Multi-frame requests over the UART under mesh traffic (3.2 KB, each sent after the previous answer) | off the mesh channel: 0 of 1,500 dropped. On it, core default FIFO threshold (120 bytes): 4 to 13 of 1,500 dropped across runs, and in the run that counted them 77 FIFO overflows. With a threshold of 32 bytes: 2 of 1,500 dropped, 34 overflows. A doubled receive buffer changed nothing, and the longest loop pass stayed near 50 ms. A dropped request answers `invalid` / `incomplete` and is resent | 2026-11-04, this PR's branch |
 
 ## Heltec V4 (v4test)
 
