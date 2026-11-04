@@ -242,6 +242,12 @@ void setup() {
   Serial.setRxBufferSize(MECON_IFACE_SERIAL_RX);
 #endif
   Serial.begin(115200);
+#if defined(ENABLE_MECON_IFACE) && defined(ESP32) && !ARDUINO_USB_CDC_ON_BOOT
+  // At this baud rate the core raises the UART interrupt only at 120 of the FIFO's 128 bytes, about 0.7 ms before an
+  // overflow. Mesh traffic delays that interrupt by more, and the bytes lost drop a multi-frame request (#199). At 32
+  // the margin is about 8 ms: on a V3, overflows halved and dropped requests fell, though not to zero.
+  Serial.setRxFIFOFull(32);
+#endif
   board.begin();
 
 #ifdef HAS_EXTERNAL_WATCHDOG
