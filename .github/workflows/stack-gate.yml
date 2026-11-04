@@ -94,4 +94,5 @@ jobs:
             --no-reentry 'loop_task=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|Dispatcher::recvOnLoop|MyMesh::recoverRotationOnLoop' \
             --require 'Dispatcher::processRecvPacket=NrfWorker::run' "${LOOPBACK[@]}" \
             --no-reentry '^lfs_=AtomicFile::TeeStream::|Adafruit_LittleFS_Namespace::File::|Adafruit_LittleFS::' \
+            --recursion "loop_task\\(void\\*\\)=^\$" --recursion "NrfWorker::.*body=^\$" \
             | tee -a "$GITHUB_STEP_SUMMARY"
