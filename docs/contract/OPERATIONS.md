@@ -297,7 +297,7 @@ Every CLI line is classed by the registry; a line the registry does not name is 
 Notes the matrix depends on, as the code stands:
 - `start ota` on an ESP32 Repeater or Room server opens an unauthenticated Wi-Fi access point that accepts an image. This is stock behaviour. It is unsigned and is not the update path #110 builds. Under #110 a remote caller will not be able to start it on a Deployment-aware device.
 - The Repeater runs any line that starts with `reboot`, while the registry classes only the exact `reboot` as reboot. A longer form is `write`, which is stricter (refused to a Hardened remote admin), not weaker.
-- The sensor role (`simple_sensor`) is not a MECON target. It has no posture front door, and nothing on this page applies to it.
+- The sensor role (`simple_sensor`) is not a MECON target. It has no device interface and no posture front door, and nothing on this page applies to it. This is a recorded exception to the rule that the firmware works the same way in all modes: the owner's decision of 2026-11-04.
 
 ### 5.4 LoRa remote administration (native)
 
