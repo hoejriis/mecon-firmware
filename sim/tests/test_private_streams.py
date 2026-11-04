@@ -299,9 +299,10 @@ def harness_cmd_add():
     return h.CMD_ADD_UPDATE_CONTACT
 
 
-def _signed_over_broker(b, dev, key, op, args, job):
+def _signed_over_broker(b, dev, key, op, args, job, signed_hello=False):
     """A signed request carries the channel nonce of the link it goes over: the broker session's, from a hello on it."""
-    hello = b.iface_request(dev, {"v": 1, "id": "h%d" % job, "op": "hello"})
+    hello = b.iface_request(dev, wrap(key, "hello", {}, job=None, rid="h%d" % job) if signed_hello
+                            else {"v": 1, "id": "h%d" % job, "op": "hello"})
     w = wrap(key, op, args, job=job, nonce=hello["result"]["channel_nonce"])
     return b.iface_request(dev, w)
 
@@ -329,7 +330,8 @@ def test_a_signed_subscriber_takes_the_logs_over_a_verified_broker(nodes, tmp_pa
 
 
 def test_a_signed_subscriber_gets_no_logs_over_an_unverified_broker(nodes, tmp_path, broker):
-    """An unverified session gets no channel nonce (its hello is refused), so a signed request cannot pass on it at all."""
+    """A signed hello gets a channel nonce on any session, so the nonce is no protection here: the link rule is. A Deployment
+    member's signature does not make an unverified broker fit to carry the logs."""
     b = broker()
     n, c, i, dev = mqtt_boot(nodes, tmp_path, "logsun", b, anchor=False)
     c.close()
@@ -337,6 +339,12 @@ def test_a_signed_subscriber_gets_no_logs_over_an_unverified_broker(nodes, tmp_p
     assert d.provision()["status"] == "ok"
     plain = b.iface_request(dev, {"v": 1, "id": "h1", "op": "hello"})
     assert plain["status"] == "refused", plain
-    w = wrap(d.node_key, "sub.start", {"stream": "logs", "lifetime_s": 120}, job=1)
-    r = b.iface_request(dev, w)
-    assert r["status"] == "refused", r
+    r = _signed_over_broker(b, dev, d.node_key, "sub.start", {"stream": "logs", "lifetime_s": 120}, 1, signed_hello=True)
+    assert r["status"] == "refused" and r.get("error") != "bad_channel_nonce", r
+    got = []
+    t = threading.Thread(target=lambda: got.extend(b.next_message("mecon/%s/ev/logs" % dev, timeout=6, count=1)))
+    t.start()
+    time.sleep(1.0)
+    d.c.cli("set posture hardened")   # an audited act, as in the verified case: no entry may reach this broker
+    t.join()
+    assert not got, got
