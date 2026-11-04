@@ -4,6 +4,7 @@
 
 #include "SerialNimBLEInterface.h"
 #include "esp_mac.h"
+#include <helpers/BleStart.h>
 
 // Same UUIDs as SerialBLEInterface.cpp: the Nordic UART service the MeshCore apps look for.
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
@@ -26,8 +27,8 @@ void SerialNimBLEInterface::begin(const char* prefix, char* name, uint32_t pin_c
   sprintf(dev_name, "%s%s", prefix, name);
 
   // Create the BLE Device
-  NimBLEDevice::init(dev_name);
-  NimBLEDevice::setMTU(MAX_FRAME_SIZE);
+  BleStart::report(NimBLEDevice::init(dev_name));
+  NimBLEDevice::setMTU(MAX_FRAME_SIZE + 3);   // the ATT header takes 3: at MAX_FRAME_SIZE a notification cuts the longest frames
 
   // Security. Bluedroid: BLESecurity::setStaticPIN(pin) + setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND).
   // setStaticPIN sets, in arduino-esp32 2.0.x: the static passkey, IO capability ESP_IO_CAP_OUT (display only), and
@@ -176,7 +177,7 @@ void SerialNimBLEInterface::enable() {
 
   // Bluedroid starts the service here. NimBLE has no per-service start/stop; the GATT table is registered once, in
   // begin() (NimBLEServer::start).
-  pServer->getAdvertising()->start();
+  BleStart::report(pServer->getAdvertising()->start());
   adv_restart_time = 0;
 }
 

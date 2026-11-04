@@ -2,6 +2,9 @@
 #include <helpers/BootTimes.h>
 #include <helpers/BootPresence.h>
 #include <Mesh.h>
+#ifdef ESP32
+  #include <helpers/esp32/SpiffsBoot.h>
+#endif
 
 #include "MyMesh.h"
 
@@ -120,7 +123,7 @@ void setup() {
   fs = &InternalFS;
   IdentityStore store(InternalFS, "");
 #elif defined(ESP32)
-  SPIFFS.begin(true);
+  spiffsBeginOnBoot();   // SPIFFS.begin(true), without the first boot's log flood (#227)
   BootPresence::begin(SPIFFS);   // one listing, so boot looks up no file that is not there (helpers/BootPresence.h)
   fs = &SPIFFS;
   IdentityStore store(SPIFFS, "/identity");
