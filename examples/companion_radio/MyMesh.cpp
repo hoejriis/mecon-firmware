@@ -501,7 +501,6 @@ Iface::MessageSend MyMesh::messageSendDirect(const uint8_t key[32], uint32_t ts,
                                              Iface::MessageSent& out) {
   ContactInfo* to = contactStore().find(key, PUB_KEY_SIZE);
   if (!to) return Iface::MS_NOT_FOUND;
-  if (strlen(text) > MAX_TEXT_LEN) return Iface::MS_TOO_LONG;
   uint32_t est = 0;
   _msg_capture = &out;
   const int r = sendMessage(*to, ts, attempt, text, out.ack, est);

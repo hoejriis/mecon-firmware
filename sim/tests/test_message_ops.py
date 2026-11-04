@@ -13,6 +13,8 @@ from sim.harness import CompanionClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
 
+from test_device_interface import broker, mqtt_boot  # noqa: E402,F401  (broker is a fixture)
+
 RTC = 1792800000
 
 
@@ -129,6 +131,9 @@ def test_a_repeated_request_is_one_transmission(nodes, ether):
         assert ia.request("contact.put", {"key": "%02x" % k * 32, "name": "c%d" % k, "type": "chat"}, rid="fill-%d" % k)["status"] == "ok"
     again = ia.request("message.send", args, rid="dup-1")
     assert again["status"] == "ok" and again["result"]["hash"] == first["result"]["hash"], again
+    # A second send of the same bytes has the same hash, and a receiver drops it as seen: so look at the table.
+    listed = [m for m in ia.request("message.list")["result"]["messages"] if m["message"] == "dup-1"]
+    assert len(listed) == 1, listed
     got = cb.sync_messages(timeout=60, want=1)
     assert [m["text"] for m in got] == ["only once"], got
     assert cb.sync_messages(timeout=4, want=1) == [], "one on the air"
@@ -236,6 +241,16 @@ def test_a_caller_the_cli_table_does_not_trust_sends_nothing(nodes, ether):
     assert bi.request("message.ack", {"message": "x"})["status"] == "refused"
     time.sleep(1.0)
     assert len(ether.tx_log) == tx
+
+
+def test_an_outcome_is_private_on_a_link_that_may_only_read(nodes, tmp_path, broker):
+    """A verified broker session may read, and an outcome names its recipient: not for a plain broker login."""
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "mpv", b)
+    assert b.iface_request(dev, {"v": 1, "id": "st", "op": "status.get"})["status"] == "ok", "the session may read"
+    for op, args in (("message.get", {"message": "x"}), ("message.list", {}), ("message.ack", {"message": "x"})):
+        r = b.iface_request(dev, {"v": 1, "id": op, "op": op, "args": args})
+        assert r["status"] == "refused" and r["error"] == "private", (op, r)
 
 
 def test_results_and_events_follow_their_schemas(nodes, ether):
