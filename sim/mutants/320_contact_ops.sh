@@ -31,5 +31,5 @@ mutate hello_cursor_ignored examples/companion_radio/MeconIface.cpp '    if (idx
 # contact and channel lists are in the private class
 mutate contact_list_is_a_read examples/companion_radio/MeconIface.cpp 'Status opContList(OpContext& c) { return mayReadPrivate(c) ? withContacts(c, opContactList) : ST_REFUSED; }' 'Status opContList(OpContext& c) { return withContacts(c, opContactList); }' sim/tests/test_operations_matrix.py::test_a_list_of_private_data_is_in_the_private_class
 mutate hello_streams_not_on_the_first_page examples/companion_radio/MeconIface.cpp '  add(CAPABILITIES[0]);
-  const uint32_t streams' '  for (size_t i = 0; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
-  const uint32_t streams' sim/tests/test_contact_ops.py::test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead_of_failing
+  const size_t hello_first = 1;' '  for (size_t i = 0; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
+  const size_t hello_first = sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]);' sim/tests/test_contact_ops.py::test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead_of_failing

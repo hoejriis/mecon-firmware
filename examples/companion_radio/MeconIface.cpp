@@ -180,6 +180,7 @@ Status opHello(OpContext& c) {
   w.key("capabilities"); w.beginArray();
   // hello and the streams first, so a manager reading only the first page still has what it subscribes to.
   add(CAPABILITIES[0]);
+  const size_t hello_first = 1;
   const uint32_t streams = m->streamsProduced();
   for (int sid = 0; sid < STREAM_COUNT; sid++) {
     if (!(streams & (1u << sid))) continue;
@@ -187,7 +188,7 @@ Status opHello(OpContext& c) {
     snprintf(cap, sizeof(cap), "stream.%s", STREAMS[sid].name);
     add(cap);
   }
-  for (size_t i = 1; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
+  for (size_t i = hello_first; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
   w.endArray();
   if (next >= 0) { w.key("next"); w.num(next); }
   return ST_OK;
