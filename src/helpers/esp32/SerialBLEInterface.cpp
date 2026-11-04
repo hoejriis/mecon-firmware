@@ -26,7 +26,7 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   // Create the BLE Device
   BLEDevice::init(dev_name);
   BLEDevice::setSecurityCallbacks(this);
-  BLEDevice::setMTU(MAX_FRAME_SIZE);
+  BLEDevice::setMTU(MAX_FRAME_SIZE + 3);   // the ATT header takes 3: at MAX_FRAME_SIZE a notification cuts the longest frames
 
   BLESecurity  sec;
   sec.setStaticPIN(pin_code);

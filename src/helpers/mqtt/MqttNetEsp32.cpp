@@ -11,6 +11,7 @@
 #include <string.h>
 #include <atomic>
 #include <time.h>
+#include <mbedtls/ssl.h>
 #include <mbedtls/x509_crt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -87,7 +88,14 @@ class SecClient : public WiFiClientSecure {
 public:
   int connectNamed(IPAddress ip, uint16_t port, const char* name, int32_t timeout_ms) {
     _timeout = timeout_ms;
-    return WiFiClientSecure::connect(ip, port, name, nullptr, nullptr, nullptr);   // name may be null: the address text is sent
+    if (name) return WiFiClientSecure::connect(ip, port, name, nullptr, nullptr, nullptr);
+    // No name (an address-literal profile, a discovered broker): the core falls back to the address's text as the
+    // host, and sends it as SNI, which RFC 6066 section 3 does not allow. It offers no way to say "no name", so hold the
+    // handshake back, clear the host and then start it (#212).
+    setPlainStart();
+    if (!WiFiClientSecure::connect(ip, port, nullptr, nullptr, nullptr, nullptr)) return 0;
+    if (mbedtls_ssl_set_hostname(&sslclient->ssl_ctx, nullptr) != 0) { stop(); return 0; }
+    return startTLS();
   }
   // True when the peer's certificate chains to the CA (base64 DER) and, when `name` is given, carries that name.
   // A device whose clock has not been set (before 2025) cannot judge validity dates, so for it only the date flags are
