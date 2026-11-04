@@ -516,6 +516,8 @@ void SensorMesh::handleCommand(ClientInfo* from, uint32_t sender_timestamp, char
       board.setGpio(val);
     }
     sprintf(reply, "%x", board.getGpio());
+  } else if (strcmp(command, "get dutycycle") == 0) {
+    formatDutyCycleReply(reply);   // the same report as the other roles, not the stock user setting alone
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }

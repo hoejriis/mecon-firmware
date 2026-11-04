@@ -15,6 +15,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = {
     "companion": os.path.join(REPO, ".pio/build/sim_companion/program"),
     "repeater": os.path.join(REPO, ".pio/build/sim_repeater/program"),
+    "sensor": os.path.join(REPO, ".pio/build/sim_sensor/program"),
     # same Companion code, but its app transport is classed as unauthenticated TCP (a _wifi build)
     "companion_wifi_usb": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb/program"),
     "room_server": os.path.join(REPO, ".pio/build/sim_room_server/program"),

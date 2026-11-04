@@ -25,4 +25,7 @@ fi
 PY=$(pio system info --json-output 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['python_exe']['value'])" 2>/dev/null || true)
 [ -n "$PY" ] || PY=$(command -v python3)
 "$PY" -c "import yaml" 2>/dev/null || "$PY" -m pip install --quiet PyYAML
+# A sdkconfig.<stub> left by an earlier rebuild keeps its old values over a changed custom_sdkconfig. It is generated, and
+# read only by a rebuild, so a run that finds the libraries in place does not miss it.
+rm -f "sdkconfig.$STUB"
 exec pio run -e "$STUB"

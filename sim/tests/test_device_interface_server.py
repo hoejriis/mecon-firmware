@@ -191,3 +191,25 @@ def test_get_device_id_on_the_console_matches_hello(nodes, kind, role):
     n, (cli, i) = start(nodes, kind, "did" + role)
     h = ok(i.request("hello"), "hello.result.json")
     assert cli.command("get device.id").split(" ")[:2] == [">", h["device_id"]]   # the signature: test_device_id_binding.py
+
+
+def test_an_apply_saves_the_prefs_once_on_a_server(nodes, tmp_path):
+    """Issue #231, on the Repeater: the same one save, through CommonCLI's savePrefs."""
+    calls = str(tmp_path / "calls")
+    n = nodes("repeater", "one_save_rep", extra=["--fs-calls", calls]).start()
+    cli, i = client(n)
+    def renames():   # the file appears at the first counted call
+        return int(dict(kv.split("=") for kv in open(calls).read().split())["rename"]) if os.path.exists(calls) else 0
+    assert i.request("config.apply", {"set": {"name": "First"}})["result"]["complete"]   # the first also writes its files
+    before = renames()
+    assert i.request("config.apply", {"set": {"name": "One"}})["result"]["complete"]
+    one_key = renames() - before
+    assert one_key >= 1
+    before = renames()
+    r = i.request("config.apply", {"set": {"name": "Rep", "advert.interval": 240, "lat": "55.0"}})
+    assert r["status"] == "ok" and r["result"]["complete"], r
+    assert renames() - before == one_key
+    n.stop()
+    n.start()
+    cli, i = client(n)
+    assert i.request("config.get", {"keys": ["name"]})["result"]["values"] == {"name": "Rep"}

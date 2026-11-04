@@ -1,4 +1,5 @@
 #include "IfaceConfig.h"
+#include <helpers/PrefsBatch.h>
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -631,6 +632,7 @@ Status opConfigApply(OpContext& c) {
   JsonWriter& w = *c.out;
   bool reboot = false, restarts = false, all_ok = true;   // what the writes did
   w.key("applied"); w.beginObject();
+  PrefsBatch::begin();   // one save of the prefs for the whole apply, after its last line
   for (int i = 0, t = set + 1; i < d.tok[set].size; i++, t = jsonSkip(d, t + 1)) {
     jsonGetString(d, t, key, sizeof(key), CS_NAME, 1);
     unsigned idx;
@@ -654,6 +656,7 @@ Status opConfigApply(OpContext& c) {
     }
   }
   w.endObject();
+  PrefsBatch::end();
   w.key("complete"); w.boolean(all_ok);   // false: a write the checks allowed still failed; the others stand
   w.key("reboot_needed"); w.boolean(reboot);
   w.key("restarting"); w.boolean(restarts);
