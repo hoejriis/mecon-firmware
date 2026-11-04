@@ -91,3 +91,49 @@ def test_require_fails_when_the_hand_off_is_gone(tmp_path):
     graph(inline, frames, [("loop", "processRecvPacket"), ("processRecvPacket", "onRecvPacket")])
     r = run(str(inline), "--root", "loop=4000", "--require", "processRecvPacket=run")
     assert r.returncode == 1 and "MISSING  processRecvPacket does not reach run" in r.stdout
+
+
+def test_recursion_off_the_allowlist_fails_with_its_path(tmp_path):
+    b = graph(tmp_path, {"loop": 8, "parse": 40, "value": 30}, [("loop", "parse"), ("parse", "value"), ("value", "parse")])
+    r = run(b, "--root", "loop=4000", "--recursion", "loop=nothing")
+    assert r.returncode == 1 and "RECURSION  from loop" in r.stdout
+    assert "parse" in r.stdout and "value" in r.stdout
+    r = run(b, "--root", "loop=4000", "--recursion", "loop=parse|value")
+    assert r.returncode == 0 and "ok  every recursion from loop" in r.stdout
+
+
+def test_a_function_calling_itself_is_a_recursion(tmp_path):
+    b = graph(tmp_path, {"loop": 8, "printChildRegions": 40}, [("loop", "printChildRegions"),
+                                                              ("printChildRegions", "printChildRegions")])
+    r = run(b, "--recursion", "loop=nothing")
+    assert r.returncode == 1 and "printChildRegions" in r.stdout
+
+
+def test_no_recursion_passes_and_one_out_of_reach_is_not_counted(tmp_path):
+    b = graph(tmp_path, {"loop": 8, "a": 10, "other": 10, "x": 10, "y": 10}, [("loop", "a"), ("other", "x"), ("x", "y"), ("y", "x")])
+    assert run(b, "--recursion", "loop=nothing").returncode == 0
+    assert run(b, "--recursion", "other=nothing").returncode == 1
+
+
+def test_a_function_joining_an_allowed_recursion_through_a_finished_node_fails(tmp_path):
+    # a -> b -> a is allowed. new -> b is a cross edge to a node the walk has finished, with no back edge of its own:
+    # looking only for back edges would pass it, yet a -> new -> b -> a is a recursion through new.
+    frames = {"loop": 8, "a": 10, "b": 10, "new": 10}
+    b = graph(tmp_path, frames, [("loop", "a"), ("a", "b"), ("b", "a"), ("a", "new"), ("new", "b")])
+    r = run(b, "--recursion", "loop=^(a|b)$")
+    assert r.returncode == 1 and "not on the allowlist: new" in r.stdout
+
+
+def test_recursion_follows_indirect_calls_and_no_reentry(tmp_path):
+    frames = {"loop": 8, "lfs_write": 20, "driver": 20, "File::write": 20}
+    edges = [("loop", "lfs_write"), ("lfs_write", "driver"), ("File::write", "lfs_write")]
+    b = graph(tmp_path, frames, edges, indirect=["driver"])
+    ind = ["--indirect", "driver=File::write"]
+    assert run(b, *ind, "--recursion", "loop=nothing").returncode == 1
+    assert run(b, *ind, "--no-reentry", "^lfs_=File::", "--recursion", "loop=nothing").returncode == 0
+
+
+def test_a_recursion_root_that_matches_nothing_fails(tmp_path):
+    b = graph(tmp_path, {"loop": 8}, [])
+    r = run(b, "--recursion", "renamed=x")
+    assert r.returncode == 2 and "ROOT NOT FOUND" in r.stdout

@@ -15,6 +15,9 @@ LittleFS, cannot be re-entered from its own driver callbacks, so a mapped indire
 Callees are walked in sorted order, so the result does not depend on Python's hash seed.
 --require 'FROM=TO' fails (exit 1) unless a function matching FROM reaches one matching TO, under the same --indirect
 and --no-reentry rules: for a hand-off that must stay in place however much room the task would have without it.
+--recursion 'ROOT=ALLOWED' fails (exit 1) on a recursion reachable from a function matching ROOT, under the same rules,
+unless every function in it matches ALLOWED. A depth counts a recursion once, so one whose depth comes from stored data
+can be far deeper than the figure: each one is either accepted, with its reason beside the gate's list, or it fails.
 
 Exits 1 when a root is over its limit, 2 when a root matches nothing (a renamed function must not pass the gate by
 vanishing), 0 otherwise. Prints each root's worst path.
@@ -55,6 +58,79 @@ def load(build):
     return files, frames, names, edges, dynamic, by_symbol
 
 
+def reachable(roots, callees, no_reentry, matches):
+    """The call graph from roots, as {(function, the --no-reentry rules in force): [next states]}."""
+    def enter(f, inside):
+        return f, inside | frozenset(i for i, (o, _) in enumerate(no_reentry) if matches(o, f))
+    graph, todo = {}, [enter(r, frozenset()) for r in roots]
+    while todo:
+        state = todo.pop()
+        if state in graph:
+            continue
+        graph[state] = [enter(g, state[1]) for g in callees(*state)]
+        todo += graph[state]
+    return graph
+
+
+def recursions(graph):
+    """Every strongly connected component that is a recursion (Tarjan's, iterative: real call chains are deep). A walk
+    that only looks for back edges would miss a function that joins a recursion through a node it has finished."""
+    index, low, on_stack, stack, out = {}, {}, set(), [], []
+    for start in sorted(graph, key=lambda s: (s[0], sorted(s[1]))):
+        if start in index:
+            continue
+        work = [(start, iter(graph[start]))]
+        index[start] = low[start] = len(index)
+        stack.append(start)
+        on_stack.add(start)
+        while work:
+            v, it = work[-1]
+            for w in it:
+                if w not in index:
+                    index[w] = low[w] = len(index)
+                    stack.append(w)
+                    on_stack.add(w)
+                    work.append((w, iter(graph[w])))
+                    break
+                if w in on_stack:
+                    low[v] = min(low[v], index[w])
+            else:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[v])
+                if low[v] == index[v]:
+                    scc = []
+                    while True:
+                        w = stack.pop()
+                        on_stack.discard(w)
+                        scc.append(w)
+                        if w == v:
+                            break
+                    if len(scc) > 1 or v in graph[v]:
+                        out.append(scc)
+    return out
+
+
+def loop_through(graph, scc, func):
+    """The shortest call path from func round to itself inside one recursion, for the report."""
+    members = set(scc)
+    start = next(s for s in sorted(scc, key=lambda s: sorted(s[1])) if s[0] == func)
+    prev, todo = {}, [start]
+    while todo:
+        v = todo.pop(0)
+        for w in sorted(graph[v], key=lambda s: (s[0], sorted(s[1]))):
+            if w == start:
+                path = [w[0], v[0]]
+                while v != start:
+                    v = prev[v]
+                    path.append(v[0])
+                return path[::-1]
+            if w in members and w not in prev:
+                prev[w] = v
+                todo.append(w)
+    return [func]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("build")
@@ -62,6 +138,7 @@ def main():
     ap.add_argument("--indirect", action="append", default=[])
     ap.add_argument("--no-reentry", action="append", default=[])
     ap.add_argument("--require", action="append", default=[])
+    ap.add_argument("--recursion", action="append", default=[])
     ap.add_argument("--show", type=int, default=12)
     a = ap.parse_args()
     files, frames, names, edges, dynamic, by_symbol = load(a.build)
@@ -178,6 +255,29 @@ def main():
         else:
             print("MISSING  %s does not reach %s" % (rx.pattern, target.pattern))
             status = max(status, 1)
+
+    for spec in a.recursion:
+        rx, allowed = (re.compile(x) for x in spec.split("=", 1))
+        roots = sorted(f for f in frames if matches(rx, f))
+        if not roots:
+            print("ROOT NOT FOUND: %s" % rx.pattern)
+            status = max(status, 2)
+            continue
+        graph = reachable(roots, callees, no_reentry, matches)
+        bad = 0
+        for scc in recursions(graph):
+            funcs = sorted({f for f, _ in scc})
+            stray = [f for f in funcs if not matches(allowed, f)]
+            if stray:
+                bad += 1
+                print("RECURSION  from %s, not on the allowlist: %s" % (rx.pattern, names.get(stray[0], stray[0])[:110]))
+                for f in loop_through(graph, scc, stray[0]):
+                    print("    %s" % names.get(f, f)[:110])
+                print("    all of it: " + "; ".join(names.get(f, f)[:70] for f in funcs))
+        if bad:
+            status = max(status, 1)
+        else:
+            print("ok  every recursion from %s is on the allowlist" % rx.pattern)
     if cycles:
         print("recursion, counted once: " + "; ".join(sorted(cycles))[:400])
     if unfollowed:
