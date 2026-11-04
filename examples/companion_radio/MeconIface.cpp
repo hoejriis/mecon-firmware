@@ -46,7 +46,8 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
-                                    "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect"
+                                    "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
+                                    "message.send", "message.get", "message.list", "message.ack"
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -55,6 +56,10 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
 
 Status opHello(OpContext& c);
 Status opStatus(OpContext& c);
+Status opMsgSend(OpContext& c);
+Status opMsgGet(OpContext& c);
+Status opMsgList(OpContext& c);
+Status opMsgAck(OpContext& c);
 Status opSchema(OpContext& c);
 Status opGet(OpContext& c);
 Status opApply(OpContext& c);
@@ -124,6 +129,11 @@ const OpEntry OPS[] = {
   {"contact.put", opContPut, PRIV_WRITE, true},
   {"contact.remove", opContRemove, PRIV_WRITE, true},
   {"contact.protect", opContProtect, PRIV_WRITE, true},
+  // Native messages (OPERATIONS.md section 6): a read of the outcomes shows who a message went to, so it is private.
+  {"message.send", opMsgSend, PRIV_WRITE, true},
+  {"message.get", opMsgGet, PRIV_READ, false},
+  {"message.list", opMsgList, PRIV_READ, false},
+  {"message.ack", opMsgAck, PRIV_READ, false},
   // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
   {"channel.list", opChanList, PRIV_READ, false},
   {"channel.get", opChanGet, PRIV_READ, false},
@@ -231,6 +241,10 @@ Status opStatus(OpContext& c) {
   w.key("posture"); w.str(Posture::isHardened(mesh->postureValue()) ? "hardened" : "normal");
   m->writeDeploymentStatus(w, Posture::isHardened(mesh->postureValue()));
   m->jobs().writeStatus(w);
+  w.key("messages"); w.beginObject();   // a manager that reconnects learns there are outcomes to collect
+  w.key("open"); w.num(m->messages() ? m->messages()->open() : 0);
+  w.key("owed"); w.num(m->messages() ? m->messages()->owed() : 0);
+  w.endObject();
   m->updates().writeAttestation(w);
   return ST_OK;
 }
@@ -293,6 +307,19 @@ Status opContPut(OpContext& c) { return withContacts(c, opContactPut); }
 Status opContRemove(OpContext& c) { return withContacts(c, opContactRemove); }
 Status opContProtect(OpContext& c) { return withContacts(c, opContactProtect); }
 
+Status withMessages(OpContext& c, Status (*op)(OpContext&), bool create) {
+  MessageHost host = self(c)->messageHost(create);
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opMsgSend(OpContext& c) { return withMessages(c, opMessageSend, true); }
+Status opMsgGet(OpContext& c) { return mayReadPrivate(c) ? withMessages(c, opMessageGet, false) : ST_REFUSED; }
+Status opMsgList(OpContext& c) { return mayReadPrivate(c) ? withMessages(c, opMessageList, false) : ST_REFUSED; }
+Status opMsgAck(OpContext& c) { return mayReadPrivate(c) ? withMessages(c, opMessageAck, false) : ST_REFUSED; }
+
 Status opChanList(OpContext& c) { return mayReadPrivate(c) ? withChannels(c, opChannelList) : ST_REFUSED; }
 Status opChanGet(OpContext& c) { return mayReadPrivate(c) ? withChannels(c, opChannelGet) : ST_REFUSED; }
 // A write to the management channel's own slot goes through the binding: confirm-or-revert for a remote caller.
@@ -321,6 +348,49 @@ Status opMgmtUnbindW(OpContext& c) { return withMgmt(c, opMgmtUnbind); }
 }  // namespace
 
 // ---- contacts: the native table
+
+static MessageSend msgDirect(void* user, const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text, MessageSent& out) {
+  return static_cast<MeconIface*>(user)->mesh()->messageSendDirect(key, ts, attempt, text, out);
+}
+static MessageSend msgChannel(void* user, int slot, uint32_t ts, const char* text, size_t len, MessageSent& out) {
+  return static_cast<MeconIface*>(user)->mesh()->messageSendChannel(slot, ts, text, len, out);
+}
+static uint32_t msgClock(void* user) { return static_cast<MeconIface*>(user)->mesh()->getRTCClock()->getCurrentTimeUnique(); }
+
+MessageHost MeconIface::messageHost(bool create) {
+  if (create && !_messages) _messages = new (std::nothrow) MessageTable();
+#ifdef MAX_GROUP_CHANNELS
+  const bool channels = true;
+#else
+  const bool channels = false;
+#endif
+  return MessageHost{_messages, MAX_TEXT_LEN, channels, msgDirect, msgChannel, msgClock, confirmJobId, _epoch, millis(), this};
+}
+
+// A message event goes where a job event goes: its data names no recipient and no text. One a pass, on the loop's own
+// stack, since a signed event is not small; a change while this waits is told once, in its latest state.
+void MeconIface::tellMessages() {
+  if (!_messages) return;
+  const uint32_t now = millis();
+  _messages->tick(now);
+  const MessageEntry* e = _messages->nextToTell();
+  if (!e) return;
+  char data[96];
+  if (!writeMessageEventData(data, sizeof(data), *e)) return;
+  char* ev = static_cast<char*>(malloc(RESULT_MAX));
+  if (!ev) return;   // the state is still in message.get and message.list
+  const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
+  int n = writeEvent(ev, RESULT_MAX, "message", ++_msg_ev_seq, _epoch, ts >= 1704067200, ts, data);
+  if (n > 0) n = _prov.sign("message", ev, (size_t)n, RESULT_MAX);
+  if (n > 0) {
+    for (Link& l : _links) {
+      if (!l.src || !l.may_read || !l.src->isConnected() || !ensureQueue(l)) continue;
+      l.q->push(OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
+    }
+    if (_mqtt_may_read && _ev_publish && _ev_up && _ev_up()) _ev_publish("message", ev, (size_t)n);
+  }
+  free(ev);
+}
 
 ContactHost MeconIface::contactHost() {
   return ContactHost{_mesh->getContactCapacity(), _mesh->getNumContacts(), contGet, contNext, contPut, contRemove,
@@ -939,6 +1009,7 @@ void MeconIface::loop(uint32_t now) {
   _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) board.reboot();
   streamTick(now);
+  tellMessages();
   drainLogs();   // beside streamTick, not inside it: a signed log event on top of its frame overran the loop stack (#234)
   inventoryTick(now);
   for (Link& l : _links) {

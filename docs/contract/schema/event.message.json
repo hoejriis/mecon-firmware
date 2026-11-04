@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.message.json",
+  "title": "Data of a message event (OPERATIONS.md section 6)",
+  "description": "Each change of an outcome. It goes where a job event goes, so it names no recipient and no text.",
+  "type": "object",
+  "required": [
+    "message",
+    "hash",
+    "state"
+  ],
+  "properties": {
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "The message's identity: the request id, or \"#<issuer>:<job_id>\" for a signed request."
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "The native packet hash: the same id a receiver or an observer computes."
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "duty-held",
+        "transmitted",
+        "acked",
+        "timed-out",
+        "failed",
+        "unknown"
+      ]
+    }
+  }
+}

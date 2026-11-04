@@ -174,6 +174,8 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `contact.list`, `contact.get` | contact table (name, type, protection flag, last advert, hops, position; `list` paged by up to 6, fewer when a page would not fit); the shared secret and the path bytes never | native contact table | private | no | C | all |
 | `contact.put`, `contact.remove` | add, update, remove; a put names no flags, so it never grants telemetry or the remote CLI, and a full table behaves as for the app | `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` | write | yes | C | all |
 | `contact.protect` | protect from auto-removal (favourite flag) | contact flags | write | yes | C | all |
+| `message.send` | one native direct or channel message; a recipient or slot not there is an answer, and no contact is created | `sendMessage`, `sendGroupMessage`, as `CMD_SEND_TXT_MSG` and `CMD_SEND_CHANNEL_TXT_MSG` | write | yes | C | all |
+| `message.get`, `message.list`, `message.ack` | what became of a send (section 6) | RAM table | read, then private | no | C | all |
 | `channel.list`, `channel.get` | channels (name, one-byte hash, key size; `list` paged by 8); the secret never | native channel table | private | no | C | C: USB BLE MQTT |
 | `channel.put`, `channel.remove` | add, rotate, remove a channel; 128-bit keys only, a key held by another slot refused | `CMD_SET_CHANNEL` | write | yes | C | C: USB BLE MQTT |
 | `mgmt.channel.get` | the management channel binding: none, bound or stale | the native channel table plus its own record | read | no | C R S | C: USB BLE MQTT; R S: Con |
@@ -337,3 +339,42 @@ The device-interface operations are not carried over LoRa today. #115 carries th
 | Raw transmission and data signing as operations | not management (5.2) |
 | BLE bond clear over any path but physical USB | SECURITY_AND_AUTHORITY: bonds are cleared over USB only |
 | Messaging, backfill and outage forwarding over the interface | not generic firmware: a manager application's concern. Native messaging stays native |
+
+## 6. Messages
+
+`message.send` asks a Companion to send one native message. A direct message goes to a stored contact, named by its whole key; a channel message goes to a slot. Both are the native send, so a stock receiver reads them as it reads any other. A stock app on the sender is not told of a message it did not send.
+
+Nothing here selects a gateway, retries by itself or decides which messages to catch up on. Those belong to a Backend.
+
+### 6.1 Outcomes
+
+| State | Means | Final |
+|---|---|---|
+| `queued` | handed to the radio queue | no |
+| `duty-held` | in the queue, waiting for airtime; `wait_ms` is the wait the dispatcher last gave | no |
+| `transmitted` | on the air | channel message: yes. Direct: no, it waits for the ACK |
+| `acked` | the recipient's native ACK arrived | yes |
+| `timed-out` | no ACK within `est_ms` of the transmission; a late ACK still moves it to `acked` | yes |
+| `failed` | the radio dropped it or could not start it | yes |
+| `unknown` | not in the table, or it left the queue with no report for 2 hours | yes |
+
+- **An ACK proves the recipient's radio node had it**, not that an application read it. **A timeout does not prove non-receipt.**
+- A channel message has no ACK, so `transmitted` is all the device can know.
+- `hash` is the native packet hash, the same id a receiver or an observer computes. `ack` is the native ACK code.
+- `message` is the identity of the request (section 3): the request id, or `#<issuer>:<job_id>` for a signed one.
+- Each change of state is a `message` event (`ev/message` on MQTT), `{"message","hash","state"}`. It goes where a `job` event goes. Reading a recipient takes `message.get`, which is private, like `contact.get`.
+- `status.get` carries `messages.open` and `messages.owed`, so a manager that reconnects learns there is something to collect.
+
+### 6.2 Bounds
+
+- **The table holds 8 entries, in RAM, and no message text.** A collected entry goes first (`message.ack`), then the oldest final one. When all 8 are open, `message.send` answers `busy` with `outcomes-full` and nothing is sent.
+- **A full radio queue** answers `busy` with `queue-full`, and nothing is sent.
+- **Text that does not fit** is failed with `text-too-long`, rather than cut. A direct message holds 160 bytes. A channel message holds 160 bytes including the sender's name, a colon and a space.
+- **Why not a job.** Jobs run one at a time and each change writes flash. A send can wait seconds for its ACK, or an hour for airtime, and is routine traffic.
+
+### 6.3 Never twice, and a reboot
+
+- A repeat with the same identity answers the kept result. Past the result cache it answers `failed` with `result-expired`, or the entry's current state if the table still holds it. It is never a second send.
+- **A signed request** is held to its persisted watermark, so a repeat after a reboot is refused: it never goes out twice.
+- **An unsigned request** is remembered only in RAM, so after a reboot a repeat is a new send. A manager that cannot accept this signs its requests, or reads the epoch first.
+- **A reboot empties the table.** A send whose reply carried another epoch and that now reads `unknown` may or may not have gone out. The device cannot tell, and says so rather than guessing.
