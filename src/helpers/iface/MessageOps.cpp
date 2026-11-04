@@ -1,6 +1,9 @@
 #include "MessageOps.h"
 #include <string.h>
 
+// For size: a table of 8 is otherwise unrolled in every loop, 3 KB for claim() alone on a T1000-E.
+#pragma GCC optimize("Os")
+
 namespace Iface {
 
 namespace {

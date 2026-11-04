@@ -287,7 +287,7 @@ Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
 // A list of contacts or channels is private data, as the inventory stream that carries the same entries (TELEMETRY.md):
 // the op runs at read, as sub.start does, so an enrolled device's plain-read rule still applies, and the private class
 // is then decided here, for the caller and for the link the answer goes out on.
-bool mayReadPrivate(OpContext& c) {
+__attribute__((noinline)) bool mayReadPrivate(OpContext& c) {
   if (MeconIface::streamAllow(self(c), Cli::C_PRIVATE)) return true;
   c.error = "private";
   return false;
@@ -307,7 +307,7 @@ Status opContPut(OpContext& c) { return withContacts(c, opContactPut); }
 Status opContRemove(OpContext& c) { return withContacts(c, opContactRemove); }
 Status opContProtect(OpContext& c) { return withContacts(c, opContactProtect); }
 
-Status withMessages(OpContext& c, Status (*op)(OpContext&), bool create) {
+__attribute__((noinline)) Status withMessages(OpContext& c, Status (*op)(OpContext&), bool create) {
   MessageHost host = self(c)->messageHost(create);
   OpContext cc = c;
   cc.user = &host;
