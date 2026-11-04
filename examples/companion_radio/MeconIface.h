@@ -7,6 +7,7 @@
 #include <helpers/iface/IfaceDispatch.h>
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/ChannelOps.h>
+#include <helpers/iface/ContactOps.h>
 #include <helpers/iface/MgmtChannel.h>
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
@@ -78,6 +79,7 @@ public:
   MyMesh* mesh() const { return _mesh; }
   Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this, nullptr, 0, &_confirm}; }
   Iface::ChannelHost channelHost();   // the native channel table (channel.* operations)
+  Iface::ContactHost contactHost();   // the native contact table (contact.* operations)
   Iface::MgmtHost mgmtHost();         // the management channel binding (mgmt.channel.*; MeconMgmt.cpp)
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
@@ -165,6 +167,11 @@ private:
   static void jobChanged(void* self, const Iface::Job& j);
   bool _mqtt_may_read = false;
   static bool cliAllow(void* self, const char* line);
+  static bool contGet(void* self, const uint8_t* key, Iface::ContactRec& out);
+  static bool contNext(void* self, int& cursor, Iface::ContactRec& out);
+  static Iface::ContactWrite contPut(void* self, const Iface::ContactRec& in);
+  static int contRemove(void* self, const uint8_t* key);
+  static int contProtect(void* self, const uint8_t* key, bool on);
   static bool chanGet(void* self, int slot, Iface::ChannelInfo& out);
   static bool chanSet(void* self, int slot, const char* name, const uint8_t* secret);
   static int chanFind(void* self, const uint8_t* secret);

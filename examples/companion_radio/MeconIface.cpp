@@ -39,7 +39,8 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
-                                    "update.manifest", "update.status", "update.offer", "update.chunk"
+                                    "update.manifest", "update.status", "update.offer", "update.chunk",
+                                    "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect"
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -62,6 +63,11 @@ Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, mil
 Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
 Status opUpdOffer(OpContext& c) { return self(c)->updates().opOffer(c, millis()); }
 Status opUpdChunk(OpContext& c) { return self(c)->updates().opChunk(c, millis()); }
+Status opContList(OpContext& c);
+Status opContGet(OpContext& c);
+Status opContPut(OpContext& c);
+Status opContRemove(OpContext& c);
+Status opContProtect(OpContext& c);
 Status opChanList(OpContext& c);
 Status opChanGet(OpContext& c);
 Status opChanPut(OpContext& c);
@@ -106,6 +112,12 @@ const OpEntry OPS[] = {
   {"update.offer", opUpdOffer, PRIV_UPDATE, true},
   {"update.chunk", opUpdChunk, PRIV_READ, false},
 #ifdef MAX_GROUP_CHANNELS
+  // The native contact table (OPERATIONS.md section 5.1): no shared secret in a read, no grant in a write.
+  {"contact.list", opContList, PRIV_READ, false},
+  {"contact.get", opContGet, PRIV_READ, false},
+  {"contact.put", opContPut, PRIV_WRITE, true},
+  {"contact.remove", opContRemove, PRIV_WRITE, true},
+  {"contact.protect", opContProtect, PRIV_WRITE, true},
   // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
   {"channel.list", opChanList, PRIV_READ, false},
   {"channel.get", opChanGet, PRIV_READ, false},
@@ -227,6 +239,20 @@ Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
   c.error = cc.error;
   return st;
 }
+Status withContacts(OpContext& c, Status (*op)(OpContext&)) {
+  ContactHost host = self(c)->contactHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opContList(OpContext& c) { return withContacts(c, opContactList); }
+Status opContGet(OpContext& c) { return withContacts(c, opContactGet); }
+Status opContPut(OpContext& c) { return withContacts(c, opContactPut); }
+Status opContRemove(OpContext& c) { return withContacts(c, opContactRemove); }
+Status opContProtect(OpContext& c) { return withContacts(c, opContactProtect); }
+
 Status opChanList(OpContext& c) { return withChannels(c, opChannelList); }
 Status opChanGet(OpContext& c) { return withChannels(c, opChannelGet); }
 // A write to the management channel's own slot goes through the binding: confirm-or-revert for a remote caller.
@@ -253,6 +279,93 @@ Status opMgmtRotateW(OpContext& c) { return withMgmt(c, opMgmtRotate); }
 Status opMgmtUnbindW(OpContext& c) { return withMgmt(c, opMgmtUnbind); }
 
 }  // namespace
+
+// ---- contacts: the native table
+
+ContactHost MeconIface::contactHost() {
+  return ContactHost{_mesh->getContactCapacity(), _mesh->getNumContacts(), contGet, contNext, contPut, contRemove,
+                     contProtect, this};
+}
+
+static void toRec(const ContactInfo& c, ContactRec& out) {
+  memcpy(out.key, c.id.pub_key, 32);
+  memcpy(out.name, c.name, CONTACT_NAME_MAX);
+  out.name[CONTACT_NAME_MAX] = 0;
+  out.type = c.type;
+  out.fav = c.isFav();
+  out.last_advert = c.last_advert_timestamp;
+  out.hops = c.out_path_len == OUT_PATH_UNKNOWN ? -1 : (int16_t)(c.out_path_len & 63);
+  out.has_pos = c.gps_lat != 0 || c.gps_lon != 0;
+  out.lat_e6 = c.gps_lat;
+  out.lon_e6 = c.gps_lon;
+}
+
+bool MeconIface::contGet(void* user, const uint8_t* key, ContactRec& out) {
+  const ContactInfo* c = static_cast<MeconIface*>(user)->_mesh->contactStore().find(key, PUB_KEY_SIZE);   // stored contacts only
+  if (!c) return false;
+  toRec(*c, out);
+  return true;
+}
+
+bool MeconIface::contNext(void* user, int& cursor, ContactRec& out) {
+  ContactInfo c;
+  if (!static_cast<MeconIface*>(user)->_mesh->contactStore().next(cursor, c)) return false;
+  toRec(c, out);
+  wipe(&c, sizeof(c));   // the copy may hold a cached shared secret
+  return true;
+}
+
+// As CMD_ADD_UPDATE_CONTACT: an update rewrites the named fields in place, a new contact goes through addContact (so a
+// full table evicts or refuses exactly as for the app), and the lazy save is scheduled. Flags and path are the contact's
+// own: a put never grants telemetry or the remote CLI.
+ContactWrite MeconIface::contPut(void* user, const ContactRec& in) {
+  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
+  ContactInfo* have = mesh->contactStore().find(in.key, PUB_KEY_SIZE);
+  const uint32_t now = mesh->getRTCClock()->getCurrentTime();
+  if (have) {
+    memset(have->name, 0, sizeof(have->name));
+    memcpy(have->name, in.name, strlen(in.name));
+    have->type = in.type;
+    have->gps_lat = in.has_pos ? in.lat_e6 : 0;
+    have->gps_lon = in.has_pos ? in.lon_e6 : 0;
+    have->lastmod = now;
+    mesh->markContactsDirty();
+    return CW_OK;
+  }
+  ContactInfo fresh;
+  memset(&fresh, 0, sizeof(fresh));
+  memcpy(fresh.id.pub_key, in.key, PUB_KEY_SIZE);
+  memcpy(fresh.name, in.name, strlen(in.name));
+  fresh.type = in.type;
+  fresh.out_path_len = OUT_PATH_UNKNOWN;
+  fresh.gps_lat = in.has_pos ? in.lat_e6 : 0;
+  fresh.gps_lon = in.has_pos ? in.lon_e6 : 0;
+  fresh.lastmod = now;
+  const bool added = mesh->addContact(fresh);
+  wipe(&fresh, sizeof(fresh));
+  if (!added) return CW_FULL;
+  mesh->markContactsDirty();
+  return CW_OK;
+}
+
+int MeconIface::contRemove(void* user, const uint8_t* key) {
+  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
+  ContactInfo* have = mesh->contactStore().find(key, PUB_KEY_SIZE);
+  if (!have || !mesh->removeContact(*have)) return 0;
+  mesh->deleteContactBlob(key);
+  mesh->markContactsDirty();
+  return 1;
+}
+
+int MeconIface::contProtect(void* user, const uint8_t* key, bool on) {
+  MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
+  ContactInfo* have = mesh->contactStore().find(key, PUB_KEY_SIZE);
+  if (!have) return -1;
+  if (have->isFav() == on) return 0;
+  have->flags = on ? (uint8_t)(have->flags | 0x01) : (uint8_t)(have->flags & ~0x01);
+  mesh->markContactsDirty();
+  return 1;
+}
 
 // ---- channels: the native table
 

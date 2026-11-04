@@ -358,6 +358,8 @@ uint8_t MyMesh::getAutoAddMaxHops() const {
   return _prefs.autoadd_max_hops;
 }
 
+void MyMesh::markContactsDirty() { dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY); }
+
 void MyMesh::onContactOverwrite(const uint8_t* pub_key) {
     _store->deleteBlobByKey(pub_key, PUB_KEY_SIZE); // delete from storage
   if (_serial && _serial->isConnected()) {   // the store can evict at boot, before startInterface sets _serial (#223)

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/contact.protect.result.json",
+  "title": "Result of contact.protect",
+  "description": "Request args: {\"key\": 64 hex digits, \"protected\": true or false}. Sets or clears the native favourite flag, which keeps the contact out of the oldest-first eviction. The flag is generic to the device; a user's favourites stay in the Backend. A key that is not stored is failed with error not-found. Companion only.",
+  "type": "object",
+  "required": [
+    "key",
+    "name",
+    "type",
+    "fav",
+    "last_advert",
+    "hops",
+    "changed"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The contact's public key."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 31
+    },
+    "type": {
+      "enum": [
+        "chat",
+        "repeater",
+        "room",
+        "sensor"
+      ],
+      "description": "Never none: type 0 is the anonymous slot's and is not a stored contact."
+    },
+    "fav": {
+      "type": "boolean",
+      "description": "The native favourite flag: the contact is protected from the oldest-first eviction."
+    },
+    "last_advert": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Their clock at their last advert."
+    },
+    "hops": {
+      "type": "integer",
+      "minimum": -1,
+      "maximum": 63,
+      "description": "Hops of the known path; -1: none, the contact is reached by flood."
+    },
+    "lat_e6": {
+      "type": "integer",
+      "minimum": -90000000,
+      "maximum": 90000000
+    },
+    "lon_e6": {
+      "type": "integer",
+      "minimum": -180000000,
+      "maximum": 180000000
+    },
+    "changed": {
+      "type": "boolean",
+      "description": "False when the flag already had the requested value."
+    }
+  }
+}
