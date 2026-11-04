@@ -131,6 +131,8 @@ public:
   void loop();
 #ifdef ENABLE_MECON_IFACE
   // For the device interface (MeconIface): read-only facts, and frame output to one transport of the multiplexed serial.
+  Iface::MessageSend messageSendDirect(const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text, Iface::MessageSent& out);
+  Iface::MessageSend messageSendChannel(int slot, uint32_t ts, const char* text, size_t len, Iface::MessageSent& out);
   const char* hardwareName() const { return board.getManufacturerName(); }
   const char* hardwareNames() const { return board.getManufacturerNames(); }
   uint16_t batteryMilliVolts() { return board.getBattMilliVolts(); }
@@ -186,6 +188,13 @@ protected:
   bool allowPacketForward(const mesh::Packet* packet) override;
 
   void sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis);
+#ifdef ENABLE_MECON_IFACE
+  // What became of a message.send (MessageOps.h): the dispatcher's reports, matched on the native packet hash.
+  void logTx(mesh::Packet* packet, int len) override;
+  void logTxFail(mesh::Packet* packet, int len) override;
+  void onDutyHold(mesh::Packet* packet, uint32_t wait_ms) override;
+  void onMessagePacket(const mesh::Packet* pkt) override;
+#endif
   void sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis=0) override;
   void sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis=0) override;
 
@@ -355,6 +364,7 @@ private:
 #ifdef ENABLE_MECON_IFACE
   friend class MeconIface;
   MeconIface _iface;
+  Iface::MessageSent* _msg_capture = nullptr;   // a message.send in progress: onMessagePacket fills in its hash
 #endif
   void setCliCaller(const Cli::Context& ctx, uint8_t caller);
   void recordFactoryReset(uint8_t caller);

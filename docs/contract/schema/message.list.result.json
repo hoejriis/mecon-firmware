@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/message.list.result.json",
+  "title": "Result of message.list",
+  "description": "Every entry of the outcome table.",
+  "type": "object",
+  "required": [
+    "open",
+    "owed",
+    "epoch",
+    "messages"
+  ],
+  "properties": {
+    "open": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "owed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "messages": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "message",
+          "hash",
+          "state"
+        ],
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "The message's identity: the request id, or \"#<issuer>:<job_id>\" for a signed request."
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "description": "The native packet hash: the same id a receiver or an observer computes."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "duty-held",
+              "transmitted",
+              "acked",
+              "timed-out",
+              "failed",
+              "unknown"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

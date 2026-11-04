@@ -395,6 +395,56 @@
       }
     },
     {
+      "name": "message list",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-msg-list",
+        "op": "message.list"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "message.list.result.json"
+      }
+    },
+    {
+      "name": "message get of an identity the table does not hold",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-msg-get",
+        "op": "message.get",
+        "args": {
+          "message": "fx-never-sent"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "message.get.result.json"
+      }
+    },
+    {
+      "name": "message send with no recipient",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-msg-norcpt",
+        "op": "message.send",
+        "args": {
+          "text": "x"
+        }
+      },
+      "expect": {
+        "status": "invalid"
+      }
+    },
+    {
       "name": "contact get of a key that is not a full key",
       "roles": [
         "companion"

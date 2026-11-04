@@ -429,6 +429,7 @@ void Dispatcher::checkSend() {
       dutyAdvance(now);
       if (duty.sum() + est > limit_ms) {
         uint32_t wait = duty.waitMs(now, duty.sum() + est - limit_ms);
+        onDutyHold(outbound, wait);
         _mgr->queueOutbound(outbound, 0, futureMillis(wait));
         outbound = NULL;
         next_tx_time = futureMillis(wait);

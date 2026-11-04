@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/message.ack.result.json",
+  "title": "Result of message.ack",
+  "description": "Request args: {\"message\"}. Marks a final entry as collected, so its slot goes first. An entry still open is failed with error not-final; an identity not held is ok with known false, so a retry of a lost reply is harmless.",
+  "type": "object",
+  "required": [
+    "message",
+    "known"
+  ],
+  "properties": {
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "The message's identity: the request id, or \"#<issuer>:<job_id>\" for a signed request."
+    },
+    "known": {
+      "type": "boolean"
+    }
+  }
+}
