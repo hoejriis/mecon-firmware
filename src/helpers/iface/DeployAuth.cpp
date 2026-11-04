@@ -421,9 +421,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (rv == Dep::RV_TOO_OLD) {
       _dep->auth_rejections++;
       // The mark, so a manager that lost its place continues above it without another request (AUTHORITY.md section 8).
-      char at[24];
-      snprintf(at, sizeof(at), "{\"mark\":%lu}", (unsigned long)wm.mark);
-      n = writeResult(out, cap, id, ST_REFUSED, at, "replay");
+      n = writeReplayRefusal(out, cap, id, wm.mark);
       freeBody(body);
       return n;
     }
