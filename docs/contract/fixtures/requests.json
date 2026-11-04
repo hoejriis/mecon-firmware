@@ -380,6 +380,38 @@
       }
     },
     {
+      "name": "contact list",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-ct-list",
+        "op": "contact.list"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "contact.list.result.json"
+      }
+    },
+    {
+      "name": "contact get of a key that is not a full key",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-ct-get-short",
+        "op": "contact.get",
+        "args": {
+          "key": "00ff"
+        }
+      },
+      "expect": {
+        "status": "invalid"
+      }
+    },
+    {
       "name": "management channel state",
       "roles": [
         "companion"

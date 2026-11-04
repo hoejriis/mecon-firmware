@@ -47,7 +47,13 @@ def hello(nodes, kind):
     else:
         cli = CliClient(n)
         i = mecon_iface.ConsoleClient(cli.sock.sendall, mecon_iface.socket_lines(cli.sock))
-    return i.request("hello")["result"]["capabilities"]
+    caps, cursor = [], 0
+    while True:   # a hello that does not fit one result is paged
+        r = i.request("hello", {"cursor": cursor} if cursor else None)["result"]
+        caps += r["capabilities"]
+        if "next" not in r:
+            return caps
+        cursor = r["next"]
 
 
 def test_the_table_is_read():
@@ -62,3 +68,17 @@ def test_every_operation_a_device_has_has_a_row_for_its_role(nodes, kind, role):
     assert len(ops) > 10, ops
     missing = [op for op in ops if role not in (row_for(rows, op) or ())]
     assert not missing, "in hello on %s but with no row for role %s in OPERATIONS.md 5.1: %s" % (kind, role, missing)
+
+
+def test_a_list_of_private_data_is_in_the_private_class():
+    """Contact and channel lists are C_PRIVATE in the privilege table, like the inventory stream that carries them. The
+    callers the two classes separate (a LoRa admin, a flagged contact, the Ethernet console) reach no Companion operation
+    today, so this is read from the source: it has to hold before LoRa management opens a path."""
+    source = open(os.path.join(os.path.dirname(DOC), "..", "..", "examples", "companion_radio", "MeconIface.cpp")).read()
+    for fn in ("opContList", "opContGet", "opChanList", "opChanGet"):
+        assert re.search(r"Status %s\(OpContext& c\) \{ return mayReadPrivate\(c\) \?" % fn, source), fn
+    text = open(DOC).read()
+    section = text[text.index("### 5.1 "):text.index("### 5.2 ")]
+    for op in ("contact.list", "channel.list"):
+        row = next(l for l in section.splitlines() if l.startswith("| `%s`" % op))
+        assert row.split("|")[4].strip() == "private", row

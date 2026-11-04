@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/contact.remove.result.json",
+  "title": "Result of contact.remove",
+  "description": "Request args: {\"key\": 64 hex digits}. Removes the contact and its stored advert, as the native CMD_REMOVE_CONTACT frame does; removed is false when it was not stored, so a retry of a remove that took effect is ok. Companion only.",
+  "type": "object",
+  "required": [
+    "key",
+    "removed"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The contact's public key."
+    },
+    "removed": {
+      "type": "boolean"
+    }
+  }
+}

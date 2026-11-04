@@ -315,6 +315,10 @@ private:
 
   // helpers, short-cuts
   bool saveChannels() { return _store->saveChannels(this); }
+  // A contact changed in place or was added or removed outside a native frame (contact.* operations): the lazy save,
+  // with the delay the native frames use.
+  void markContactsDirty();
+  void deleteContactBlob(const uint8_t* key) { _store->deleteBlobByKey(key, PUB_KEY_SIZE); }
   void saveContacts();
 
   DataStore* _store;

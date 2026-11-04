@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/contact.list.result.json",
+  "title": "Result of contact.list",
+  "description": "Request args: {\"cursor\": record to start at, optional}. The stored contacts from the cursor on, in record order, up to 6 per page and fewer when a page would not fit the result limit. The cursor is a record number, which a contact keeps while it is stored, so adds and removals between pages never skip or repeat a contact that stays. A shared secret and the path bytes are never in a result. Companion only.",
+  "type": "object",
+  "required": [
+    "capacity",
+    "count",
+    "contacts",
+    "next"
+  ],
+  "properties": {
+    "capacity": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "contacts": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "type",
+          "fav",
+          "last_advert",
+          "hops"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "The contact's public key."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 31
+          },
+          "type": {
+            "enum": [
+              "chat",
+              "repeater",
+              "room",
+              "sensor"
+            ],
+            "description": "Never none: type 0 is the anonymous slot's and is not a stored contact."
+          },
+          "fav": {
+            "type": "boolean",
+            "description": "The native favourite flag: the contact is protected from the oldest-first eviction."
+          },
+          "last_advert": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Their clock at their last advert."
+          },
+          "hops": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 63,
+            "description": "Hops of the known path; -1: none, the contact is reached by flood."
+          },
+          "lat_e6": {
+            "type": "integer",
+            "minimum": -90000000,
+            "maximum": 90000000
+          },
+          "lon_e6": {
+            "type": "integer",
+            "minimum": -180000000,
+            "maximum": 180000000
+          }
+        }
+      }
+    },
+    "next": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "The cursor of the next page, or null after the last contact."
+    }
+  }
+}
