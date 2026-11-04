@@ -204,14 +204,13 @@ struct ContactEntry {
   bool has_pos;
   int32_t lat_e6, lon_e6;
 };
-inline void writeContactEntry(JsonWriter& w, const ContactEntry& c) {
+// The members of a contact, shared by the inventory entry and the contact.* results: one shape, never a secret.
+inline void writeContactFields(JsonWriter& w, const ContactEntry& c) {
   static const char H[] = "0123456789abcdef";
   char key[65];
   for (int i = 0; i < 32; i++) { key[2 * i] = H[c.key[i] >> 4]; key[2 * i + 1] = H[c.key[i] & 15]; }
   key[64] = 0;
   static const char* const TYPES[] = {"none", "chat", "repeater", "room", "sensor"};
-  w.beginObject();
-  w.key("kind"); w.str("contact");
   w.key("key"); w.str(key);
   w.key("name"); w.str(c.name);
   w.key("type"); w.str(c.type < 5 ? TYPES[c.type] : "other");
@@ -219,6 +218,11 @@ inline void writeContactEntry(JsonWriter& w, const ContactEntry& c) {
   w.key("last_advert"); w.unum(c.last_advert);
   w.key("hops"); w.num(c.hops);
   if (c.has_pos) { w.key("lat_e6"); w.num(c.lat_e6); w.key("lon_e6"); w.num(c.lon_e6); }
+}
+inline void writeContactEntry(JsonWriter& w, const ContactEntry& c) {
+  w.beginObject();
+  w.key("kind"); w.str("contact");
+  writeContactFields(w, c);
   w.endObject();
 }
 inline void writeChannelEntry(JsonWriter& w, int index, const char* name) {

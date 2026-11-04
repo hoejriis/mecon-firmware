@@ -44,7 +44,7 @@ UTF-8 JSON objects. Three shapes:
 
 | Operation | Does | Authorized as |
 |---|---|---|
-| `hello` | interface versions, `device_id`, `node_key`, role, hardware, firmware and upstream versions, capability list (paged) | read |
+| `hello` | interface versions, `device_id`, `node_key`, role, hardware, firmware and upstream versions, capability list (paged: `cursor` in, `next` out; one page unless a signed result with a nonce would outgrow the 1,536-byte limit) | read |
 | `status.get` | the current status snapshot (the same document MQTT publishes as `status`) | read |
 | `config.schema` | settings this build has: key, type, range or enum, writable, write-only, whether a reboot is needed (paged) | read |
 | `config.get` | values of the requested keys (write-only keys report `"set"` or `"unset"`) | read; secret keys as the CLI decides |
@@ -64,6 +64,8 @@ UTF-8 JSON objects. Three shapes:
 | `update.status` | the open update job, the security floor and the staged manifests | read |
 | `channel.list` / `channel.get` | the native channel table: per used slot its name, the one-byte channel hash and the key size, never the secret; `list` is paged by 8 used slots (`cursor` in, `next` out). Companion only | read |
 | `channel.put` / `channel.remove` | write or clear a slot of the native channel table, as the app's `CMD_SET_CHANNEL` does: a name of 1 to 31 bytes and a 128-bit key as 32 hex digits; a key another slot holds is `failed` `duplicate-secret`; a table that cannot be saved is `failed` `write-failed` with the slot unchanged, in RAM and on flash. A slot holding a key under an empty name counts as present for `remove`. Companion only | write |
+| `contact.list` / `contact.get` | the native contact table: per stored contact its key, name, type, protection flag, last advert, hops and position, never the shared secret or the path bytes; `list` is paged by up to 6 contacts in record order (`cursor` in, `next` out; a record number, so adds and removals between pages never skip or repeat a contact that stays); `get` takes the whole key as 64 hex digits. Companion only | read |
+| `contact.put` / `contact.remove` / `contact.protect` | write the native contact table as `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` and the favourite flag do: a put adds a contact (name and type required; type 0 has no spelling) or updates the fields it names, keeps the contact's flags and path, and never grants telemetry or the remote CLI; a full table overwrites the oldest unprotected contact when the overwrite setting is on, otherwise `failed` `table-full`; a repeat is the same state (`changed` false, nothing written); `remove` of a key that is not stored is `ok` with `removed` false; `protect` takes `protected` true or false and a key that is not stored is `failed` `not-found`. Saved by the native lazy write. Companion only | write |
 | `mgmt.channel.get` / `bind` / `rotate` / `unbind` | the management channel: one native slot marked as the channel a manager reaches the device on, its state (none, bound or stale), and its changes, which confirm-or-revert for anyone but the cable ([management channel](MANAGEMENT_CHANNEL.md)). Companion only | read (`get`); write |
 | `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 

@@ -302,6 +302,22 @@ def test_an_unsigned_channel_put_is_refused_once_enrolled_and_channel_reads_work
     assert d.i.request("channel.list")["status"] == "ok"
 
 
+def test_an_unsigned_contact_write_is_refused_once_enrolled_and_contact_reads_work(nodes):
+    d = boot(nodes, "uk")
+    d.provision()
+    k = bytes([7]) * 32
+    assert d.c.add_contact_full(k, "kept", lastmod=1792800000)[0] == 0
+    for op, args in (("contact.put", {"key": bytes([8]).hex() * 32, "name": "x", "type": "chat"}),
+                     ("contact.remove", {"key": k.hex()}),
+                     ("contact.protect", {"key": k.hex(), "protected": True})):
+        r = d.i.request(op, args)
+        assert r["status"] == "refused" and r["error"] == "unauthenticated", (op, r)
+    got = {x["key"]: x for x in d.c.get_contacts()[1]}
+    assert set(got) == {k} and got[k]["flags"] == 0, "nothing was written"
+    assert d.i.request("contact.list")["status"] == "ok"
+    assert d.i.request("contact.get", {"key": k.hex()})["result"]["name"] == "kept"
+
+
 def test_signed_requests_never_erase(nodes):
     d = boot(nodes, "ne")
     d.provision()

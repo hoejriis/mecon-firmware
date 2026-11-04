@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/contact.put.result.json",
+  "title": "Result of contact.put",
+  "description": "Request args: {\"key\": 64 hex digits, \"name\": 1 to 31 bytes, \"type\": chat, repeater, room or sensor, \"lat_e6\" and \"lon_e6\": both or neither}. Adds the contact or updates the named fields of a stored one, as the native CMD_ADD_UPDATE_CONTACT frame does: a new contact needs name and type, and has no flags and no known path; an update keeps the flags (grants and protection) and the path. A put cannot grant telemetry or the remote CLI. A full table behaves as for the app (the oldest unprotected contact is overwritten when the overwrite setting is on) or is failed with error table-full; the contact is saved by the native lazy write. A repeat is the same state. A shared secret and the path bytes are never in a result. Companion only.",
+  "type": "object",
+  "required": [
+    "key",
+    "name",
+    "type",
+    "fav",
+    "last_advert",
+    "hops",
+    "created",
+    "changed"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The contact's public key."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 31
+    },
+    "type": {
+      "enum": [
+        "chat",
+        "repeater",
+        "room",
+        "sensor"
+      ],
+      "description": "Never none: type 0 is the anonymous slot's and is not a stored contact."
+    },
+    "fav": {
+      "type": "boolean",
+      "description": "The native favourite flag: the contact is protected from the oldest-first eviction."
+    },
+    "last_advert": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Their clock at their last advert."
+    },
+    "hops": {
+      "type": "integer",
+      "minimum": -1,
+      "maximum": 63,
+      "description": "Hops of the known path; -1: none, the contact is reached by flood."
+    },
+    "lat_e6": {
+      "type": "integer",
+      "minimum": -90000000,
+      "maximum": 90000000
+    },
+    "lon_e6": {
+      "type": "integer",
+      "minimum": -180000000,
+      "maximum": 180000000
+    },
+    "created": {
+      "type": "boolean",
+      "description": "True when the key was not stored before."
+    },
+    "changed": {
+      "type": "boolean",
+      "description": "False when the contact already held these values: nothing is written then, and lastmod is not touched."
+    }
+  }
+}
