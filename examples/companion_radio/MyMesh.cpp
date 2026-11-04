@@ -455,8 +455,82 @@ ContactInfo*  MyMesh::processAck(const uint8_t *data) {
       return expected_ack_table[i].contact;
     }
   }
+#ifdef ENABLE_MECON_IFACE
+  {
+    uint32_t ack_code;
+    uint8_t to[6];
+    memcpy(&ack_code, data, 4);
+    if (_iface.messages() && _iface.messages()->onAck(ack_code, to)) {
+      ContactInfo* from = lookupContactByPubKey(to, sizeof(to));
+      if (from) return from;   // as for a table entry above: the caller stops this ACK here, and may learn a path
+    }
+  }
+#endif
   return checkConnectionsAck(data);
 }
+
+#ifdef ENABLE_MECON_IFACE
+void MyMesh::onMessagePacket(const mesh::Packet* pkt) {
+  if (_msg_capture) const_cast<mesh::Packet*>(pkt)->calculatePacketHash(_msg_capture->hash);
+}
+
+void MyMesh::logTx(mesh::Packet* packet, int len) {
+  if (!_iface.messages() || !_iface.messages()->anyOpen()) return;
+  uint8_t hash[MAX_HASH_SIZE];
+  packet->calculatePacketHash(hash);
+  _iface.messages()->onTx(hash, millis());
+}
+
+void MyMesh::logTxFail(mesh::Packet* packet, int len) {
+  if (!_iface.messages() || !_iface.messages()->anyOpen()) return;
+  uint8_t hash[MAX_HASH_SIZE];
+  packet->calculatePacketHash(hash);
+  _iface.messages()->onTxFail(hash);
+}
+
+void MyMesh::onDutyHold(mesh::Packet* packet, uint32_t wait_ms) {
+  if (!_iface.messages() || !_iface.messages()->anyOpen()) return;
+  uint8_t hash[MAX_HASH_SIZE];
+  packet->calculatePacketHash(hash);
+  _iface.messages()->onHeld(hash, wait_ms);
+}
+
+// The native send, as CMD_SEND_TXT_MSG makes it, less the app's own ACK table: the ACK is the outcome table's, so a stock
+// app is not told of a message it did not send. No contact is created for a recipient that is not stored.
+Iface::MessageSend MyMesh::messageSendDirect(const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text,
+                                             Iface::MessageSent& out) {
+  ContactInfo* to = contactStore().find(key, PUB_KEY_SIZE);
+  if (!to) return Iface::MS_NOT_FOUND;
+  uint32_t est = 0;
+  _msg_capture = &out;
+  const int r = sendMessage(*to, ts, attempt, text, out.ack, est);
+  _msg_capture = nullptr;
+  if (r == MSG_SEND_FAILED) return Iface::MS_QUEUE_FULL;
+  out.est_ms = est;
+  out.flood = r == MSG_SEND_SENT_FLOOD;
+  return Iface::MS_OK;
+}
+
+// As CMD_SEND_CHANNEL_TXT_MSG makes it. The native send cuts a text that does not fit beside the sender's name; here that
+// is an answer instead, since a manager that asked for the whole text must not believe it went.
+Iface::MessageSend MyMesh::messageSendChannel(int slot, uint32_t ts, const char* text, size_t len, Iface::MessageSent& out) {
+#ifdef MAX_GROUP_CHANNELS
+  ChannelDetails ch;
+  if (!getChannel(slot, ch) || !ch.name[0]) return Iface::MS_NOT_FOUND;
+  if (strlen(_prefs.node_name) + 2 + len > MAX_TEXT_LEN) return Iface::MS_TOO_LONG;
+  _msg_capture = &out;
+  const bool sent = sendGroupMessage(ts, ch.channel, _prefs.node_name, text, (int)len);
+  _msg_capture = nullptr;
+  if (!sent) return Iface::MS_QUEUE_FULL;
+  out.ack = 0;
+  out.est_ms = 0;
+  out.flood = true;
+  return Iface::MS_OK;
+#else
+  return Iface::MS_NOT_FOUND;
+#endif
+}
+#endif
 
 void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt,
                           uint32_t sender_timestamp, const uint8_t *extra, int extra_len, const char *text) {

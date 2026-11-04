@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/message.send.result.json",
+  "title": "Result of message.send",
+  "description": "Request args: {\"to\": 64 hex digits} or {\"channel\": slot}, with {\"text\", \"timestamp\" (optional), \"attempt\" (0 to 3, optional, direct only)}. See OPERATIONS.md section 6.",
+  "type": "object",
+  "required": [
+    "message",
+    "state",
+    "hash",
+    "route",
+    "ts",
+    "epoch"
+  ],
+  "properties": {
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "The message's identity: the request id, or \"#<issuer>:<job_id>\" for a signed request."
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "duty-held",
+        "transmitted",
+        "acked",
+        "timed-out",
+        "failed",
+        "unknown"
+      ]
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "The native packet hash: the same id a receiver or an observer computes."
+    },
+    "to": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$",
+      "description": "A direct message: the recipient's key prefix."
+    },
+    "channel": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "A channel message: the slot."
+    },
+    "ack": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$",
+      "description": "A direct message: the native ACK code, as the app sees it."
+    },
+    "est_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "A direct message: the native estimate of the round trip, counted from the transmission."
+    },
+    "route": {
+      "type": "string",
+      "enum": [
+        "flood",
+        "direct"
+      ]
+    },
+    "ts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The message's own timestamp."
+    },
+    "wait_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "While duty-held: the wait the dispatcher last gave."
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "This boot. A manager compares it with the epoch of the send's reply: the table does not outlive a reboot."
+    }
+  }
+}

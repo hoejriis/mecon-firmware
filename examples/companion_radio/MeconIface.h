@@ -8,6 +8,7 @@
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/ChannelOps.h>
 #include <helpers/iface/ContactOps.h>
+#include <helpers/iface/MessageOps.h>
 #include <helpers/iface/MgmtChannel.h>
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
@@ -80,6 +81,8 @@ public:
   Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this, nullptr, 0, &_confirm}; }
   Iface::ChannelHost channelHost();   // the native channel table (channel.* operations)
   Iface::ContactHost contactHost();   // the native contact table (contact.* operations)
+  Iface::MessageHost messageHost(bool create);   // message.* operations; create: make the outcome table if there is none
+  Iface::MessageTable* messages() const { return _messages; }
   Iface::MgmtHost mgmtHost();         // the management channel binding (mgmt.channel.*; MeconMgmt.cpp)
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
@@ -196,6 +199,9 @@ private:
   bool ensureQueue(Link& l);
 
   Link _links[LINKS];
+  Iface::MessageTable* _messages = nullptr;   // allocated on the first message.send
+  uint32_t _msg_ev_seq = 0;
+  void tellMessages();
   Iface::ResultCache* _cache = nullptr;     // one for the device (design section 3), allocated on the first request
   MyMesh* _mesh = nullptr;
   Cli::Context _ctx;                        // the caller of the request being handled (a transport, or the broker)
