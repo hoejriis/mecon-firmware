@@ -20,6 +20,8 @@
 // without a link, for tests of the screens.
 #pragma once
 #include <helpers/BaseSerialInterface.h>
+#include <helpers/BleStart.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <string>
@@ -127,7 +129,9 @@ public:
     _pin = pin;
     fprintf(stderr, "SIMBLE begin pin=%s\n", (pin == 0 || pin == 123456) ? "default" : "per-device");
     fflush(stderr);
-    openListener();
+    const bool start_fails = getenv("SIM_BLE_START_FAILS") != nullptr;   // a stack that does not come up
+    BleStart::report(!start_fails);
+    if (!start_fails) openListener();
   }
   void enable() override { _enabled = true; }
   void disable() override {

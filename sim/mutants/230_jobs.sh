@@ -47,3 +47,5 @@ mutate job_event_only_to_the_requester examples/companion_radio/MeconDeploy.cpp 
 # the boot checks only ask whether a job is open: they never allocate the table (about 4.4 KB of heap, issue 100)
 mutate jobs_config_boot_allocates_the_table src/helpers/iface/IfaceConfig.cpp '  JobTable* t = ch->jobs ? ch->jobs->peek() : nullptr;   // at boot: no table, no job to keep' '  JobTable* t = ch->jobs ? ch->jobs->table() : nullptr;' unit:test_iface_config
 mutate jobs_mgmt_boot_allocates_the_table src/helpers/iface/MgmtChannel.cpp '  JobTable* t = h.jobs ? h.jobs->peek() : nullptr;   // at boot: no table, no job to keep' '  JobTable* t = h.jobs ? h.jobs->table() : nullptr;' unit:test_mgmt_channel
+# the operation matrix accounts for what hello says (#268)
+mutate op_without_a_matrix_row examples/companion_radio/MeconIface.cpp 'const char* const CAPABILITIES[] = {"hello", ' 'const char* const CAPABILITIES[] = {"zz.op", "hello", ' sim/tests/test_operations_matrix.py

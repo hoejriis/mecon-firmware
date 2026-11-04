@@ -22,6 +22,7 @@ import pytest
 
 from sim import harness
 from sim.harness import BleUnavailable, CompanionClient, PairingRejected, audit_entries, node_log
+from test_deployment_authority import Dev
 
 RTC = 1760000000
 PIN = 424242            # a per-device PIN
@@ -334,3 +335,19 @@ def test_a_contact_list_streams_only_to_the_client_that_asked_for_it(nodes):
     assert cu.count(harness.RESP_CONTACT) == 5 and cu[0] == harness.RESP_CONTACTS_START and cu[-1] == harness.RESP_END_OF_CONTACTS, cu
     assert harness.RESP_CONTACT not in cb and harness.RESP_CONTACTS_START not in cb and harness.RESP_END_OF_CONTACTS not in cb, cb
     assert len(cb) == 10
+
+
+def _status(node):
+    return Dev(node).i.request("status.get")["result"]
+
+
+def test_status_says_whether_the_ble_stack_started(nodes):
+    """Issue #165: a failed BLE start used to be silent, and from outside looked like a phone that had not connected."""
+    n = boot(nodes, "ble_ok", PIN)
+    assert _status(n)["ble_started"] is True
+
+
+def test_a_ble_stack_that_failed_to_start_is_reported(nodes, monkeypatch):
+    monkeypatch.setenv("SIM_BLE_START_FAILS", "1")
+    n = boot(nodes, "ble_bad", PIN)
+    assert _status(n)["ble_started"] is False

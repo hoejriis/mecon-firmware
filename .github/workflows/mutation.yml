@@ -13,12 +13,13 @@ on:
   pull_request:
     # Not `opened`: a PR created with full-ci fires `labeled` as well, and two runs for one commit cancelled each other.
     types: [opened, synchronize, reopened, ready_for_review, labeled]
-    paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', 'test/**', 'platformio.ini', '.github/workflows/mutation.yml']
+    paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', 'test/**', 'platformio.ini', 'tools/pio_fetch.py', '.github/workflows/mutation.yml']
   push:
     branches: [main]
     paths: ['src/**', 'examples/**', 'variants/sim/**', 'sim/**', 'test/**', 'platformio.ini', '.github/workflows/mutation.yml']
   schedule:
-    - cron: '47 3 * * *'   # after the All boards nightly (02:17), so the two do not share the runners
+    # GitHub starts scheduled runs hours late (#267), so these two are set for the evening to be done by morning.
+    - cron: '47 20 * * *'   # after the All boards nightly (19:17), so the two do not share the runners
   workflow_dispatch:
 
 # On a pull request a newer push makes this run obsolete: cancel it rather than queue behind it. On main every run
@@ -107,6 +108,9 @@ jobs:
           done
           sudo systemctl stop mosquitto || true   # the package starts a default broker; the tests start their own
       - run: pip install "platformio==6.2.0" pytest
+      - name: PlatformIO packages, with retries
+        # Before the first build, so a download outage fails here as infrastructure, not as "does not build" (#258).
+        run: python3 tools/pio_fetch.py $(sim/build.sh --envs) native native_kiss_modem
       - name: Mutants ${{ matrix.mutant }} must all be killed
         run: |
           status=0

@@ -31,4 +31,13 @@ inline bool otaStartAllowed(bool device_interface_build, bool nrf52_build, bool 
   return opted_in && !device_interface_build && !nrf52_build;
 }
 
+// An opted-in ESP32 updater has no reason to stay open for hours: it stops after this long with no page request and no
+// upload in progress. (Unsigned 32-bit arithmetic: millis() wraps.)
+static const uint32_t OTA_IDLE_MS = 10UL * 60 * 1000;
+inline bool otaIdleStop(uint32_t now_ms, uint32_t last_activity_ms, bool upload_running) {
+  return !upload_running && (uint32_t)(now_ms - last_activity_ms) >= OTA_IDLE_MS;
+}
+// A second `start ota` while one runs reports the running session rather than starting a second server.
+inline bool otaStartNewSession(bool session_running) { return !session_running; }
+
 }  // namespace BleDfuPolicy

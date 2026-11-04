@@ -13,7 +13,7 @@ mecon-firmware is an upstream-derived MeshCore firmware project with a public ba
 - Preserve native MeshCore behavior and offline independence.
 - Prefer changes in the shared MECON runtime over role-specific duplication.
 - Keep Companion/Repeater and hardware adapters thin.
-- A new behaviour change needs a test that fails on stock 1.18.0 and passes here, and the mutation check (`sim/mutate.sh`) should show the test can fail.
+- A new behaviour change needs a test that fails on stock 1.18.0 and passes here, and the mutation check (`sim/mutate.sh`) should show the test can fail. A new mutant goes in its topic's file under `sim/mutants/`, or a new numbered file for a new topic ([mutation check](docs/SIMULATION.md#mutation-check)).
 - Do not introduce MeshContinuum-specific hosts, credentials, database concepts or private deployment names into firmware.
 - Treat `docs/contract/` as the public device API.
 
