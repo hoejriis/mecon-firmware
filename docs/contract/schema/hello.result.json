@@ -14,6 +14,7 @@
     "upstream": {"type": "string", "description": "The MeshCore release it is built on, for example v1.18.0."},
     "epoch": {"type": "integer", "minimum": 1},
     "capabilities": {"type": "array", "items": {"type": "string"}, "contains": {"const": "hello"}},
+    "next": {"type": "integer", "minimum": 1, "description": "Present only when the capability list continues: send hello again with this as args.cursor. A hello that fits in one page, which is nearly every one, has no next."},
     "update": {
       "description": "Present only while the image of an update job runs unconfirmed: that job, and the version and SHA-256 of the running image (UPDATES.md section 7, step 3), with unconfirmed:true when its job is already over.",
       "type": "object",

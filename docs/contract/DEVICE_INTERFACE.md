@@ -44,7 +44,7 @@ UTF-8 JSON objects. Three shapes:
 
 | Operation | Does | Authorized as |
 |---|---|---|
-| `hello` | interface versions, `device_id`, `node_key`, role, hardware, firmware and upstream versions, capability list (paged) | read |
+| `hello` | interface versions, `device_id`, `node_key`, role, hardware, firmware and upstream versions, capability list (paged: `cursor` in, `next` out; one page unless a signed result with a nonce would outgrow the 1,536-byte limit) | read |
 | `status.get` | the current status snapshot (the same document MQTT publishes as `status`) | read |
 | `config.schema` | settings this build has: key, type, range or enum, writable, write-only, whether a reboot is needed (paged) | read |
 | `config.get` | values of the requested keys (write-only keys report `"set"` or `"unset"`) | read; secret keys as the CLI decides |

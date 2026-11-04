@@ -270,3 +270,27 @@ def _wait(cond, secs):
     while time.time() < end and not cond():
         time.sleep(0.2)
     return cond()
+
+
+def test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead_of_failing(nodes):
+    # The five contact.* names took the signed, nonce-bearing hello of a build with every stream past the 1,536-byte
+    # result: it answered busy too-large-to-sign. The list is paged, as the contract says, only when it must be.
+    from sim.tests.test_deployment_authority import boot
+    d = boot(nodes, "hp")
+    full = d.i.request("hello")["result"]["capabilities"]
+    assert "next" not in d.i.request("hello")["result"], "a hello that fits is one page"
+    d.provision()
+    plain = d.i.request("hello")["result"]
+    assert plain["capabilities"] == full and "next" not in plain
+    r = d.i.request("hello", {"nonce": "n" * 32})
+    assert r["status"] == "ok", r
+    got, page = list(r["result"]["capabilities"]), r["result"]
+    assert "hello" in got and "contact.protect" in got and page["next"] == len(got), page
+    for _ in range(5):
+        if "next" not in page:
+            break
+        page = d.i.request("hello", {"nonce": "n" * 32, "cursor": page["next"]})["result"]
+        got += page["capabilities"]
+    assert "next" not in page, "the pages never ended"
+    assert got == full, (got, full)
+    assert d.i.request("hello", {"cursor": 999})["status"] == "invalid"

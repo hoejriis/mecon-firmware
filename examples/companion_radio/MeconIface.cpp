@@ -34,6 +34,11 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
   out[2 * n] = 0;
 }
 
+// Where hello stops adding capabilities, as the size of the result so far: the result limit (1,536 bytes), less the
+// signature (99), the op and counters it adds (about 60), the closing of the array and result and a `next` member.
+const size_t HELLO_SIGNED_BUDGET = 1350;
+const size_t HELLO_PLAIN_BUDGET = 1500;
+
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
@@ -157,10 +162,31 @@ Status opHello(OpContext& c) {
   // The channel nonce of the link this reply goes to, only once a Deployment record exists (AUTHORITY.md section 7.1).
   const char* nonce = m->helloNonce();
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
+  // The list is paged (`cursor` in, `next` out, as DEVICE_INTERFACE.md says) once it would not leave room for the
+  // signature: an enrolled device signs the result, and a nonce adds a second device-id signature, which together
+  // outgrew the 1,536-byte result on a build with every stream. Most hellos fit in one page and carry no `next`.
+  int64_t from = 0;
+  const int ct = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "cursor") : -1;
+  if (ct >= 0 && !jsonGetInt(*c.doc, ct, 0, 255, &from)) return ST_INVALID;
+  const size_t room = m->enrolled() ? HELLO_SIGNED_BUDGET : HELLO_PLAIN_BUDGET;
+  unsigned idx = 0;
+  int next = -1;
+  auto add = [&](const char* cap) {
+    if (idx++ < (unsigned)from || next >= 0) return;
+    if (w.size() + strlen(cap) + 3 > room) { next = (int)idx - 1; return; }
+    w.str(cap);
+  };
   w.key("capabilities"); w.beginArray();
-  for (const char* cap : CAPABILITIES) w.str(cap);
-  writeStreamCapabilities(w, m->streamsProduced());
+  for (const char* cap : CAPABILITIES) add(cap);
+  const uint32_t streams = m->streamsProduced();
+  for (int sid = 0; sid < STREAM_COUNT; sid++) {
+    if (!(streams & (1u << sid))) continue;
+    char cap[24];
+    snprintf(cap, sizeof(cap), "stream.%s", STREAMS[sid].name);
+    add(cap);
+  }
   w.endArray();
+  if (next >= 0) { w.key("next"); w.num(next); }
   return ST_OK;
 }
 
