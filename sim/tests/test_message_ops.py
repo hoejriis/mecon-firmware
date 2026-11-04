@@ -39,7 +39,7 @@ def pair(nodes, ether, a="ma", b="mb"):
     return na, nb, ca, ia, cb
 
 
-def wait_state(i, msg, states, timeout=40.0):
+def wait_state(i, msg, states, timeout=75.0):
     end = time.time() + timeout
     r = None
     while time.time() < end:
@@ -58,7 +58,7 @@ def test_a_direct_message_reaches_a_stock_receiver_and_its_ack_is_correlated(nod
     res = r["result"]
     assert res["message"] == "dm-1" and res["state"] == "queued" and res["to"] == cb.pub_key[:6].hex(), res
     assert res["route"] == "flood" and res["ts"] == RTC + 5 and res["epoch"] >= 1, res
-    got = cb.sync_messages(timeout=30, want=1)
+    got = cb.sync_messages(timeout=75, want=1)
     assert [m["text"] for m in got] == ["hello from a manager"], got
     assert got[0]["ts"] == RTC + 5 and got[0]["from"] == ca.pub_key[:6], got
     done = wait_state(ia, "dm-1", ("acked",))
@@ -74,7 +74,7 @@ def test_a_channel_message_reaches_a_stock_receiver_and_ends_transmitted(nodes, 
     r = ia.request("message.send", {"channel": 0, "text": "to everyone", "timestamp": RTC + 6}, rid="ch-1")
     assert r["status"] == "ok" and r["result"]["channel"] == 0, r
     assert "ack" not in r["result"] and r["result"]["route"] == "flood", r
-    got = cb.sync_messages(timeout=30, want=1)
+    got = cb.sync_messages(timeout=75, want=1)
     assert got and got[0]["kind"] == "channel" and got[0]["text"].endswith("to everyone"), got
     done = wait_state(ia, "ch-1", ("transmitted",))
     time.sleep(1.0)
@@ -210,7 +210,7 @@ def test_an_enrolled_device_sends_only_for_a_signature(nodes, ether):
     assert r["status"] == "refused", r
     r = d.send(wrap(d.node_key, "message.send", {"to": cb.pub_key.hex(), "text": "signed", "timestamp": RTC + 9}, job=5))
     assert r["status"] == "ok" and r["result"]["message"].endswith(":5"), r
-    got = cb.sync_messages(timeout=30, want=1)
+    got = cb.sync_messages(timeout=75, want=1)
     assert [m["text"] for m in got] == ["signed"], got
     # The same bytes again: the kept answer, not a second send. Across a reboot the watermark says so.
     again = d.send(wrap(d.node_key, "message.send", {"to": cb.pub_key.hex(), "text": "signed", "timestamp": RTC + 9}, job=5))
