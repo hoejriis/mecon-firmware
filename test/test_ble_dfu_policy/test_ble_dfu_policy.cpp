@@ -29,6 +29,20 @@ TEST(BleDfuPolicy, StartOtaIsRefusedOnInterfaceAndNrf52BuildsEvenOptedIn) {
   }
 }
 
+TEST(BleDfuPolicy, AnIdleUpdaterStopsAfterTheIdlePeriodUnlessAnUploadRuns) {
+  const uint32_t idle = BleDfuPolicy::OTA_IDLE_MS;
+  EXPECT_FALSE(BleDfuPolicy::otaIdleStop(1000 + idle - 1, 1000, false));
+  EXPECT_TRUE(BleDfuPolicy::otaIdleStop(1000 + idle, 1000, false));
+  EXPECT_FALSE(BleDfuPolicy::otaIdleStop(1000 + idle, 1000, true));   // never during an upload
+  EXPECT_TRUE(BleDfuPolicy::otaIdleStop(idle - 1, 0xFFFFFFFFu, false));   // across the millis() wrap
+  EXPECT_FALSE(BleDfuPolicy::otaIdleStop(5, 0xFFFFFFFFu, false));
+}
+
+TEST(BleDfuPolicy, ASecondStartReportsTheRunningSession) {
+  EXPECT_TRUE(BleDfuPolicy::otaStartNewSession(false));
+  EXPECT_FALSE(BleDfuPolicy::otaStartNewSession(true));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

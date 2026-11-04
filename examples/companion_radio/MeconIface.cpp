@@ -1,4 +1,5 @@
 #include "MeconIface.h"
+#include <helpers/BleStart.h>
 #include <helpers/Uptime.h>
 #include <helpers/iface/DevIdHello.h>
 #include <helpers/iface/Wipe.h>
@@ -223,6 +224,7 @@ Status opStatus(OpContext& c) {
 #ifdef ENABLE_CONNMODE
   w.key("connectivity"); w.str(mesh->getConnectivityMode() == ConnMode::WIFI ? "wifi" : "ble");
 #endif
+  if (BleStart::state() != BleStart::NOT_TRIED) { w.key("ble_started"); w.boolean(BleStart::state() == BleStart::STARTED); }
   w.key("posture"); w.str(Posture::isHardened(mesh->postureValue()) ? "hardened" : "normal");
   m->writeDeploymentStatus(w, Posture::isHardened(mesh->postureValue()));
   m->jobs().writeStatus(w);
