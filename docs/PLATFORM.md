@@ -102,7 +102,7 @@ It is a two-step build, because the hybrid pass matches `build_src_filter` again
 1. `bin/idf5_libs.sh` builds the stub env `idf5_hybrid_libs`, which only exists to trigger the library rebuild. It is idempotent (a second run takes seconds) and installs PyYAML into PlatformIO's Python if it is missing, which the component removal needs. Given an env name it does nothing unless that env has a `custom_sdkconfig`, so a workflow can call it before every build.
 2. `pio run -e <env>` as usual.
 
-A `pio run` without step 1 stops at once and says to run it (`bin/idf5_check.py`), using the same test pioarduino makes for whether this env's libraries are installed.
+A `pio run` without step 1 stops at once and says to run it (`bin/idf5_check.py`), using the same test pioarduino makes for whether this env's libraries are installed. The platform is pinned, so the two cannot drift silently; a platform upgrade must re-check that test against its `builder/frameworks/arduino.py`.
 
 Locally: `sim/run.sh bin/idf5_libs.sh`, then `sim/run.sh pio run -e Heltec_v3_repeater`. `build.sh` and the three build workflows (`target-boards`, `pr-build-check`, `all-boards`) call the script. The native sim envs are not affected. To check the result, read `packages/framework-arduinoespressif32-libs/esp32s3/sdkconfig` in the PlatformIO core directory (the options above) and the "Removing component" lines in the first build's log.
 
