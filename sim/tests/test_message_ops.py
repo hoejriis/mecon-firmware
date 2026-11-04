@@ -1,6 +1,7 @@
 """message.send / get / list / ack over the device interface on simulated Companions (docs/contract/OPERATIONS.md
 section 6): what the interface sends is what a stock receiver reads, a repeat is not a second transmission, each outcome
 is correlated and told, and a caller the CLI table does not trust sends nothing."""
+import json
 import os
 import sys
 import time
@@ -12,8 +13,6 @@ from sim.harness import CompanionClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
-
-from test_device_interface import broker, mqtt_boot  # noqa: E402,F401  (broker is a fixture)
 
 RTC = 1792800000
 
@@ -243,13 +242,26 @@ def test_a_caller_the_cli_table_does_not_trust_sends_nothing(nodes, ether):
     assert len(ether.tx_log) == tx
 
 
-def test_an_outcome_is_private_on_a_link_that_may_only_read(nodes, tmp_path, broker):
-    """A verified broker session may read, and an outcome names its recipient: not for a plain broker login."""
-    b = broker()
-    n, c, i, dev = mqtt_boot(nodes, tmp_path, "mpv", b)
-    assert b.iface_request(dev, {"v": 1, "id": "st", "op": "status.get"})["status"] == "ok", "the session may read"
-    for op, args in (("message.get", {"message": "x"}), ("message.list", {}), ("message.ack", {"message": "x"})):
-        r = b.iface_request(dev, {"v": 1, "id": op, "op": op, "args": args})
+def test_an_outcome_is_private_on_a_link_that_may_only_read(nodes):
+    """A signature lets the caller read, and an outcome names its recipient: the link must be allowed that by itself."""
+    from test_deployment_authority import Dev, wrap
+    n = nodes("companion_standalone", "mpv", seed=36, rtc=RTC).start()
+    d = Dev(n)
+    assert d.c.cli("set pin 123456").startswith("> pin is now")   # the published default PIN: an untrusted link
+    assert d.provision()["status"] == "ok"
+    key = d.node_key
+    d.c.close()
+    n.restart()
+    b = CompanionClient(n, sock=n.connect_ble(123456).sock)
+    b.device_query()
+    b.app_start()
+    bi = mecon_iface.IfaceClient(b._send, b._read_frame)
+
+    def signed(op, args, job):
+        bi.send_raw(json.dumps(wrap(key, op, args, job=job), separators=(",", ":")).encode())
+        return bi.wait_result("s-%d-%s" % (job, op))
+    for job, (op, args) in enumerate((("message.get", {"message": "x"}), ("message.list", {}), ("message.ack", {"message": "x"})), 1):
+        r = signed(op, args, job)
         assert r["status"] == "refused" and r["error"] == "private", (op, r)
 
 
