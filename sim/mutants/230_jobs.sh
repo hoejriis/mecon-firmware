@@ -47,3 +47,8 @@ mutate job_event_only_to_the_requester examples/companion_radio/MeconDeploy.cpp 
 # the boot checks only ask whether a job is open: they never allocate the table (about 4.4 KB of heap, issue 100)
 mutate jobs_config_boot_allocates_the_table src/helpers/iface/IfaceConfig.cpp '  JobTable* t = ch->jobs ? ch->jobs->peek() : nullptr;   // at boot: no table, no job to keep' '  JobTable* t = ch->jobs ? ch->jobs->table() : nullptr;' unit:test_iface_config
 mutate jobs_mgmt_boot_allocates_the_table src/helpers/iface/MgmtChannel.cpp '  JobTable* t = h.jobs ? h.jobs->peek() : nullptr;   // at boot: no table, no job to keep' '  JobTable* t = h.jobs ? h.jobs->table() : nullptr;' unit:test_mgmt_channel
+# config.apply saves the prefs once, at its end (#231)
+mutate apply_saves_per_key src/helpers/PrefsBatch.h '  if (!s.open) return false;' '  return false;' sim/tests/test_device_interface.py::test_an_apply_saves_the_prefs_once_and_a_cut_leaves_all_or_none
+mutate apply_owed_save_dropped src/helpers/PrefsBatch.h '  if (s.save) s.save(s.user);' '' sim/tests/test_device_interface.py::test_an_apply_saves_the_prefs_once_and_a_cut_leaves_all_or_none
+mutate apply_batch_left_open src/helpers/PrefsBatch.h '  state() = State();
+  if (s.save)' '  if (s.save)' sim/tests/test_device_interface.py::test_apply_writes_through_the_cli_and_survives_a_reboot

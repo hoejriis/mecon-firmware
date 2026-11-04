@@ -269,6 +269,49 @@ def test_apply_writes_through_the_cli_and_survives_a_reboot(nodes):
     assert v == {"name": "Lab node", "wifi.profile.1.ssid": "office", "wifi.profile.1.pwd": "set"}
 
 
+def _renames(path):
+    return int(dict(kv.split("=") for kv in open(path).read().split())["rename"])
+
+
+def test_an_apply_saves_the_prefs_once_and_a_cut_leaves_all_or_none(nodes, tmp_path):
+    """Issue #231: one prefs save per key made a broker profile take about 10 s on a V4, and a power cut kept some keys."""
+    calls = str(tmp_path / "calls")
+    n = nodes("companion_standalone", "one_save", seed=11, rtc=RTC, extra=["--fs-calls", calls]).start()
+    c, i = client(n)
+    keys = {"name": "Five keys", "wifi.profile.1.ssid": "office", "wifi.profile.1.pwd": "pw-fake-1",
+            "wifi.profile.1.priority": 60, "wifi.profile.2.ssid": "lab"}
+    before = _renames(calls)
+    assert i.request("config.apply", {"set": {"name": "One key"}})["result"]["complete"]
+    one_key = _renames(calls) - before
+    assert one_key >= 1
+    before = _renames(calls)
+    r = i.request("config.apply", {"set": keys})
+    assert r["status"] == "ok" and r["result"]["complete"], r
+    assert _renames(calls) - before == one_key, "five keys cost one save, as one key does"
+    n.stop()
+    n.start()
+    c, i = client(n)
+    v = i.request("config.get", {"keys": ["name", "wifi.profile.2.ssid"]})["result"]["values"]
+    assert v == {"name": "Five keys", "wifi.profile.2.ssid": "lab"}, "the one save holds every key"
+
+    # A cut during that one save: the file holds all the old values, none of the new.
+    c.close()
+    n.stop()
+    n.fault_before = "rename:/prefs.json.tmp"
+    n.start()
+    c, i = client(n)
+    try:
+        i.request("config.apply", {"set": {"name": "Cut", "wifi.profile.2.ssid": "cut"}}, timeout=3)
+    except Exception:
+        pass
+    assert n.wait_exit(10) == 99, "the fault hook cut the save"
+    n.fault_before = None
+    n.start()
+    c, i = client(n)
+    v = i.request("config.get", {"keys": ["name", "wifi.profile.2.ssid"]})["result"]["values"]
+    assert v == {"name": "Five keys", "wifi.profile.2.ssid": "lab"}
+
+
 def test_apply_writes_nothing_when_one_key_fails_its_check(nodes):
     n, (c, i) = start(nodes, "cx")
     before = c.cli("get name")
