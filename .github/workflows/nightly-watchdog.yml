@@ -3,7 +3,7 @@ name: Nightly watchdog
 # The alarm on All boards (main-alarm.yml) runs inside the nightly, so a nightly that GitHub never starts raises
 # nothing. This hourly check reads the newest scheduled All boards run on main that ran to the end (a cancelled run, or
 # one still queued, does not count) and raises the alarm when it started more than 30 h ago, or never. GitHub starts the
-# 02:17Z nightly up to about six hours late, so 30 h leaves room for that and still catches a day without one. Losing
+# 19:17Z nightly up to about six hours late, so 30 h leaves room for that and still catches a day without one. Losing
 # every hourly run of this check for a day is far less likely than losing the one nightly.
 
 on:

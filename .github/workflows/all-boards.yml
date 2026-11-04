@@ -9,7 +9,8 @@ name: All boards
 
 on:
   schedule:
-    - cron: '17 2 * * *'
+    # GitHub starts scheduled runs hours late (#267), so this is set for the evening to be done by morning.
+    - cron: '17 19 * * *'
   workflow_dispatch:
     inputs:
       force_fail:
@@ -94,15 +95,19 @@ jobs:
       - name: Build shard ${{ matrix.shard.id }}
         run: |
           failed=()
+          infra=0
           for env in ${{ matrix.shard.envs }}; do
             echo "::group::$env"
             # One PlatformIO core directory holds one IDF library set per chip: the ESP32-C6 envs use the stock one, the Heltec
             # V3 and V4 envs each their own rebuilt one (docs/PLATFORM.md).
             case "$env" in *C6*|*c6*) export PLATFORMIO_CORE_DIR="$HOME/.platformio-stock" ;; heltec_v4_*) export PLATFORMIO_CORE_DIR="$HOME/.platformio-v4" ;; *) unset PLATFORMIO_CORE_DIR ;; esac
+            # Packages first, with retries: a download outage is infrastructure, not a failed board (#258).
+            if ! python3 tools/pio_fetch.py "$env"; then infra=1; echo "::endgroup::"; continue; fi
             if bin/idf5_libs.sh "$env" && pio run -e "$env"; then echo "OK $env" >> results.txt; else echo "FAIL $env" >> results.txt; failed+=("$env"); fi
             echo "::endgroup::"
           done
           cat results.txt
+          if [ "$infra" = 1 ]; then exit 1; fi   # pio_fetch.py has said which env and why
           # The verdict job decides pass/fail against ci/known-upstream-failures.txt.
       - if: always()
         uses: actions/upload-artifact@v4
