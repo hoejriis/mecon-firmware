@@ -243,17 +243,26 @@ def test_every_change_is_written_by_the_lazy_save_without_a_reboot(nodes):
     n.start()
     c, i = client(n)
     assert set(native(c)) == {key(0), key(1), key(2)}
+    # one kind of change per power cut: a bucket rewritten for one change would carry the others along
     assert i.request("contact.protect", {"key": key(1).hex(), "protected": True})["status"] == "ok"
+    c, i = _cut(n, c)
+    assert native(c)[key(1)]["flags"] == 1, "protect"
     assert i.request("contact.remove", {"key": key(2).hex()})["status"] == "ok"
+    c, i = _cut(n, c)
+    assert set(native(c)) == {key(0), key(1)}, "remove"
     assert put(i, key(0), "renamed")["status"] == "ok"
-    time.sleep(7)   # past the lazy delay (5 s) and one pass for each changed bucket
+    c, i = _cut(n, c)
+    assert native(c)[key(0)]["name"] == "renamed", "update"
+
+
+def _cut(n, c):
+    """Waits out the lazy save (5 s plus a pass per changed bucket), then loses power and boots again."""
+    time.sleep(7)
     c.close()
     n.proc.kill()
     n.proc.wait()
     n.start()
-    c, i = client(n)
-    nat = native(c)
-    assert set(nat) == {key(0), key(1)} and nat[key(0)]["name"] == "renamed" and nat[key(1)]["flags"] == 1, nat
+    return client(n)
 
 
 def _wait(cond, secs):
