@@ -96,6 +96,7 @@ jobs:
         run: |
           failed=()
           infra=0
+          df -h /
           for env in ${{ matrix.shard.envs }}; do
             echo "::group::$env"
             # One PlatformIO core directory holds one IDF library set per chip: the ESP32-C6 envs use the stock one, the Heltec
@@ -104,8 +105,11 @@ jobs:
             # Packages first, with retries: a download outage is infrastructure, not a failed board (#258).
             if ! python3 tools/pio_fetch.py "$env"; then infra=1; echo "::endgroup::"; continue; fi
             if bin/idf5_libs.sh "$env" && pio run -e "$env"; then echo "OK $env" >> results.txt; else echo "FAIL $env" >> results.txt; failed+=("$env"); fi
+            # A shard builds about 20 envs, and some runner images have too little disk to keep them all.
+            rm -rf ".pio/build/$env" ".pio/libdeps/$env"
             echo "::endgroup::"
           done
+          df -h /
           cat results.txt
           if [ "$infra" = 1 ]; then exit 1; fi   # pio_fetch.py has said which env and why
           # The verdict job decides pass/fail against ci/known-upstream-failures.txt.
