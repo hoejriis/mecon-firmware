@@ -10,3 +10,7 @@ mutate start_ota_not_destructive src/helpers/cli/CliRegistry.h '    {"start ota"
 mutate start_ota_class_write src/helpers/cli/CliRegistry.h '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE,' '    {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_WRITE,' unit:test_cli_engine
 
 mutate ble_dfu_with_a_session_pin src/helpers/BleDfuPolicy.h '  return !device_interface_build && pin_chosen_by_user && pin != 0 && pin != 123456;' '  return !device_interface_build && pin != 0 && pin != 123456;' unit:test_ble_dfu_policy
+# the opted-in ESP32 updater: idle stop and one session (#164)
+mutate ota_idle_never_stops src/helpers/BleDfuPolicy.h '  return !upload_running && (uint32_t)(now_ms - last_activity_ms) >= OTA_IDLE_MS;' '  return false;' unit:test_ble_dfu_policy
+mutate ota_idle_stops_during_an_upload src/helpers/BleDfuPolicy.h '  return !upload_running && (uint32_t)(now_ms - last_activity_ms) >= OTA_IDLE_MS;' '  return (uint32_t)(now_ms - last_activity_ms) >= OTA_IDLE_MS;' unit:test_ble_dfu_policy
+mutate ota_second_start_opens_a_second_session src/helpers/BleDfuPolicy.h 'inline bool otaStartNewSession(bool session_running) { return !session_running; }' 'inline bool otaStartNewSession(bool session_running) { return true; }' unit:test_ble_dfu_policy

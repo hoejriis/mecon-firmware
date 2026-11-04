@@ -108,6 +108,7 @@ MultiSerialInterface interface_manager;
   DataStore store(LittleFS, rtc_clock);
 #elif defined(ESP32)
   #include <SPIFFS.h>
+  #include <helpers/esp32/SpiffsBoot.h>
   DataStore store(SPIFFS, rtc_clock);
 #endif
 
@@ -289,7 +290,7 @@ void setup() {
   the_mesh.begin();
   mecon::boot::mark(mecon::boot::MESH, millis());
 #elif defined(ESP32)
-  SPIFFS.begin(true);
+  spiffsBeginOnBoot();   // SPIFFS.begin(true), without the first boot's log flood (#227)
   BootPresence::begin(SPIFFS);   // one listing, so boot looks up no file that is not there (helpers/BootPresence.h)
   store.begin();
   mecon::boot::mark(mecon::boot::STORE, millis());

@@ -29,6 +29,7 @@
       "properties": {"count": {"type": "integer", "minimum": 0}, "capacity": {"type": "integer", "minimum": 0}}
     },
     "connectivity": {"type": "string", "enum": ["ble", "wifi"], "description": "Absent on a build without connectivity modes."},
+    "ble_started": {"type": "boolean", "description": "Companion: whether this boot's BLE stack came up. Absent when this boot did not start BLE."},
     "posture": {"type": "string", "enum": ["normal", "hardened"]},
     "jobs": {
       "description": "The job table (OPERATIONS.md section 3.2): the job open, and terminal results not yet acknowledged.",

@@ -8,6 +8,9 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <AsyncElegantOTA.h>
+#include <Update.h>
+#include <freertos/timers.h>
+#include <helpers/BleDfuPolicy.h>
 
 #include <SPIFFS.h>
 
@@ -17,7 +20,32 @@
 static char ota_pass[13];
 static const char OTA_USER[] = "ota";
 
+// The running session (#164): one server at most, stopped after an idle period with no page request and no upload.
+static AsyncWebServer* ota_server = nullptr;
+static TimerHandle_t ota_timer = nullptr;
+static volatile uint32_t ota_activity_ms = 0;
+static char ota_reply[120];
+
+static void otaIdleCheck(TimerHandle_t t) {
+  if (!BleDfuPolicy::otaIdleStop(millis(), ota_activity_ms, Update.isRunning())) return;
+  xTimerStop(t, 0);
+  ota_server->end();
+  delete ota_server;
+  ota_server = nullptr;
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  memset(ota_pass, 0, sizeof(ota_pass));
+  memset(ota_reply, 0, sizeof(ota_reply));
+  static_cast<ESP32Board*>(pvTimerGetTimerID(t))->setInhibitSleep(false);
+  Serial.println("OTA updater stopped: idle");
+}
+
 bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
+  ota_activity_ms = millis();
+  if (!BleDfuPolicy::otaStartNewSession(ota_server != nullptr)) {   // already open: the same session, counted as activity
+    strcpy(reply, ota_reply);
+    return true;
+  }
   inhibit_sleep = true;   // prevent sleep during OTA
   // The radio first: esp_random() draws from the hardware RNG only while Wi-Fi or BT RF is on, and a repeater runs with
   // Wi-Fi off, so a draw made before this could come from a weak source.
@@ -27,8 +55,9 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
   ota_pass[12] = 0;
   WiFi.softAP("MeshCore-OTA", ota_pass);
 
-  sprintf(reply, "Started: http://%s/update user=%s pass=%s (Wi-Fi MeshCore-OTA, the same pass)",
+  sprintf(ota_reply, "Started: http://%s/update user=%s pass=%s (Wi-Fi MeshCore-OTA, the same pass)",
           WiFi.softAPIP().toString().c_str(), OTA_USER, ota_pass);
+  strcpy(reply, ota_reply);
   MESH_DEBUG_PRINTLN("startOTAUpdate: started");   // never the reply: it holds the credential
 
   static char id_buf[60];
@@ -37,13 +66,16 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
   sprintf(home_buf, "<H2>Hi! I am a MeshCore Repeater. ID: %s</H2>", id);
 
   AsyncWebServer* server = new AsyncWebServer(80);
+  ota_server = server;
 
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!request->authenticate(OTA_USER, ota_pass)) return request->requestAuthentication();
+    ota_activity_ms = millis();
     request->send(200, "text/html", home_buf);
   });
   server->on("/log", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!request->authenticate(OTA_USER, ota_pass)) return request->requestAuthentication();   // the packet log
+    ota_activity_ms = millis();
     request->send(SPIFFS, "/packet_log", "text/plain");
   });
 
@@ -51,6 +83,8 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
   AsyncElegantOTA.begin(server, OTA_USER, ota_pass);    // every /update handler, the upload chunks included, logs in
   server->begin();
 
+  if (!ota_timer) ota_timer = xTimerCreate("ota-idle", pdMS_TO_TICKS(30000), pdTRUE, this, otaIdleCheck);
+  if (ota_timer) xTimerStart(ota_timer, 0);
   return true;
 }
 

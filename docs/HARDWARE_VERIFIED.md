@@ -2,7 +2,7 @@
 
 ## Verification policy — owner decision, 25 October 2026
 
-Only four test boards are available: **Heltec V3, Heltec V4, Seeed Wio Tracker L1 and SenseCAP T1000-E**. Public firmware must be hardware-verified on these boards for their applicable roles, transports and advertised capabilities. Availability does not mean a check has passed; the evidence matrix records actual board, role, commit, test and result. T1000-E remains compile-only until #1 supplies hardware evidence.
+Only four test boards are available: **Heltec V3, Heltec V4, Seeed Wio Tracker L1 and SenseCAP T1000-E**. Public firmware must be hardware-verified on these boards for their applicable roles, transports and advertised capabilities. Availability does not mean a check has passed; the evidence matrix records actual board, role, commit, test and result.
 
 All other repository board environments receive **software verification only**: compilation, size checks where configured, and applicable unit/simulation/conformance tests. Publish the checks actually run and their results, including exclusions and known upstream failures. A build pass proves compilation, not runtime behaviour; a shared-stack test on another board is not hardware evidence for this board. No additional board purchase or unavailable-board UAT is required to close software-only work.
 
@@ -51,6 +51,9 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Rebuilt IDF libraries, 2 KB IPC stack (standalone) | 300 resets, 0 IPC canary panics (stock libraries: 4 in 304). Heap with a pinned-TLS MQTT session, against main in one session: free 50,764 B (36,956 B), low-water 38,228 B (24,860 B) | 2026-10-31, 558dfd09 |
 | Signed update over BLE (standalone) | offer and confirm over the cable (a device with no record); all 1,719,040 bytes of the image pushed over BLE from a Linux host (BlueZ) in 1,524 s at the default 23-byte MTU, 13 transport retries; the new image attested its job over BLE and stayed after confirmation | 2026-10-31, bce8ef8c with the bench test key |
 | MQTT broker roles | two brokers; with no record the priority-90 profile is used; after a provisioning that names the priority-10 profile `primary`, that profile is used after a reboot; an unsigned priority edit is refused while enrolled | 2026-11-01, 28bc7d7d |
+| TLS broker by address: no SNI | a static profile with host `10.0.0.69` connects (`tls=unverified`) and the broker sees the client; the TLS front recorded `SNI None` (the same front recorded a name from an `openssl s_client` control) | 2026-11-04, this PR's branch |
+| First boot after a flash erase | 0 `task_wdt` lines and no reboot in 60 s (3,268 lines before the change) | 2026-11-04, this PR's branch |
+| BLE MTU | ATT exchange: server RX MTU 179 (a 176-byte frame fits a notification), `status.get` `ble_started` true | 2026-11-04, this PR's branch |
 
 ## Heltec V4 (v4test)
 
@@ -81,6 +84,8 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Connectivity-mode restart while a host polls | `config.apply` of `connectivity.mode` answered, then the restart 1.50 s after the reply with a `hello` every 0.33 s in between | 2026-10-31, 32cc0fb7 |
 | MQTT over WebSocket to a public broker | `wss://` on port 443 with a CA anchor (ISRG Root YR) loaded by `set mqtt.profile 0 ca …`: `tls: verified`, enrolled and online in 43 s | 2026-10-31, 32cc0fb7 |
 | `config.apply` of a nine-key broker profile | answered in 1.25 to 1.30 s (9.45 s before the change, measured 2026-10-31); every key read back after a reboot | 2026-11-04, this PR's branch |
+| First boot after a flash erase | 0 `task_wdt` lines and no reboot in 100 s (3,516 lines before the change) | 2026-11-04, this PR's branch |
+| Longest interface line on the Repeater's native USB | lines of 200, 1,000, 1,590 and 1,600 B each answered, with the 2,048-byte receive buffer | 2026-11-04, this PR's branch |
 
 ## Seeed Wio Tracker L1 (wiotest)
 

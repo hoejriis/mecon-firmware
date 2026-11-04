@@ -1,5 +1,6 @@
 #include "SerialBLEInterface.h"
 #include <helpers/BleDfuPolicy.h>   // Issue #143
+#include <helpers/BleStart.h>
 #include <stdio.h>
 #include <string.h>
 #include "ble_gap.h"
@@ -138,7 +139,7 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   #endif
   
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
-  Bluefruit.begin();
+  BleStart::report(Bluefruit.begin());
  
   char dev_name[32+16];
   if (strcmp(name, "@@MAC") == 0) {
@@ -269,7 +270,7 @@ void SerialBLEInterface::enable() {
   _last_health_check = millis();
 
   Bluefruit.Advertising.restartOnDisconnect(true);
-  Bluefruit.Advertising.start(0);
+  BleStart::report(Bluefruit.Advertising.start(0));
 }
 
 void SerialBLEInterface::disconnect() {

@@ -52,3 +52,5 @@ mutate apply_saves_per_key src/helpers/PrefsBatch.h '  if (!s.open) return false
 mutate apply_owed_save_dropped src/helpers/PrefsBatch.h '  if (s.save) s.save(s.user);' '' sim/tests/test_device_interface.py::test_an_apply_saves_the_prefs_once_and_a_cut_leaves_all_or_none
 mutate apply_batch_left_open src/helpers/PrefsBatch.h '  state() = State();
   if (s.save)' '  if (s.save)' sim/tests/test_device_interface.py::test_apply_writes_through_the_cli_and_survives_a_reboot
+# the operation matrix accounts for what hello says (#268)
+mutate op_without_a_matrix_row examples/companion_radio/MeconIface.cpp 'const char* const CAPABILITIES[] = {"hello", ' 'const char* const CAPABILITIES[] = {"zz.op", "hello", ' sim/tests/test_operations_matrix.py
