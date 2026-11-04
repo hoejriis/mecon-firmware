@@ -7,8 +7,7 @@
 namespace Iface {
 
 // PRIV_UPDATE: the update class of the privilege table (UPDATES.md section 5).
-// PRIV_PRIVATE: the private class of the privilege table: what a device's contact and channel lists hold.
-enum Priv { PRIV_READ, PRIV_WRITE, PRIV_ADMIN, PRIV_UPDATE, PRIV_PRIVATE };
+enum Priv { PRIV_READ, PRIV_WRITE, PRIV_ADMIN, PRIV_UPDATE };
 
 struct OpContext {
   const Request* req;

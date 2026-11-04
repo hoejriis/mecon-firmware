@@ -71,11 +71,14 @@ def test_every_operation_a_device_has_has_a_row_for_its_role(nodes, kind, role):
 
 
 def test_a_list_of_private_data_is_in_the_private_class():
-    """Contact and channel lists are C_PRIVATE in the privilege table, like the inventory stream that carries them."""
+    """Contact and channel lists are C_PRIVATE in the privilege table, like the inventory stream that carries them. The
+    callers the two classes separate (a LoRa admin, a flagged contact, the Ethernet console) reach no Companion operation
+    today, so this is read from the source: it has to hold before LoRa management opens a path."""
     source = open(os.path.join(os.path.dirname(DOC), "..", "..", "examples", "companion_radio", "MeconIface.cpp")).read()
-    for op in ("contact.list", "contact.get", "channel.list", "channel.get"):
-        assert re.search(r'\{"%s", \w+, PRIV_PRIVATE, false\}' % re.escape(op), source), op
-        text = open(DOC).read()
-        section = text[text.index("### 5.1 "):text.index("### 5.2 ")]
-        row = next(l for l in section.splitlines() if "`%s`" % op in l.split("|")[1])
+    for fn in ("opContList", "opContGet", "opChanList", "opChanGet"):
+        assert re.search(r"Status %s\(OpContext& c\) \{ return mayReadPrivate\(c\) \?" % fn, source), fn
+    text = open(DOC).read()
+    section = text[text.index("### 5.1 "):text.index("### 5.2 ")]
+    for op in ("contact.list", "channel.list"):
+        row = next(l for l in section.splitlines() if l.startswith("| `%s`" % op))
         assert row.split("|")[4].strip() == "private", row

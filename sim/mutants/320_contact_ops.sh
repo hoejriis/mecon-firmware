@@ -29,4 +29,7 @@ mutate contact_update_not_scheduled_for_save examples/companion_radio/MeconIface
 mutate hello_capabilities_not_paged examples/companion_radio/MeconIface.cpp '    if (w.size() + strlen(cap) + 3 > room) { next = (int)idx - 1; return; }' '' sim/tests/test_contact_ops.py::test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead_of_failing
 mutate hello_cursor_ignored examples/companion_radio/MeconIface.cpp '    if (idx++ < (unsigned)from || next >= 0) return;' '    if (idx++ < 0u || next >= 0) return;' sim/tests/test_contact_ops.py::test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead_of_failing
 # contact and channel lists are in the private class
-mutate contact_list_is_a_read examples/companion_radio/MeconIface.cpp '{"contact.list", opContList, PRIV_PRIVATE, false}' '{"contact.list", opContList, PRIV_READ, false}' sim/tests/test_operations_matrix.py::test_a_list_of_private_data_is_in_the_private_class
+mutate contact_list_is_a_read examples/companion_radio/MeconIface.cpp 'Status opContList(OpContext& c) { return mayReadPrivate(c) ? withContacts(c, opContactList) : ST_REFUSED; }' 'Status opContList(OpContext& c) { return withContacts(c, opContactList); }' sim/tests/test_operations_matrix.py::test_a_list_of_private_data_is_in_the_private_class
+mutate hello_streams_not_on_the_first_page examples/companion_radio/MeconIface.cpp '  add(CAPABILITIES[0]);
+  const uint32_t streams' '  for (size_t i = 0; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
+  const uint32_t streams' sim/tests/test_contact_ops.py::test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead_of_failing

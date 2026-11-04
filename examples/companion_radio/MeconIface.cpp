@@ -119,14 +119,14 @@ const OpEntry OPS[] = {
   {"update.chunk", opUpdChunk, PRIV_READ, false},
 #ifdef MAX_GROUP_CHANNELS
   // The native contact table (OPERATIONS.md section 5.1): no shared secret in a read, no grant in a write.
-  {"contact.list", opContList, PRIV_PRIVATE, false},
-  {"contact.get", opContGet, PRIV_PRIVATE, false},
+  {"contact.list", opContList, PRIV_READ, false},
+  {"contact.get", opContGet, PRIV_READ, false},
   {"contact.put", opContPut, PRIV_WRITE, true},
   {"contact.remove", opContRemove, PRIV_WRITE, true},
   {"contact.protect", opContProtect, PRIV_WRITE, true},
   // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
-  {"channel.list", opChanList, PRIV_PRIVATE, false},
-  {"channel.get", opChanGet, PRIV_PRIVATE, false},
+  {"channel.list", opChanList, PRIV_READ, false},
+  {"channel.get", opChanGet, PRIV_READ, false},
   {"channel.put", opChanPut, PRIV_WRITE, true},
   {"channel.remove", opChanRemove, PRIV_WRITE, true},
   // The management channel binding (MANAGEMENT_CHANNEL.md); bind, rotate and unbind confirm-or-revert for a remote caller.
@@ -178,7 +178,8 @@ Status opHello(OpContext& c) {
     w.str(cap);
   };
   w.key("capabilities"); w.beginArray();
-  for (const char* cap : CAPABILITIES) add(cap);
+  // hello and the streams first, so a manager reading only the first page still has what it subscribes to.
+  add(CAPABILITIES[0]);
   const uint32_t streams = m->streamsProduced();
   for (int sid = 0; sid < STREAM_COUNT; sid++) {
     if (!(streams & (1u << sid))) continue;
@@ -186,6 +187,7 @@ Status opHello(OpContext& c) {
     snprintf(cap, sizeof(cap), "stream.%s", STREAMS[sid].name);
     add(cap);
   }
+  for (size_t i = 1; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
   w.endArray();
   if (next >= 0) { w.key("next"); w.num(next); }
   return ST_OK;
@@ -267,6 +269,15 @@ Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
   c.error = cc.error;
   return st;
 }
+// A list of contacts or channels is private data, as the inventory stream that carries the same entries (TELEMETRY.md):
+// the op runs at read, as sub.start does, so an enrolled device's plain-read rule still applies, and the private class
+// is then decided here, for the caller and for the link the answer goes out on.
+bool mayReadPrivate(OpContext& c) {
+  if (MeconIface::streamAllow(self(c), Cli::C_PRIVATE)) return true;
+  c.error = "private";
+  return false;
+}
+
 Status withContacts(OpContext& c, Status (*op)(OpContext&)) {
   ContactHost host = self(c)->contactHost();
   OpContext cc = c;
@@ -275,14 +286,14 @@ Status withContacts(OpContext& c, Status (*op)(OpContext&)) {
   c.error = cc.error;
   return st;
 }
-Status opContList(OpContext& c) { return withContacts(c, opContactList); }
-Status opContGet(OpContext& c) { return withContacts(c, opContactGet); }
+Status opContList(OpContext& c) { return mayReadPrivate(c) ? withContacts(c, opContactList) : ST_REFUSED; }
+Status opContGet(OpContext& c) { return mayReadPrivate(c) ? withContacts(c, opContactGet) : ST_REFUSED; }
 Status opContPut(OpContext& c) { return withContacts(c, opContactPut); }
 Status opContRemove(OpContext& c) { return withContacts(c, opContactRemove); }
 Status opContProtect(OpContext& c) { return withContacts(c, opContactProtect); }
 
-Status opChanList(OpContext& c) { return withChannels(c, opChannelList); }
-Status opChanGet(OpContext& c) { return withChannels(c, opChannelGet); }
+Status opChanList(OpContext& c) { return mayReadPrivate(c) ? withChannels(c, opChannelList) : ST_REFUSED; }
+Status opChanGet(OpContext& c) { return mayReadPrivate(c) ? withChannels(c, opChannelGet) : ST_REFUSED; }
 // A write to the management channel's own slot goes through the binding: confirm-or-revert for a remote caller.
 Status opChanPut(OpContext& c) {
   MgmtHost h = self(c)->mgmtHost();
@@ -488,7 +499,6 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   const uint8_t cls = op.priv == PRIV_READ    ? Cli::C_READ
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
-                      : op.priv == PRIV_PRIVATE ? Cli::C_PRIVATE
                                                : Cli::C_POSTURE;
   // A refusal says why, in the CLI's words (broker-not-verified, untrusted-transport, enrolled-unsigned, ...): a bare
   // "refused" cannot be told from any other.

@@ -285,7 +285,9 @@ def test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead
     r = d.i.request("hello", {"nonce": "n" * 32})
     assert r["status"] == "ok", r
     got, page = list(r["result"]["capabilities"]), r["result"]
-    assert "hello" in got and "contact.protect" in got and page["next"] == len(got), page
+    assert got[0] == "hello" and page["next"] == len(got), page
+    streams = [c for c in full if c.startswith("stream.")]
+    assert streams and set(streams) <= set(got), "the first page has every stream: a manager subscribes from it"
     for _ in range(5):
         if "next" not in page:
             break
