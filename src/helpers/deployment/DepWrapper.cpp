@@ -79,7 +79,7 @@ OpClass contractOpClass(const char* op, const JsonDoc& body) {
   for (const char* p : PLAIN)
     if (strcmp(op, p) == 0) return OPC_PLAIN;
   if (strcmp(op, "sub.start") == 0 || strcmp(op, "sub.stop") == 0)
-    return streamIsPrivate(body) ? (strcmp(op, "sub.start") == 0 ? OPC_SENSITIVE : OPC_JOB) : OPC_PLAIN;
+    return streamIsPrivate(body) ? (strcmp(op, "sub.start") == 0 ? OPC_NONCE : OPC_JOB) : OPC_PLAIN;
   // deployment.set_unlock carries the local unlock secret, and identity.rotate retires the node key: sensitive, so each also
   // needs the link's channel nonce.
   if (strcmp(op, "identity.key.export") == 0 || strcmp(op, "ble.pin.get") == 0 || strcmp(op, "deployment.set_unlock") == 0 ||
@@ -144,9 +144,9 @@ WrapErr verifyWrapped(const char* wire, size_t len, const Record& rec, const Aut
     int to = jsonFind(*d, 0, "op");
     if (to < 0 || !jsonGetString(*d, to, out->op, sizeof(out->op), CS_NAME, 1)) goto done;
     out->cls = classify ? classify(out->op, *d) : OPC_JOB;
-    if (out->cls != OPC_PLAIN && !out->has_job) goto done;
+    if ((out->cls == OPC_JOB || out->cls == OPC_SENSITIVE) && !out->has_job) goto done;
     // A sensitive reply goes only to the link the device issued the nonce on.
-    if (out->cls == OPC_SENSITIVE) {
+    if (out->cls == OPC_SENSITIVE || out->cls == OPC_NONCE) {
       char nonce[65];
       int tn = jsonFind(*d, 0, "channel_nonce");
       if (!link_nonce || tn < 0 || !jsonGetString(*d, tn, nonce, sizeof(nonce), CS_ID, 1) ||

@@ -396,7 +396,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   char key[24];   // the result cache key of this request: '#' is outside the id charset, so no unsigned id can collide
   key[0] = 0;
 
-  if (v.cls != Dep::OPC_PLAIN) {
+  if (v.cls == Dep::OPC_JOB || v.cls == Dep::OPC_SENSITIVE) {
     // Marks that could not be written back at boot, or after a set change, are retried before anything is accepted.
     if (_dep->marks_dirty && !persistMarks()) {
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
@@ -420,7 +420,10 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     }
     if (rv == Dep::RV_TOO_OLD) {
       _dep->auth_rejections++;
-      n = writeResult(out, cap, id, ST_REFUSED, nullptr, "replay");
+      // The mark, so a manager that lost its place continues above it without another request (AUTHORITY.md section 8).
+      char at[24];
+      snprintf(at, sizeof(at), "{\"mark\":%lu}", (unsigned long)wm.mark);
+      n = writeResult(out, cap, id, ST_REFUSED, at, "replay");
       freeBody(body);
       return n;
     }
@@ -457,7 +460,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   if (_env.publish_caller) Cli::serverCaller().signed_line = false;
   _signed = false;
   if (n > 0 && key[0] && cache) cache->store(key, SIGNED_OP, out, (size_t)n);
-  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);   // used once
+  if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once
   freeBody(body);
   return n;
 }

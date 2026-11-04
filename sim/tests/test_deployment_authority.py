@@ -237,6 +237,7 @@ def test_an_older_job_id_is_a_replay_and_a_newer_one_runs(nodes):
     assert d.send(wrap(d.node_key, "config.apply", apply_name("Five"), job=5))["status"] == "ok"
     old = d.send(wrap(d.node_key, "config.apply", apply_name("Three"), job=3))
     assert old["status"] == "refused" and old["error"] == "replay", old
+    assert old["result"]["mark"] == d.i.request("deployment.get")["result"]["members"][0]["mark"], old
     assert d.name() == "> Five"
     assert d.send(wrap(d.node_key, "config.apply", apply_name("Six"), job=6))["status"] == "ok"
     assert d.name() == "> Six"

@@ -8,7 +8,7 @@ mutate deploy_failed_mark_write_still_runs src/helpers/iface/DeployAuth.cpp '   
       wm.mark = old;' '    if (false) {
       wm.mark = old;' $DA::test_a_mark_that_cannot_be_written_runs_nothing_and_is_not_consumed
 mutate deploy_channel_nonce_not_compared src/helpers/deployment/DepWrapper.cpp 'strcmp(nonce, link_nonce) != 0)' 'false)' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
-mutate deploy_channel_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);   // used once' '' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
+mutate deploy_channel_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once' '' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
 mutate deploy_mqtt_provisions_unsigned src/helpers/iface/DeployAuth.cpp '  if (!has && !_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after
 mutate deploy_duplicate_runs_again src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_DUPLICATE) {' '    if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
 mutate deploy_replay_runs src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_TOO_OLD) {' '    if (false) {' $DA::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
@@ -173,3 +173,9 @@ mutate prov_companion_boot_unsigned examples/companion_radio/MeconIface.cpp '   
 mutate prov_companion_logs_unsigned examples/companion_radio/MeconIface.cpp '    if (n > 0) n = _prov.sign(STREAMS[SID_LOGS].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)' '' $PV::test_companion_boot_and_log_events_are_signed
 mutate prov_console_boot_unsigned src/helpers/iface/ConsoleIface.cpp '      if (n > 0) n = _prov.sign(STREAMS[SID_RUNTIME].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)' '' $PV::test_console_boot_and_log_events_are_signed
 mutate prov_console_logs_unsigned src/helpers/iface/ConsoleIface.cpp '      if (n > 0) n = _prov.sign(STREAMS[SID_LOGS].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)' '' $PV::test_console_boot_and_log_events_are_signed
+# A private sub.start uses its nonce alone (#293): no mark, so no flash write for a renewal
+mutate private_sub_moves_the_mark src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_JOB || v.cls == Dep::OPC_SENSITIVE) {' '  if (v.cls != Dep::OPC_PLAIN) {' sim/tests/test_private_streams.py::test_a_private_renewal_takes_no_job_and_moves_no_mark
+mutate private_sub_needs_no_nonce src/helpers/deployment/DepWrapper.cpp '    if (out->cls == OPC_SENSITIVE || out->cls == OPC_NONCE) {' '    if (out->cls == OPC_SENSITIVE) {' unit:test_dep_wrapper
+mutate private_sub_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once' '  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);' sim/tests/test_private_streams.py::test_a_private_renewal_takes_no_job_and_moves_no_mark
+mutate private_stop_off_the_mark src/helpers/deployment/DepWrapper.cpp 'strcmp(op, "sub.start") == 0 ? OPC_NONCE : OPC_JOB' 'strcmp(op, "sub.start") == 0 ? OPC_NONCE : OPC_PLAIN' sim/tests/test_private_streams.py::test_a_private_stop_stays_on_the_mark
+mutate replay_without_the_mark src/helpers/iface/DeployAuth.cpp '      n = writeResult(out, cap, id, ST_REFUSED, at, "replay");' '      n = writeResult(out, cap, id, ST_REFUSED, nullptr, "replay");' sim/tests/test_deployment_authority.py::test_an_older_job_id_is_a_replay_and_a_newer_one_runs

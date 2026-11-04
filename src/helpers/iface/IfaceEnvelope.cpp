@@ -40,7 +40,7 @@ int writeResult(char* buf, size_t cap, const char* id, Status st, const char* re
   w.key("id"); w.str(id);
   w.key("status"); w.str(statusName(st));
   if (error) { w.key("error"); w.str(error); }
-  if (st == ST_OK) { w.key("result"); w.raw(result_json ? result_json : "{}"); }
+  if (st == ST_OK || result_json) { w.key("result"); w.raw(result_json ? result_json : "{}"); }
   w.endObject();
   return finish(w);
 }

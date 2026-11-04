@@ -38,7 +38,9 @@ enum WrapErr : uint8_t {
 const char* wrapErrCode(WrapErr e);   // contract spelling; WR_MALFORMED and WR_NOT_WRAPPED read "unauthenticated"
 
 // What an operation needs (contract section 7.1); see contractOpClass below.
-enum OpClass : uint8_t { OPC_PLAIN = 0, OPC_JOB, OPC_SENSITIVE };
+// OPC_NONCE: a read whose reply is private. Its single-use channel nonce, from this link in this boot, already stops a
+// replay, before and after a reboot, so it takes no job id and writes no mark: renewing a stream costs no flash.
+enum OpClass : uint8_t { OPC_PLAIN = 0, OPC_JOB, OPC_SENSITIVE, OPC_NONCE };
 
 struct Verified {
   int member;               // index in the authority set
@@ -55,8 +57,8 @@ struct Verified {
 // device does not know included, carries a job id; a sensitive one also carries the link's channel nonce.
 typedef OpClass (*OpClassFn)(const char* op, const Iface::JsonDoc& body);
 // The contract's classification: hello, status.get, config.schema, config.get, deployment.get, job.get, job.list and
-// sub.start/sub.stop of a stream that is not private are plain; identity.key.export, ble.pin.get and sub.start of a
-// private stream (screen, location, logs, inventory) are sensitive; everything else needs a job id.
+// sub.start/sub.stop of a stream that is not private are plain; sub.start of a private stream (screen, location, logs,
+// inventory) needs the nonce alone; identity.key.export and ble.pin.get are sensitive; everything else needs a job id.
 OpClass contractOpClass(const char* op, const Iface::JsonDoc& body);
 
 // Checks 1 to 6b for wire against the stored record and its parsed set. body_buf receives the decoded body (it must
