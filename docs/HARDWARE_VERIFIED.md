@@ -85,6 +85,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Rebuilt IDF libraries, 2 KB IPC stack (standalone) | 300 software resets, 0 IPC canary panics (main on stock libraries: 6 in 303). Heap against main in one session: idle free 147,612 B (140,916 B); with a pinned-TLS MQTT session free 103,484 B (96,792 B), low-water 98,692 B (92,020 B); PSRAM unchanged | 2026-11-01, 08c1072b |
 | Connectivity-mode restart while a host polls | `config.apply` of `connectivity.mode` answered, then the restart 1.50 s after the reply with a `hello` every 0.33 s in between | 2026-10-31, 32cc0fb7 |
 | MQTT over WebSocket to a public broker | `wss://` on port 443 with a CA anchor (ISRG Root YR) loaded by `set mqtt.profile 0 ca …`: `tls: verified`, enrolled and online in 43 s | 2026-10-31, 32cc0fb7 |
+| `config.apply` of a nine-key broker profile | answered in 1.25 to 1.30 s (9.45 s before the change, measured 2026-10-31); every key read back after a reboot | 2026-11-04, this PR's branch |
 | First boot after a flash erase | 0 `task_wdt` lines and no reboot in 100 s (3,516 lines before the change) | 2026-11-04, this PR's branch |
 | Longest interface line on the Repeater's native USB | lines of 200, 1,000, 1,590 and 1,600 B each answered, with the 2,048-byte receive buffer | 2026-11-04, this PR's branch |
 

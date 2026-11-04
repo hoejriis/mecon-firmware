@@ -2,6 +2,7 @@
 
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
+#include <helpers/PrefsBatch.h>
 
 #if defined(NRF52_PLATFORM)
   #include <InternalFileSystem.h>
@@ -197,7 +198,9 @@ public:
     return &_prefs;
   }
 
+  static void savePrefsNow(void* self) { static_cast<MyMesh*>(self)->savePrefs(); }
   void savePrefs() override {
+    if (PrefsBatch::defer(savePrefsNow, this)) return;   // config.apply: once, at its end
     _cli.savePrefs(_fs);
   }
 
