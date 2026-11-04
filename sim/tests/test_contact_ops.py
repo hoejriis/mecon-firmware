@@ -4,6 +4,7 @@ is the contact a stock app frame reads and the other way round, a repeat is the 
 does for the app, and a caller the CLI table does not trust writes nothing."""
 import os
 import sys
+import time
 
 from sim.harness import (CompanionClient, ERR_TABLE_FULL, PUSH_CONTACT_DELETED, RESP_ERR, RESP_OK)
 
@@ -109,6 +110,9 @@ def test_a_put_keeps_the_grants_and_the_path_of_a_contact_and_cannot_grant(nodes
     assert nat["path_len"] == 3 and nat["path"][:3] == path, "the known path stays"
     r = put(i, key(2), "Dee", flags=GRANTS)
     assert r["status"] == "ok" and native(c)[key(2)]["flags"] == 0, "a put names no flags, so a new contact has none"
+    assert i.request("contact.protect", {"key": key(1).hex(), "protected": True})["result"]["fav"] is True
+    assert i.request("contact.protect", {"key": key(1).hex(), "protected": False})["result"]["fav"] is False
+    assert native(c)[key(1)]["flags"] == GRANTS, "protect touches the favourite bit and no grant"
     assert i.request("contact.put", {"key": key(3).hex(), "name": "x", "type": "none"})["status"] == "invalid"
     assert key(3) not in native(c), "type 0 is the anonymous slot's and is refused as the native frame refuses it"
 
@@ -222,3 +226,38 @@ def test_a_caller_the_cli_table_does_not_trust_writes_nothing(nodes):
     u, ui = client(n)
     nat = native(u)
     assert set(nat) == {key(1)} and nat[key(1)]["flags"] == 0 and nat[key(1)]["name"] == "kept", nat
+
+
+def test_every_change_is_written_by_the_lazy_save_without_a_reboot(nodes):
+    # A power cut after the lazy write: the change must have been scheduled, not left for a reboot to find.
+    n = nodes("companion_standalone", "ct8", seed=26, rtc=RTC).start()
+    c, i = client(n)
+    for k in range(3):
+        assert put(i, key(k), "c%d" % k)["status"] == "ok"
+    bucket = os.path.join(n.dir, "ct0")
+    assert _wait(lambda: os.path.exists(bucket), 20), "the lazy save never wrote the first bucket"
+    time.sleep(0.5)
+    c.close()
+    n.proc.kill()
+    n.proc.wait()
+    n.start()
+    c, i = client(n)
+    assert set(native(c)) == {key(0), key(1), key(2)}
+    assert i.request("contact.protect", {"key": key(1).hex(), "protected": True})["status"] == "ok"
+    assert i.request("contact.remove", {"key": key(2).hex()})["status"] == "ok"
+    assert put(i, key(0), "renamed")["status"] == "ok"
+    time.sleep(7)   # past the lazy delay (5 s) and one pass for each changed bucket
+    c.close()
+    n.proc.kill()
+    n.proc.wait()
+    n.start()
+    c, i = client(n)
+    nat = native(c)
+    assert set(nat) == {key(0), key(1)} and nat[key(0)]["name"] == "renamed" and nat[key(1)]["flags"] == 1, nat
+
+
+def _wait(cond, secs):
+    end = time.time() + secs
+    while time.time() < end and not cond():
+        time.sleep(0.2)
+    return cond()
