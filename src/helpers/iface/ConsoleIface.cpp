@@ -35,7 +35,9 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "job.get", "job.list",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
+                                    "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
+                                    "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
                                     "update.offer", "update.chunk"};
 
@@ -130,6 +132,36 @@ Status opDeployGet(OpContext& c) {
   return st;
 }
 Status opIdentityRotate(OpContext& c) { return self(c)->rotateIdentity(c); }
+Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
+  ChannelHost host = self(c)->channelHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status withMgmt(OpContext& c, Status (*op)(OpContext&)) {
+  MgmtHost host = self(c)->mgmtHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opChanList(OpContext& c) { return withChannels(c, opChannelList); }
+Status opChanGet(OpContext& c) { return withChannels(c, opChannelGet); }
+Status opChanPut(OpContext& c) {
+  MgmtHost h = self(c)->mgmtHost();
+  return mgmtGuardChannel(c, h, opChannelPut, "channel.put");
+}
+Status opChanRemove(OpContext& c) {
+  MgmtHost h = self(c)->mgmtHost();
+  return mgmtGuardChannel(c, h, opChannelRemove, "channel.remove");
+}
+Status opMgmtGetW(OpContext& c) { return withMgmt(c, opMgmtGet); }
+Status opMgmtBindW(OpContext& c) { return withMgmt(c, opMgmtBind); }
+Status opMgmtRotateW(OpContext& c) { return withMgmt(c, opMgmtRotate); }
+Status opMgmtUnbindW(OpContext& c) { return withMgmt(c, opMgmtUnbind); }
 Status opIdentityRotation(OpContext& c) { self(c)->writeRotation(*c.out); return ST_OK; }
 Status opDeployProvision(OpContext& c) { return self(c)->auth().opProvision(c); }
 Status opDeployUpdate(OpContext& c) { return self(c)->auth().opUpdate(c); }
@@ -165,6 +197,16 @@ const OpEntry OPS[] = {
   {"deployment.unlock", opDeployUnlock, PRIV_WRITE, false},
   {"identity.rotate", opIdentityRotate, PRIV_WRITE, false},   // never answered from the cache: it must run once
   {"identity.rotation", opIdentityRotation, PRIV_READ, false},
+  // One channel slot, for the management channel (MANAGEMENT_CHANNEL.md section 6); bind, rotate and unbind confirm-or-revert
+  // for anyone but the cable.
+  {"channel.list", opChanList, PRIV_READ, false},
+  {"channel.get", opChanGet, PRIV_READ, false},
+  {"channel.put", opChanPut, PRIV_WRITE, true},
+  {"channel.remove", opChanRemove, PRIV_WRITE, true},
+  {"mgmt.channel.get", opMgmtGetW, PRIV_READ, false},
+  {"mgmt.channel.bind", opMgmtBindW, PRIV_WRITE, true},
+  {"mgmt.channel.rotate", opMgmtRotateW, PRIV_WRITE, true},
+  {"mgmt.channel.unbind", opMgmtUnbindW, PRIV_WRITE, true},
   // As on the Companion: ack is of the read class, cancel and confirm write; the three keep their result.
   {"job.get", opJobGet, PRIV_READ, false},
   {"job.list", opJobList, PRIV_READ, false},
@@ -192,12 +234,15 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   if (_host.snap_store)
     _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
                            confirmRunAs, confirmJobId};
+  _mgmt_slot.setStore(_host.mgmt_slot);
+  mesh::Utils::sha256(_public_fp, MGMT_FP_BYTES, MGMT_PUBLIC_KEY, sizeof(MGMT_PUBLIC_KEY));
   _jobs.setClassCheck(jobClasses, this);
   _jobs.setOnChange(jobChanged, this);
   _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot});
   _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);
   _updates.bootReconcile();   // an installed image attests, or the bootloader rolled it back
   configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
+  mgmtSnapBoot(mgmtHost());       // likewise the management channel's: it holds an old key
   if (_host.dep_store) {
     DeployAuth::Env env;
     env.store = _host.dep_store;
@@ -212,6 +257,29 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   }
   observeSink().fn = onObserve;
   observeSink().user = this;
+}
+
+MgmtHost ConsoleIface::mgmtHost() {
+  _chan_host = channelHost();
+  return MgmtHost{&_chan_host, _host.mgmt_record, _host.mgmt_snap, &_jobs, mgmtSlotFp, mgmtKeyFp, _public_fp, mgmtReadSlot,
+                  confirmCable, confirmRecordCaller, confirmJobId, (uint8_t)(1u << Cli::C_WRITE), this};
+}
+
+bool ConsoleIface::mgmtSlotFp(void* user, int slot, uint8_t out[MGMT_FP_BYTES]) {
+  char name[CHANNEL_NAME_MAX + 1];
+  uint8_t key[CHANNEL_SECRET_BYTES];
+  const bool ok = slot == 0 && static_cast<ConsoleIface*>(user)->_mgmt_slot.read(name, key);
+  if (ok) mesh::Utils::sha256(out, MGMT_FP_BYTES, key, CHANNEL_SECRET_BYTES);
+  wipe(key, sizeof(key));
+  return ok;
+}
+
+void ConsoleIface::mgmtKeyFp(void*, const uint8_t key[CHANNEL_SECRET_BYTES], uint8_t out[MGMT_FP_BYTES]) {
+  mesh::Utils::sha256(out, MGMT_FP_BYTES, key, CHANNEL_SECRET_BYTES);
+}
+
+bool ConsoleIface::mgmtReadSlot(void* user, int slot, char name[CHANNEL_NAME_MAX + 1], uint8_t key[CHANNEL_SECRET_BYTES]) {
+  return slot == 0 && static_cast<ConsoleIface*>(user)->_mgmt_slot.read(name, key);
 }
 
 bool ConsoleIface::mayRead() { return Cli::decide(_ctx, Cli::C_READ).allow; }
@@ -334,6 +402,11 @@ bool ConsoleIface::confirmJobId(void* user, const Request& req, char* out, size_
 bool ConsoleIface::jobRevert(void* user, Job& j) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
   if (Upd::UpdateService::owns(j)) return s->_updates.jobRevert(j);
+  if (mgmtOwnsJob(j)) {   // the management channel's ops, by exact name
+    if (!mgmtRevert(s->mgmtHost(), j)) return false;
+    s->_jobs.table()->setState(&j, JOB_REVERTED);
+    return true;
+  }
   if (strcmp(j.op, "config.apply") != 0) return false;
   bool reboot = false;
   if (!configRevert(s->configHost(), j, &reboot)) return false;
@@ -345,6 +418,10 @@ bool ConsoleIface::jobRevert(void* user, Job& j) {
 
 bool ConsoleIface::jobConfirm(void* user, Job& j) {
   if (Upd::UpdateService::owns(j)) return static_cast<ConsoleIface*>(user)->_updates.jobConfirm(j);
+  if (mgmtOwnsJob(j)) {
+    mgmtConfirmed(static_cast<ConsoleIface*>(user)->mgmtHost());
+    return true;
+  }
   if (strcmp(j.op, "config.apply") != 0) return false;
   configConfirmed(static_cast<ConsoleIface*>(user)->configHost());
   return true;

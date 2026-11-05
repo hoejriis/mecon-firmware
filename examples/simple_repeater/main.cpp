@@ -38,6 +38,7 @@ static bool command_dropping = false;   // inside an over-long console line (#16
 #ifdef ENABLE_MECON_IFACE
   // The device interface on the console (docs/contract/DEVICE_INTERFACE.md section 7): "mecon> " lines.
   #include <helpers/iface/ConsoleIface.h>
+  #include <helpers/iface/MgmtFsStore.h>
   #include <helpers/iface/DeviceMeta.h>
   #include <helpers/CryptoRNG.h>
   #include <helpers/deployment/DepFsStore.h>
@@ -46,6 +47,9 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static Dep::FsStore dep_store;   // the Deployment record's files, on the role's own file system
   static Iface::JobFsStore job_store;   // the job table (OPERATIONS.md section 3), on the same file system
   static Iface::SnapFsStore snap_store; // the commit-or-revert snapshot (OPERATIONS.md 3.4)
+  static Iface::PathFsStore mgmt_slot_store("/mgmt_slot");       // the management channel (MANAGEMENT_CHANNEL.md section 6)
+  static Iface::PathFsStore mgmt_record_store("/mgmt_channel");
+  static Iface::PathFsStore mgmt_snap_store("/mgmt_snap");
   static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
     char cmd[160], out[160];
     snprintf(cmd, sizeof(cmd), "%s", line);
@@ -180,10 +184,14 @@ void setup() {
                                        the_mesh.self_id.pub_key, nullptr,
                                        &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
                                        &dep_store, ifaceClock, &the_mesh.self_id, &job_store, &snap_store,
-                                       ifaceRotate, ifaceReadRotation, ROT_REMOVED };
+                                       ifaceRotate, ifaceReadRotation, ROT_REMOVED,
+                                       &mgmt_slot_store, &mgmt_record_store, &mgmt_snap_store };
     dep_store.setFs(fs);
     job_store.setFs(fs);
     snap_store.setFs(fs);
+    mgmt_slot_store.setFs(fs);
+    mgmt_record_store.setFs(fs);
+    mgmt_snap_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
   }
 #endif

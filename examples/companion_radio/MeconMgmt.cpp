@@ -13,11 +13,6 @@ namespace {
 Iface::PathFsStore g_mgmt_record("/mgmt_channel");
 Iface::PathFsStore g_mgmt_snap("/mgmt_snap");
 
-// The public channel's key, MyMesh.cpp's PUBLIC_GROUP_PSK ("izOH6cXN6mrJ5e26oRXNcg==") decoded: everyone holds it, so
-// it is never a management channel.
-const uint8_t PUBLIC_KEY[16] = {0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
-                                0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72};
-
 void fpOf(const uint8_t* key, size_t len, uint8_t out[Iface::MGMT_FP_BYTES]) {
   mesh::Utils::sha256(out, Iface::MGMT_FP_BYTES, key, (int)len);
 }
@@ -31,7 +26,7 @@ size_t keyLen(const ChannelDetails& ch) {
 void MeconIface::mgmtLoad() {
   g_mgmt_record.setFs(_mesh->_store->getPrimaryFS());
   g_mgmt_snap.setFs(_mesh->_store->getPrimaryFS());
-  fpOf(PUBLIC_KEY, sizeof(PUBLIC_KEY), _public_fp);
+  fpOf(Iface::MGMT_PUBLIC_KEY, sizeof(Iface::MGMT_PUBLIC_KEY), _public_fp);
 }
 
 Iface::MgmtHost MeconIface::mgmtHost() {
