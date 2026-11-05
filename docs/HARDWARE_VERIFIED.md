@@ -110,6 +110,9 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Companion on a board carrying the private firmware's data | boots and stays up; 350 of 350 contacts and 40 of 40 channels identical to a prior backup (the stock contact table); a change to the full table survives a reboot; the private firmware, flashed back, reads every contact and channel unchanged | 2026-10-31, bce8ef8c |
 | Companion heap and loop stack (USB build) | idle free 54,160 B; loop stack free 816 B; 5 of 5 log events signed | 2026-11-01, 90d46a9f |
 | Management writes with the private firmware's Deployment record | refused `deployment_record_corrupt` (fail closed); the record itself left unchanged | 2026-10-31, bce8ef8c |
+| Management-channel slot and `identity.rotate` (Heltec V3 and V4, Repeater and Room server, USB console) | bind, rotate and remove over the cable; a signed change that reverts unconfirmed; a confirmed one that stays; a reboot while pending that reverts; rotation of the key with the record kept; 34 of 34 on each of the four builds | 2026-11-05, adaf9fed and f0067d70 |
+| Device interface over a TLS-verified broker (Heltec V3 and V4, Repeater and Room server) | hello; a plain session changes and reads nothing; hardened keeps a verified broker across a reboot; signed logs (plain refused, signed with no nonce refused, signed with the nonce allowed, an entry arrives); a health event; a tentative change answers and reverts; the session returns after a reboot; 22 of 22 on each of the four builds | 2026-11-05, adaf9fed and a76e33d7 |
+| Repeater and Room server heap with a verified session (Heltec V3, V4) | free about 137 and 133 KB on V3, about 164 and 161 KB on V4; lowest loop stack free about 1,300 B, at a revert | 2026-11-05, adaf9fed and a76e33d7 |
 
 ## Not yet verified on hardware
 
