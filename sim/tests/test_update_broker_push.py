@@ -105,21 +105,21 @@ def test_a_chunk_needs_the_jobs_token_over_the_broker(nodes, tmp_path, brokers):
 
 
 def test_the_heap_a_push_asks_for(nodes, tmp_path, brokers):  # noqa: F811
-    """34 KB: measured on a Heltec V3 beside a verified session, a push costs about 23 KB, and 3 runs ended at 11.7 to 15.5 KB."""
+    """26 KB at the check: a Heltec V3 beside a verified session reads 34 to 39 KB idle, about 7 KB more, and ends at 11.7 to 15.6 KB."""
     b = tls_broker(brokers)
     s = server(nodes, tmp_path, b, "repeater_wifi", "bh")
     dev = dev_of(s)
     assert s.provision()["status"] == "ok"
     img = image(3000, b"heap")
     text, sig = signed_manifest(s, img)
-    s.n.heap(33 * 1024)
+    s.n.heap(25 * 1024)
     time.sleep(0.5)
     r = b.iface_request(dev, {"v": 1, "id": "st", "op": "update.manifest", "args": {"manifest": text, "manifest_sig": sig}})
     assert r["status"] == "ok" and r["result"]["preflight"] == "low-memory", r
     args = {"manifest_sha256": hashlib.sha256(text.encode()).hexdigest(), "source": {"push": True}, "confirm": {"within_s": 300}}
     r = b.iface_request(dev, wrap(s.node_key, "update.offer", args, job=1))
     assert (r["status"], r.get("error")) == ("busy", "low-memory"), r
-    s.n.heap(34 * 1024)
+    s.n.heap(26 * 1024)
     time.sleep(0.5)
     r = b.iface_request(dev, wrap(s.node_key, "update.offer", args, job=2))
     assert r["status"] == "ok", r
