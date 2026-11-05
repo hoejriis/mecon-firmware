@@ -9,8 +9,8 @@
  * The occupied channel is centre +/- bandwidth/2.  When it lies inside one sub-band that band's
  * limit applies; when it touches several, the strictest limit among them applies.  Anything in
  * 863-870 MHz that no sub-band lists (868.6-868.7, 869.2-869.4, 869.65-869.7) is limited to 0.1 %.
- * Frequencies outside the tabulated ranges carry no floor (e.g. 902-928 MHz, which has dwell-time
- * rules instead).
+ * Frequencies outside the tabulated ranges carry no floor. The floor is chosen from the frequency alone, as the
+ * device has no country setting, so 902-930 MHz has none: docs/CLI_REFERENCE.md says why.
  *
  * Limits are in basis points of an hour (100 = 1.00 %, 1000 = 10.00 %).  Band edges are compared with
  * a 1 kHz tolerance, so a 250 kHz channel centred on 869.525 MHz (float rounding included) still counts

@@ -7,7 +7,7 @@ import re
 from sim.harness import CliClient
 
 RTC = 1760000000
-BAND = re.compile(r"^> band (\S+?)(?: MHz)?, limit (\d+\.\d\d)%, floor (\S+), user (\d+\.\d\d)%, used (\d+) ms \((\d+\.\d\d)%\)$")
+BAND = re.compile(r"^> band (\S+?)(?: MHz)?, limit (\d+\.\d\d)%, floor (\S+), user (\d+\.\d\d)%, used (\d+) ms \((\d+\.\d\d)%\)(, no time rule enforced)?$")
 
 
 def start(nodes, name):
