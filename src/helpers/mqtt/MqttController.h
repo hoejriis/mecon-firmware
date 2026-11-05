@@ -132,6 +132,7 @@ private:
   uint32_t _sessions = 0;   // sessions established since boot
   uint16_t _cur_port = 0;
   uint32_t _next_status = 0;
+  bool _status_due = false;          // a new session's first status, sent when requests open
   uint32_t _cli_open_at = 0;         // requests before this are ignored: a retained one is replayed to every new subscriber
   void attempt(const MqttAction& a);
   void takeResult();

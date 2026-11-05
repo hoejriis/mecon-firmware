@@ -99,7 +99,7 @@ A public release on GitHub carries its update set as release assets, so any mana
 9. **Starting version.** The running version is at least `min_from`: `below-min-from`.
 10. **Downgrade.** `version` is not below the running version, unless `downgrade:true` and the offer is Deployment-signed: `downgrade-refused`.
 11. **Slot.** `image.size` fits the target's update slot: `too-large`.
-12. **Heap.** Enough free heap for the transfer: `busy`, `low-memory`. A download opens its own connection: 48 KB over plain HTTP, as for a push, and 96 KB over HTTPS (measured on a Heltec V3: HTTP cost about 23 KB, HTTPS about 63 KB and left 3.5 KB at its lowest). A board without PSRAM is therefore refused an HTTPS download and uses HTTP, which the digest makes just as safe.
+12. **Heap.** Enough free heap for the transfer: `busy`, `low-memory`. A download opens its own connection: 48 KB over plain HTTP, as for a push, and 96 KB over HTTPS (measured on a Heltec V3: HTTP cost about 23 KB, HTTPS about 63 KB and left 3.5 KB at its lowest). This is internal heap: mbedTLS allocates only there, so PSRAM does not help, and a broker session over TLS counts against it. A device short of it, a Heltec V4 on a verified broker among them, is refused an HTTPS download. The memory will not come back while that session is up, so a manager that gets `low-memory` on an `https` offer offers the same image over `http` at once rather than retrying: the digest makes it just as safe.
 
 Passing them makes the request a job, `accepted` (OPERATIONS.md 3.1).
 

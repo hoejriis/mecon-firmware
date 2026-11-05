@@ -225,6 +225,10 @@ def test_a_plain_connect_that_completes_after_the_posture_rose_says_nothing(node
         time.sleep(4.0)                                                          # the plain attempt completes meanwhile
         assert a.retained_status(2) is None, "a plain session published its status under Hardened"
         assert _opens(n) - _count(n, "close") == 1, mqtt_events(n)
+        # It never became a session, so it never subscribed to requests. The status alone would not show this: a session
+        # dropped within the settle window publishes none.
+        assert "/cli/" in t.log(), t.log()                                    # the broker logs a subscription ...
+        assert "/cli/" not in a.log(), a.log()                                # ... and this one saw none
         assert n.sanitizer_report() == "", n.sanitizer_report()
     finally:
         a.stop()

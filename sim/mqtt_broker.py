@@ -133,7 +133,7 @@ class Broker:
         self.log_path = os.path.join(self.dir, name + ".log")
         self.conf = os.path.join(self.dir, name + ".conf")
         lines = ["listener %d %s" % (port, ip), "persistence false", "log_dest file " + self.log_path,
-                 "log_type error", "log_type warning", "log_type notice", "log_type information"]
+                 "log_type error", "log_type warning", "log_type notice", "log_type information", "log_type subscribe"]
         if cert:
             lines += ["certfile " + cert, "keyfile " + key]
         if users:

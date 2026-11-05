@@ -21,6 +21,9 @@
 #include <helpers/CommonCLI.h>
 #include <helpers/StatsFormatHelper.h>
 #include <helpers/ClientACL.h>
+#ifdef ENABLE_MECON_IFACE
+  #include <helpers/iface/IdentityRotationFile.h>
+#endif
 #include <helpers/RegionMap.h>
 #include <helpers/RoutingPolicy.h>
 #include <RTClib.h>
@@ -101,6 +104,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   TransportKeyStore key_store;
   RegionMap region_map, temp_map;
   ClientACL acl;
+#ifdef ENABLE_MECON_IFACE
+  Iface::RoleRotation<FILESYSTEM> _rotation;
+  bool dropOldKeyState();
+  static bool rotSaveKey(void* u, const mesh::LocalIdentity& id);
+  static bool rotDrop(void* u);
+#endif
   CommonCLI _cli;
   unsigned long dirty_contacts_expiry;
   uint8_t reply_data[MAX_PACKET_PAYLOAD];
@@ -238,6 +247,13 @@ public:
   static bool saveFilter(ClientInfo* client);
 
   void saveIdentity(const mesh::LocalIdentity& new_id) override;
+  bool saveKey(const mesh::LocalIdentity& new_id);
+#ifdef ENABLE_MECON_IFACE
+  // identity.rotate (AUTHORITY.md section 11): the shared steps, this role's drop.
+  Iface::RoleRotation<FILESYSTEM>& rotation() { return _rotation; }
+  void rotationBegin();
+  int rotateIdentity(const char* device_id_hex, uint32_t job_id, const char** err);
+#endif
   void clearStats() override;
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
