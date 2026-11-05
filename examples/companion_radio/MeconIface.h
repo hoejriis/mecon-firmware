@@ -8,6 +8,7 @@
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/ChannelOps.h>
 #include <helpers/iface/ContactOps.h>
+#include <helpers/iface/InboxOps.h>
 #include <helpers/iface/MessageOps.h>
 #include <helpers/iface/MgmtChannel.h>
 #include <helpers/iface/IfaceFrames.h>
@@ -83,6 +84,7 @@ public:
   Iface::ContactHost contactHost();   // the native contact table (contact.* operations)
   Iface::MessageHost messageHost(bool create);   // message.* operations; create: make the outcome table if there is none
   Iface::MessageTable* messages() const { return _messages; }
+  Iface::Inbox& inbox() { return _inbox; }   // inbox.* operations: the manager's copy of what the Companion receives
   Iface::MgmtHost mgmtHost();         // the management channel binding (mgmt.channel.*; MeconMgmt.cpp)
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
@@ -202,6 +204,11 @@ private:
   Iface::MessageTable* _messages = nullptr;   // allocated on the first message.send
   uint32_t _msg_ev_seq = 0;
   void tellMessages();
+  Iface::Inbox _inbox;
+  uint32_t _inbox_ev_seq = 0, _inbox_told = 0;
+  bool _inbox_tried = false;
+  void tellInbox();
+  void tellReaders(const char* ev_name, uint32_t seq, const char* data);
   Iface::ResultCache* _cache = nullptr;     // one for the device (design section 3), allocated on the first request
   MyMesh* _mesh = nullptr;
   Cli::Context _ctx;                        // the caller of the request being handled (a transport, or the broker)

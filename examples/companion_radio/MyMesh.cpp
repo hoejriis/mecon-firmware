@@ -532,8 +532,36 @@ Iface::MessageSend MyMesh::messageSendChannel(int slot, uint32_t ts, const char*
 }
 #endif
 
+#ifdef ENABLE_MECON_IFACE
+// The manager's copy (OPERATIONS.md section 6.4). The native queue below is the stock app's and is not touched by it.
+void MyMesh::keepReceived(mesh::Packet* pkt, const uint8_t* from, int channel, uint8_t txt_type, uint32_t ts,
+                          const uint8_t* signer, const char* text) {
+  Iface::InboxEntry* e = _iface.inbox().add();
+  if (!e) return;
+  pkt->calculatePacketHash(e->hash);
+  e->ts = ts;
+  const uint32_t now = getRTCClock()->getCurrentTime();
+  e->rx_ts = now >= 1704067200 ? now : 0;
+  e->rx_ms = millis();
+  if (from) memcpy(e->from, from, sizeof(e->from));
+  if (signer) memcpy(e->signer, signer, sizeof(e->signer));
+  e->channel = (int8_t)channel;
+  e->snr_x4 = (int8_t)(pkt->getSNR() * 4);
+  e->path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
+  e->type = txt_type;
+  size_t n = strlen(text);
+  e->cut = n > Iface::InboxEntry::TEXT_CAP;
+  if (e->cut) n = Iface::InboxEntry::TEXT_CAP;
+  memcpy(e->text, text, n);
+  e->len = (uint8_t)n;
+}
+#endif
+
 void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt,
                           uint32_t sender_timestamp, const uint8_t *extra, int extra_len, const char *text) {
+#ifdef ENABLE_MECON_IFACE
+  keepReceived(pkt, from.id.pub_key, -1, txt_type, sender_timestamp, extra_len >= 4 ? extra : nullptr, text);
+#endif
   int i = 0;
   if (app_target_ver >= 3) {
     out_frame[i++] = RESP_CODE_CONTACT_MSG_RECV_V3;
@@ -668,6 +696,10 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   }
 
   uint8_t channel_idx = findChannelIdx(channel);
+#ifdef ENABLE_MECON_IFACE
+  // It was decrypted with a stored channel, so there is a slot to name; with none, -1 would read as a direct message.
+  if (channel_idx < 127) keepReceived(pkt, nullptr, channel_idx, TXT_TYPE_PLAIN, timestamp, nullptr, text);
+#endif
   out_frame[i++] = channel_idx;
   uint8_t path_len = out_frame[i++] = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
 
