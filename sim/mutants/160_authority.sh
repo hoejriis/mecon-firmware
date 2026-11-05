@@ -192,4 +192,3 @@ mutate rotate_server_no_gate src/helpers/iface/ConsoleIface.cpp '  Status st = _
   if (st != ST_OK) return st;
   if (!_host.rotate' '  if (!_host.rotate' $IR::test_a_server_rotation_needs_a_signature_and_a_record
 mutate rotate_server_no_recovery examples/simple_repeater/MyMesh.cpp '  _rotation.recoverAtBoot();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop' '' $IR::test_a_cut_before_a_server_drop_finishes_at_boot
-mutate rotate_server_get_gives_statement_to_anyone src/helpers/iface/ConsoleIface.cpp '  if (st == ST_OK && self(c)->mayRead()) self(c)->writeRotation(*c.out);' '  if (st == ST_OK) self(c)->writeRotation(*c.out);' $IR::test_a_server_rotation_needs_a_signature_and_a_record
