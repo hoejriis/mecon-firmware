@@ -24,7 +24,7 @@ class Server:
     """Serves paths from a table: path -> (status, body, send_length). send_length=False sends no Content-Length (the
     body ends when the connection closes); an int sends that number instead of the body's length."""
 
-    def __init__(self, tls=False):
+    def __init__(self, tls=False, accept_delay=0.0):
         self.paths = {}
         self.requests = []
         outer = self
@@ -60,6 +60,13 @@ class Server:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.load_cert_chain(cert, key)
             self.httpd.socket = ctx.wrap_socket(self.httpd.socket, server_side=True)
+        if accept_delay:   # the connection is up and the handshake waits: what a far or busy server does
+            accept = self.httpd.get_request
+
+            def slow_accept():
+                time.sleep(accept_delay)
+                return accept()
+            self.httpd.get_request = slow_accept
         self.port = self.httpd.server_address[1]
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
@@ -119,6 +126,20 @@ def test_an_image_downloads_by_name_installs_and_attests(nodes, tmp_path, server
     d = Dev(n)
     assert d.hello["update"] == {"job": "dl-1", "version": NEW, "sha256": hashlib.sha256(img).hexdigest()}
     assert d.i.request("job.confirm", {"job": "dl-1"})["result"]["state"] == "confirmed"
+
+
+def test_a_download_gives_a_slow_server_its_time(nodes, tmp_path):
+    """The connect and the response head have HEAD_TIMEOUT_MS: a handshake that takes a second is no failure."""
+    s = Server(tls=True, accept_delay=1.0)
+    try:
+        img = image(9000, b"slow")
+        s.paths["/i.bin"] = (200, img, True)
+        n, d, _ = boot_wifi(nodes, tmp_path, "dl9", 79)
+        r = offer_url(d, stage(d, img), "https://127.0.0.1:%d/i.bin" % s.port)
+        assert r["status"] == "ok", r
+        assert n.wait_exit(30) == 75, "the download finished and the image activates"
+    finally:
+        s.close()
 
 
 def test_an_https_download_is_encrypted_and_the_digest_decides(nodes, tmp_path):

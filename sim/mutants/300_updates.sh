@@ -82,3 +82,4 @@ mutate upd_dfu_status_zero_hash $U '      w.key("sha256"); if (_running_known) h
 UPF=src/helpers/updates/UpdPreflight.h
 mutate upd_hardware_name_prefix_matches $UPF '    if (len == n && n && memcmp(p, want, n) == 0) return true;' '    if (n && memcmp(p, want, n) == 0) return true;' unit:test_updates
 mutate upd_hardware_names_ignored $UPF '  if (!d.hardware_names) return false;' '  return false;' unit:test_updates
+mutate upd_download_no_timeout src/helpers/updates/UpdService.cpp 'literal ? nullptr : _url.host, HEAD_TIMEOUT_MS};' 'literal ? nullptr : _url.host, 0};' sim/tests/test_update_download.py::test_a_download_gives_a_slow_server_its_time
