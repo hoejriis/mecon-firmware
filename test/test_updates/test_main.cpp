@@ -29,7 +29,7 @@ Device testDevice() {
   d.running_known = parseVersion("v1.18.0-mecon.0.2.0", &d.running);
   d.slot_size = 0x640000;
   d.free_heap = 100000;
-  d.heap_needed = 48 * 1024;
+  d.heap_needed = 34 * 1024;
   return d;
 }
 

@@ -55,14 +55,18 @@ public:
   static const uint32_t DOWNLOAD_MS = 30 * 60 * 1000;      // a download not finished this long after accepted fails
   static const uint32_t HEAD_TIMEOUT_MS = 15 * 1000;       // the connect, and the response head
   static const uint32_t DOWNLOAD_PIECE = 4096;             // body bytes taken per loop pass
-  // A download's own connection, measured on a Heltec V3 (2026-10-31): plain HTTP took about 23 KB, HTTPS about 63 KB and
-  // left 3.5 KB at its lowest. So HTTPS asks for the measured cost and a 32 KB margin, and a board short of internal
-  // heap (mbedTLS allocates only there, PSRAM or not) is refused it (busy, low-memory) and uses HTTP, which the digest
-  // makes just as safe.
-  static const uint32_t HEAP_NEEDED_HTTP = 48 * 1024;
-  static const uint32_t HEAP_NEEDED_HTTPS = 96 * 1024;
+  // A download's own connection (UPDATES.md section 4, step 12), from readings on real boards. Beside a verified broker
+  // session a Heltec V3 fell to 2 KB over plain HTTP, so HTTP asks for more than a V3 has with a session up, and a push is
+  // its path there. A V4 (2026-11-05) cost 59 KB over HTTPS beside one and kept 40 KB, so its build asks for less.
+  static const uint32_t HEAP_NEEDED_HTTP = 64 * 1024;
+#ifndef UPD_HEAP_NEEDED_HTTPS
+  #define UPD_HEAP_NEEDED_HTTPS (96 * 1024)
+#endif
+  static const uint32_t HEAP_NEEDED_HTTPS = UPD_HEAP_NEEDED_HTTPS;
   static const uint32_t READBACK_PIECE = 4096;             // bytes hashed per loop pass
-  static const uint32_t HEAP_NEEDED = 48 * 1024;
+  // A push, chunks over any link. A Heltec V3 beside a verified session: it costs about 23 KB, and 3 runs ended at 11.7 to 15.5 KB
+  // (2026-11-05). HEAP_FLOOR_BYTES is a warning about the largest block, which that session is already under while idle.
+  static const uint32_t HEAP_NEEDED = 34 * 1024;
   static constexpr const char* OP = "update.offer";
 
   struct Slot {

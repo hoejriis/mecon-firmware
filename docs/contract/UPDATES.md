@@ -99,7 +99,7 @@ A public release on GitHub carries its update set as release assets, so any mana
 9. **Starting version.** The running version is at least `min_from`: `below-min-from`.
 10. **Downgrade.** `version` is not below the running version, unless `downgrade:true` and the offer is Deployment-signed: `downgrade-refused`.
 11. **Slot.** `image.size` fits the target's update slot: `too-large`.
-12. **Heap.** Enough free heap for the transfer: `busy`, `low-memory`. A download opens its own connection: 48 KB over plain HTTP, as for a push, and 96 KB over HTTPS (measured on a Heltec V3: HTTP cost about 23 KB, HTTPS about 63 KB and left 3.5 KB at its lowest). This is internal heap: mbedTLS allocates only there, so PSRAM does not help, and a broker session over TLS counts against it. A device short of it, a Heltec V4 on a verified broker among them, is refused an HTTPS download. The memory will not come back while that session is up, so a manager that gets `low-memory` on an `https` offer offers the same image over `http` at once rather than retrying: the digest makes it just as safe.
+12. **Heap.** Enough free heap for the transfer: `busy`, `low-memory`. A push asks for 34 KB, over any link. A download opens its own connection: 64 KB over plain HTTP, and over HTTPS 96 KB, or 80 KB on a Heltec V4, where its measured cost leaves 40 KB beside a verified session. This is internal heap: mbedTLS allocates only there, so PSRAM does not help, and a broker session over TLS counts against it. A device with a session up and too little for a download, any Heltec V3 on a verified broker among them, keeps that session, and that memory will not come back while it is up. So a manager that gets `low-memory` on a download offer pushes the same image over the session (section 6) rather than retrying.
 
 Passing them makes the request a job, `accepted` (OPERATIONS.md 3.1).
 
@@ -147,8 +147,10 @@ Measured worst cases:
   - A download that has not finished 30 minutes after `accepted` is `failed` (`download-timeout`), and the slot is erased. That includes waiting for the network link.
   - The URL is where to fetch, never permission. `https` is encrypted with the host name as SNI, and the server is not authenticated: integrity is the digest's, the image is public firmware, and checking the server against a CA would only make a download fail where the digest would have passed. A server that serves other bytes, or an attacker in between, can at most make the download fail, which any relay could already do.
   - A download job has no transfer token and takes no `update.chunk`.
-- **USB and BLE on ESP32.** The offer's `source` is `{"push": true}`. Its result carries a **`transfer_token`** (16 random bytes, hex) for that job.
+- **USB, BLE and a broker session on ESP32.** The offer's `source` is `{"push": true}`. Its result carries a **`transfer_token`** (16 random bytes, hex) for that job.
   - **Chunks.** The bytes come as `update.chunk {"job", "token", "offset", "data"}`. `data` is canonical base64 (padded; leftover bits zero) of at most **2,304 bytes** (3,072 characters), so a chunk in a signed wrapper still fits the 4,096-byte request bound. A chunk is never cached: a retry asks again, and gets the offset expected next.
+  - **Over a broker,** a chunk is at most **1,024 bytes** (1,368 characters): with any job id, any offset and a request id of up to 31 characters, that is at most 1,549 bytes of request, inside the 1,551 the client buffer leaves. A bigger one never reaches the device, so it gets no answer. No second connection opens, and the session keeps answering other requests. A session that is not TLS-verified may not read, so stage and offer are signed there; the token then crosses an unchecked broker, which can only spoil chunks, and the digest catches that.
+  - **Sending.** One chunk at a time, each at the `next` of the answer before. With no answer in about 8 s, send the same offset again: a resend writes nothing twice. `busy` means nothing was written. After the last chunk, the transfer is over and the token dead, so a resend gets `bad-token`, or no answer once the device has gone down to activate: either tells a manager whose answer was lost that the last chunk landed. A restarted manager sends any chunk with the token and learns the offset from `next`.
   - **Chunks are not jobs.** They need no `job_id` and no signature, and never answer `busy job-open`. A chunk without the job's token is refused on every link.
   - **The token is a credential for the job's write path.**
     - It is returned only in the offer's own result (and its owed copy). It never appears in `job` events, `job.get`, `job.list`, `update.status`, the status snapshot or any log.
@@ -220,6 +222,19 @@ A revert therefore always finds data the previous image can read. A forced rever
 - plain HTTP: 21.8 s, about 79 KB/s; free heap fell from 74 KB to 50 KB during the download;
 - HTTPS: 32.9 s, about 53 KB/s; free heap fell from 74 KB to 11 KB, the largest block to 7 KB, and the lowest point was 3.5 KB. That is why step 12 asks 96 KB for HTTPS.
 - There was no broker session open during either.
+
+**Measured, a push over a TLS-verified broker session, 2026-11-05.** Standalone Companion, chunks of 1,024 bytes, session up throughout, the image attested and confirmed over the broker in every run:
+
+| Board | Runs | Image | Time | Retries | Lowest free | Lowest largest block |
+|---|---|---|---|---|---|---|
+| Heltec V3 | 3 | 1.74 MB | 184 to 198 s | 0 of 5,091 chunks | 11,740 to 15,468 | 12,788 to 14,836 |
+| Heltec V4 | 1 | 1.72 MB | 107 s | 0 of 1,684 chunks | 84,824 | 31,732 |
+
+- On a V3 a push costs about 23 KB. In one V3 run the broker ended the session mid-transfer: a new verified session came up in 10 s, at about 32 KB free, and the transfer went on.
+- The broker carried about 3.1 MB in, and about the same out, for the V3's image. A second client's ping through a bench broker showed no change, with a 115 ms floor of its own, from one device.
+- These runs had no streams subscribed and no radio traffic.
+
+**Measured, a download beside a verified session, 2026-11-05.** A V4 over HTTPS, 1.72 MB: about 16 s, lowest free 39,728, session up throughout. A V3 over plain HTTP: finished, but with 2 KB free at its lowest, which is why HTTP asks for 64 KB. A V3 with the session closed: plain HTTP lowest 33,300, HTTPS failed 2 of 3 times and reached 1 KB; so a V3 pushes.
 
 ## 11. Conformance
 
