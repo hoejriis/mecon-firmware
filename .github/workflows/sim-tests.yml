@@ -38,9 +38,14 @@ permissions:
 jobs:
   sim:
     runs-on: ubuntu-latest
-    # A full run takes 22-28 min on a hosted runner. Lock-step nodes wait on a broker barrier, so a deadlock would
+    # The suite takes about an hour in one job, so it runs in three: sim/shard.py keeps the split even, and a test in
+    # sim/tests/test_shard.py fails if a file is dropped. Lock-step nodes wait on a broker barrier, so a deadlock would
     # otherwise hold the runner for GitHub's 6 h default before anyone saw a result.
     timeout-minutes: 60
+    strategy:
+      fail-fast: false   # a failure in one shard says nothing about the others
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
@@ -68,4 +73,12 @@ jobs:
           envs=$(pio project config --json-output | python3 -c "import json,sys; print(' '.join('-e '+s[0][4:] for s in json.load(sys.stdin) if s[0].startswith('env:sim_')))")
           echo "$envs"
           pio run $envs
-      - run: python3 -m pytest ${{ github.event.inputs.pytest_args || 'sim/tests' }} -v
+      - name: Run this shard (or, on a dispatch with arguments, those arguments on the first shard only)
+        env:
+          PYTEST_ARGS: ${{ github.event.inputs.pytest_args }}
+        run: |
+          if [ -n "$PYTEST_ARGS" ]; then
+            if [ "${{ matrix.shard }}" = 0 ]; then python3 -m pytest $PYTEST_ARGS -v; fi
+          else
+            python3 -m pytest $(python3 sim/shard.py ${{ matrix.shard }} 3) -v
+          fi
