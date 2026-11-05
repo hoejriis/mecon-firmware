@@ -19,7 +19,7 @@ mutate inbox_event_names_the_text src/helpers/iface/InboxOps.cpp '  w.key("lost"
 mutate inbox_old_epoch_acks src/helpers/iface/InboxOps.cpp '  if ((uint32_t)epoch != h->epoch) { c.error = "wrong-epoch"; return ST_FAILED; }' '' $IB::test_an_ack_from_before_a_reboot_releases_nothing_received_since
 mutate inbox_ack_above_received src/helpers/iface/InboxOps.cpp '  if ((uint32_t)upto > h->inbox->received()) { c.error = "not-received"; return ST_FAILED; }' '' $IB::test_a_reboot_loses_the_copy_and_the_epoch_says_so
 mutate inbox_page_may_overflow src/helpers/iface/InboxOps.cpp '    if (n > 0 && w.size() + ENTRY_FIELDS_MAX + textJsonMax(*e) > PAGE_MAX) break;' '' $IB::test_a_page_stops_where_a_reply_would_overflow_and_the_next_read_continues
-mutate inbox_limit_ignored src/helpers/iface/InboxOps.cpp '  for (int n = 0; e && n < limit; n++) {' '  for (int n = 0; e; n++) {' $IB::test_a_page_stops_where_a_reply_would_overflow_and_the_next_read_continues
+mutate inbox_limit_ignored src/helpers/iface/InboxOps.cpp '  for (int n = 0; e && n < limit; n++) {' '  for (int n = 0; e; n++) {' $IB::test_a_full_inbox_counts_what_it_loses_and_the_oldest_goes
 mutate inbox_copy_drains_native examples/companion_radio/MeconIface.cpp '  _inbox_told = _inbox.received();' '  _inbox_told = _inbox.received(); { uint8_t f[256]; _mesh->getFromOfflineQueue(f); }' $IB::test_a_direct_message_is_read_and_the_stock_app_still_has_it
 mutate inbox_not_private examples/companion_radio/MeconIface.cpp '  if (!mayReadPrivate(c)) return ST_REFUSED;
   InboxHost host' '  InboxHost host' $IB::test_a_caller_who_may_not_read_private_data_reads_nothing

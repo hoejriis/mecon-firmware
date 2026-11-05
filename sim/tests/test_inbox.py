@@ -139,6 +139,8 @@ def test_a_full_inbox_counts_what_it_loses_and_the_oldest_goes(nodes, ether):
         wait_received(ir, k + 1)
     r = listed(ir)
     assert (r["received"], r["unread"], r["lost"]) == (9, 8, 1), r
+    lim = listed(ir, limit=1)
+    assert [m["seq"] for m in lim["messages"]] == [2] and lim["more"] is True, lim
     held = list(r["messages"])
     while r["more"]:
         r = listed(ir, after=held[-1]["seq"])
@@ -166,8 +168,6 @@ def test_a_page_stops_where_a_reply_would_overflow_and_the_next_read_continues(n
     assert p1["result"]["messages"][0]["text"] == worst and "cut" not in p1["result"]["messages"][0]
     p2 = listed(ir, after=1)
     assert [m["text"] for m in p2["messages"]] == ["short"] and p2["more"] is False, p2
-    lim = listed(ir, limit=1)
-    assert len(lim["messages"]) == 1 and lim["more"] is True, lim
 
 
 def test_a_reboot_loses_the_copy_and_the_epoch_says_so(nodes, ether):
