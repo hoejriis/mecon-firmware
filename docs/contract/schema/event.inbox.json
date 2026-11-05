@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.inbox.json",
+  "title": "Data of an inbox event (OPERATIONS.md section 6.4)",
+  "description": "Something was received. It goes where a job event goes, so it names no sender and no text. Several receptions may be told once.",
+  "type": "object",
+  "required": [
+    "received",
+    "unread",
+    "lost"
+  ],
+  "properties": {
+    "received": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unread": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8
+    },
+    "lost": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}
