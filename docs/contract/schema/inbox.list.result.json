@@ -113,7 +113,7 @@
           "rx_ts": {
             "type": "integer",
             "minimum": 1704067200,
-            "description": "This device's clock at reception. Absent while the clock has not been set."
+            "description": "This device's clock at reception. On a board without a battery clock it may be a default the clock started from rather than a time anyone set."
           },
           "age_s": {
             "type": "integer",

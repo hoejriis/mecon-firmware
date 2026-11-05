@@ -396,7 +396,7 @@ Nothing here selects a gateway, retries by itself or decides which messages to c
 | `channel` (channel) | the slot whose key opened it. Anyone with that key could have sent it, and a sender's name at the start of `text` is only a claim |
 | `signer` (type `signed`) | the key prefix the native frame carries |
 | `ts` | nothing: the sender's own claim of the time |
-| `rx_ts` | this device's clock at reception. Absent while the clock has not been set |
+| `rx_ts` | this device's clock at reception. On a board without a battery clock that may be a default it started from rather than a time anyone set, so it is not proof of the time |
 | `age_s` | seconds since reception by uptime, so it needs no clock |
 | `hash` | the native packet hash, the same id the sender's `message.send` returned and any observer computes |
 
