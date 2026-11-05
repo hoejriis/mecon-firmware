@@ -4,7 +4,7 @@
 # to a whole KB. The Heltec V3 and V4 rows were set 2026-10-31 for the rebuilt IDF libraries (docs/PLATFORM.md), same rule.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1453056     122880
-Heltec_v3_companion_radio_standalone    1729536     136192
+Heltec_v3_companion_radio_standalone    1734656     136192
 Heltec_v3_companion_radio_usb            712704      41984
 Heltec_v3_companion_radio_wifi          1433600     118784
 Heltec_v3_repeater                       781312      47104
