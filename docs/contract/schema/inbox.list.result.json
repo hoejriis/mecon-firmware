@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/inbox.list.result.json",
+  "title": "Result of inbox.list",
+  "description": "Request args: {\"after\"?, \"limit\"?}. What the manager's copy holds above `after` (default: its acknowledged mark), oldest first. A read takes nothing, from this copy or from the native queue. A seq counts within one boot.",
+  "type": "object",
+  "required": [
+    "epoch",
+    "received",
+    "acked",
+    "lost",
+    "unread",
+    "messages",
+    "more"
+  ],
+  "properties": {
+    "epoch": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "received": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Receptions this boot; the highest seq so far."
+    },
+    "acked": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The mark inbox.ack has reached."
+    },
+    "lost": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Receptions this boot pushed out unread, or received before there were slots."
+    },
+    "unread": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8
+    },
+    "more": {
+      "type": "boolean",
+      "description": "More is held above the last entry: read again with after set to its seq."
+    },
+    "messages": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "seq",
+          "kind",
+          "type",
+          "text",
+          "ts",
+          "age_s",
+          "hash",
+          "snr_x4",
+          "route"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "channel"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Direct only: the stored contact whose shared key opened it."
+          },
+          "channel": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 126,
+            "description": "Channel only: the slot whose key opened it. Anyone holding that key could have sent it; a sender's name in the text is only a claim."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "plain",
+              "cli-data",
+              "signed",
+              "cli-command",
+              "other"
+            ]
+          },
+          "signer": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}$",
+            "description": "Type signed only: the key prefix the native frame carries."
+          },
+          "text": {
+            "type": "string",
+            "description": "As received, invalid UTF-8 replaced."
+          },
+          "cut": {
+            "const": true,
+            "description": "The text was longer than 160 bytes and this is its start. Absent otherwise."
+          },
+          "ts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The sender's own claim of the time, never checked."
+          },
+          "rx_ts": {
+            "type": "integer",
+            "minimum": 1704067200,
+            "description": "This device's clock at reception. Absent while the clock has not been set."
+          },
+          "age_s": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds since reception, by uptime: needs no clock."
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "description": "The native packet hash: the same id a sender or an observer computes."
+          },
+          "snr_x4": {
+            "type": "integer",
+            "minimum": -128,
+            "maximum": 127,
+            "description": "As the native frame carries it."
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "flood",
+              "direct"
+            ]
+          },
+          "path_len": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "Route flood only: as the native frame carries it."
+          }
+        }
+      }
+    }
+  }
+}

@@ -31,6 +31,12 @@
     "connectivity": {"type": "string", "enum": ["ble", "wifi"], "description": "Absent on a build without connectivity modes."},
     "ble_started": {"type": "boolean", "description": "Companion: whether this boot's BLE stack came up. Absent when this boot did not start BLE."},
     "posture": {"type": "string", "enum": ["normal", "hardened"]},
+    "inbox": {
+      "description": "What was received for the manager (OPERATIONS.md section 6.4): receptions this boot, those held and not acknowledged, and those lost.",
+      "type": "object",
+      "required": ["received", "unread", "lost"],
+      "properties": {"received": {"type": "integer", "minimum": 0}, "unread": {"type": "integer", "minimum": 0}, "lost": {"type": "integer", "minimum": 0}}
+    },
     "messages": {
       "description": "The message outcome table (OPERATIONS.md section 6): sends still open, and final outcomes not yet collected.",
       "type": "object",
