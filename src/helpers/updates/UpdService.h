@@ -64,10 +64,10 @@ public:
 #endif
   static const uint32_t HEAP_NEEDED_HTTPS = UPD_HEAP_NEEDED_HTTPS;
   static const uint32_t READBACK_PIECE = 4096;             // bytes hashed per loop pass
-  // A push, chunks over any link, read inside the request with its own buffers taken: about 7 KB under what `get mecon.mem`
-  // reads idle. A Heltec V3 beside a verified session reads 34 to 39 KB idle and ends at 11.7 to 15.6 KB (2026-11-05, 4 runs,
-  // streams and radio traffic in one). HEAP_FLOOR_BYTES is a warning about the largest block, already crossed there while idle.
-  static const uint32_t HEAP_NEEDED = 26 * 1024;
+  // A push, chunks over any link. Read inside the request, with its buffers taken: on an offer, 12 to 15 KB under what
+  // `get mecon.mem` reads idle. A Heltec V3 beside a verified session reads 34 to 39 KB idle and ends at 11.7 to 15.6 KB
+  // (2026-11-05). HEAP_FLOOR_BYTES is a warning about the largest block, already crossed there while idle.
+  static const uint32_t HEAP_NEEDED = 20 * 1024;
   static constexpr const char* OP = "update.offer";
 
   struct Slot {
