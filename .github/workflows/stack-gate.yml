@@ -90,7 +90,7 @@ jobs:
           LOOPBACK=()   # a Companion also feeds an imported contact's advert in as if received (BaseChatMesh::feedLoopback)
           case "${{ matrix.env }}" in *companion*) LOOPBACK=(--require 'BaseChatMesh::feedLoopback=NrfWorker::run') ;; esac
           # a Companion with the device interface recovers a cut identity rotation at boot on the worker (#172)
-          case "${{ matrix.env }}" in t1000e_companion*) LOOPBACK+=(--require 'MyMesh::recoverRotationAtBoot=NrfWorker::run') ;; esac
+          case "${{ matrix.env }}" in *companion*) LOOPBACK+=(--require 'MyMesh::recoverRotationAtBoot=NrfWorker::run') ;; esac
           python3 tools/stack_callgraph.py .pio/build/${{ matrix.env }} \
             --root 'loop_task\(void\*\)=3840' \
             --root 'NrfWorker::.*body=7936' \
