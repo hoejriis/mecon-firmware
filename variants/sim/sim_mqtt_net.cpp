@@ -185,6 +185,7 @@ public:
       SSL_CTX_set_verify(_ctx, SSL_VERIFY_NONE, nullptr);   // authenticated by the pinned fingerprint below, as on the device
     }
     _ssl = SSL_new(_ctx);
+    if (a.dates_unknown) X509_VERIFY_PARAM_set_flags(SSL_get0_param(_ssl), X509_V_FLAG_NO_CHECK_TIME);
     if (a.name) {
       SSL_set_tlsext_host_name(_ssl, a.name);   // SNI, with every TLS profile that has a host name
       if (a.ca_b64) SSL_set1_host(_ssl, a.name);

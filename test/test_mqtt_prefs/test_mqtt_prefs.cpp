@@ -693,3 +693,14 @@ TEST(MqttProfileCli, TransportPathAndTheirDefaults) {
   EXPECT_EQ(0, cmd(p, "set mqtt.profile 0 clear").rfind(">", 0));
   EXPECT_EQ(0, p.p[0].ws);
 }
+
+TEST(MqttCa, CertificateDatesAreComparedToTheSecond) {
+  const MqttCertTime from = {2026, 3, 31, 23, 59, 59}, to = {2026, 11, 1, 0, 0, 0};
+  EXPECT_TRUE(mqttCertDatesHold(from, to, from)) << "the first second counts";
+  EXPECT_TRUE(mqttCertDatesHold(from, to, to)) << "the last second counts";
+  EXPECT_TRUE(mqttCertDatesHold(from, to, {2026, 4, 1, 0, 0, 0})) << "the next month is later, whatever the day";
+  EXPECT_FALSE(mqttCertDatesHold(from, to, {2026, 3, 31, 23, 59, 58})) << "not yet valid";
+  EXPECT_FALSE(mqttCertDatesHold(from, to, {2026, 11, 1, 0, 0, 1})) << "expired";
+  EXPECT_FALSE(mqttCertDatesHold(from, to, {2025, 12, 31, 23, 59, 59})) << "an earlier year, though a later month";
+  EXPECT_FALSE(mqttCertDatesHold(from, to, {2027, 1, 1, 0, 0, 0})) << "a later year, though an earlier month";
+}

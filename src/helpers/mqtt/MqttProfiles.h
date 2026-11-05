@@ -64,6 +64,10 @@ struct MqttProfile {
 // The CA certificate text: base64 of one DER certificate. Returns the DER length written to `der` (at most `cap`),
 // or -1 when the text is not base64, is not a single DER SEQUENCE whose declared length matches, or does not fit.
 int mqttCaDecode(const char* b64, uint8_t* der, size_t cap);
+// A certificate's validity dates against a time, all UTC. The ESP32 TLS library is built without MBEDTLS_HAVE_TIME_DATE,
+// so its verify never judges dates; they are compared here instead.
+struct MqttCertTime { int year, mon, day, hour, min, sec; };
+bool mqttCertDatesHold(const MqttCertTime& from, const MqttCertTime& to, const MqttCertTime& now);
 // True when a host string is an IPv4 literal (digits and dots only): such a profile has no host name to check.
 bool mqttHostIsLiteral(const char* host);
 
