@@ -1,6 +1,6 @@
 # Telemetry catalogue
 
-This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console (Repeater, Room server). Every transport gives a stream the same meaning: a transport may limit sizes and rates, never change what a field means. Which streams a device produces depends on its build and board: `hello` lists `stream.<name>` for each one, and `sub.start` on any other answers `invalid` with `unknown-stream`.
+This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)) carries it over MQTT, USB and BLE (Companion) and the console and, on the Heltec boards, MQTT (Repeater, Room server). Every transport gives a stream the same meaning: a transport may limit sizes and rates, never change what a field means. Which streams a device produces depends on its build and board: `hello` lists `stream.<name>` for each one, and `sub.start` on any other answers `invalid` with `unknown-stream`.
 
 ## 1. Model
 

@@ -127,7 +127,8 @@ inline bool handleCommand(const char* cmd, uint8_t caller, uint8_t& posture, uin
 // the local caller is the UART / USB console. `changed` is set when the prefs must be saved.
 inline bool adminFrontDoor(const char* command, bool remote, uint8_t& posture, const char* admin_pw,
                            const char* build_default, uint32_t now, char* reply, size_t max, bool& changed) {
-  uint8_t caller = remote ? CALLER_REMOTE_ADMIN : CALLER_CABLE;
+  // The gate below already refuses a broker's posture and audit lines; a broker's line is never the cable here either.
+  uint8_t caller = remote ? CALLER_REMOTE_ADMIN : Cli::serverCaller().net_line ? CALLER_MQTT : CALLER_CABLE;
   // a remote session that predates the rule, or none, is still "default password": the table refuses it
   // withServerCaller: once the device holds a Deployment record the context says so, and a verified signed line on the
   // console runs as the signed principal (cli/CliCaller.h).

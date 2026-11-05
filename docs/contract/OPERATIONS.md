@@ -89,7 +89,7 @@ The bound on any pending change is therefore `within_s` plus at most one reboot.
 **How the reference firmware does it.**
 - **Which keys.** `config.schema` marks them `"confirm": true`:
   - `radio` and `tx` on every role;
-  - on the Companion, also `connectivity.mode`, `wifi.enabled`, `mqtt.enabled` and every `wifi.profile.*` and `mqtt.profile.*` key.
+  - on the Companion, also `connectivity.mode`; on every build with those links, `wifi.enabled`, `mqtt.enabled` and every `wifi.profile.*` and `mqtt.profile.*` key.
 
   This is stricter than rule 1 on one point. No controller reports which profile it is using, so a change to *any* Wi-Fi or broker profile counts, not only the one in use.
 - **Who must ask.** Only the unsigned cable may apply these keys without `confirm`; it is the principal that counts, not the wire. A signed request on USB, a paired phone, a verified broker and the network console must ask.
@@ -159,7 +159,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 
 | Operation | Does | Native mapping | Class | Mutating | Roles | Transports |
 |---|---|---|---|---|---|---|
-| `hello` | versions, ids, role, capabilities | | read | no | C R S | C: USB BLE MQTT; R S: Con |
+| `hello` | versions, ids, role, capabilities | | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `status.get` | status snapshot | | read | no | C R S | as above |
 | `config.schema` | settings this build has | CLI registry | read | no | C R S | as above |
 | `config.get` | values | CLI `get` per key | read; per key | no | C R S | as above |
@@ -177,10 +177,10 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `message.send` | one native direct or channel message; a recipient or slot not there is an answer, and no contact is created | `sendMessage`, `sendGroupMessage`, as `CMD_SEND_TXT_MSG` and `CMD_SEND_CHANNEL_TXT_MSG` | write | yes | C | all |
 | `message.get`, `message.list`, `message.ack` | what became of a send (section 6) | RAM table | read, then private | no | C | all |
 | `inbox.list`, `inbox.ack` | what was received (section 6.4) | a RAM copy, beside the native offline queue | read, then private | no | C | all |
-| `channel.list`, `channel.get` | channels (name, one-byte hash, key size; `list` paged by 8); the secret never | native channel table; R S: one slot (MANAGEMENT_CHANNEL.md section 6) | private | no | C R S | C: USB BLE MQTT; R S: Con |
-| `channel.put`, `channel.remove` | add, rotate, remove a channel; 128-bit keys only, a key held by another slot refused | `CMD_SET_CHANNEL`; R S: one slot | write | yes | C R S | C: USB BLE MQTT; R S: Con |
-| `mgmt.channel.get` | the management channel binding: none, bound or stale | the native channel table plus its own record | read | no | C R S | C: USB BLE MQTT; R S: Con |
-| `mgmt.channel.bind`, `mgmt.channel.rotate`, `mgmt.channel.unbind` | bind a slot, rotate its key, end the binding; confirm-or-revert for anyone but the cable | `CMD_SET_CHANNEL` for a rotation | write | yes | C R S | C: USB BLE MQTT; R S: Con |
+| `channel.list`, `channel.get` | channels (name, one-byte hash, key size; `list` paged by 8); the secret never | native channel table; R S: one slot (MANAGEMENT_CHANNEL.md section 6) | private | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
+| `channel.put`, `channel.remove` | add, rotate, remove a channel; 128-bit keys only, a key held by another slot refused | `CMD_SET_CHANNEL`; R S: one slot | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
+| `mgmt.channel.get` | the management channel binding: none, bound or stale | the native channel table plus its own record | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
+| `mgmt.channel.bind`, `mgmt.channel.rotate`, `mgmt.channel.unbind` | bind a slot, rotate its key, end the binding; confirm-or-revert for anyone but the cable | `CMD_SET_CHANNEL` for a rotation | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `acl.list`, `acl.put` | remote-admin ACL | CLI `setperm`; REQ `GET_ACCESS_LIST` | read / write | `acl.put` | R S | Con, MQTT where built, RF |
 | `password.set` | admin or guest password (write-only) | CLI `password`, `set guest.password` | write; commit-or-revert over RF | yes | R S | Con, RF |
 | `clock.get`, `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | read / write | `set` | C R S | all |
@@ -198,7 +198,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 
 **Keys `config.*` reaches.**
 - Companion: 17 key patterns, 84 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|site|user|pwd|priority`. The 22 password and user keys are write-only.
-- Repeater and Room server: 12 keys: `name`, `tx`, `radio`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`.
+- Repeater and Room server: 12 keys: `name`, `tx`, `radio`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`. The Heltec builds also have the Wi-Fi and broker keys above; `connectivity.mode` stays on the Companion, because a server has no BLE to choose between.
 
 Each of the following stands for its existing CLI line:
 - **Companion:** `mqtt.profile.N.anchor` (with the CA lines as one operation), `tz.offset`, and the remaining radio preferences (`af`, `rxdelay`, `txdelay`, `direct.txdelay`, `int.thresh`, `cad`, `radio.rxgain`, `agc.reset.interval`, `path.hash.mode`, `multi.acks`, `dutycycle`).

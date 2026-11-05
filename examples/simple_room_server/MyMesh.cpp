@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
 #include <helpers/iface/Observe.h>
 #include <helpers/AuditStore.h>
@@ -997,6 +998,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       return;
     }
   }
+
+#ifdef ENABLE_WIFI_INTERFACE
+  if (netCommand(_prefs, savePrefsNow, this, command, reply)) return;
+#endif
 
   // handle ACL related commands
   if (memcmp(command, "setperm ", 8) == 0) {   // format:  setperm {pubkey-hex} {permissions-int8}

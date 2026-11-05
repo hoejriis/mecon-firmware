@@ -6,7 +6,7 @@ What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED
 
 ## The MQTT client library
 
-`PubSubClient` 2.8.0 (`knolleary/PubSubClient`, MIT), pinned to that exact version in the Heltec V3 and V4 Wi-Fi builds and in the two simulated Companion builds.
+`PubSubClient` 2.8.0 (`knolleary/PubSubClient`, MIT), pinned to that exact version in the Heltec V3 and V4 builds with Wi-Fi, and in the simulated builds with the controller.
 
 - **Heap.** One packet buffer allocated once (512 bytes since the command line over MQTT, 256 before) and, on ESP32, the connect worker's 10 KiB stack, allocated when the first connect attempt starts and kept (see "The connect runs on a worker"). No queue. The connection object belongs to the platform, so the TLS context exists only while a session is open.
 - **TLS and portability.** It speaks MQTT 3.1.1 through the Arduino `Client` interface, so the same code runs over `WiFiClient` and over `WiFiClientSecure` (mbedTLS) on ESP32, and compiles natively for the simulated board with three small shims (`Client.h`, `IPAddress.h`, two macros in `Arduino.h`) and a socket-and-OpenSSL `Client`. Nothing in the library knows about TLS, so the certificate check is ours and identical in the simulator and on the device.

@@ -2,7 +2,7 @@
 
 One logical device model reached over MQTT, USB and BLE. A Backend talks to the device directly over MQTT, or through a Reader that bridges USB or BLE; the device answers the same requests with the same results either way. Native MeshCore 1.18 Companion frames and the Repeater console stay exactly as they are beside it.
 
-> Version 1.0. Implemented by the Companion over USB, BLE and MQTT, and by the Repeater and Room server over their console (section 7). Where another page of the contract set differs from this one on wire details, this page wins.
+> Version 1.0. Implemented by the Companion over USB, BLE and MQTT, and by the Repeater and Room server over their console and, on the Heltec boards, MQTT (section 7). Where another page of the contract set differs from this one on wire details, this page wins.
 
 ## Decisions
 

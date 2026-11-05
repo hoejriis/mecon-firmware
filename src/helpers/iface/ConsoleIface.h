@@ -2,7 +2,8 @@
 // The device interface on the Repeater and Room server console (docs/contract/DEVICE_INTERFACE.md section 7). A
 // console line that starts with "mecon> " carries one request envelope; its result, and any event, goes back as one
 // line "mecon> <envelope>". Every other line stays the stock CLI. The caller is the console: the cable, decided by
-// the CLI privilege table like any console line.
+// the CLI privilege table like any console line. Where the build has a broker, the same operations answer over MQTT
+// too (onMqtt), as that session's caller, with the session's own subscriptions, nonce and unlock state.
 //
 // The stock console reads at most 160 characters and echoes each one. Once a line has shown the prefix, this class
 // takes the rest of it without echo, into its own buffer of MAX_LINE bytes, allocated only while such a line is
@@ -65,6 +66,10 @@ public:
     SnapStore* mgmt_slot;
     SnapStore* mgmt_record;
     SnapStore* mgmt_snap;
+    // Where the build has Wi-Fi and a broker. read_secret: a write-only setting, for a confirm-or-revert snapshot only.
+    // profile_exists: an MQTT profile is configured (the Deployment's broker roles). Null: no such settings.
+    bool (*read_secret)(void* user, const KeyDef& k, unsigned idx, char* out, size_t cap);
+    bool (*profile_exists)(void* user, uint8_t index);
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |
@@ -81,6 +86,19 @@ public:
   // Health events while a subscription runs.
   void loop(uint32_t now, Print& out);
 
+  // The device interface over the broker (DEVICE_INTERFACE.md section 7): one request as the session's caller. Returns
+  // the result's length (0: nothing to send).
+  size_t onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap);
+  typedef bool (*EventPublishFn)(const char* stream, const char* payload, size_t len);
+  typedef bool (*SessionUpFn)();
+  void setMqttEvents(EventPublishFn publish, SessionUpFn up) { _ev_publish = publish; _ev_up = up; }
+  void setRolesListener(DeployAuth::RolesListener f, void* user) { _auth.setRolesListener(f, user); }
+  // The connectivity stream (TELEMETRY.md): the links the role's main owns. Null: the stream is not produced.
+  typedef void (*ConnWriteFn)(JsonWriter& w);
+  typedef uint32_t (*ConnSignatureFn)();
+  void setConnectivity(ConnWriteFn write, ConnSignatureFn signature) { _conn_write = write; _conn_sig = signature; }
+  int computeMqtt(const Cli::Context& ctx, const char* msg, size_t len, char* out, size_t cap);
+
   // For the operations.
   const Host& host() const { return _host; }
   DeployAuth& auth() { return _auth; }
@@ -89,14 +107,14 @@ public:
   bool mayRead();
   JobService& jobs() { return _jobs; }
   Upd::UpdateService& updates() { return _updates; }
-  // The channel nonce hello reports: the console is one link, and holds its own.
-  const char* helloNonce() { return _auth.helloNonce(_nonce); }
+  // The channel nonce hello reports: the console and the broker session are one link each, and hold their own.
+  const char* helloNonce() { return _auth.helloNonce(_on_mqtt ? _mqtt_nonce : _nonce); }
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
   ConfigHost configHost();
   ChannelHost channelHost() { return _mgmt_slot.host(); }
   MgmtHost mgmtHost();
-  SubSet& subs() { return _subs; }
+  SubSet& subs() { return _on_mqtt ? _mqtt_subs : _subs; }
   uint32_t produced() const { return streamsProduced(); }
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);
@@ -158,6 +176,26 @@ private:
   LinkUnlock _unlock;          // the console's local unlock challenge and state (section 10). The console is the cable and
                                // has no link-drop signal: an unlock ends after 10 minutes or at a reboot.
   static bool consoleUnlocked(void* self);
+  static bool confirmReadSecret(void* self, const KeyDef& k, unsigned idx, char* out, size_t cap);
+  static bool authProfileExists(void* self, uint8_t index);
+  // The broker session, while the build has one: one more link beside the console.
+  bool _on_mqtt = false;       // the request being handled came over the broker
+  Cli::Context _link_ctx;      // its transport's own context, before any signature replaced it
+  char _mqtt_nonce[33] = {0};
+  LinkUnlock _mqtt_unlock;     // the broker has no cable: its unlock state never leaves cleared (the handshake refuses)
+  SubSet _mqtt_subs;
+  bool _mqtt_may_read = false;
+  EventPublishFn _ev_publish = nullptr;
+  SessionUpFn _ev_up = nullptr;
+  ConnWriteFn _conn_write = nullptr;
+  ConnSignatureFn _conn_sig = nullptr;
+  uint32_t _conn_last = 0;
+  static uint32_t authClock(void* self);
+  // One event to the console, unless a request is being typed, and to the broker while it is subscribed.
+  void emit(int stream, const char* ev, size_t n);
+  bool mqttSubscribed() const;
+  // The stream's seconds, when the clock knows them.
+  uint32_t knownSeconds(bool* known);
   SubSet _subs;
   StreamClock _clock;
   bool writeStream(int stream, JsonWriter& w);
@@ -168,7 +206,8 @@ private:
   void refreshEnvironment(uint32_t now);
   uint32_t _env_at = 0;
   uint32_t streamsProduced() const {
-    return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << SID_LOCATION) : 0);
+    return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << SID_LOCATION) : 0) |
+           (_conn_write ? (1u << SID_CONNECTIVITY) : 0);
   }
   LoopGap _gap;
   bool _boot_sent = false, _boot_pending = false;   // the runtime boot event: once per epoch

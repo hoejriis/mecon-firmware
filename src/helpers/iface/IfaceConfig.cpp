@@ -14,34 +14,7 @@ const KeyDef KEYS[] = {
   {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
   {"connectivity.mode", K_ENUM, 0, 0, "ble|wifi", KF_WRITABLE | KF_CONFIRM | KF_RESTARTS, 0, "get connectivity.mode", F_WHOLE,
    "set connectivity.mode %s"},
-  {"wifi.enabled", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get wifi.enabled", F_WHOLE, "set wifi.enabled %s"},
-  {"wifi.profile.{n}.ssid", K_STRING, 0, 32, nullptr, KF_WRITABLE | KF_CONFIRM, 9, "get wifi.profile %u", F_WIFI_SSID,
-   "set wifi.profile %u ssid %s"},
-  {"wifi.profile.{n}.pwd", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_CONFIRM | KF_WRITE_ONLY, 9, "get wifi.profile %u", F_WIFI_PWD,
-   "set wifi.profile %u pwd %s"},
-  {"wifi.profile.{n}.priority", K_INT, 0, 255, nullptr, KF_WRITABLE | KF_CONFIRM, 9, "get wifi.profile %u", F_WIFI_PRIO,
-   "set wifi.profile %u priority %s"},
-  {"mqtt.enabled", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get mqtt.enabled", F_WHOLE, "set mqtt.enabled %s"},
-  {"mqtt.profile.{n}.type", K_ENUM, 0, 0, "static|discovery", KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_TYPE,
-   "set mqtt.profile %u type %s"},
-  {"mqtt.profile.{n}.host", K_STRING, 1, 63, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_HOST,
-   "set mqtt.profile %u host %s"},
-  {"mqtt.profile.{n}.port", K_INT, 0, 65535, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_PORT,
-   "set mqtt.profile %u port %s"},
-  {"mqtt.profile.{n}.tls", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_CONFIRM | KF_ONOFF, 5, "get mqtt.profile %u", F_MQTT_TLS,
-   "set mqtt.profile %u tls %s"},
-  {"mqtt.profile.{n}.transport", K_ENUM, 0, 0, "tcp|ws", KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_TRANSPORT,
-   "set mqtt.profile %u transport %s"},
-  {"mqtt.profile.{n}.path", K_STRING, 1, 63, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u path", F_WHOLE,
-   "set mqtt.profile %u path %s"},
-  {"mqtt.profile.{n}.site", K_STRING, 1, 23, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_SITE,
-   "set mqtt.profile %u site %s"},
-  {"mqtt.profile.{n}.user", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_CONFIRM | KF_WRITE_ONLY, 5, "get mqtt.profile %u", F_MQTT_USER,
-   "set mqtt.profile %u user %s"},
-  {"mqtt.profile.{n}.pwd", K_STRING, 0, 63, nullptr, KF_WRITABLE | KF_CONFIRM | KF_WRITE_ONLY, 5, "get mqtt.profile %u", F_MQTT_PWD,
-   "set mqtt.profile %u pwd %s"},
-  {"mqtt.profile.{n}.priority", K_INT, 0, 255, nullptr, KF_WRITABLE | KF_CONFIRM, 5, "get mqtt.profile %u", F_MQTT_PRIO,
-   "set mqtt.profile %u priority %s"},
+#include "IfaceNetKeys.inc"
 };
 const size_t NKEYS = sizeof(KEYS) / sizeof(KEYS[0]);
 
@@ -64,6 +37,9 @@ const KeyDef SERVER_KEYS[] = {
   {"allow.read.only", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get allow.read.only", F_WHOLE,
    "set allow.read.only %s"},
   {"owner.info", K_STRING, 0, 119, nullptr, KF_WRITABLE, 0, "get owner.info", F_WHOLE, "set owner.info %s"},
+#ifdef ENABLE_WIFI_INTERFACE
+#include "IfaceNetKeys.inc"
+#endif
 };
 const size_t N_SERVER_KEYS = sizeof(SERVER_KEYS) / sizeof(SERVER_KEYS[0]);
 

@@ -8,6 +8,7 @@
 #include <helpers/ConfigSerializer.h>
 #include <helpers/CommonRadioPrefs.h>
 #include <helpers/DynamicConfigSerializer.h>
+#include <helpers/net/NetPrefs.h>
 
 #if defined(WITH_RS232_BRIDGE) || defined(WITH_ESPNOW_BRIDGE)
 #define WITH_BRIDGE
@@ -24,6 +25,14 @@
 
 class NodePrefs : public ConfigSerializer {
 public:
+#ifdef ENABLE_WIFI_INTERFACE
+  WifiProfiles wifi_profiles;   // nothing starts without a profile; there is no compile-time network on the servers
+  uint8_t wifi_enabled = 1;
+#endif
+#ifdef ENABLE_MQTT
+  MqttProfiles mqtt_profiles;   // credentials are write-only
+  uint8_t mqtt_enabled = 1;     // nothing happens without a configured profile and a Wi-Fi link
+#endif
   // in-memory backing data
   float airtime_factor = 0;
   char node_name[32];
@@ -206,6 +215,13 @@ private:
 
   DynamicConfigSerializer custom;
 
+#ifdef ENABLE_WIFI_INTERFACE
+  WifiPrefs wifi;
+#endif
+#ifdef ENABLE_MQTT
+  MqttPrefs mqtt;
+#endif
+
 protected:
   void structure() override {
     def("name", node_name, sizeof(node_name));
@@ -224,10 +240,23 @@ protected:
     def("room", room);
     def("power", power);
     def("custom", custom);
+#ifdef ENABLE_WIFI_INTERFACE
+    def("wifi", wifi);
+#endif
+#ifdef ENABLE_MQTT
+    def("mqtt", mqtt);
+#endif
   }
 
 public:
-  NodePrefs() : ConfigSerializer(), bridge(this), gps(this), radio(this), power(this), repeat(this), room(this), custom(&radio) {
+  NodePrefs() : ConfigSerializer(), bridge(this), gps(this), radio(this), power(this), repeat(this), room(this), custom(&radio)
+#ifdef ENABLE_WIFI_INTERFACE
+    , wifi(wifi_profiles, wifi_enabled)
+#endif
+#ifdef ENABLE_MQTT
+    , mqtt(mqtt_profiles, mqtt_enabled)
+#endif
+  {
     node_name[0] = 0;
     password[0] = 0;
     guest_password[0] = 0;

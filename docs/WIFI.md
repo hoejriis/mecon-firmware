@@ -1,6 +1,6 @@
 # Wi-Fi profiles
 
-The Companion `_wifi` and `_standalone` builds join a network to serve the TCP companion port and, where the MQTT controller is built in, to carry its broker session. They hold up to **ten profiles** (SSID, password, priority) and a controller that picks among them. The decision logic is platform-free (`src/helpers/wifi/WifiCore.*`, unit-tested natively); `WifiController.*` is a thin layer over the Arduino `WiFi` API that ESP32 and RP2040 share; `WifiProfiles.*` is the profile store and its CLI. Later modules (the MQTT controller, connectivity-mode switching) ask the same controller for the link instead of joining a network themselves.
+The Companion `_wifi` and `_standalone` builds join a network to serve the TCP companion port and, where the MQTT controller is built in, to carry its broker session. The Heltec V3 and V4 Repeater and Room server builds join one for the broker session alone: they have no TCP port for an app. They hold up to **ten profiles** (SSID, password, priority) and a controller that picks among them. The decision logic is platform-free (`src/helpers/wifi/WifiCore.*`, unit-tested natively); `WifiController.*` is a thin layer over the Arduino `WiFi` API that ESP32 and RP2040 share; `WifiProfiles.*` is the profile store and its CLI. Later modules (the MQTT controller, connectivity-mode switching) ask the same controller for the link instead of joining a network themselves.
 
 What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED.md), and what the simulated-board suite covers is in the [test harness](SIMULATION.md).
 
@@ -28,7 +28,7 @@ The simulated scan hardware can wedge (a scan that never ends, and a driver that
 
 ## Storage
 
-Profiles are stored with the other Companion prefs, so they use the same atomic save. Profile 0 keeps the stock keys (`ssid`, `pwd`, `enabled` in the `wifi` section), so a stock prefs file loads unchanged and the stock commands keep working. Profiles 1 to 9 are `s1`..`s9` (SSID) and `w1`..`w9` (password); every profile has a priority `p0`..`p9` (default 50). With the Wi-Fi section empty the prefs file grows by a few hundred bytes; the whole prefs file with ten profiles of the longest allowed SSID and password is about 1.5 KB. RAM: about 1 KB for the ten profiles (`MECON_WIFI_MAX_PROFILES`, default 10, never below 3).
+Profiles are stored with the role's other prefs, so they use the same atomic save. Profile 0 keeps the stock keys (`ssid`, `pwd`, `enabled` in the `wifi` section), so a stock prefs file loads unchanged and the stock commands keep working. Profiles 1 to 9 are `s1`..`s9` (SSID) and `w1`..`w9` (password); every profile has a priority `p0`..`p9` (default 50). With the Wi-Fi section empty the prefs file grows by a few hundred bytes; the whole prefs file with ten profiles of the longest allowed SSID and password is about 1.5 KB. RAM: about 1 KB for the ten profiles (`MECON_WIFI_MAX_PROFILES`, default 10, never below 3).
 
 If profile 0 has no stored SSID the compile-time `WIFI_SSID` / `WIFI_PWD` build defaults apply to it, as in stock.
 
@@ -55,11 +55,12 @@ No reply, log line or status carries a password; `get` shows only whether one is
 
 ## Postures
 
-Normal serves the TCP companion port on whatever link the controller holds. Hardened never starts the TCP server. It starts Wi-Fi only when MQTT has a profile Hardened permits (TLS static or discovery), and then only for MQTT; with no such profile it starts no Wi-Fi at all ([Standalone security postures](STANDALONE_POSTURES.md), [MQTT broker profiles](MQTT.md)).
+Normal serves the TCP companion port, on a build that has one, on whatever link the controller holds. Hardened never starts the TCP server. It starts Wi-Fi only when MQTT has a profile Hardened permits (TLS static or discovery), and then only for MQTT; with no such profile it starts no Wi-Fi at all ([Standalone security postures](STANDALONE_POSTURES.md), [MQTT broker profiles](MQTT.md)).
 
 ## Known limits
 
-- The controller runs only in the Companion `_wifi` builds, and only if a profile exists at boot.
+- The controller runs only in the builds named above, and only if a profile exists at boot.
+- Editing a Wi-Fi profile makes the controller choose again, which can end the broker session. A request over the broker that edits one can therefore lose its answer; the job it started still runs, and its state is in `job.get`.
 - A scan while connected briefly competes with traffic on the radio; it happens once a minute and only while a better profile is configured.
 - The RP2040 join blocks inside the core for up to 5 s per attempt, as in stock.
 - The hold-down and rescan times are fixed at build time.

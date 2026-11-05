@@ -606,3 +606,15 @@ def test_connectivity_reports_the_links_and_each_change_at_once(nodes, tmp_path,
             back = e
     assert back is not None, "the session never came back"
     assert back["data"]["mqtt"]["reconnects"] == 1, back
+
+
+@pytest.mark.timescale(10)
+def test_a_job_event_raised_inside_a_broker_request_leaves_the_request_whole(nodes, tmp_path, broker):
+    """The job's event goes out while its request is being answered, and the client library's one buffer holds the request:
+    the answer must still name the request and carry its job."""
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "jev", b)
+    r = b.iface_request(dev, {"v": 1, "id": "tentative-job-1", "op": "config.apply", "args": {"set": {"tx": 5}, "confirm": {"within_s": 60}}})
+    assert r is not None, "no answer"
+    assert r["id"] == "tentative-job-1" and r["status"] == "ok" and r["result"]["state"] == "awaiting-confirm", r
+    assert r["result"]["job"] == "tentative-job-1", r
