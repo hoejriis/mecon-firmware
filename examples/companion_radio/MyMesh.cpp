@@ -2659,6 +2659,21 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
 #endif
 
+  if (memcmp(command, "clock back", 10) == 0 && (command[10] == 0 || command[10] == ' ')) {
+    const uint32_t curr = getRTCClock()->getCurrentTime();
+    const uint32_t secs = command[10] ? strtoul(&command[11], nullptr, 10) : 0;
+    if (secs < 1704067200UL || secs >= curr) {   // the same "clock is set" floor as the rest of the firmware
+      strcpy(reply, "ERR: clock back <epoch seconds>, earlier than the clock now");
+      return true;
+    }
+    getRTCClock()->setCurrentTime(secs);
+    getRTCClock()->restartUnique();
+    Posture::audit().add(secs, Posture::EV_CLOCK_BACK, _cli_caller, Posture::W_NONE);
+    snprintf(reply, 150, "OK - clock back %lu s; peers that hold this contact ignore its adverts for that long",
+             (unsigned long)(curr - secs));
+    return true;
+  }
+
   if (strcmp(command, "get dutycycle") == 0) {
     formatDutyCycleReply(reply);
     return true;

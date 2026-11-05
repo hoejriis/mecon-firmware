@@ -27,7 +27,8 @@
         "login-fail",
         "reset",
         "mode",
-        "low-mem"
+        "low-mem",
+        "clock-back"
       ]
     },
     "caller": {
