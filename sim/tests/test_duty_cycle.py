@@ -254,7 +254,7 @@ def test_first_advert_delay_after_boot(ether, nodes, freq, bw):
 
 
 # ---------------------------------------------------------------------------------------------- the CLI
-BAND = re.compile(r"^> band (\S+?)(?: MHz)?, limit (\d+\.\d\d)%, floor (\S+), user (\d+\.\d\d)%, used (\d+) ms \((\d+\.\d\d)%\)$")
+BAND = re.compile(r"^> band (\S+?)(?: MHz)?, limit (\d+\.\d\d)%, floor (\S+), user (\d+\.\d\d)%, used (\d+) ms \((\d+\.\d\d)%\)(, no time rule enforced)?$")
 
 
 @pytest.mark.lockstep()
@@ -272,10 +272,10 @@ def test_get_dutycycle_reports_band_limit_floor_and_use(ether, nodes):
     assert m.group(5) == "36000"          # the hour is seeded at the limit on boot: 1 % of 3600 s
     c.set_radio(869.525, 250, 10)                     # live: the answer follows at once
     m = BAND.match(c.cli("get dutycycle"))
-    assert m.group(1) == "869.400-869.650" and m.group(2) == "10.00" and m.group(3) == "10.00%"
+    assert m.group(1) == "869.400-869.650" and m.group(2) == "10.00" and m.group(3) == "10.00%" and not m.group(7), m
     c.set_radio(915.0, 250, 10)
     m = BAND.match(c.cli("get dutycycle"))
-    assert m.group(1) == "none" and m.group(3) == "none" and m.group(2) == "100.00"
+    assert m.group(1) == "none" and m.group(3) == "none" and m.group(2) == "100.00" and m.group(7), m
     c.set_radio(869.55, 250, 10)                      # straddling
     m = BAND.match(c.cli("get dutycycle"))
     assert m.group(2) == "0.10" and m.group(3) == "0.10%"
