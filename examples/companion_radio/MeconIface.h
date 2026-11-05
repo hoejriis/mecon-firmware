@@ -8,6 +8,7 @@
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/ChannelOps.h>
 #include <helpers/iface/ContactOps.h>
+#include <helpers/iface/IdentityRotation.h>
 #include <helpers/iface/InboxOps.h>
 #include <helpers/iface/MessageOps.h>
 #include <helpers/iface/MgmtChannel.h>

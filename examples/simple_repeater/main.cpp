@@ -57,6 +57,13 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static uint8_t ifacePosture(void*) { return the_mesh.getNodePrefs()->posture; }
   static uint16_t ifaceBattery(void*) { return board.getBattMilliVolts(); }
   static uint32_t ifaceClock(void*) { return the_mesh.getRTCClock()->getCurrentTime(); }
+  static const char* const ROT_REMOVED[] = {"acl", nullptr};
+  static int ifaceRotate(void*, const char* device_id_hex, uint32_t job_id, const char** err) {
+    return the_mesh.rotateIdentity(device_id_hex, job_id, err);
+  }
+  static bool ifaceReadRotation(void*, char* text, size_t tcap, char* sig_b64, size_t scap) {
+    return the_mesh.rotation().read(text, tcap, sig_b64, scap);
+  }
   static void ifaceInventory(void*, Iface::JsonWriter& w) {
     Iface::writeCount(w, "neighbours", the_mesh.neighbourCount(), the_mesh.neighbourCapacity());
     Iface::writeCount(w, "clients", the_mesh.clientCount(), the_mesh.clientCapacity());
@@ -160,6 +167,7 @@ void setup() {
 
   the_mesh.begin(fs);
 #ifdef ENABLE_MECON_IFACE
+  the_mesh.rotationBegin();
   {
     uint8_t device_id[16];
     uint32_t epoch = 0;
@@ -169,7 +177,8 @@ void setup() {
     Iface::ConsoleIface::Host host = { ifaceRun, ifacePosture, ifaceBattery, "repeater", board.getManufacturerName(),
                                        the_mesh.self_id.pub_key, nullptr,
                                        &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
-                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store, &snap_store };
+                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store, &snap_store,
+                                       ifaceRotate, ifaceReadRotation, ROT_REMOVED };
     dep_store.setFs(fs);
     job_store.setFs(fs);
     snap_store.setFs(fs);
