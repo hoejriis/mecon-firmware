@@ -500,3 +500,15 @@ def test_the_server_secret_is_in_no_reply_or_text_and_goes_with_the_record(nodes
         assert not os.path.isfile(p) or bytes.fromhex(SECRET) not in open(p, "rb").read(), f
     from sim import harness
     assert harness.files_containing(d.n, SECRET) == []
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_a_long_console_line_paced_as_a_uart_delivers_it_loses_no_byte(nodes, kind):
+    """A byte that arrives between the interface's read and the stock reader's belongs to the line being collected."""
+    d = boot(nodes, kind, "race" + kind[:2], 95)
+    for k in range(30):
+        rid = "p%d" % k
+        line = mecon_iface.CONSOLE_PREFIX + json.dumps({"v": 1, "id": rid, "op": "hello", "args": {"pad": "x" * 800}}) + "\r"
+        for start in range(0, len(line), 8):
+            d.cli.sock.sendall(line[start:start + 8].encode())
+            time.sleep(0.0005)
+        assert d.i.wait_result(rid, 5)["status"] == "ok", "line %d" % k

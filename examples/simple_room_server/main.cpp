@@ -186,8 +186,11 @@ void loop() {
   // A "mecon> " line: past its prefix the interface takes the characters, unechoed, up to its own longer bound.
   while (the_iface.collecting() && Serial.available()) the_iface.feed(Serial.read(), Serial);
   if (the_iface.collecting()) len = 0;
+  const bool stock_reads = !the_iface.collecting();   // a byte that arrives from here on belongs to the line being collected
+#else
+  const bool stock_reads = true;
 #endif
-  while (Serial.available() && len < sizeof(command)-1) {
+  while (stock_reads && Serial.available() && len < sizeof(command)-1) {
     char c = Serial.read();
     if (command_dropping) {   // inside an over-long line: discarded up to its end, never run (#165)
       if (c == '\r') { command_dropping = false; Serial.println("\n  -> ERR: line too long"); }
