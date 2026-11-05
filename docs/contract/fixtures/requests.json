@@ -395,6 +395,21 @@
       }
     },
     {
+      "name": "inbox list",
+      "roles": [
+        "companion"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-inbox-list",
+        "op": "inbox.list"
+      },
+      "expect": {
+        "status": "ok",
+        "schema": "inbox.list.result.json"
+      }
+    },
+    {
       "name": "message list",
       "roles": [
         "companion"

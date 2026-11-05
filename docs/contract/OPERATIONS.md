@@ -176,6 +176,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `contact.protect` | protect from auto-removal (favourite flag) | contact flags | write | yes | C | all |
 | `message.send` | one native direct or channel message; a recipient or slot not there is an answer, and no contact is created | `sendMessage`, `sendGroupMessage`, as `CMD_SEND_TXT_MSG` and `CMD_SEND_CHANNEL_TXT_MSG` | write | yes | C | all |
 | `message.get`, `message.list`, `message.ack` | what became of a send (section 6) | RAM table | read, then private | no | C | all |
+| `inbox.list`, `inbox.ack` | what was received (section 6.4) | a RAM copy, beside the native offline queue | read, then private | no | C | all |
 | `channel.list`, `channel.get` | channels (name, one-byte hash, key size; `list` paged by 8); the secret never | native channel table; R S: one slot (MANAGEMENT_CHANNEL.md section 6) | private | no | C R S | C: USB BLE MQTT; R S: Con |
 | `channel.put`, `channel.remove` | add, rotate, remove a channel; 128-bit keys only, a key held by another slot refused | `CMD_SET_CHANNEL`; R S: one slot | write | yes | C R S | C: USB BLE MQTT; R S: Con |
 | `mgmt.channel.get` | the management channel binding: none, bound or stale | the native channel table plus its own record | read | no | C R S | C: USB BLE MQTT; R S: Con |
@@ -338,7 +339,7 @@ The device-interface operations are not carried over LoRa today. #115 carries th
 | Remote `poweroff` | a powered-off device needs someone on site |
 | Raw transmission and data signing as operations | not management (5.2) |
 | BLE bond clear over any path but physical USB | SECURITY_AND_AUTHORITY: bonds are cleared over USB only |
-| Messaging, backfill and outage forwarding over the interface | not generic firmware: a manager application's concern. Native messaging stays native |
+| Backfill and outage forwarding over the interface | not generic firmware: a manager application's concern. Native messaging stays native |
 
 ## 6. Messages
 
@@ -378,3 +379,35 @@ Nothing here selects a gateway, retries by itself or decides which messages to c
 - **A signed request** is held to its persisted watermark, so a repeat after a reboot is refused: it never goes out twice.
 - **An unsigned request** is remembered only in RAM, so after a reboot a repeat is a new send. A manager that cannot accept this signs its requests, or reads the epoch first.
 - **A reboot empties the table.** A send whose reply carried another epoch and that now reads `unknown` may or may not have gone out. The device cannot tell, and says so rather than guessing.
+
+### 6.4 Received messages
+
+`inbox.list` reads what a Companion received, and `inbox.ack` releases it. Each is a copy kept for the manager, beside the native offline queue.
+
+- **Two readers, and neither takes from the other.** The native queue stays the stock app's: a manager's read or acknowledgement never drains it, and the app's sync never touches the copy. A device with both sees each message in both.
+- **A device with no manager keeps no copy.** The slots are made at the first `inbox.list`, or as soon as the device holds a Deployment, which is from the boot on for an enrolled one. Receptions before that are counted as `lost`, and the stock app still has them.
+- **One mark.** `inbox.ack` moves a single mark for the device and wipes what is below it. Any number of readers can page with `after`, since a read changes nothing, but one of them owns the acknowledgement.
+
+| Field | What it proves |
+|---|---|
+| `from` (direct) | the stored contact whose shared key opened the message |
+| `channel` (channel) | the slot whose key opened it. Anyone with that key could have sent it, and a sender's name at the start of `text` is only a claim |
+| `signer` (type `signed`) | the key prefix the native frame carries |
+| `ts` | nothing: the sender's own claim of the time |
+| `rx_ts` | this device's clock at reception. On a board without a battery clock that may be a default it started from rather than a time anyone set, so it is not proof of the time |
+| `age_s` | seconds since reception by uptime, so it needs no clock |
+| `hash` | the native packet hash, the same id the sender's `message.send` returned and any observer computes |
+
+**Bounds**
+
+- **8 entries, in RAM, on an enrolled device or after a first read:** about 1.8 KB. There is no expiry: an entry stays until it is acknowledged, pushed out or the device reboots.
+- **When all 8 are unread,** a new reception pushes out the oldest channel message, or with none the oldest direct one, as the native queue prefers. `lost` counts each, and the gap shows in `seq`.
+- **A text over 160 bytes** is kept cut and carries `cut`. A stock sender cannot send one.
+- **A page** holds up to `limit` entries (8 at most) and stops early where a reply would overflow: `more` says to read again with `after` set to the last `seq`.
+- Binary channel data (`RESP_CODE_CHANNEL_DATA_RECV`) and anything other than a text message are not kept.
+
+**A reboot loses the copy.** `seq` restarts at 1 under a new `epoch`, and the device cannot say what was lost, so a manager that sees another epoch treats what it had not read as gone. For the same reason `inbox.ack` carries the `epoch`, and is failed with `wrong-epoch` under another one: an old `upto` would release messages its sender never saw.
+
+**Duplicates.** One packet heard twice is one entry, since the native mesh drops a packet it has seen. A sender's own retry is a new packet and a new entry, with the same `from`, `ts` and `text` and another `hash`, as the stock app also sees it. Telling those apart is the manager's choice.
+
+**Privacy.** Both operations are private, like `contact.get`: a caller who may not read private data is refused, with a signature or without one. Each new reception raises an `inbox` event (`ev/inbox` on MQTT), `{"received","unread","lost"}`, with no sender and no text, so it goes where a job event goes. `status.get` carries the same counts, so a manager that reconnects learns there is something to collect. Nothing is written to flash and no text reaches a log or telemetry.
