@@ -105,7 +105,7 @@ Every operation and every key is checked by the CLI privilege engine (`src/helpe
 | `req` | to device | request envelopes |
 | `resp` | from device | result envelopes, QoS 0, not retained |
 | `ev/<stream>` | from device | event envelopes, QoS 0, not retained |
-| `status` | from device | the status snapshot, retained, with a last will `{"online":false}` |
+| `status` | from device | the status snapshot, retained, with a last will `{"online":false}`. `online:true` means requests are accepted: for 1.5 s after subscribing a device ignores requests, because retained ones arrive then, and it publishes this when that ends |
 
 One status topic: a build that speaks this interface publishes `mecon/<device_id>/status` (with its last will) and no longer publishes the earlier `mecon/<node id>/status`, so presence never comes from two last wills. Which topic a device uses follows from its build; `hello` reports the interface version.
 
