@@ -151,6 +151,8 @@ private:
     Iface::SubSet subs;
     char nonce[33] = {0};                   // the channel nonce issued for this link (AUTHORITY.md section 7.1)
     Iface::LinkUnlock unlock;               // its local unlock challenge and state (section 10); cleared when the link drops
+    bool incomplete_sent = false;           // the last "incomplete" answered on this link, and when
+    uint32_t incomplete_ms = 0;
     bool may_read = false;                  // its last caller may read: it gets job events (OPERATIONS.md 3.1)
   };
   static const int LINKS = 4;               // USB, BLE, TCP and one spare
@@ -253,6 +255,8 @@ private:
   Iface::Provenance _prov;                  // signs every result and event while a record exists (section 3.4)
   mesh::LocalIdentity* _old_id = nullptr;   // the key identity.rotate retired: signs that one result, then is wiped
   void sendSmall(Link& l, Iface::Status st, const char* error);
+  void sendIncomplete(Link& l, uint32_t now);
+  static const uint32_t INCOMPLETE_QUIET_MS = 1000;
   Iface::DeployAuth _auth;                  // the record, its marks and the signed-request checks (shared with the servers)
   DataStoreCopies _copies;
   Iface::JobService _jobs;                  // config.apply with confirm creates the jobs (OPERATIONS.md 3.4)
