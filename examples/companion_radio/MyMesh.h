@@ -302,6 +302,14 @@ private:
   static void recoverRotationJob(void* self);
   void recoverRotationOnLoop();
   bool dropOldKeyState();
+#ifdef ENABLE_MECON_IFACE
+  static size_t rotLoad(void* u, uint8_t* buf, size_t cap);
+  static bool rotSave(void* u, const uint8_t* buf, size_t len);
+  static void rotRemove(void* u);
+  static bool rotSaveKey(void* u, const mesh::LocalIdentity& id);
+  static bool rotDrop(void* u);
+  Iface::RotationStore rotationStore();
+#endif
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);
   void writeDisabledFrame();

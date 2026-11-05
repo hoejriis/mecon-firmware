@@ -94,7 +94,7 @@ jobs:
           python3 tools/stack_callgraph.py .pio/build/${{ matrix.env }} \
             --root 'loop_task\(void\*\)=3840' \
             --root 'NrfWorker::.*body=7936' \
-            --indirect 'NrfWorker::.*body|NrfWorker::run=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob' \
+            --indirect 'NrfWorker::.*body|NrfWorker::run=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|RoleRotation<.*>::recoverJob' \
             --indirect 'Dispatcher::handleWith=Iface::.*::op[A-Z][A-Za-z]*\(Iface::OpContext&\)|MeconIface::op[A-Z]|Iface::DeployAuth::op[A-Z]' \
             --indirect 'DeployAuth::dispatchSigned=ConsoleIface::runSigned|MeconIface::runSigned' \
             --indirect 'recvJob|Dispatcher::recvOnLoop=MyMesh::onRecvPacket|mesh::Mesh::onRecvPacket' \

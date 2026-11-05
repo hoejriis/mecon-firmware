@@ -51,7 +51,7 @@ mutate server_console_issues_no_nonce src/helpers/iface/ConsoleIface.cpp '      
 mutate server_console_is_not_the_cable src/helpers/iface/ConsoleIface.cpp '        const Cli::Context cable(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));' '        const Cli::Context cable(Cli::T_TCP, Cli::A_NONE, _host.posture(_host.user));' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_repeater_erase_keeps_the_marker examples/simple_repeater/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
 mutate server_room_erase_keeps_the_marker examples/simple_room_server/MyMesh.cpp '  if (ok) Cli::serverFormatted();' '' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
-mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store, &snap_store };' '                                       nullptr, ifaceClock, &the_mesh.self_id, &job_store, &snap_store };' $DS::test_first_provisioning_over_the_console_and_the_read_back
+mutate server_record_store_not_given examples/simple_room_server/main.cpp '                                       &dep_store, ifaceClock, &the_mesh.self_id, &job_store, &snap_store,' '                                       nullptr, ifaceClock, &the_mesh.self_id, &job_store, &snap_store,' $DS::test_first_provisioning_over_the_console_and_the_read_back
 mutate server_format_hook_not_registered src/helpers/iface/DeployAuth.cpp '    Cli::serverCaller().on_format_user = this;' '    Cli::serverCaller().on_format_user = nullptr;' $DS::test_erase_works_from_the_cable_once_enrolled_and_clears_the_marker
 
 # Local unlock (AUTHORITY.md sections 9 and 10): the handshake on the cable, what it opens, and the secret's confinement
@@ -125,22 +125,24 @@ mutate rotate_drops_configuration examples/companion_radio/MyMesh.cpp '  if (_li
   return dropped;' '  if (_listener) _listener->onQueueSizeChanged(0);
   strcpy(_prefs.node_name, "NONAME"); savePrefs();
   return dropped;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
-mutate rotate_not_swapped examples/companion_radio/MyMesh.cpp '  self_id = fresh;' '  (void)fresh;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
-mutate rotate_unenrols examples/companion_radio/MyMesh.cpp '  self_id = fresh;' '  self_id = fresh;
-  _store->removeDeploymentCopies(-1, DataStore::DEP_RECORD);' $IR::test_rotation_changes_the_key_and_keeps_everything_else
+mutate rotate_not_swapped src/helpers/iface/IdentityRotation.cpp '  self_id = fresh;' '  (void)fresh;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
+mutate rotate_unenrols examples/companion_radio/MyMesh.cpp 'bool MyMesh::dropOldKeyState() {
+  bool dropped = true;' 'bool MyMesh::dropOldKeyState() {
+  _store->removeDeploymentCopies(-1, DataStore::DEP_RECORD);
+  bool dropped = true;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
 mutate rotate_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0 ||
       strcmp(op, "identity.rotate") == 0)' ' || strcmp(op, "deployment.set_unlock") == 0)' $IR::test_rotation_needs_a_signature_and_a_readable_record
 mutate revoked_issuer_reported_unknown src/helpers/deployment/DepWrapper.cpp 'e = set.isRevoked(issuer) ? WR_ISSUER_REVOKED : WR_UNKNOWN_ISSUER; goto done; }' 'e = WR_UNKNOWN_ISSUER; goto done; }' $IR::test_a_revoked_member_is_refused_and_cannot_rotate_the_key
 
 # --- review 3 of PR 132 (AUTHORITY_REVIEW_2.md): one group of mutants per finding
-mutate rot_statement_signed_by_new_key examples/companion_radio/MyMesh.cpp '    self_id.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));' '    fresh.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
-mutate rot_statement_domain examples/companion_radio/MyMesh.cpp 'const char ROT_DOMAIN[] = "MECON-NODEROT-v1";' 'const char ROT_DOMAIN[] = "MECON-NODEROT-v2";' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate rot_statement_signed_by_new_key src/helpers/iface/IdentityRotation.cpp '    self_id.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));' '    fresh.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate rot_statement_domain src/helpers/iface/IdentityRotation.cpp 'const char ROT_DOMAIN[] = "MECON-NODEROT-v1";' 'const char ROT_DOMAIN[] = "MECON-NODEROT-v2";' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
 mutate rotation_not_a_plain_read src/helpers/deployment/DepWrapper.cpp '"identity.rotation", "job.get", "job.list" };' '"job.get", "job.list" };' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
-mutate rot_stale_statement_kept examples/companion_radio/MyMesh.cpp '  if (!strstr(text, want)) { _store->removeRotation(); return; }   // the key change never took effect' '  if (!strstr(text, want)) { return; }   // the key change never took effect' $IR::test_a_cut_after_the_statement_and_before_the_key_save_leaves_the_key
+mutate rot_stale_statement_kept src/helpers/iface/IdentityRotation.cpp '  if (!strstr(text, want)) { st.remove(st.user); return; }   // the key change never took effect' '  if (!strstr(text, want)) { return; }   // the key change never took effect' $IR::test_a_cut_after_the_statement_and_before_the_key_save_leaves_the_key
 mutate rotate_result_signed_with_new_key examples/companion_radio/MeconDeploy.cpp '  m->_old_id = old;   // signs this result; dispatch() wipes it' '  Iface::wipe(old, sizeof(*old)); delete old;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
-mutate rot_pending_drop_not_finished examples/companion_radio/MyMesh.cpp '  if (!dropOldKeyState()) return;   // stays pending: tried again at the next boot' '  if (true) return;   // stays pending: tried again at the next boot' $IR::test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot
-mutate rot_pending_never_cleared examples/companion_radio/MyMesh.cpp '  const size_t m = rotFile(out, sizeof(out), text, sig, false);' '  const size_t m = rotFile(out, sizeof(out), text, sig, true);' $IR::test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot
-mutate rot_pending_not_cleared_after_drop examples/companion_radio/MyMesh.cpp '      const size_t m = rotFile(out, sizeof(out), text, sig_b64, false);' '      const size_t m = rotFile(out, sizeof(out), text, sig_b64, true);' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
+mutate rot_pending_drop_not_finished src/helpers/iface/IdentityRotation.cpp '  if (!st.drop(st.user)) return;   // stays pending: tried again at the next boot' '  if (true) return;   // stays pending: tried again at the next boot' $IR::test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot
+mutate rot_pending_never_cleared src/helpers/iface/IdentityRotation.cpp '  const size_t m = rotFile(out, sizeof(out), text, sig, false);' '  const size_t m = rotFile(out, sizeof(out), text, sig, true);' $IR::test_a_cut_after_the_key_save_and_before_the_contacts_drop_finishes_at_boot
+mutate rot_pending_not_cleared_after_drop src/helpers/iface/IdentityRotation.cpp '      const size_t m = rotFile(out, sizeof(out), text, sig_b64, false);' '      const size_t m = rotFile(out, sizeof(out), text, sig_b64, true);' $IR::test_a_lost_rotate_result_is_recovered_from_the_stored_statement
 mutate native_signer_signs_mecon_bytes examples/companion_radio/MyMesh.cpp '    if (sign_data && sign_data_len >= 6 && memcmp(sign_data, "MECON-", 6) == 0) {' '    if (false) {' $IR::test_the_native_signer_never_signs_bytes_that_look_like_a_mecon_message
 mutate prov_result_names_no_op src/helpers/iface/Provenance.cpp '  if (a && a->op[0]) {' '  if (false) {' $PV::test_a_result_names_what_it_answers
 mutate prov_result_names_no_job src/helpers/iface/Provenance.cpp '    const int n = a->has_job ? snprintf(' '    const int n = false ? snprintf(' $PV::test_a_result_names_what_it_answers
@@ -179,3 +181,15 @@ mutate private_sub_needs_no_nonce src/helpers/deployment/DepWrapper.cpp '    if 
 mutate private_sub_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once' '  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);' sim/tests/test_private_streams.py::test_a_private_renewal_takes_no_job_and_moves_no_mark
 mutate private_stop_off_the_mark src/helpers/deployment/DepWrapper.cpp 'strcmp(op, "sub.start") == 0 ? OPC_NONCE : OPC_JOB' 'strcmp(op, "sub.start") == 0 ? OPC_NONCE : OPC_PLAIN' sim/tests/test_private_streams.py::test_a_private_stop_stays_on_the_mark
 mutate replay_without_the_mark src/helpers/iface/DeployAuth.cpp '      n = writeReplayRefusal(out, cap, id, wm.mark);' '      n = writeResult(out, cap, id, ST_REFUSED, nullptr, "replay");' sim/tests/test_deployment_authority.py::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
+# --- identity.rotate on the server roles
+mutate rotate_server_keeps_acl examples/simple_repeater/MyMesh.cpp '  bool dropped = acl.clear() && !AtomicFile::exists(_fs, "/s_contacts");   // the shared secrets were made with the old key' '  bool dropped = true;' $IR::test_a_server_rotation_changes_the_key_drops_the_acl_and_keeps_the_rest
+mutate rotate_room_keeps_acl examples/simple_room_server/MyMesh.cpp '  bool dropped = acl.clear() && !AtomicFile::exists(_fs, "/s_contacts");   // the shared secrets were made with the old key' '  bool dropped = true;' $IR::test_a_server_rotation_changes_the_key_drops_the_acl_and_keeps_the_rest
+mutate rotate_room_keeps_posts examples/simple_room_server/MyMesh.cpp '  memset(posts, 0, sizeof(posts));   // the old owner'"'"'s room
+  next_post_idx = 0;
+  return dropped;' '  return dropped;' $IR::test_a_rotated_room_keeps_no_posts_of_the_old_owner
+mutate rotate_server_result_signed_with_new_key src/helpers/iface/ConsoleIface.cpp '  _old_id = old;   // signs this result; compute() wipes it' '  wipe(old, sizeof(*old)); delete old;' $IR::test_a_server_rotation_changes_the_key_drops_the_acl_and_keeps_the_rest
+mutate rotate_server_no_gate src/helpers/iface/ConsoleIface.cpp '  Status st = _auth.rotateGate(c);
+  if (st != ST_OK) return st;
+  if (!_host.rotate' '  if (!_host.rotate' $IR::test_a_server_rotation_needs_a_signature_and_a_record
+mutate rotate_server_no_recovery examples/simple_repeater/MyMesh.cpp '  _rotation.recoverAtBoot();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop' '' $IR::test_a_cut_before_a_server_drop_finishes_at_boot
+mutate rotate_server_get_gives_statement_to_anyone src/helpers/iface/ConsoleIface.cpp '  if (st == ST_OK && self(c)->mayRead()) self(c)->writeRotation(*c.out);' '  if (st == ST_OK) self(c)->writeRotation(*c.out);' $IR::test_a_server_rotation_needs_a_signature_and_a_record

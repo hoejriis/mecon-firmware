@@ -54,6 +54,10 @@ public:
     // The commit-or-revert snapshot's file (OPERATIONS.md 3.4); null: nothing is applied tentatively, so only the
     // cable may change the radio.
     SnapStore* snap_store;
+    // identity.rotate (AUTHORITY.md section 11). rotate returns as rotationRun does; removed names what the role drops.
+    int (*rotate)(void* user, const char* device_id_hex, uint32_t job_id, const char** err);
+    bool (*read_rotation)(void* user, char* text, size_t tcap, char* sig_b64, size_t scap);
+    const char* const* removed;   // null-terminated
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |
@@ -73,6 +77,9 @@ public:
   // For the operations.
   const Host& host() const { return _host; }
   DeployAuth& auth() { return _auth; }
+  Status rotateIdentity(OpContext& c);   // the operations identity.rotate and identity.rotation, and deployment.get's member
+  bool writeRotation(JsonWriter& w);
+  bool mayRead();
   JobService& jobs() { return _jobs; }
   Upd::UpdateService& updates() { return _updates; }
   // The channel nonce hello reports: the console is one link, and holds its own.
@@ -106,6 +113,7 @@ private:
   static void updReboot(void* self);
   static bool jobClasses(void* self, uint8_t cls);
   static void jobChanged(void* self, const Job& j);
+  mesh::LocalIdentity* _old_id = nullptr;   // the key identity.rotate retired: signs that one result, then is wiped
   ConfirmHost _confirm = {};
   uint32_t _reboot_at = 0;     // a revert restored a key, or an update activated or reverted an image (0: none)
   static bool cliAllow(void* self, const char* line);
