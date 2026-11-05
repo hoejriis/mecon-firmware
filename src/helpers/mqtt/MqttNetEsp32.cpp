@@ -98,9 +98,9 @@ public:
     return startTLS();
   }
   // True when the peer's certificate chains to the CA (base64 DER) and, when `name` is given, carries that name.
-  // A device whose clock has not been set (before 2025) cannot judge validity dates, so for it only the date flags are
-  // ignored; the chain, the signatures and the name are always checked.
-  bool chainsTo(const char* ca_b64, const char* name) {
+  // A device whose clock has not been set cannot judge validity dates, so for it only the date flags are ignored; the
+  // chain, the signatures and the name are always checked.
+  bool chainsTo(const char* ca_b64, const char* name, bool dates_unknown) {
     const mbedtls_x509_crt* peer = getPeerCertificate();
     uint8_t* der = (uint8_t*)malloc(MqttProfile::CA_B64_MAX / 4 * 3 + 3);   // heap: the worker's stack is sized for the handshake
     if (!peer || !der) { free(der); return false; }
@@ -111,7 +111,7 @@ public:
     if (n > 0 && mbedtls_x509_crt_parse_der(&ca, der, (size_t)n) == 0) {
       uint32_t flags = 0;
       mbedtls_x509_crt_verify(const_cast<mbedtls_x509_crt*>(peer), &ca, nullptr, name, &flags, nullptr, nullptr);
-      if (time(nullptr) < 1735689600) flags &= ~(uint32_t)(MBEDTLS_X509_BADCERT_EXPIRED | MBEDTLS_X509_BADCERT_FUTURE);
+      if (dates_unknown) flags &= ~(uint32_t)(MBEDTLS_X509_BADCERT_EXPIRED | MBEDTLS_X509_BADCERT_FUTURE);
       ok = flags == 0;
     }
     mbedtls_x509_crt_free(&ca);
@@ -213,7 +213,7 @@ public:
       _sec->setInsecure();
       _sec->setHandshakeTimeout((a.timeout_ms + 999) / 1000);
       if (!_sec->connectNamed(ip, a.port, a.name, (int32_t)a.timeout_ms)) return MqttOpen::Tls;
-      if (a.ca_b64) return _sec->chainsTo(a.ca_b64, a.name) ? MqttOpen::Ok : MqttOpen::Pin;
+      if (a.ca_b64) return _sec->chainsTo(a.ca_b64, a.name, a.dates_unknown) ? MqttOpen::Ok : MqttOpen::Pin;
       if (a.anchor_hex && !_sec->verify(a.anchor_hex, nullptr)) return MqttOpen::Pin;
       return MqttOpen::Ok;
     }

@@ -61,6 +61,8 @@ public:
   const MqttCore* core() const { return &_core; }
   // Seconds clock for the audit entry of a refused profile (a stored anchor that cannot be used); without one, 0.
   void setAuditClock(uint32_t (*now)()) { _audit_now = now; }
+  // Whether a real source has set the clock, asked at each connect; without one, dates are judged.
+  void setClockKnown(bool (*known)()) { _clock_known = known; }
 
   // One status line: state, profile, broker address, TLS state, time connected. Never contains a credential.
   void formatStatus(char* out, size_t cap);
@@ -102,6 +104,7 @@ private:
     bool has_anchor;
     char anchor[MqttProfile::ANCHOR_BUF];   // leaf fingerprint, "" when the anchor is a CA
     char* ca;                           // a private copy of the CA certificate (base64 DER), freed by takeResult()
+    bool dates_unknown;
     char name[MqttProfile::HOST_BUF];   // the broker's host name for SNI and the name check, "" when it has none
     bool ws;                            // MQTT over WebSocket: the upgrade runs after the transport (and its TLS) opens
     char http_host[MqttProfile::HOST_BUF];   // the profile's host as written, for the upgrade's Host header
@@ -128,6 +131,7 @@ private:
   char _iface_req[48] = {0};
   char _iface_resp[48] = {0};
   uint32_t (*_audit_now)() = nullptr;
+  bool (*_clock_known)() = nullptr;
   uint32_t _cur_addr = 0;
   uint32_t _sessions = 0;   // sessions established since boot
   uint16_t _cur_port = 0;

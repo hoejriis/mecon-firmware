@@ -40,9 +40,10 @@ def make_ca(directory, name, bits=None):
     return cert, key
 
 
-def make_leaf(directory, name, ca, dns=None, ip=None):
+def make_leaf(directory, name, ca, dns=None, ip=None, days=2):
     """A broker certificate signed by `ca` = (cert_path, key_path), with a DNS name and/or an IP address as subject
     alternative names. A new key every call, so a "renewed" certificate under the same CA has a different fingerprint.
+    days=-1 makes one that has already expired.
     Returns (cert_path, key_path, sha256 fingerprint as 64 lower-case hex)."""
     cert, key = os.path.join(directory, name + ".crt"), os.path.join(directory, name + ".key")
     csr, ext = os.path.join(directory, name + ".csr"), os.path.join(directory, name + ".ext")
@@ -51,7 +52,7 @@ def make_leaf(directory, name, ca, dns=None, ip=None):
     subprocess.run(["openssl", "req", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
                     "-keyout", key, "-out", csr, "-subj", "/CN=test-broker-" + name], check=True, capture_output=True)
     subprocess.run(["openssl", "x509", "-req", "-in", csr, "-CA", ca[0], "-CAkey", ca[1], "-set_serial",
-                    str(int.from_bytes(os.urandom(8), "big") >> 1), "-out", cert, "-days", "2", "-extfile", ext],
+                    str(int.from_bytes(os.urandom(8), "big") >> 1), "-out", cert, "-days", str(days), "-extfile", ext],
                    check=True, capture_output=True)
     out = subprocess.run(["openssl", "x509", "-in", cert, "-noout", "-fingerprint", "-sha256"], check=True,
                          capture_output=True, text=True).stdout

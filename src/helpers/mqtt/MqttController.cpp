@@ -149,6 +149,7 @@ void MqttController::attempt(const MqttAction& a) {
   }
   j.tls = q.useTls();
   j.has_anchor = j.tls && q.hasAnchor();
+  j.dates_unknown = _clock_known && !_clock_known();
   if (j.tls && q.hasCa()) {
     j.ca = (char*)malloc(strlen(q.ca) + 1);
     if (!j.ca) { _core.onConnectFailed(now, MqttFail::Tls); return; }
@@ -190,6 +191,7 @@ void MqttController::runConnect() {
   oa.anchor_hex = (j.has_anchor && !j.ca) ? j.anchor : nullptr;
   oa.ca_b64 = j.ca;
   oa.name = j.name[0] ? j.name : nullptr;
+  oa.dates_unknown = j.dates_unknown;
   oa.timeout_ms = OPEN_TIMEOUT_MS;
   const MqttOpen r = _net->open(oa);
   if (r != MqttOpen::Ok) {
