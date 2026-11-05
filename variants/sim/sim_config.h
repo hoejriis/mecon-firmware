@@ -11,6 +11,7 @@ struct SimConfig {
   std::string port_file;      // file the TCP serial port number is written to
   uint32_t seed = 1;          // seeds randomSeed() and identity generation
   double time_scale = 1.0;    // virtual ms per real ms (1.0 = real time)
+  unsigned serial_stutter = 0;   // --serial-stutter N: every Nth available() reads empty, as a byte about to arrive does
   bool lockstep = false;      // --lockstep: time is granted by the ether broker (variants/sim/sim_radio.cpp), not the wall clock
   uint32_t quantum_us = 1000; // --quantum-us: how far a lock-step node runs between two barriers
   uint32_t rtc_epoch = 1760000000;  // RTC value at process start (unix seconds)
