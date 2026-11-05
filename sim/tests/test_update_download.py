@@ -222,13 +222,17 @@ def test_a_download_that_cannot_reach_the_network_times_out(nodes, tmp_path, ser
 
 
 def test_an_https_download_needs_more_heap_than_http(nodes, tmp_path, server):
-    """Preflight step 12, sized from a Heltec V3 (2026-10-31): HTTPS took about 63 KB, plain HTTP about 23 KB. At 56 KB
-    free an HTTPS download is refused and an HTTP one goes ahead; the digest makes either as safe."""
+    """Preflight step 12: HTTPS asks 96 KB, plain HTTP 64 KB. At 70 KB free an HTTPS download is refused and an HTTP one goes
+    ahead; at 60 KB, about what a Heltec V3 holds at best with a session, neither does."""
     img = image(9000, b"heap")
     server.paths["/i.bin"] = (200, img, True)
     n, d, _ = boot_wifi(nodes, tmp_path, "dl8", 78)
     msha = stage(d, img)
-    n.heap(56 * 1024)
+    n.heap(60 * 1024)
+    time.sleep(0.5)
+    r = offer_url(d, msha, "http://127.0.0.1:%d/i.bin" % server.port)
+    assert (r["status"], r.get("error")) == ("busy", "low-memory"), r
+    n.heap(70 * 1024)
     time.sleep(0.5)
     r = offer_url(d, msha, "https://127.0.0.1:%d/i.bin" % server.port)
     assert (r["status"], r.get("error")) == ("busy", "low-memory"), r

@@ -82,4 +82,8 @@ mutate upd_dfu_status_zero_hash $U '      w.key("sha256"); if (_running_known) h
 UPF=src/helpers/updates/UpdPreflight.h
 mutate upd_hardware_name_prefix_matches $UPF '    if (len == n && n && memcmp(p, want, n) == 0) return true;' '    if (n && memcmp(p, want, n) == 0) return true;' unit:test_updates
 mutate upd_hardware_names_ignored $UPF '  if (!d.hardware_names) return false;' '  return false;' unit:test_updates
+UB=sim/tests/test_update_broker_push.py
+mutate upd_push_budget_too_low src/helpers/updates/UpdService.h '  static const uint32_t HEAP_NEEDED = 20 * 1024;' '  static const uint32_t HEAP_NEEDED = 19 * 1024;' $UB::test_the_heap_a_push_asks_for
+mutate upd_push_budget_too_high src/helpers/updates/UpdService.h '  static const uint32_t HEAP_NEEDED = 20 * 1024;' '  static const uint32_t HEAP_NEEDED = 48 * 1024;' $UB::test_the_heap_a_push_asks_for
+mutate upd_http_budget_too_low src/helpers/updates/UpdService.h '  static const uint32_t HEAP_NEEDED_HTTP = 64 * 1024;' '  static const uint32_t HEAP_NEEDED_HTTP = 48 * 1024;' sim/tests/test_update_download.py::test_an_https_download_needs_more_heap_than_http
 mutate upd_download_no_timeout src/helpers/updates/UpdService.cpp 'literal ? nullptr : _url.host, HEAD_TIMEOUT_MS};' 'literal ? nullptr : _url.host, 0};' sim/tests/test_update_download.py::test_a_download_gives_a_slow_server_its_time
