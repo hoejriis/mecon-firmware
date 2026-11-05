@@ -43,6 +43,7 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   #include <helpers/CryptoRNG.h>
   #include <helpers/deployment/DepFsStore.h>
   #include <helpers/iface/JobFsStore.h>
+  #include <helpers/net/ServerNet.h>
   static Iface::ConsoleIface the_iface;
   static Dep::FsStore dep_store;   // the Deployment record's files, on the role's own file system
   static Iface::JobFsStore job_store;   // the job table (OPERATIONS.md section 3), on the same file system
@@ -69,6 +70,15 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static bool ifaceReadRotation(void*, char* text, size_t tcap, char* sig_b64, size_t scap) {
     return the_mesh.rotation().read(text, tcap, sig_b64, scap);
   }
+#ifdef ENABLE_WIFI_INTERFACE
+  static bool net_started = false;   // set at boot, from the prefs
+  static bool ifaceReadSecret(void*, const Iface::KeyDef& k, unsigned idx, char* out, size_t cap) {
+    return ServerNet::readSecret(*the_mesh.getNodePrefs(), k, idx, out, cap);
+  }
+  #ifdef ENABLE_MQTT
+  static bool ifaceProfileExists(void*, uint8_t index) { return the_mesh.getNodePrefs()->mqtt_profiles.configured(index); }
+  #endif
+#endif
   static void ifaceInventory(void*, Iface::JsonWriter& w) {
     Iface::writeCount(w, "neighbours", the_mesh.neighbourCount(), the_mesh.neighbourCapacity());
     Iface::writeCount(w, "clients", the_mesh.clientCount(), the_mesh.clientCapacity());
@@ -185,7 +195,18 @@ void setup() {
                                        &the_mesh, &radio_driver, &board, ifaceRadioCounts, &sensors, ifaceInventory,
                                        &dep_store, ifaceClock, &the_mesh.self_id, &job_store, &snap_store,
                                        ifaceRotate, ifaceReadRotation, ROT_REMOVED,
-                                       &mgmt_slot_store, &mgmt_record_store, &mgmt_snap_store };
+                                       &mgmt_slot_store, &mgmt_record_store, &mgmt_snap_store,
+#ifdef ENABLE_WIFI_INTERFACE
+                                       ifaceReadSecret,
+  #ifdef ENABLE_MQTT
+                                       ifaceProfileExists,
+  #else
+                                       nullptr,
+  #endif
+#else
+                                       nullptr, nullptr,
+#endif
+                                     };
     dep_store.setFs(fs);
     job_store.setFs(fs);
     snap_store.setFs(fs);
@@ -193,6 +214,11 @@ void setup() {
     mgmt_record_store.setFs(fs);
     mgmt_snap_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
+#ifdef ENABLE_WIFI_INTERFACE
+    net_started = ServerNet::begin(the_mesh, *the_mesh.getNodePrefs(), board, the_iface,
+                                   []() -> uint32_t { return the_mesh.getRTCClock()->getCurrentTime(); },
+                                   []() -> bool { return the_mesh.getRTCClock()->isSet(); });
+#endif
   }
 #endif
   BootPresence::end();
@@ -285,6 +311,9 @@ void loop() {
 
 #ifdef ENABLE_MECON_IFACE
   the_iface.loop(millis(), Serial);
+#ifdef ENABLE_WIFI_INTERFACE
+  if (net_started) ServerNet::loop();
+#endif
 #endif
   board.loop();   // let the board feed its watchdog, run periodic housekeeping
 

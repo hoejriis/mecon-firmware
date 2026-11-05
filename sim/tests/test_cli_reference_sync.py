@@ -97,7 +97,7 @@ def mecon_literals():
                      r'wifi\.[a-z]+|mqtt\.[a-z]+|contacts\.[a-z]+))')
     for rel in ("src/helpers/cli/MeconCli.h", "src/helpers/Posture.h", "src/helpers/connmode/ConnMode.h",
                 "src/helpers/wifi/WifiProfiles.cpp", "src/helpers/mqtt/MqttProfiles.cpp",
-                "examples/companion_radio/MyMesh.cpp"):
+                "examples/companion_radio/MyMesh.cpp", "src/helpers/net/NetCommands.h"):
         for m in pat.finditer(_read(rel)):
             names.add(m.group(1))
     # the Companion keeps the stock single-network wifi.* commands; they are stock, listed in the page all the same

@@ -232,7 +232,8 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _ctx = Cli::Context(Cli::T_USB, Cli::A_CABLE, _host.posture(_host.user));
   _updates.begin(_host.hardware, _host.role, _host.board ? _host.board->getManufacturerNames() : nullptr);
   if (_host.snap_store)
-    _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass, nullptr, confirmRecordCaller,
+    _confirm = ConfirmHost{&_jobs, _host.snap_store, confirmCable, confirmLineClass,
+                           _host.read_secret ? confirmReadSecret : nullptr, confirmRecordCaller,
                            confirmRunAs, confirmJobId};
   _mgmt_slot.setStore(_host.mgmt_slot);
   mesh::Utils::sha256(_public_fp, MGMT_FP_BYTES, MGMT_PUBLIC_KEY, sizeof(MGMT_PUBLIC_KEY));
@@ -248,8 +249,9 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
     env.store = _host.dep_store;
     env.node_key = _host.node_key;
     env.publish_caller = true;   // the front door, CommonCLI and the Ethernet console read it (Cli::serverCaller)
-    env.now_s = _host.clock_s ? _host.clock_s : nullptr;
-    env.user = _host.user;
+    env.now_s = _host.clock_s ? authClock : nullptr;
+    env.profile_exists = _host.profile_exists ? authProfileExists : nullptr;
+    env.user = this;
     _auth.begin(env);
     _prov.begin(_host.identity, &_auth, epoch, epoch_saved);
     Cli::serverCaller().unlocked = consoleUnlocked;   // the console lines of the stock CLI see the unlock too
@@ -257,6 +259,21 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   }
   observeSink().fn = onObserve;
   observeSink().user = this;
+}
+
+uint32_t ConsoleIface::authClock(void* user) {
+  const ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  return s->_host.clock_s(s->_host.user);
+}
+
+bool ConsoleIface::authProfileExists(void* user, uint8_t index) {
+  const ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  return s->_host.profile_exists(s->_host.user, index);
+}
+
+bool ConsoleIface::confirmReadSecret(void* user, const KeyDef& k, unsigned idx, char* out, size_t cap) {
+  const ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  return s->_host.read_secret(s->_host.user, k, idx, out, cap);
 }
 
 MgmtHost ConsoleIface::mgmtHost() {
@@ -330,30 +347,42 @@ Status ConsoleIface::rotateIdentity(OpContext& c) {
   return ST_OK;
 }
 
-// Whether the console, as a caller, may use a stream of this class: the CLI privilege table, as for any console line.
+// Whether the caller may use a stream of this class. The console: the CLI privilege table, as for any console line. The
+// broker, as on the Companion: the caller's real context, and a stream beyond read also needs the session itself to be
+// allowed it, since a signature authorises the request and not the wire. The logs go to a subscriber a Deployment member
+// signed for, over a session that may carry private data; a plain broker login never gets that far.
 bool ConsoleIface::streamAllow(void* user, uint8_t cls) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (s->_on_mqtt) {
+    if (!Cli::decide(s->_ctx, cls).allow) return false;
+    if (cls == Cli::C_READ || Cli::decide(s->_link_ctx, cls).allow) return true;
+    return cls == Cli::C_POSTURE && s->_ctx.auth == Cli::A_SIGNED && Cli::decide(s->_link_ctx, Cli::C_PRIVATE).allow;
+  }
   Cli::Context c(Cli::T_USB, Cli::A_CABLE, s->_host.posture(s->_host.user));
   s->_auth.stampContext(c, &s->_unlock);   // enrolled and unlocked, as for every console decision
   return Cli::decide(c, cls).allow;
 }
 
-// One received packet, as a console line, within the stream's rate. Not while a request is being typed: a line never
-// lands inside another, so that packet counts as dropped.
+// One received packet, as a console line and on the broker, within the stream's rate. Not on the console while a request
+// is being typed: a line never lands inside another, so with no broker subscriber that packet counts as dropped.
 void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
-  if (!s->_subs.s[SID_OBSERVATIONS].active || !s->_out) return;
-  if (s->_collecting) { s->_obs.dropped++; return; }
+  const bool con = s->_subs.s[SID_OBSERVATIONS].active && s->_out;
+  const bool net = s->_mqtt_subs.s[SID_OBSERVATIONS].active && s->_ev_publish;
+  if (!con && !net) return;
+  if (s->_collecting && !net) { s->_obs.dropped++; return; }
   if (!s->_obs.take(millis())) return;
   static const size_t CAP = 1024;
   char* ev = static_cast<char*>(malloc(CAP));
   if (!ev) { s->_obs.dropped++; return; }
-  int n = writeObservation(ev, CAP, s->_clock, s->_epoch, false, 0, snr, rssi, raw, len, s->_obs.dropped);
+  bool known;
+  const uint32_t ts = s->knownSeconds(&known);
+  int n = writeObservation(ev, CAP, s->_clock, s->_epoch, known, ts, snr, rssi, raw, len, s->_obs.dropped);
   if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);   // -1: not signable, so not sent
   if (n <= 0) s->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing
   if (n > 0) {
     s->_obs.dropped = 0;
-    s->printLine(*s->_out, ev, (size_t)n);
+    s->emit(SID_OBSERVATIONS, ev, (size_t)n);
   }
   free(ev);
 }
@@ -361,6 +390,22 @@ void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* r
 bool ConsoleIface::consoleUnlocked(void* self) {
   ConsoleIface* s = static_cast<ConsoleIface*>(self);
   return s->_auth.unlocked(&s->_unlock);
+}
+
+uint32_t ConsoleIface::knownSeconds(bool* known) {
+  const uint32_t ts = _host.clock_s ? _host.clock_s(_host.user) : 0;
+  *known = ts >= 1704067200;   // 2024-01-01: a clock that has never been set reads earlier
+  return *known ? ts : 0;
+}
+
+void ConsoleIface::emit(int stream, const char* ev, size_t n) {
+  if (_out && !_collecting && _subs.s[stream].active) printLine(*_out, ev, n);
+  if (_mqtt_subs.s[stream].active && _ev_publish) _ev_publish(STREAMS[stream].name, ev, n);
+}
+
+bool ConsoleIface::mqttSubscribed() const {
+  for (int i = 0; i < STREAM_COUNT; i++) if (_mqtt_subs.s[i].active) return true;
+  return false;
 }
 
 ConfigHost ConsoleIface::configHost() {
@@ -380,7 +425,7 @@ void ConsoleIface::confirmRecordCaller(void* user, Job& j) {
   j.who_transport = s->_ctx.transport;
   j.who_auth = s->_ctx.auth;
   j.who_posture = s->_ctx.posture;
-  j.who_mgmt = 0;
+  j.who_mgmt = s->_ctx.mgmt ? 1 : 0;
   j.who_audit = 0;
 }
 
@@ -390,7 +435,14 @@ bool ConsoleIface::confirmRunAs(void* user, const Job& j, const char* line, char
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
   const bool was = Cli::serverCaller().signed_line;
   Cli::serverCaller().signed_line = j.who_auth == Cli::A_SIGNED;
-  const bool known = s->_host.run(s->_host.user, line, reply, cap);
+  bool known;
+  if (j.who_transport == Cli::T_MQTT) {   // and a broker's caller runs as that session, never as the cable
+    const Cli::Context net(j.who_transport, j.who_auth, s->_host.posture(s->_host.user), j.who_mgmt != 0);
+    const Cli::NetLineScope scope(net);
+    known = s->_host.run(s->_host.user, line, reply, cap);
+  } else {
+    known = s->_host.run(s->_host.user, line, reply, cap);
+  }
   Cli::serverCaller().signed_line = was;
   return known;
 }
@@ -433,15 +485,19 @@ bool ConsoleIface::updSigned(void* user) { return static_cast<ConsoleIface*>(use
 void ConsoleIface::updReboot(void* user) { static_cast<ConsoleIface*>(user)->_reboot_at = millis() + 1500; }
 
 // The console is one link, and its caller may always read: each change of a job's state is a line on it, unless a
-// request is being typed (then it is still in job.get and job.list).
+// request is being typed (then it is still in job.get and job.list). The broker session gets it too, once it has been
+// allowed to read.
 void ConsoleIface::jobChanged(void* user, const Job& j) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
-  if (!s->_out || s->_collecting) return;
+  const bool con = s->_out && !s->_collecting;
+  const bool net = s->_mqtt_may_read && s->_ev_publish && s->_ev_up && s->_ev_up();
+  if (!con && !net) return;
   char ev[512 + Job::RESULT_CAP];
   const uint32_t ts = s->_host.clock_s ? s->_host.clock_s(s->_host.user) : 0;
   int n = s->_jobs.writeEvent(ev, sizeof(ev), s->_epoch, ts != 0, ts, j);
   if (n > 0) n = s->_prov.sign("job", ev, (size_t)n, sizeof(ev));
-  if (n > 0) s->printLine(*s->_out, ev, (size_t)n);
+  if (n > 0 && con) s->printLine(*s->_out, ev, (size_t)n);
+  if (n > 0 && net) s->_ev_publish("job", ev, (size_t)n);
 }
 
 bool ConsoleIface::jobClasses(void* user, uint8_t cls) {
@@ -481,14 +537,15 @@ bool ConsoleIface::authorize(void* user, const OpEntry& op, const Request&) {
 
 const char* ConsoleIface::denyReason(void* user) { return static_cast<ConsoleIface*>(user)->_deny; }
 
-// One request through the dispatcher as the caller ctx: the cable, or the signed principal on it. The posture is read
-// again each time, so a posture change takes effect on the next line.
+// One request through the dispatcher as the caller ctx: the cable or the broker session, or the signed principal on
+// either. The posture is read again each time, so a posture change takes effect on the next line.
 int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char* out, size_t cap, ResultCache* cache) {
   _ctx = ctx;
   _ctx.posture = _host.posture(_host.user);
-  _auth.setLink(&_unlock);
-  _auth.stampContext(_ctx, &_unlock);   // the cable's unlock reaches the table as a flag
+  _auth.setLink(_on_mqtt ? &_mqtt_unlock : &_unlock);
+  _auth.stampContext(_ctx, _on_mqtt ? nullptr : &_unlock);   // the cable's unlock reaches the table as a flag
   _auth.setContext(_ctx);
+  if (_on_mqtt) _mqtt_may_read = Cli::decide(ctx, Cli::C_READ).allow;
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
@@ -497,6 +554,61 @@ int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char
 
 int ConsoleIface::runSigned(void* user, const Cli::Context& ctx, const char* body, size_t len, char* out, size_t cap) {
   return static_cast<ConsoleIface*>(user)->run(ctx, body, len, out, cap, nullptr);   // job ids guard replay; no id cache
+}
+
+// One request over the broker, on the same worker as a console line. While it runs, the role's command handlers see the
+// session (Cli::NetLineScope), so a line it causes is decided and audited as that caller.
+__attribute__((noinline)) int ConsoleIface::computeMqtt(const Cli::Context& ctx, const char* msg, size_t len, char* out, size_t cap) {
+  _on_mqtt = true;
+  _link_ctx = ctx;
+  const Cli::NetLineScope scope(_link_ctx);
+  if (!_env_checked) refreshEnvironment(millis());
+  if (!_cache) _cache = new (std::nothrow) ResultCache();
+  _auth.answering().clear();
+  const bool was_enrolled = _auth.enrolled();
+  int n;
+  if (!_cache) {
+    n = writeResult(out, cap, "", ST_BUSY, nullptr, "no-memory");
+  } else {
+    if (!_mqtt_nonce[0]) DeployAuth::issueNonce(_mqtt_nonce);   // issued when the session's first request arrives
+    if (DeployAuth::isWrapper(msg, len))
+      n = _auth.dispatchSigned(ctx, _mqtt_nonce, msg, len, _cache, runSigned, this, out, cap);
+    else
+      n = run(ctx, msg, len, out, cap, _cache);
+  }
+  if (n > 0) n = _prov.signResult(out, (size_t)n, cap, _old_id, &_auth.answering(), was_enrolled);
+  if (_old_id) { wipe(_old_id, sizeof(*_old_id)); delete _old_id; _old_id = nullptr; }
+  _auth.answering().clear();
+  _on_mqtt = false;
+  return n;
+}
+
+namespace {
+struct MqttJob {
+  ConsoleIface* s;
+  const Cli::Context* ctx;
+  const char* msg;
+  size_t len;
+  char* out;
+  size_t cap;
+  int n;
+};
+__attribute__((noinline)) void mqttJob(void* p) {
+  MqttJob* j = static_cast<MqttJob*>(p);
+  j->n = j->s->computeMqtt(*j->ctx, j->msg, j->len, j->out, j->cap);
+}
+}  // namespace
+
+size_t ConsoleIface::onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap) {
+  MqttJob job = {this, &ctx, reinterpret_cast<const char*>(msg), len, out, cap, -1};
+  if (NrfWorker::run(mqttJob, &job, 15000)) {
+    _updates.replyWritten(millis());   // the reply goes out on this pass: a DFU reset the request asked for waits for it
+    return job.n > 0 ? (size_t)job.n : 0;
+  }
+  static const char W[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"worker\",\"unsigned\":\"worker\"}";
+  if (cap <= sizeof(W)) return 0;
+  memcpy(out, W, sizeof(W));
+  return sizeof(W) - 1;
 }
 
 void ConsoleIface::startLine() {
@@ -634,6 +746,10 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
       if (!_host.inventory) return false;
       _host.inventory(_host.user, w);
       break;
+    case SID_CONNECTIVITY:
+      if (!_conn_write) return false;
+      _conn_write(w);
+      break;
     default: return false;
   }
   w.endObject();
@@ -647,22 +763,35 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0 && _host.board) _host.board->reboot();
   refreshEnvironment(now);
-  if (_collecting) return;   // an event never lands in the middle of a request being typed
-  SubSet* sets[1] = { &_subs };
-  const uint32_t due = _clock.due(sets, 1, now);
+  if (_ev_up && !_ev_up()) {
+    _mqtt_subs.clear();   // a subscription made over the broker lapses with the session
+    _mqtt_nonce[0] = 0;   // and so does the session's channel nonce
+  }
+  if (_conn_sig) {   // a link changed state: the connectivity stream sends an event now
+    const uint32_t sig = _conn_sig();
+    if (sig != _conn_last) {
+      _conn_last = sig;
+      _clock.scheduleNow(SID_CONNECTIVITY, now);
+    }
+  }
+  if (_collecting && !mqttSubscribed()) return;   // an event never lands in the middle of a request being typed
+  SubSet* sets[2] = { &_subs, &_mqtt_subs };
+  const uint32_t due = _clock.due(sets, 2, now);
+  bool known;
+  const uint32_t ts = knownSeconds(&known);
   for (int s = 0; s < STREAM_COUNT; s++) {
     if (!(due & (1u << s))) continue;
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;
     char ev[800];   // an event of up to 640 bytes, and its signature
-    int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, false, 0, data);
+    int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, known, ts, data);
     if (n > 0) n = _prov.sign(STREAMS[s].name, ev, (size_t)n, sizeof(ev));   // -1: not signable, so not sent
-    if (n > 0) printLine(out, ev, (size_t)n);
+    if (n > 0) emit(s, ev, (size_t)n);
   }
   if (_boot_pending) {   // once per epoch, right after the first runtime snapshot
     _boot_pending = false;
-    if (_subs.s[SID_RUNTIME].active) {
+    if (_subs.s[SID_RUNTIME].active || _mqtt_subs.s[SID_RUNTIME].active) {
       _boot_sent = true;
       // static: the loop task's stack has no room for these next to the signer (the stack gate, #234); loop only
       static char data[384];
@@ -671,12 +800,12 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
       writeBoot(w, *_host.board, _host.role, _host.hardware);
       w.endObject();
       static char ev[640];   // the event and its signature
-      int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, false, 0, data) : -1;
+      int n = w.ok() ? writeEvent(ev, sizeof(ev), STREAMS[SID_RUNTIME].name, ++_clock.seq[SID_RUNTIME], _epoch, known, ts, data) : -1;
       if (n > 0) n = _prov.sign(STREAMS[SID_RUNTIME].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)
-      if (n > 0) printLine(out, ev, (size_t)n);
+      if (n > 0) emit(SID_RUNTIME, ev, (size_t)n);
     }
   }
-  if (!_subs.s[SID_LOGS].active) {
+  if (!_subs.s[SID_LOGS].active && !_mqtt_subs.s[SID_LOGS].active) {
     _logs.skip(Posture::audit());
   } else {
     Posture::AuditEntry a[Posture::AuditRing::CAPACITY];
@@ -684,9 +813,9 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
     const int k = _logs.poll(now, Posture::audit(), a, &dropped);
     for (int j = 0; j < k; j++) {
       static char ev[480];   // the event and its signature; static for the loop task's stack (#234), loop only
-      int n = writeLog(ev, sizeof(ev), _clock, _epoch, false, 0, a[j], j == 0 ? dropped : 0);
+      int n = writeLog(ev, sizeof(ev), _clock, _epoch, known, ts, a[j], j == 0 ? dropped : 0);
       if (n > 0) n = _prov.sign(STREAMS[SID_LOGS].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)
-      if (n > 0) printLine(out, ev, (size_t)n);
+      if (n > 0) emit(SID_LOGS, ev, (size_t)n);
     }
   }
 }

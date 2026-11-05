@@ -15,7 +15,7 @@ What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED
 | Rescue console | Companion | **cable** | Entered by a long press of the user button in the first 8 seconds after the UI starts, on boards that have one. The UI starts at the end of setup, when "Loading..." gives way to the logo screen (about 7 s after reset on a Heltec V3 standalone build); a press made earlier is not seen. Runs the Companion CLI plus a few file commands, see the last table. |
 | Remote LoRa admin | Repeater, Room server, Sensor | **remote admin** (login with the admin password), **guest** | A client logs in with the admin or guest password and sends CLI text. While the admin password is the stock default no admin login is accepted. `get acl`, `erase`, `stats-*`, `log` and `set freq` are console only at the handler level whatever the caller. The Sensor role still accepts the default admin password, as stock. |
 | Remote LoRa CLI from a flagged contact | Companion | **flagged contact** | A contact the owner flagged for remote CLI sends a CLI text message. Reads and `reboot` in Normal, nothing in Hardened. |
-| MQTT request topic `mecon/<node id>/cli/req` | Companion (Wi-Fi + MQTT builds) | **MQTT, TLS verified** or **plain / unverified** | JSON request, JSON reply on `.../cli/resp`; see [CLI.md](CLI.md#the-command-line-over-mqtt). Runs only on a TLS-verified session. |
+| MQTT request topic `mecon/<node id>/cli/req` | Companion (Wi-Fi + MQTT builds), Heltec Repeater and Room server | **MQTT, TLS verified** or **plain / unverified** | JSON request, JSON reply on `.../cli/resp`; see [CLI.md](CLI.md#the-command-line-over-mqtt). Runs only on a TLS-verified session. |
 | Ethernet TCP console (RAK4631 `_ethernet` builds) | Repeater, Room server | **untrusted** until `login <admin password>`, then **Ethernet admin** | A plain-text line protocol on the network, so never the cable. Every line is refused and audited until the connection sends `login`; the login needs Normal posture and an admin password that has been set. Logged in, the connection has the remote admin's rights (not the key, `erase`, `poweroff`, posture or audit). Hardened turns it off. See [CLI.md](CLI.md#the-ethernet-console). |
 | Device button | Companion | **device button** | Not a command line; it only reaches the connectivity-mode switch. |
 
@@ -231,6 +231,9 @@ The posture and audit commands are handled in the Repeater and Room server front
 | `set posture hardened` | Raise the posture to Hardened. | MECON | posture | Cable. Remote callers are refused and audited (`ERR: not permitted`). Saved atomically with its audit entry. |
 | `set posture normal confirm` | Lower the posture to Normal. | MECON | posture | Cable only. Without `confirm` the reply is `ERR: lowering the posture needs: set posture normal confirm` and nothing changes. An argument other than `hardened` or `normal` gives `ERR: set posture hardened \| set posture normal confirm`. |
 | `get audit [start]` | Read the audit log: two entries per reply, newest first, `... next:<n>` continues. | MECON | posture | `> <n> entries` then `<time> <event> <caller> <what> x<count>`. `<time>` is 0 for an entry recorded while the clock was not set. Cable only on these roles; every remote caller is refused (`ERR: not permitted`). |
+| `get wifi.pwd` | Always `> wifi.pwd is write-only`. | MECON | read | Answered by the engine. On every other build, a line with no handler. |
+
+The Heltec V3 and V4 Repeater and Room server builds also take the Companion's Wi-Fi and MQTT commands (`set|get wifi.*`, `set|get mqtt.*`), with the same replies and the same classes. They have no `connectivity.mode`: a server has no BLE to choose between.
 
 ### Repeater only
 

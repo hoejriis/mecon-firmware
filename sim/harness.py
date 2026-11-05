@@ -22,6 +22,9 @@ BIN = {
     # the same, with the RAK4631 Ethernet TCP console (a loopback stand-in for the W5100S transport)
     "repeater_eth": os.path.join(REPO, ".pio/build/sim_repeater_eth/program"),
     "room_server_eth": os.path.join(REPO, ".pio/build/sim_room_server_eth/program"),
+    # the same, with Wi-Fi and the broker
+    "repeater_wifi": os.path.join(REPO, ".pio/build/sim_repeater_wifi/program"),
+    "room_server_wifi": os.path.join(REPO, ".pio/build/sim_room_server_wifi/program"),
     "repeater_asan": os.path.join(REPO, ".pio/build/sim_repeater_asan/program"),
     "companion_asan": os.path.join(REPO, ".pio/build/sim_companion_asan/program"),
     "companion_wifi_usb_asan": os.path.join(REPO, ".pio/build/sim_companion_wifi_usb_asan/program"),

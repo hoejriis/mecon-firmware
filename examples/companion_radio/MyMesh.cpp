@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
 #include <helpers/iface/Observe.h>
 #include <helpers/iface/DeviceId.h>
@@ -2729,96 +2730,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
 
 #ifdef ENABLE_WIFI_INTERFACE
-  // Wi-Fi profiles: `set|get wifi.profile(s) ...`; the stock wifi.ssid / wifi.pwd / wifi.clear are profile 0.
-  // A password is write-only: no reply below ever carries one.
-  {
-    WifiProfileChange change;
-    if (wifiProfileCommand(_prefs.wifi_profiles, wifiController().core(), command, reply, 150, change)) {
-      if (change.changed) {
-        savePrefs();
-        wifiController().profileChanged(change.index, change.credentials);
-      }
-      return true;
-    }
-  }
-  if (memcmp(command, "set wifi.ssid ", 14) == 0) {
-    StrHelper::strncpy(_prefs.wifi_profiles.ssid_[0], &command[14], sizeof(_prefs.wifi_profiles.ssid_[0]));
-    savePrefs();
-    wifiController().profileChanged(0, true);
-    sprintf(reply, "> wifi.ssid is now %s (set wifi.pwd too)", _prefs.wifi_profiles.ssid(0));
-    return true;
-  }
-  if (memcmp(command, "set wifi.pwd ", 13) == 0) {
-    StrHelper::strncpy(_prefs.wifi_profiles.pwd_[0], &command[13], sizeof(_prefs.wifi_profiles.pwd_[0]));
-    savePrefs();
-    wifiController().profileChanged(0, true);
-    strcpy(reply, "> wifi.pwd updated");
-    return true;
-  }
-  if (strcmp(command, "set wifi.clear") == 0) {
-    _prefs.wifi_profiles.ssid_[0][0] = 0;
-    _prefs.wifi_profiles.pwd_[0][0] = 0;
-    savePrefs();
-    wifiController().profileChanged(0, true);
-    strcpy(reply, "> wifi config cleared");
-    return true;
-  }
-  if (strcmp(command, "get wifi.ssid") == 0) {
-    sprintf(reply, "> %s", _prefs.wifi_profiles.ssid(0)[0] ? _prefs.wifi_profiles.ssid(0) : "(not set)");
-    return true;
-  }
-  if (memcmp(command, "set wifi.enabled ", 17) == 0) {
-    _prefs.wifi_enabled = atoi(&command[17]) ? 1 : 0;
-    savePrefs();
-    sprintf(reply, "> wifi.enabled is now %d (reboot to apply)", _prefs.wifi_enabled);
-    return true;
-  }
-  if (strcmp(command, "get wifi.enabled") == 0) {
-    sprintf(reply, "> %d", _prefs.wifi_enabled);
-    return true;
-  }
-  if (strcmp(command, "get wifi.status") == 0) {
-    wifiController().formatStatus(reply, 150);
-    return true;
-  }
-  if (strcmp(command, "get wifi.ip") == 0) {
-    char ip[20];
-    wifiController().formatIp(ip, sizeof(ip));
-    if (ip[0]) {
-      sprintf(reply, "> %s", ip);
-    } else {
-      strcpy(reply, "> (not connected)");
-    }
-    return true;
-  }
-#ifdef ENABLE_MQTT
-  // MQTT broker profiles: `set|get mqtt.profile(s) ...`. Credentials are write-only: no reply carries one.
-  {
-    MqttProfileChange change;
-    if (mqttProfileCommand(_prefs.mqtt_profiles, mqttController().started() ? mqttController().core() : nullptr, _prefs.posture, command, reply, 150, change)) {
-      if (change.changed) {
-        savePrefs();
-        mqttController().profileChanged(change.index, change.credentials);
-      }
-      return true;
-    }
-  }
-  if (memcmp(command, "set mqtt.enabled ", 17) == 0) {
-    _prefs.mqtt_enabled = atoi(&command[17]) ? 1 : 0;
-    savePrefs();
-    mqttController().setEnabled(_prefs.mqtt_enabled != 0);
-    sprintf(reply, "> mqtt.enabled is now %d%s", _prefs.mqtt_enabled, mqttController().started() ? "" : " (reboot to apply)");
-    return true;
-  }
-  if (strcmp(command, "get mqtt.enabled") == 0) {
-    sprintf(reply, "> %d", _prefs.mqtt_enabled);
-    return true;
-  }
-  if (strcmp(command, "get mqtt.status") == 0) {
-    mqttController().formatStatus(reply, 150);
-    return true;
-  }
-#endif
+  if (netCommand(_prefs, [](void* self) { static_cast<MyMesh*>(self)->savePrefs(); }, this, command, reply)) return true;
 #endif
 
   if (strcmp(command, "board") == 0) {

@@ -68,7 +68,7 @@ inline const Entry* entries(size_t& count) {
     {"set connectivity.mode",  M_WORD,    ROLE_COMPANION,                 C_POSTURE,     0,            Posture::W_CONNMODE,  nullptr,                      nullptr,                                            nullptr},
     {"get prv.key",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_SECRET,      0,            Posture::W_KEY_EXPORT, nullptr,                     "ERR: key export is refused in hardened posture",   nullptr},
     {"set prv.key",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_SECRET,      F_QUIET,      Posture::W_KEY_IMPORT, nullptr,                     "ERR: key import is refused in hardened posture",   "ERR: prv.key can only be set from the local console"},
-    {"get wifi.pwd",           M_EXACT,   ROLE_COMPANION,                 C_READ,        0,            Posture::W_NONE,      "> wifi.pwd is write-only",   nullptr,                                            nullptr},
+    {"get wifi.pwd",           M_EXACT,   ROLE_COMPANION | ROLE_REPEATER, C_READ,        0,            Posture::W_NONE,      "> wifi.pwd is write-only",   nullptr,                                            nullptr},
     {"erase",                  M_EXACT,   ROLE_REPEATER,                  C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     // Issue #143: replaces the firmware (BLE OTA), so destructive, never the unregistered write default
     {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
@@ -125,7 +125,7 @@ inline Resolved resolve(const char* cmd, uint8_t role) {
     r.flags = strcmp(arg, "hardened") != 0 ? F_CABLE_ONLY : F_RAISES;
     return r;
   }
-  if (role == ROLE_COMPANION && isMgmtFlag(cmd)) {
+  if (isMgmtFlag(cmd)) {
     r.cls = C_POSTURE;
     r.what = Posture::W_MGMT_FLAG;
     return r;

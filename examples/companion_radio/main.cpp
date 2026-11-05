@@ -4,6 +4,7 @@
 #include <helpers/BootPresence.h>
 #include <Mesh.h>
 #include "MyMesh.h"
+#include <helpers/net/NetTelemetry.h>
 #include <helpers/HeapFloor.h>
 
 // Believe it or not, this std C function is busted on some platforms!
@@ -164,37 +165,8 @@ static void ifaceConnWrite(Iface::JsonWriter& w) {
   w.key("mode"); w.str(the_mesh.getConnectivityMode() == ConnMode::WIFI ? "wifi" : "ble");
 #endif
 #ifdef ENABLE_WIFI_INTERFACE
-  WifiController::Snapshot ws;
-  wifiController().snapshot(&ws);
-  w.key("wifi"); w.beginObject();
-  w.key("state"); w.str(WifiCore::stateName(ws.state));
-  const bool joined = ws.state == WifiState::Connected;
-  w.key("profile"); if (ws.profile != WifiCore::NONE) w.unum(ws.profile); else w.null();
-  w.key("ssid"); if (ws.ssid) w.str(ws.ssid); else w.null();
-  w.key("rssi_dbm"); if (joined) w.num(ws.rssi); else w.null();
-  w.key("ip"); if (joined && ws.ip[0]) w.str(ws.ip); else w.null();
-  w.key("up_s"); w.unum(ws.up_s);
-  w.key("last_fail"); w.str(WifiCore::failName(ws.last_fail));
-  w.endObject();
-#ifdef ENABLE_MQTT
-  MqttController::Snapshot ms;
-  mqttController().snapshot(&ms);
-  w.key("mqtt"); w.beginObject();
-  w.key("state"); w.str(ms.active ? MqttCore::stateName(ms.state) : "off");
-  const bool up = ms.state == MqttState::Connected;
-  w.key("profile"); if (ms.profile != MqttCore::NONE) w.unum(ms.profile); else w.null();
-  char broker[24];
-  snprintf(broker, sizeof(broker), "%u.%u.%u.%u:%u", (unsigned)(ms.addr >> 24), (unsigned)((ms.addr >> 16) & 255),
-           (unsigned)((ms.addr >> 8) & 255), (unsigned)(ms.addr & 255), (unsigned)ms.port);
-  w.key("broker"); if (up) w.str(broker); else w.null();
-  static const char* const TLS[] = {"plain", "verified", "unverified"};
-  w.key("tls"); if (up) w.str(TLS[ms.tls]); else w.null();
-  w.key("up_s"); w.unum(ms.up_s);
-  w.key("browsing"); w.boolean(ms.browsing);
-  w.key("reconnects"); w.unum(ms.reconnects);
-  w.endObject();
+  Iface::writeNetConnectivity(w);
 #endif
-#endif  // ENABLE_WIFI_INTERFACE
 #if defined(BLE_PIN_CODE)
   // false while the BLE stack is not running (Wi-Fi mode, Hardened with the default PIN): there is no link to report
   w.key("ble"); w.beginObject();
@@ -213,14 +185,7 @@ static void ifaceConnWrite(Iface::JsonWriter& w) {
 static uint64_t ifaceConnSignature() {
   uint64_t sig = 0;
 #ifdef ENABLE_WIFI_INTERFACE
-  WifiController::Snapshot ws;
-  wifiController().snapshot(&ws);
-  sig = (uint32_t)ws.state | ((uint32_t)ws.profile << 8);
-#ifdef ENABLE_MQTT
-  MqttController::Snapshot ms;
-  mqttController().snapshot(&ms);
-  sig |= ((uint32_t)ms.state << 16) | ((uint32_t)ms.profile << 24);
-#endif
+  sig = Iface::netConnSignature();
 #endif
 #if defined(BLE_PIN_CODE)
   sig |= (uint64_t)(interface_manager.isInterfaceConnected(InterfaceType::Bluetooth) ? 1 : 0) << 32;

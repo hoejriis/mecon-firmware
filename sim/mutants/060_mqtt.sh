@@ -73,12 +73,12 @@ mutate mqtt_password_in_listing_sim $MQ_PROF_C 'const char* pwd = q.pwd[0] ? "se
 mutate mqtt_password_logged $MQ_CTRL "  const char* user = j.user[0]" '  fprintf(stderr, "mqtt connect as %s\n", j.pwd);
   const char* user = j.user[0]' $MQ_SIM::test_credentials_are_nowhere_but_the_prefs_file
 mutate mqtt_credentials_not_sent $MQ_CTRL "const char* user = j.user[0] ? j.user : nullptr;" "const char* user = nullptr;" $MQ_SIM::test_credentials_are_used_and_a_wrong_password_fails_over
-mutate mqtt_profiles_not_persisted examples/companion_radio/NodePrefs.h "        key[0] = 'h'; def(key, q.host, sizeof(q.host));
+mutate mqtt_profiles_not_persisted src/helpers/net/NetPrefs.h "      key[0] = 'h'; def(key, q.host, sizeof(q.host));
 " "" unit:test_mqtt_prefs
-mutate mqtt_profiles_not_persisted_sim examples/companion_radio/NodePrefs.h "        key[0] = 'h'; def(key, q.host, sizeof(q.host));
+mutate mqtt_profiles_not_persisted_sim src/helpers/net/NetPrefs.h "      key[0] = 'h'; def(key, q.host, sizeof(q.host));
 " "" $MQ_SIM::test_profiles_persist_across_a_reboot_and_can_be_disabled
 mutate mqtt_status_not_published $MQ_CTRL "  _psc.publish(_topic, payload, true);" "  (void)payload;" $MQ_SIM::test_status_topic_is_published_and_retained
-mutate mqtt_disable_ignored examples/companion_radio/MyMesh.cpp "    mqttController().setEnabled(_prefs.mqtt_enabled != 0);
+mutate mqtt_disable_ignored src/helpers/net/NetCommands.h "    mqttController().setEnabled(prefs.mqtt_enabled != 0);
 " "" $MQ_SIM::test_profiles_persist_across_a_reboot_and_can_be_disabled
 # --- the connect runs on a worker (docs/MQTT.md): undo each rule and its tests must go red
 MQ_NB=sim/tests/test_mqtt_nonblocking.py
@@ -137,9 +137,9 @@ mutate mqtt_ca_add_saves_the_prefs $MQ_PROF_C "        pr.stage_len_ = (uint16_t
         change.changed = true;
 " unit:test_mqtt_prefs
 mutate mqtt_ca_one_character_too_many_accepted $MQ_PROF_C "if (pr.stage_len_ + n > MqttProfile::CA_B64_MAX) {" "if (pr.stage_len_ + n >= MqttProfile::CA_B64_MAX) {" unit:test_mqtt_prefs
-mutate mqtt_ca_not_persisted examples/companion_radio/NodePrefs.h "            if (!m.caChunk(i, n, piece)) break;" "            break;" unit:test_mqtt_prefs
-mutate mqtt_ca_not_persisted_sim examples/companion_radio/NodePrefs.h "            if (!m.caChunk(i, n, piece)) break;" "            break;" $MQ_SIM::test_a_ca_anchor_survives_the_broker_certificate_being_renewed
-mutate mqtt_ca_only_first_chunk_persisted examples/companion_radio/NodePrefs.h "        for (uint8_t n = 0; n < MqttProfile::CA_CHUNKS; n++) {" "        for (uint8_t n = 0; n < 1; n++) {" $MQ_SIM::test_the_largest_practical_ca_fits_and_is_accepted
+mutate mqtt_ca_not_persisted src/helpers/net/NetPrefs.h "          if (!m.caChunk(i, n, piece)) break;" "          break;" unit:test_mqtt_prefs
+mutate mqtt_ca_not_persisted_sim src/helpers/net/NetPrefs.h "          if (!m.caChunk(i, n, piece)) break;" "          break;" $MQ_SIM::test_a_ca_anchor_survives_the_broker_certificate_being_renewed
+mutate mqtt_ca_only_first_chunk_persisted src/helpers/net/NetPrefs.h "      for (uint8_t n = 0; n < MqttProfile::CA_CHUNKS; n++) {" "      for (uint8_t n = 0; n < 1; n++) {" $MQ_SIM::test_the_largest_practical_ca_fits_and_is_accepted
 mutate mqtt_ca_listed_as_fingerprint $MQ_PROF_C 'const char* anchor = q.hasCa() ? "ca" : (q.anchor[0] ? "fingerprint" : "unset");' 'const char* anchor = (q.hasCa() || q.anchor[0]) ? "fingerprint" : "unset";' unit:test_mqtt_prefs
 mutate mqtt_ca_copy_not_made $MQ_CTRL "    strcpy(j.ca, q.ca);" "    j.ca[0] = 0;" $MQ_SIM::test_a_ca_anchor_survives_the_broker_certificate_being_renewed
 mutate mqtt_damaged_anchor_connects_anyway src/helpers/mqtt/MqttController.cpp "  if (q.useTls() && !MqttProfiles::anchorUsable(q)) {" "  if (false) {" "$MQ_SIM::test_a_damaged_stored_ca_fails_closed_and_never_connects_unverified"

@@ -32,16 +32,16 @@ mutate wifi_edit_keeps_the_cooldown $WIFI_CORE "  p.cooling = false;
   p.auth_fails = 0;" "  p.auth_fails = 0;" unit:test_wifi_core
 mutate wifi_own_leave_counted_as_failure src/helpers/wifi/WifiController.cpp "if (_ev_reason != REASON_ASSOC_LEAVE) _core.onDisconnected" "_core.onDisconnected" $WIFI_SIM::test_returns_to_the_better_network_after_the_hold_down_and_only_once
 mutate wifi_auth_reason_unmapped src/helpers/wifi/WifiController.cpp "if (r == REASON_AUTH_FAIL || r == REASON_4WAY_HANDSHAKE_TIMEOUT || r == REASON_HANDSHAKE_TIMEOUT) return WifiDrop::AuthFailed;" "" $WIFI_SIM::test_fails_over_on_a_wrong_password
-mutate wifi_stock_ssid_key_changed examples/companion_radio/NodePrefs.h 'def("ssid", w.ssid_[0], sizeof(w.ssid_[0]));   // profile 0 keeps the stock keys' 'def("ssid0", w.ssid_[0], sizeof(w.ssid_[0]));' $WIFI_SIM::test_a_stock_format_prefs_file_loads
-mutate wifi_stock_ssid_key_changed_unit examples/companion_radio/NodePrefs.h 'def("ssid", w.ssid_[0], sizeof(w.ssid_[0]));   // profile 0 keeps the stock keys' 'def("ssid0", w.ssid_[0], sizeof(w.ssid_[0]));' unit:test_wifi_prefs
-mutate wifi_stock_set_ssid_misrouted examples/companion_radio/MyMesh.cpp "StrHelper::strncpy(_prefs.wifi_profiles.ssid_[0], &command[14]" "StrHelper::strncpy(_prefs.wifi_profiles.ssid_[1], &command[14]" $WIFI_SIM::test_stock_wifi_commands_still_work
-mutate wifi_priorities_not_persisted examples/companion_radio/NodePrefs.h "        def(key, w.prio_[i]);
+mutate wifi_stock_ssid_key_changed src/helpers/net/NetPrefs.h 'def("ssid", w.ssid_[0], sizeof(w.ssid_[0]));   // profile 0 keeps the stock keys' 'def("ssid0", w.ssid_[0], sizeof(w.ssid_[0]));' $WIFI_SIM::test_a_stock_format_prefs_file_loads
+mutate wifi_stock_ssid_key_changed_unit src/helpers/net/NetPrefs.h 'def("ssid", w.ssid_[0], sizeof(w.ssid_[0]));   // profile 0 keeps the stock keys' 'def("ssid0", w.ssid_[0], sizeof(w.ssid_[0]));' unit:test_wifi_prefs
+mutate wifi_stock_set_ssid_misrouted src/helpers/net/NetCommands.h "StrHelper::strncpy(prefs.wifi_profiles.ssid_[0], &command[14]" "StrHelper::strncpy(prefs.wifi_profiles.ssid_[1], &command[14]" $WIFI_SIM::test_stock_wifi_commands_still_work
+mutate wifi_priorities_not_persisted src/helpers/net/NetPrefs.h "      def(key, w.prio_[i]);
 " "" $WIFI_SIM::test_ten_profiles_persist_across_a_reboot
-mutate wifi_profiles_beyond_three_not_persisted examples/companion_radio/NodePrefs.h "      for (uint8_t i = 0; i < WifiProfiles::COUNT; i++) {
-        char key[4]" "      for (uint8_t i = 0; i < 3; i++) {
-        char key[4]" $WIFI_SIM::test_ten_profiles_persist_across_a_reboot
-mutate wifi_passwords_not_persisted_unit examples/companion_radio/NodePrefs.h "        key[0] = 'w';
-        def(key, w.pwd_[i], sizeof(w.pwd_[i]));" "" unit:test_wifi_prefs
+mutate wifi_profiles_beyond_three_not_persisted src/helpers/net/NetPrefs.h "    for (uint8_t i = 0; i < WifiProfiles::COUNT; i++) {
+      char key[4]" "    for (uint8_t i = 0; i < 3; i++) {
+      char key[4]" $WIFI_SIM::test_ten_profiles_persist_across_a_reboot
+mutate wifi_passwords_not_persisted_unit src/helpers/net/NetPrefs.h "      key[0] = 'w';
+      def(key, w.pwd_[i], sizeof(w.pwd_[i]));" "" unit:test_wifi_prefs
 mutate wifi_password_in_listing src/helpers/wifi/WifiProfiles.cpp 'pr.hasPwd(i) ? "set" : "unset"' 'pr.hasPwd(i) ? pr.pwd(i) : "unset"' unit:test_wifi_prefs
 mutate wifi_password_in_listing_sim src/helpers/wifi/WifiProfiles.cpp 'pr.hasPwd(i) ? "set" : "unset"' 'pr.hasPwd(i) ? pr.pwd(i) : "unset"' $WIFI_SIM::test_passwords_are_nowhere_but_the_prefs_file
 mutate wifi_password_logged src/helpers/wifi/WifiController.cpp '  WIFICTL_LOG("joining profile %u (%s)", (unsigned)i, _profiles->ssid(i));' '  fprintf(stderr, "joining with %s\n", _profiles->pwd(i));' $WIFI_SIM::test_passwords_are_nowhere_but_the_prefs_file
