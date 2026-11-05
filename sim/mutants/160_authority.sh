@@ -175,7 +175,9 @@ mutate private_sub_moves_the_mark src/helpers/iface/DeployAuth.cpp '  if (v.cls 
 mutate private_sub_needs_no_nonce src/helpers/deployment/DepWrapper.cpp '    if (out->cls == OPC_SENSITIVE || out->cls == OPC_NONCE) {' '    if (out->cls == OPC_SENSITIVE) {' unit:test_dep_wrapper
 mutate private_sub_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once' '  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);' sim/tests/test_private_streams.py::test_a_private_renewal_takes_no_job_and_moves_no_mark
 mutate private_stop_off_the_mark src/helpers/deployment/DepWrapper.cpp 'strcmp(op, "sub.start") == 0 ? OPC_NONCE : OPC_JOB' 'strcmp(op, "sub.start") == 0 ? OPC_NONCE : OPC_PLAIN' sim/tests/test_private_streams.py::test_a_private_stop_stays_on_the_mark
-mutate replay_without_the_mark src/helpers/iface/DeployAuth.cpp '      n = writeReplayRefusal(out, cap, id, wm.mark);' '      n = writeResult(out, cap, id, ST_REFUSED, nullptr, "replay");' sim/tests/test_deployment_authority.py::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
+mutate replay_without_the_mark src/helpers/iface/DeployAuth.cpp '(AUTHORITY.md section 8).
+      n = writeReplayRefusal(out, cap, id, wm.mark);' '(AUTHORITY.md section 8).
+      n = writeResult(out, cap, id, ST_REFUSED, nullptr, "replay");' sim/tests/test_deployment_authority.py::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
 # --- identity.rotate on the server roles
 mutate rotate_server_keeps_acl examples/simple_repeater/MyMesh.cpp '  bool dropped = acl.clear() && !AtomicFile::exists(_fs, "/s_contacts");   // the shared secrets were made with the old key' '  bool dropped = true;' $IR::test_a_server_rotation_changes_the_key_drops_the_acl_and_keeps_the_rest
 mutate rotate_room_keeps_acl examples/simple_room_server/MyMesh.cpp '  bool dropped = acl.clear() && !AtomicFile::exists(_fs, "/s_contacts");   // the shared secrets were made with the old key' '  bool dropped = true;' $IR::test_a_server_rotation_changes_the_key_drops_the_acl_and_keeps_the_rest
