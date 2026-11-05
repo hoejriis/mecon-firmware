@@ -110,6 +110,16 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Companion on a board carrying the private firmware's data | boots and stays up; 350 of 350 contacts and 40 of 40 channels identical to a prior backup (the stock contact table); a change to the full table survives a reboot; the private firmware, flashed back, reads every contact and channel unchanged | 2026-10-31, bce8ef8c |
 | Companion heap and loop stack (USB build) | idle free 54,160 B; loop stack free 816 B; 5 of 5 log events signed | 2026-11-01, 90d46a9f |
 | Management writes with the private firmware's Deployment record | refused `deployment_record_corrupt` (fail closed); the record itself left unchanged | 2026-10-31, bce8ef8c |
+| `get dutycycle` per band (Heltec V3 standalone Companion) | 869.525 MHz: the 10% floor; 915.0 and 922.4 MHz: `band none`, `no time rule enforced`; back at 869.525 the floor returns; nothing sent | 2026-11-05, b6d0a50e |
+| `message.deliver` (Heltec V3 standalone Companion, USB) | a stock frame reads `[via manager] <text>` in the sender's thread with the time supplied; `inbox.list` says `source: manager`; a sender not stored and a text too long are answers; airtime used did not change | 2026-11-05, b6d0a50e |
+| Clock unset until a real source sets it (Heltec V3) | never set: an event carries no time; set: it carries the time; a soft reset keeps it | 2026-11-05, b6d0a50e |
+| Clock unset until a real source sets it (Wio Tracker L1) | never set: no time; set: the time; after a reset unset again, and it says so | 2026-11-05, b6d0a50e |
+| Public Wio Tracker L1 Companion USB build | hello, first provisioning, a signed `config.apply`, an unsigned one refused, a signed reset; 10 of 10; restored to stock with 0 of 27 settings changed | 2026-11-05, b6d0a50e |
+| `online` means requests are accepted (Heltec V3 standalone Companion, verified broker) | a request sent the moment `online` is seen is answered about 0.2 s later, 3 of 3 boots, no resend | 2026-11-05, d23437d5 |
+| A tentative change over a broker keeps its answer (Heltec V3 standalone Companion, verified broker) | the answer arrives, the change is in effect, unconfirmed it reverts and the profile is as it was | 2026-11-05, d23437d5 |
+| HTTPS download beside a verified broker session (Heltec V4 standalone Companion, test key, budget lowered) | 1.72 MB in about 16 s; session up throughout; lowest free 39,728 B, lowest largest block 31,732 B; attested and confirmed | 2026-11-05, 082fa4b6 |
+
+Builds b6d0a50e and d23437d5 were bench merges of branches then open; their features are on `main` by these rows' merge.
 
 ## Not yet verified on hardware
 
