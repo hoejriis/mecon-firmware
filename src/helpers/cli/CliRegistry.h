@@ -74,6 +74,8 @@ inline const Entry* entries(size_t& count) {
     {"start ota",              M_PREFIX,  ROLE_REPEATER,                  C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     // powering off needs someone on site to recover the device: no remote caller, broker or not
     {"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
+    // a clock that ran ahead, set back: only someone at the cable, since peers then ignore the device's adverts for as long
+    {"clock back",             M_WORD,    ROLE_COMPANION,                 C_DESTRUCTIVE, F_CABLE_ONLY, Posture::W_CLOCK_BACK, nullptr,                     nullptr,        nullptr},
     {"shutdown",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     // reads
     {"get ",                   M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_READ,        0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},

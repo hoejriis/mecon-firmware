@@ -125,6 +125,9 @@ public:
    */
   virtual void tick() { /* no op */}
 
+  // After a set-back: the next unique time follows the clock again, not the highest ever handed out.
+  void restartUnique() { last_unique = 0; }
+
   uint32_t getCurrentTimeUnique() {
     uint32_t t = getCurrentTime();
     if (t <= last_unique) {
