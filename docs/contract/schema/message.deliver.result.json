@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/message.deliver.result.json",
+  "title": "Result of message.deliver",
+  "description": "Request args: {\"from\"} or {\"channel\"}, {\"text\", \"timestamp\"}. Puts a message the device missed on the native receive queue, marked in its text. Never on the radio.",
+  "type": "object",
+  "required": [
+    "state",
+    "epoch"
+  ],
+  "properties": {
+    "state": {
+      "type": "string",
+      "enum": [
+        "delivered",
+        "duplicate"
+      ],
+      "description": "duplicate: already heard or delivered, so nothing was queued."
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

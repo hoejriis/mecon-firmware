@@ -50,6 +50,7 @@
         "required": [
           "seq",
           "kind",
+          "source",
           "type",
           "text",
           "ts",
@@ -122,7 +123,7 @@
           "hash": {
             "type": "string",
             "pattern": "^[0-9a-f]{16}$",
-            "description": "The native packet hash: the same id a sender or an observer computes."
+            "description": "The native packet hash, on a radio reception: the same id a sender or an observer computes. All zero with source manager."
           },
           "snr_x4": {
             "type": "integer",
@@ -142,6 +143,14 @@
             "minimum": 0,
             "maximum": 255,
             "description": "Route flood only: as the native frame carries it."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "radio",
+              "manager"
+            ],
+            "description": "manager: message.deliver supplied it, so nothing checked its sender or time. The device sets this, so no contact can."
           }
         }
       }

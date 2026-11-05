@@ -48,7 +48,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
                                     "message.send", "message.get", "message.list", "message.ack",
-                                    "inbox.list", "inbox.ack"
+                                    "inbox.list", "inbox.ack", "message.deliver"
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -63,6 +63,7 @@ Status opMsgList(OpContext& c);
 Status opMsgAck(OpContext& c);
 Status opInbList(OpContext& c);
 Status opInbAck(OpContext& c);
+Status opMsgDeliver(OpContext& c);
 Status opSchema(OpContext& c);
 Status opGet(OpContext& c);
 Status opApply(OpContext& c);
@@ -140,6 +141,8 @@ const OpEntry OPS[] = {
   // Received messages (section 6.4): their text and sender are private, and neither read touches the native queue.
   {"inbox.list", opInbList, PRIV_READ, false},
   {"inbox.ack", opInbAck, PRIV_READ, false},
+  // A write, and kept by id: a retry whose reply was lost is the same delivery (section 6.5).
+  {"message.deliver", opMsgDeliver, PRIV_WRITE, true},
   // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
   {"channel.list", opChanList, PRIV_READ, false},
   {"channel.get", opChanGet, PRIV_READ, false},
@@ -333,7 +336,7 @@ Status opMsgAck(OpContext& c) { return mayReadPrivate(c) ? withMessages(c, opMes
 
 __attribute__((noinline)) Status withInbox(OpContext& c, Status (*op)(OpContext&)) {
   if (!mayReadPrivate(c)) return ST_REFUSED;
-  InboxHost host{&self(c)->inbox(), self(c)->epoch(), (uint32_t)millis()};
+  InboxHost host = self(c)->inboxHost();
   OpContext cc = c;
   cc.user = &host;
   Status st = op(cc);
@@ -342,6 +345,14 @@ __attribute__((noinline)) Status withInbox(OpContext& c, Status (*op)(OpContext&
 }
 Status opInbList(OpContext& c) { return withInbox(c, opInboxList); }
 Status opInbAck(OpContext& c) { return withInbox(c, opInboxAck); }
+Status opMsgDeliver(OpContext& c) {
+  InboxHost host = self(c)->inboxHost();
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = opMessageDeliver(cc);
+  c.error = cc.error;
+  return st;
+}
 
 Status opChanList(OpContext& c) { return mayReadPrivate(c) ? withChannels(c, opChannelList) : ST_REFUSED; }
 Status opChanGet(OpContext& c) { return mayReadPrivate(c) ? withChannels(c, opChannelGet) : ST_REFUSED; }
@@ -379,6 +390,19 @@ static MessageSend msgChannel(void* user, int slot, uint32_t ts, const char* tex
   return static_cast<MeconIface*>(user)->mesh()->messageSendChannel(slot, ts, text, len, out);
 }
 static uint32_t msgClock(void* user) { return static_cast<MeconIface*>(user)->mesh()->getRTCClock()->getCurrentTimeUnique(); }
+
+static DeliverResult msgDeliver(void* user, const uint8_t* from, int channel, uint32_t ts, const char* text, size_t len) {
+  return static_cast<MeconIface*>(user)->mesh()->messageDeliver(from, channel, ts, text, len);
+}
+
+InboxHost MeconIface::inboxHost() {
+#ifdef MAX_GROUP_CHANNELS
+  const bool channels = true;
+#else
+  const bool channels = false;
+#endif
+  return InboxHost{&_inbox, _epoch, (uint32_t)millis(), msgDeliver, channels, this};
+}
 
 MessageHost MeconIface::messageHost(bool create) {
   if (create && !_messages) _messages = new (std::nothrow) MessageTable();
