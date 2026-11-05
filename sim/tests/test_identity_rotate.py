@@ -105,7 +105,7 @@ def test_rotation_changes_the_key_and_keeps_everything_else(nodes):
     assert d.node_key == new_key
     g2 = d.i.request("deployment.get")["result"]
     g2.pop("rotation")
-    assert members_of(g2)[INST_A]["mark"] == 3
+    assert members_of(g2)[INST_A]["mark"] >= 3, "a reboot lands on the reserved mark, never below what ran"
     members_of(g2)[INST_A]["mark"] = 0
     assert g2 == g0
     assert d.c.get_contacts()[0] == 0 and d.name() == "> ToNew"
@@ -207,10 +207,12 @@ def test_a_lost_rotate_result_is_recovered_from_the_stored_statement(nodes):
     d.reboot()
     assert d.i.request("identity.rotation")["result"]["rotation"] == rot, "kept across a reboot"
     # a second rotation replaces it
-    r2 = d.send(wrap(new_key, "identity.rotate", job=3, nonce=d.nonce(), target=new_key))
+    # (the reboot landed on the reserved mark, so the manager's next id goes above it)
+    job = members_of(d.i.request("deployment.get")["result"])[INST_A]["mark"] + 1
+    r2 = d.send(wrap(new_key, "identity.rotate", job=job, nonce=d.nonce(), target=new_key))
     assert r2["status"] == "ok", r2
     rot2 = d.i.request("identity.rotation")["result"]["rotation"]
-    statement_checks(rot2, new_key, r2["result"]["new_public_key"], h["result"]["device_id"], 3)
+    statement_checks(rot2, new_key, r2["result"]["new_public_key"], h["result"]["device_id"], job)
 
 
 def contacts_on_flash(d):

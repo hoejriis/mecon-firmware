@@ -20,6 +20,7 @@ namespace Dep {
 // accepted. MARK_BLOCKED refuses every id: the state of a member whose real mark was lost, until it is re-admitted.
 struct Watermark {
   uint32_t mark;
+  uint32_t reserved;   // what is on flash: never below the mark. Ids up to it run with no write (DepReplay.h)
 };
 const uint32_t MARK_BLOCKED = 0xFFFFFFFFu;
 

@@ -331,7 +331,11 @@ def test_an_enrolled_device_installs_only_on_a_signed_offer(nodes):
     d.attach()
     r = d.i.request("job.confirm", {"job": job})
     assert (r["status"], r.get("error")) == ("refused", "unauthenticated"), "an unsigned confirmation does not count"
+    # The install rebooted the device, so its mark is the reserved one: the next id is refused and says where to continue.
     r = d.send(wrap(d.node_key, "job.confirm", {"job": job}, job=8))
+    assert (r["status"], r.get("error")) == ("refused", "replay") and r["result"]["mark"] >= 8, r
+    assert job_get(d, job)["state"] != "confirmed", "a refused confirmation changes nothing"
+    r = d.send(wrap(d.node_key, "job.confirm", {"job": job}, job=r["result"]["mark"] + 1))
     assert r["status"] == "ok" and r["result"]["state"] == "confirmed", r
 
 

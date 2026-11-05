@@ -229,7 +229,7 @@ size_t encodeMarks(const Marks& m, uint32_t generation, uint8_t* out, size_t cap
   for (int i = 0; i < m.n; i++) {
     w.bytes(m.m[i].instance_id, ID_LEN);
     w.u32(m.m[i].admitted_revision);
-    w.u32(m.m[i].wm.mark);
+    w.u32(m.m[i].wm.mark > m.m[i].wm.reserved ? m.m[i].wm.mark : m.m[i].wm.reserved);
   }
   if (w.fail) return 0;
   size_t payload = w.n - start;
@@ -256,7 +256,8 @@ bool decodeMarks(const uint8_t* buf, size_t len, Marks* m, uint32_t* generation)
   for (int i = 0; i < m->n; i++) {
     p.bytes(m->m[i].instance_id, ID_LEN);
     m->m[i].admitted_revision = p.u32();
-    m->m[i].wm.mark = p.u32();
+    m->m[i].wm.mark = p.u32();   // after a reboot the reserved mark is the mark, so nothing accepted can run again
+    m->m[i].wm.reserved = m->m[i].wm.mark;
   }
   if (p.fail || p.n != len - 4) return false;
   *generation = gen;

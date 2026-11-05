@@ -208,11 +208,11 @@ def test_a_signed_config_apply_runs_and_a_resend_runs_nothing(nodes):
     # show for it, and the older one is still refused
     d.reboot()
     assert d.name() == "> Meanwhile"
-    dup = d.send(w2)
-    assert dup["status"] == "failed" and dup["error"] == "duplicate", dup
+    again = d.send(w2)
+    assert again["status"] == "refused" and again["error"] == "replay" and again["result"]["mark"] == 257, again
     assert d.send(w)["error"] == "replay"
     assert d.name() == "> Meanwhile"
-    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 2, "the mark survived the reboot"
+    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 257, "the reserved mark survived the reboot"
 
 
 def test_a_mark_that_cannot_be_written_runs_nothing_and_is_not_consumed(nodes):
@@ -246,6 +246,56 @@ def test_an_older_job_id_is_a_replay_and_a_newer_one_runs(nodes):
     d.reboot()
     r = d.send(wrap(d.node_key, "config.apply", apply_name("Four"), job=4))
     assert r["status"] == "refused" and r["error"] == "replay", r
+
+
+def test_a_resend_at_the_mark_is_answered_and_not_run_again(nodes):
+    """contact.put says whether it created the contact, so a second run would answer differently."""
+    d = boot(nodes, "rs")
+    d.provision()
+    w = wrap(d.node_key, "contact.put", {"key": "ab" * 32, "name": "once", "type": "chat"}, job=1)
+    r = d.send(w)
+    assert r["status"] == "ok" and r["result"]["created"] is True, r
+    again = d.send(w)
+    assert again["result"]["created"] is True and bare(again) == bare(r), again
+
+
+def _marks_files(d):
+    out = []
+    for root, _, names in os.walk(d.n.dir):
+        out += [open(os.path.join(root, n), "rb").read() for n in names if n.startswith("mecon_depm")]
+    return out
+
+
+def test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it(nodes):
+    """Issue #293: a mark save costs about 5 flash erases on one page on an nRF52, so one id in 256 writes. Never twice
+    still holds: after a reboot the mark is the reserved value, so nothing accepted can run again."""
+    d = boot(nodes, "rv")
+    d.provision()
+    assert d.send(wrap(d.node_key, "config.apply", apply_name("One"), job=1))["status"] == "ok"
+    saved = _marks_files(d)
+    assert saved
+    for job in range(2, 8):
+        assert d.send(wrap(d.node_key, "config.apply", apply_name("N%d" % job), job=job))["status"] == "ok"
+    assert _marks_files(d) == saved, "no flash write until an id passes the reservation"
+    held = wrap(d.node_key, "config.apply", apply_name("Held"), job=7)
+    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 7
+    d.reboot()
+    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 257, "the reserved value"
+    # What ran before the reboot does not run again, and a new id at or below the reservation never ran: it says the mark.
+    again = d.send(held)
+    assert again["status"] == "refused" and again["error"] == "replay" and again["result"]["mark"] == 257, again
+    fresh = d.send(wrap(d.node_key, "config.apply", apply_name("Lost"), job=8))
+    assert fresh["status"] == "refused" and fresh["error"] == "replay" and fresh["result"]["mark"] == 257, fresh
+    assert d.name() == "> N7"
+    # A new id exactly at the reserved mark never ran either: the same answer, not a bare "duplicate".
+    at = d.send(wrap(d.node_key, "config.apply", apply_name("At"), job=257))
+    assert at["status"] == "refused" and at["error"] == "replay" and at["result"]["mark"] == 257, at
+    # The manager continues above it, and that write reserves again.
+    assert d.send(wrap(d.node_key, "config.apply", apply_name("Above"), job=258))["status"] == "ok"
+    assert d.name() == "> Above"
+    assert _marks_files(d) != saved
+    d.reboot()
+    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 258 + 256
 
 
 def test_a_plain_signed_read_needs_no_job_and_a_write_without_one_is_refused(nodes):
@@ -383,7 +433,8 @@ def test_authority_update_rotates_to_rev2_and_the_new_member_signs(nodes):
     d.reboot()
     g = d.i.request("deployment.get")["result"]
     assert g["authority_revision"] == 2 and g["authority_epoch"] == 2
-    assert {m["instance_id"]: m["mark"] for m in g["members"]} == {INST_A: 7, INST_B: 1}, "both marks survive a reboot"
+    marks = {m["instance_id"]: m["mark"] for m in g["members"]}
+    assert marks[INST_A] >= 7 and marks[INST_B] >= 1, "both marks survive a reboot"
 
 
 def test_an_update_for_another_deployment_or_with_a_bad_signature_changes_nothing(nodes):
@@ -813,10 +864,10 @@ def test_the_rescue_rebuild_keeps_the_record_its_marks_and_the_marker(nodes):
     revive(d)
     g = d.i.request("deployment.get")["result"]
     assert g["state"] == "provisioned" and g["authority_revision"] == 1, g
-    assert g["members"][0]["mark"] == 3, "the marks came back too"
+    assert g["members"][0]["mark"] == 3 + 256, "the marks came back too, reserved ahead"
     assert os.path.exists(marker_path(d))
     assert snapshot_files(d) == before, "byte for byte"
-    assert d.send(wrap(d.node_key, "config.apply", apply_name("Rb2"), job=4))["status"] == "ok"
+    assert d.send(wrap(d.node_key, "config.apply", apply_name("Rb2"), job=3 + 257))["status"] == "ok"
 
 
 def test_a_stock_array_rescue_rebuild_puts_the_marker_back_before_anything_else(nodes):
@@ -1297,7 +1348,7 @@ def test_a_signed_set_unlock_replaces_the_secret_and_ends_every_older_unlock(nod
     d.reboot()
     assert try_unlock(d.i.request, SECRET)["status"] == "ok"
     # refusals: not a secret
-    for job, bad in enumerate(({"unlock_secret": "00" * 32}, {"unlock_secret": "ab" * 31}, {"unlock_secret": "zz" * 32}, {}), 20):
+    for job, bad in enumerate(({"unlock_secret": "00" * 32}, {"unlock_secret": "ab" * 31}, {"unlock_secret": "zz" * 32}, {}), 1000 + 20):
         r = d.send(wrap(d.node_key, "deployment.set_unlock", bad, job=job, nonce=d.nonce()))
         assert r["status"] == "invalid" and r["error"] == "bad-args", r
     assert try_unlock(d.i.request, SECRET)["status"] == "ok", "a refused change leaves the secret as it was"

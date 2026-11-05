@@ -432,18 +432,21 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
         memcpy(out, data, dl);
         out[dl] = 0;
         n = (int)dl;
+      } else if (wm.mark == wm.reserved) {
+        // At the reservation, as after every reboot, this may be a new id that never ran. replay tells the manager the
+        // mark to continue above, and a retry of the same bytes reads it the same way: read the state.
+        n = writeReplayRefusal(out, cap, id, wm.mark);
       } else {
         n = writeResult(out, cap, id, ST_FAILED, nullptr, "duplicate");   // it ran (or a cut lost it); read the state
       }
       freeBody(body);
       return n;
     }
-    // New: the mark is persisted BEFORE the request runs, so a redelivery after a power cut cannot run it twice. A write
-    // that fails runs nothing and leaves the mark where it was.
-    const uint32_t old = wm.mark;
-    Dep::markAccepted(&wm, v.job_id);
-    if (!persistMarks()) {
-      wm.mark = old;
+    // New: a reservation above it is persisted BEFORE the request runs, so a redelivery after a power cut cannot run it
+    // twice. A write that fails runs nothing and leaves the mark where it was.
+    const Dep::Watermark old = wm;
+    if (Dep::markAccepted(&wm, v.job_id) && !persistMarks()) {
+      wm = old;
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
       freeBody(body);
       return n;
