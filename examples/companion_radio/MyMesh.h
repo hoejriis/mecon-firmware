@@ -133,8 +133,9 @@ public:
   // For the device interface (MeconIface): read-only facts, and frame output to one transport of the multiplexed serial.
   Iface::MessageSend messageSendDirect(const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text, Iface::MessageSent& out);
   Iface::MessageSend messageSendChannel(int slot, uint32_t ts, const char* text, size_t len, Iface::MessageSent& out);
-  void keepReceived(mesh::Packet* pkt, const uint8_t* from, int channel, uint8_t txt_type, uint32_t ts, const uint8_t* signer,
+  bool keepReceived(mesh::Packet* pkt, const uint8_t* from, int channel, uint8_t txt_type, uint32_t ts, const uint8_t* signer,
                     const char* text);
+  Iface::DeliverResult messageDeliver(const uint8_t* from, int channel, uint32_t ts, const char* text, size_t len);
   const char* hardwareName() const { return board.getManufacturerName(); }
   const char* hardwareNames() const { return board.getManufacturerNames(); }
   uint16_t batteryMilliVolts() { return board.getBattMilliVolts(); }

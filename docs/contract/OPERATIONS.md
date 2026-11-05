@@ -177,6 +177,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `message.send` | one native direct or channel message; a recipient or slot not there is an answer, and no contact is created | `sendMessage`, `sendGroupMessage`, as `CMD_SEND_TXT_MSG` and `CMD_SEND_CHANNEL_TXT_MSG` | write | yes | C | all |
 | `message.get`, `message.list`, `message.ack` | what became of a send (section 6) | RAM table | read, then private | no | C | all |
 | `inbox.list`, `inbox.ack` | what was received (section 6.4) | a RAM copy, beside the native offline queue | read, then private | no | C | all |
+| `message.deliver` | a message the device missed, to the local stock app; never on the radio (section 6.5) | the native receive queue | write | yes | C | all |
 | `channel.list`, `channel.get` | channels (name, one-byte hash, key size; `list` paged by 8); the secret never | native channel table; R S: one slot (MANAGEMENT_CHANNEL.md section 6) | private | no | C R S | C: USB BLE MQTT; R S: Con |
 | `channel.put`, `channel.remove` | add, rotate, remove a channel; 128-bit keys only, a key held by another slot refused | `CMD_SET_CHANNEL`; R S: one slot | write | yes | C R S | C: USB BLE MQTT; R S: Con |
 | `mgmt.channel.get` | the management channel binding: none, bound or stale | the native channel table plus its own record | read | no | C R S | C: USB BLE MQTT; R S: Con |
@@ -390,7 +391,8 @@ Nothing here selects a gateway, retries by itself or decides which messages to c
 
 | Field | What it proves |
 |---|---|
-| `from` (direct) | the stored contact whose shared key opened the message |
+| `source` | `radio`, or `manager` for one `message.deliver` supplied (section 6.5). The device sets it, so no contact can |
+| `from` (direct) | the stored contact whose shared key opened the message. With `source` `manager`, only what the manager said |
 | `channel` (channel) | the slot whose key opened it. Anyone with that key could have sent it, and a sender's name at the start of `text` is only a claim |
 | `signer` (type `signed`) | the key prefix the native frame carries |
 | `ts` | nothing: the sender's own claim of the time |
@@ -411,3 +413,17 @@ Nothing here selects a gateway, retries by itself or decides which messages to c
 **Duplicates.** One packet heard twice is one entry, since the native mesh drops a packet it has seen. A sender's own retry is a new packet and a new entry, with the same `from`, `ts` and `text` and another `hash`, as the stock app also sees it. Telling those apart is the manager's choice.
 
 **Privacy.** Both operations are private, like `contact.get`: a caller who may not read private data is refused, with a signature or without one. Each new reception raises an `inbox` event (`ev/inbox` on MQTT), `{"received","unread","lost"}`, with no sender and no text, so it goes where a job event goes. `status.get` carries the same counts, so a manager that reconnects learns there is something to collect. Nothing is written to flash and no text reaches a log or telemetry.
+
+### 6.5 Supplying a missed message
+
+`message.deliver` puts a message the device missed on its native receive queue, so a stock app reads it. Args: `from` (a stored contact's whole key) or `channel` (a slot), `text` and `timestamp` (the message's own time). The result is `{"state","epoch"}`.
+
+- **Never on the radio.** It transmits nothing and makes no ACK. Sending is `message.send`, and a manager asks for it separately.
+- **A stock app sees it marked.** It appears in the sender's own thread or the slot's, with `[via manager] ` at the start of the text, because the native frame has no field to say how a message came. Its path reads as none and its SNR as 0.
+- **The marker is a warning and proves nothing.** It is ordinary text, so any contact could send the same words. It says the device did not verify this message; it never shows that one was verified. A manager tells them apart by `source` in `inbox.list`, which the device sets. Neither the sender nor the time was checked: both are what the manager supplied.
+- **Once, however it comes.** A message is the same one when its sender or slot, time and text are the same. The device holds the last 16 in RAM. A delivery of one already heard or delivered reads `duplicate` and queues nothing, and a radio copy arriving after a delivery still gets its native ACK but is not queued a second time. Past those 16, or after a reboot, it reads as new.
+- **A repeat of the same request** answers its kept result. Once enrolled a delivery must be signed.
+
+**Bounds.** A text that does not fit with the marker is failed with `text-too-long`, rather than cut: a direct message holds 146 bytes and a channel message 151. A native queue full of direct messages answers `busy` with `queue-full`, where the native queue would drop a new one unreported. When it holds a channel message, the oldest of those goes, as on a reception. A contact or slot not there is failed with `no-contact` or `no-channel`, and no contact is created. A reboot empties the queue, under a new `epoch`.
+
+Which messages to supply, and when to retry, are the manager's.

@@ -55,6 +55,7 @@ void writeEntry(JsonWriter& w, const InboxEntry& e, uint32_t now_ms) {
     w.key("kind"); w.str("direct");
     w.key("from"); hexOf(e.from, sizeof(e.from), hex); w.str(hex);
   }
+  w.key("source"); w.str(e.from_manager ? "manager" : "radio");
   w.key("type"); w.str(typeName(e.type));
   if (e.type == 2) { w.key("signer"); hexOf(e.signer, sizeof(e.signer), hex); w.str(hex); }
   w.key("text"); w.str(e.text, e.len);
@@ -110,6 +111,36 @@ const InboxEntry* Inbox::nextAfter(uint32_t after) const {
   for (int i = 0; i < SLOTS; i++)
     if (_e[i].seq > after && (!best || _e[i].seq < best->seq)) best = &_e[i];
   return best;
+}
+
+uint32_t Inbox::identity(const uint8_t* from, int channel, uint32_t ts, const char* text, size_t len) {
+  uint32_t h = 2166136261u;   // FNV-1a: it tells one message from the next, and proves nothing
+  const auto add = [&h](const uint8_t* p, size_t n) {
+    for (size_t i = 0; i < n; i++) { h ^= p[i]; h *= 16777619u; }
+  };
+  if (from) add(from, 32);
+  const uint8_t ch = (uint8_t)channel;
+  add(&ch, 1);
+  add(reinterpret_cast<const uint8_t*>(&ts), sizeof(ts));
+  add(reinterpret_cast<const uint8_t*>(text), len);
+  return h | 2;   // never 0 or 1, the empty slots
+}
+
+bool Inbox::wasHeard(uint32_t id) const {
+  for (uint32_t r : _recent)
+    if ((r & ~1u) == (id & ~1u)) return true;
+  return false;
+}
+
+bool Inbox::wasDelivered(uint32_t id) const {
+  for (uint32_t r : _recent)
+    if ((r & ~1u) == (id & ~1u) && (r & 1)) return true;
+  return false;
+}
+
+void Inbox::remember(uint32_t id, bool delivered) {
+  _recent[_recent_at] = (id & ~1u) | (delivered ? 1u : 0u);
+  _recent_at = (uint8_t)((_recent_at + 1) % RECENT);
 }
 
 int Inbox::unread() const {
@@ -170,6 +201,40 @@ Status opInboxAck(OpContext& c) {
   w.key("acked"); w.unum(h->inbox->acked());
   w.key("unread"); w.num(h->inbox->unread());
   w.key("lost"); w.unum(h->inbox->lost());
+  return ST_OK;
+}
+
+Status opMessageDeliver(OpContext& c) {
+  InboxHost* h = static_cast<InboxHost*>(c.user);
+  const int fr = argOf(c, "from"), ch = argOf(c, "channel"), tx = argOf(c, "text"), ts = argOf(c, "timestamp");
+  if ((fr >= 0) == (ch >= 0) || tx < 0 || ts < 0) return ST_INVALID;   // one sender or slot, a text, and its own time
+  uint8_t from[32];
+  int64_t slot = -1, stamp = 0;
+  if (fr >= 0) {
+    char hex[65];
+    if (!jsonGetString(*c.doc, fr, hex, sizeof(hex), CS_NAME, 64) || strlen(hex) != 64) return ST_INVALID;
+    for (unsigned i = 0; i < 32; i++) {
+      const auto nib = [](char x) { return x >= '0' && x <= '9' ? x - '0' : x >= 'a' && x <= 'f' ? x - 'a' + 10 : x >= 'A' && x <= 'F' ? x - 'A' + 10 : -1; };
+      const int a = nib(hex[2 * i]), b = nib(hex[2 * i + 1]);
+      if (a < 0 || b < 0) return ST_INVALID;
+      from[i] = (uint8_t)(a << 4 | b);
+    }
+  }
+  if (ch >= 0 && (!h->has_channels || !jsonGetInt(*c.doc, ch, 0, 126, &slot))) return ST_INVALID;
+  if (!jsonGetInt(*c.doc, ts, 1, 0xFFFFFFFFLL, &stamp)) return ST_INVALID;
+  char text[257];
+  if (!jsonGetString(*c.doc, tx, text, sizeof(text), CS_ANY, 1)) { c.error = "text-too-long"; return ST_FAILED; }
+  const DeliverResult r = h->deliver(h->user, fr >= 0 ? from : nullptr, (int)slot, (uint32_t)stamp, text, strlen(text));
+  switch (r) {
+    case DELIVER_NOT_FOUND: c.error = fr >= 0 ? "no-contact" : "no-channel"; return ST_FAILED;
+    case DELIVER_TOO_LONG: c.error = "text-too-long"; return ST_FAILED;
+    case DELIVER_QUEUE_FULL: c.error = "queue-full"; return ST_BUSY;
+    case DELIVER_OK:
+    case DELIVER_DUPLICATE: break;
+  }
+  JsonWriter& w = *c.out;
+  w.key("state"); w.str(r == DELIVER_OK ? "delivered" : "duplicate");   // a duplicate has reached the app once already
+  w.key("epoch"); w.unum(h->epoch);
   return ST_OK;
 }
 
