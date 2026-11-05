@@ -132,3 +132,6 @@ mutate logs_drops_never_cleared src/helpers/iface/Streams.h '    limit.dropped =
 mutate audit_record_not_counted src/helpers/AuditRing.h '    serial[n] = ++recorded;' '    serial[n] = recorded;' unit:test_posture
 mutate audit_serial_not_moved_with_a_fold src/helpers/AuditRing.h '      for (int i = at; i < n - 1; i++) { e[i] = e[i + 1]; serial[i] = serial[i + 1]; }' '      for (int i = at; i < n - 1; i++) { e[i] = e[i + 1]; }' unit:test_posture
 mutate inv_repeater_callback_missing examples/simple_repeater/main.cpp 'ifaceRadioCounts, &sensors, ifaceInventory,' 'ifaceRadioCounts, &sensors, nullptr,' sim/tests/test_telemetry_streams.py::test_inventory_counts_a_heard_neighbour_on_the_repeater
+mutate online_before_requests_open src/helpers/mqtt/MqttController.cpp '    _status_due = true;
+' '    publishStatus();
+' sim/tests/test_device_interface.py::test_a_request_sent_the_moment_online_appears_is_answered

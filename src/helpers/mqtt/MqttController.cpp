@@ -264,10 +264,15 @@ void MqttController::takeResult() {
   _cur_port = j.port;
   _core.onConnected(now, j.tls && j.has_anchor);
   _sessions++;
-  if (_cli_fn) _psc.subscribe(_req_topic);   // before the status, so a client that sees the status can send at once
+  if (_cli_fn) _psc.subscribe(_req_topic);
   if (_iface_fn) _psc.subscribe(_iface_req);
-  if (_cli_fn || _iface_fn) _cli_open_at = millis() + CLI_SETTLE_MS;
-  publishStatus();
+  if (_cli_fn || _iface_fn) {
+    // The status waits for the window onMessage() ignores requests in, so a client that sees "online" can send at once.
+    _cli_open_at = millis() + CLI_SETTLE_MS;
+    _status_due = true;
+  } else {
+    publishStatus();
+  }
 }
 
 void MqttController::trampoline(char* topic, uint8_t* payload, unsigned int len) {
@@ -360,7 +365,8 @@ void MqttController::loop() {
     if (!_psc.loop()) {
       dropTransport();
       _core.onSessionLost(now, MqttFail::Dropped);
-    } else if ((int32_t)(now - _next_status) >= 0) {
+    } else if (_status_due ? (int32_t)(now - _cli_open_at) >= 0 : (int32_t)(now - _next_status) >= 0) {
+      _status_due = false;
       publishStatus();
     }
   }

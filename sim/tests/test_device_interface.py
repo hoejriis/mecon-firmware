@@ -3,6 +3,7 @@ Companion, through the reference client in tools/mecon_iface.py."""
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -410,6 +411,37 @@ def mqtt_boot(nodes, tmp_path, name, b, anchor=True):
     assert c.cli("get mqtt.status").startswith("> connected"), c.cli("get mqtt.status")
     time.sleep(2.0)   # past the settle time after the subscription
     return n, c, i, device_id
+
+
+def test_a_request_sent_the_moment_online_appears_is_answered(nodes, tmp_path, broker):
+    """"online" means requests are accepted. For 1.5 s after subscribing a device ignores them, since retained ones arrive
+    then, so the status waits for that to end. A request in that window would get no answer at all."""
+    b = broker()
+    n, c, i, dev = mqtt_boot(nodes, tmp_path, "mon", b)
+    c.close()
+    n.stop()
+    end = time.time() + 40
+    while time.time() < end and '"online":false' not in (b.retained_status(2) or "").replace(" ", ""):
+        time.sleep(0.5)
+    args = b._client_args()
+    resp = subprocess.Popen(["mosquitto_sub"] + args + ["-t", "mecon/%s/resp" % dev, "-C", "1", "-W", "60"], stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, text=True)
+    status = subprocess.Popen(["mosquitto_sub"] + args + ["-t", "mecon/%s/status" % dev, "-W", "60"], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, text=True)
+    time.sleep(1.0)
+    n.start()
+    try:
+        for line in status.stdout:
+            if json.loads(line).get("online") is True:
+                break
+        else:
+            raise AssertionError("the device never said online")
+        b.publish("mecon/%s/req" % dev, json.dumps({"v": 1, "id": "early", "op": "hello"}))
+        out, _ = resp.communicate(timeout=10)
+        assert out.strip() and json.loads(out)["id"] == "early", "the request was dropped: %r" % out
+    finally:
+        status.kill()
+        resp.kill()
 
 
 @pytest.mark.timescale(10)

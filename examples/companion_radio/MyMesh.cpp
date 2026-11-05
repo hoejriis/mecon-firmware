@@ -535,10 +535,16 @@ Iface::MessageSend MyMesh::messageSendChannel(int slot, uint32_t ts, const char*
 
 #ifdef ENABLE_MECON_IFACE
 // The manager's copy (OPERATIONS.md section 6.4). The native queue below is the stock app's and is not touched by it.
-void MyMesh::keepReceived(mesh::Packet* pkt, const uint8_t* from, int channel, uint8_t txt_type, uint32_t ts,
+// False when a manager already delivered this message: the app has it, so it is not queued a second time.
+bool MyMesh::keepReceived(mesh::Packet* pkt, const uint8_t* from, int channel, uint8_t txt_type, uint32_t ts,
                           const uint8_t* signer, const char* text) {
+  const size_t full = strlen(text);
+  const uint32_t id = Iface::Inbox::identity(from, channel, ts, text, full);
+  const bool again = _iface.inbox().wasDelivered(id);
+  _iface.inbox().remember(id, again);
+  if (again) return false;
   Iface::InboxEntry* e = _iface.inbox().add();
-  if (!e) return;
+  if (!e) return true;
   pkt->calculatePacketHash(e->hash);
   e->ts = ts;
   const uint32_t now = getRTCClock()->getCurrentTime();
@@ -550,18 +556,93 @@ void MyMesh::keepReceived(mesh::Packet* pkt, const uint8_t* from, int channel, u
   e->snr_x4 = (int8_t)(pkt->getSNR() * 4);
   e->path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
   e->type = txt_type;
-  size_t n = strlen(text);
+  size_t n = full;
   e->cut = n > Iface::InboxEntry::TEXT_CAP;
   if (e->cut) n = Iface::InboxEntry::TEXT_CAP;
   memcpy(e->text, text, n);
   e->len = (uint8_t)n;
+  return true;
+}
+
+// message.deliver (OPERATIONS.md section 6.5): a message the device missed, on the native receive queue as a stock app
+// reads one, with the marker in its text because the frame has no field to say how it came. Nothing goes on the radio and
+// no ACK is made.
+Iface::DeliverResult MyMesh::messageDeliver(const uint8_t* from, int channel, uint32_t ts, const char* text, size_t len) {
+  static const char MARK[] = "[via manager] ";
+  const size_t mark = sizeof(MARK) - 1;
+  uint8_t prefix[6];
+  if (from) {
+    ContactInfo* c = lookupContactByPubKey(from, PUB_KEY_SIZE);
+    if (!c) return Iface::DELIVER_NOT_FOUND;
+    memcpy(prefix, from, sizeof(prefix));
+  } else {
+#ifdef MAX_GROUP_CHANNELS
+    ChannelDetails ch;
+    if (!getChannel(channel, ch) || !ch.name[0]) return Iface::DELIVER_NOT_FOUND;
+#else
+    return Iface::DELIVER_NOT_FOUND;
+#endif
+  }
+  const uint32_t id = Iface::Inbox::identity(from, channel, ts, text, len);
+  if (_iface.inbox().wasHeard(id)) return Iface::DELIVER_DUPLICATE;
+  int i = 0;
+  if (app_target_ver >= 3) {
+    out_frame[i++] = from ? RESP_CODE_CONTACT_MSG_RECV_V3 : RESP_CODE_CHANNEL_MSG_RECV_V3;
+    out_frame[i++] = 0;   // no reception, so no SNR
+    out_frame[i++] = 0;
+    out_frame[i++] = 0;
+  } else {
+    out_frame[i++] = from ? RESP_CODE_CONTACT_MSG_RECV : RESP_CODE_CHANNEL_MSG_RECV;
+  }
+  if (from) {
+    memcpy(&out_frame[i], prefix, sizeof(prefix));
+    i += sizeof(prefix);
+  } else {
+    out_frame[i++] = (uint8_t)channel;
+  }
+  out_frame[i++] = 0xFF;   // no path: it did not come over the air
+  out_frame[i++] = TXT_TYPE_PLAIN;
+  memcpy(&out_frame[i], &ts, 4);
+  i += 4;
+  if ((size_t)i + mark + len > MAX_FRAME_SIZE) return Iface::DELIVER_TOO_LONG;   // refused rather than cut
+  bool room = offline_queue_len < OFFLINE_QUEUE_SIZE;
+  for (int q = 0; q < offline_queue_len && !room; q++) room = offline_queue[q].isChannelMsg();
+  if (!room) return Iface::DELIVER_QUEUE_FULL;   // the native queue would drop it without a word
+  memcpy(&out_frame[i], MARK, mark);
+  i += mark;
+  memcpy(&out_frame[i], text, len);
+  i += len;
+  addToOfflineQueue(out_frame, i);
+  _iface.inbox().remember(id, true);
+  if (Iface::InboxEntry* e = _iface.inbox().add()) {
+    e->ts = ts;
+    const uint32_t now = getRTCClock()->getCurrentTime();
+    e->rx_ts = now >= 1704067200 ? now : 0;
+    e->rx_ms = millis();
+    if (from) memcpy(e->from, from, sizeof(e->from));
+    e->channel = (int8_t)channel;
+    e->path_len = 0xFF;
+    e->type = TXT_TYPE_PLAIN;
+    e->from_manager = true;
+    const size_t n = len > Iface::InboxEntry::TEXT_CAP ? Iface::InboxEntry::TEXT_CAP : len;
+    e->cut = n < len;
+    memcpy(e->text, text, n);
+    e->len = (uint8_t)n;
+  }
+  if (_serial->isConnected()) {
+    uint8_t frame[1];
+    frame[0] = PUSH_CODE_MSG_WAITING;
+    _serial->writeFrame(frame, 1);
+  }
+  if (_listener) _listener->onQueueSizeChanged(offline_queue_len);
+  return Iface::DELIVER_OK;
 }
 #endif
 
 void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt,
                           uint32_t sender_timestamp, const uint8_t *extra, int extra_len, const char *text) {
 #ifdef ENABLE_MECON_IFACE
-  keepReceived(pkt, from.id.pub_key, -1, txt_type, sender_timestamp, extra_len >= 4 ? extra : nullptr, text);
+  if (!keepReceived(pkt, from.id.pub_key, -1, txt_type, sender_timestamp, extra_len >= 4 ? extra : nullptr, text)) return;
 #endif
   int i = 0;
   if (app_target_ver >= 3) {
@@ -699,7 +780,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   uint8_t channel_idx = findChannelIdx(channel);
 #ifdef ENABLE_MECON_IFACE
   // It was decrypted with a stored channel, so there is a slot to name; with none, -1 would read as a direct message.
-  if (channel_idx < 127) keepReceived(pkt, nullptr, channel_idx, TXT_TYPE_PLAIN, timestamp, nullptr, text);
+  if (channel_idx < 127 && !keepReceived(pkt, nullptr, channel_idx, TXT_TYPE_PLAIN, timestamp, nullptr, text)) return;
 #endif
   out_frame[i++] = channel_idx;
   uint8_t path_len = out_frame[i++] = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
