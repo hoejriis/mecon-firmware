@@ -35,7 +35,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "job.get", "job.list",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
                                     "update.offer", "update.chunk"};
 
@@ -123,7 +123,14 @@ Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
 Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
-Status opDeployGet(OpContext& c) { return self(c)->auth().opGet(c); }
+// The stored set is an open read; the rotation statement in it names device_id, so only a caller the table lets read gets it.
+Status opDeployGet(OpContext& c) {
+  const Status st = self(c)->auth().opGet(c);
+  if (st == ST_OK && self(c)->mayRead()) self(c)->writeRotation(*c.out);
+  return st;
+}
+Status opIdentityRotate(OpContext& c) { return self(c)->rotateIdentity(c); }
+Status opIdentityRotation(OpContext& c) { self(c)->writeRotation(*c.out); return ST_OK; }
 Status opDeployProvision(OpContext& c) { return self(c)->auth().opProvision(c); }
 Status opDeployUpdate(OpContext& c) { return self(c)->auth().opUpdate(c); }
 Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
@@ -156,6 +163,8 @@ const OpEntry OPS[] = {
   // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
   {"deployment.unlock_challenge", opDeployUnlockChallenge, PRIV_WRITE, false},
   {"deployment.unlock", opDeployUnlock, PRIV_WRITE, false},
+  {"identity.rotate", opIdentityRotate, PRIV_WRITE, false},   // never answered from the cache: it must run once
+  {"identity.rotation", opIdentityRotation, PRIV_READ, false},
   // As on the Companion: ack is of the read class, cancel and confirm write; the three keep their result.
   {"job.get", opJobGet, PRIV_READ, false},
   {"job.list", opJobList, PRIV_READ, false},
@@ -203,6 +212,54 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   }
   observeSink().fn = onObserve;
   observeSink().user = this;
+}
+
+bool ConsoleIface::mayRead() { return Cli::decide(_ctx, Cli::C_READ).allow; }
+
+// The statement the old key signed before the swap (AUTHORITY.md section 11), as a member of the current object.
+bool ConsoleIface::writeRotation(JsonWriter& w) {
+  char text[256], sig[89];
+  if (!_host.read_rotation || !_host.read_rotation(_host.user, text, sizeof(text), sig, sizeof(sig))) return false;
+  w.key("rotation");
+  w.beginObject();
+  w.key("statement"); w.str(text);
+  w.key("sig"); w.str(sig);
+  w.endObject();
+  return true;
+}
+
+// identity.rotate. The result is signed with the key being retired (compute() does it from _old_id), so the manager that
+// enrolled that key can verify the answer and learn the new one from it.
+Status ConsoleIface::rotateIdentity(OpContext& c) {
+  Status st = _auth.rotateGate(c);
+  if (st != ST_OK) return st;
+  if (!_host.rotate || !_host.identity) { c.error = "unsupported"; return ST_FAILED; }
+  char oldhex[65], newhex[65];
+  hexOf(oldhex, _host.node_key, 32);
+  mesh::LocalIdentity* old = new (std::nothrow) mesh::LocalIdentity(*_host.identity);
+  if (!old) { c.error = "no-memory"; return ST_BUSY; }
+  const char* err = "failed";
+  uint32_t job = 0;
+  {
+    int64_t j;
+    if (c.doc && jsonGetInt(*c.doc, jsonFind(*c.doc, 0, "job_id"), 0, 0xFFFFFFFFLL, &j)) job = (uint32_t)j;
+  }
+  const int r = _host.rotate(_host.user, _id_hex, job, &err);
+  if (r == 0) { wipe(old, sizeof(*old)); delete old; c.error = err; return ST_FAILED; }
+  _old_id = old;   // signs this result; compute() wipes it
+  if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }
+  hexOf(newhex, _host.node_key, 32);
+  JsonWriter& w = *c.out;
+  w.key("old_public_key"); w.str(oldhex);
+  w.key("new_public_key"); w.str(newhex);
+  w.key("removed"); w.beginArray();
+  w.str("node_key");
+  for (const char* const* p = _host.removed; p && *p; p++) w.str(*p);
+  w.endArray();
+  w.key("kept"); w.beginArray();
+  w.str("configuration"); w.str("record"); w.str("posture"); w.str("device_id");
+  w.endArray();
+  return ST_OK;
 }
 
 // Whether the console, as a caller, may use a stream of this class: the CLI privilege table, as for any console line.
@@ -429,7 +486,8 @@ __attribute__((noinline)) int ConsoleIface::compute(char* res, char* small, size
           n = run(cable, _line, _len, res, OUT_MAX, _cache);
       }
     }
-    if (n > 0) n = _prov.signResult(res, (size_t)n, OUT_MAX, nullptr, &_auth.answering(), was_enrolled);
+    if (n > 0) n = _prov.signResult(res, (size_t)n, OUT_MAX, _old_id, &_auth.answering(), was_enrolled);
+    if (_old_id) { wipe(_old_id, sizeof(*_old_id)); delete _old_id; _old_id = nullptr; }   // the retired key: gone after this one result
     _auth.answering().clear();
   }
   return n;

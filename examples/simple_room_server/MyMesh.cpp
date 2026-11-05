@@ -868,7 +868,7 @@ bool MyMesh::setRxBoostedGain(bool enable) {
   return radio_driver.setRxBoostedGainMode(enable);
 }
 
-void MyMesh::saveIdentity(const mesh::LocalIdentity &new_id) {
+bool MyMesh::saveKey(const mesh::LocalIdentity &new_id) {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   IdentityStore store(*_fs, "");
 #elif defined(ESP32)
@@ -878,8 +878,34 @@ void MyMesh::saveIdentity(const mesh::LocalIdentity &new_id) {
 #else
 #error "need to define saveIdentity()"
 #endif
-  store.save("_main", new_id);
+  return store.save("_main", new_id);
 }
+
+void MyMesh::saveIdentity(const mesh::LocalIdentity &new_id) { saveKey(new_id); }
+
+#ifdef ENABLE_MECON_IFACE
+bool MyMesh::rotSaveKey(void* u, const mesh::LocalIdentity& id) { return static_cast<MyMesh*>(u)->saveKey(id); }
+bool MyMesh::rotDrop(void* u) { return static_cast<MyMesh*>(u)->dropOldKeyState(); }
+
+// Drops what belonged to the old key.
+bool MyMesh::dropOldKeyState() {
+  bool dropped = acl.clear() && !AtomicFile::exists(_fs, "/s_contacts");   // the shared secrets were made with the old key
+  memset(posts, 0, sizeof(posts));   // the old owner's room
+  next_post_idx = 0;
+  return dropped;
+}
+
+void MyMesh::rotationBegin() {
+  _rotation.begin(_fs, &self_id, rotSaveKey, rotDrop, this);
+  _rotation.recoverAtBoot();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop
+}
+
+int MyMesh::rotateIdentity(const char* device_id_hex, uint32_t job_id, const char** err) {
+  const int r = _rotation.run(device_id_hex, job_id, err);
+  if (r) sendSelfAdvertisement(0, false);   // one, zero hop
+  return r;
+}
+#endif
 
 void MyMesh::startRegionsLoad() {
   temp_map.resetFrom(region_map);   // rebuild regions in a temp instance

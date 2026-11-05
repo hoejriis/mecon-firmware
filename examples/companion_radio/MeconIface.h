@@ -8,6 +8,7 @@
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/ChannelOps.h>
 #include <helpers/iface/ContactOps.h>
+#include <helpers/iface/IdentityRotation.h>
 #include <helpers/iface/InboxOps.h>
 #include <helpers/iface/MessageOps.h>
 #include <helpers/iface/MgmtChannel.h>
@@ -85,6 +86,7 @@ public:
   Iface::MessageHost messageHost(bool create);   // message.* operations; create: make the outcome table if there is none
   Iface::MessageTable* messages() const { return _messages; }
   Iface::Inbox& inbox() { return _inbox; }   // inbox.* operations: the manager's copy of what the Companion receives
+  Iface::InboxHost inboxHost();
   Iface::MgmtHost mgmtHost();         // the management channel binding (mgmt.channel.*; MeconMgmt.cpp)
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }

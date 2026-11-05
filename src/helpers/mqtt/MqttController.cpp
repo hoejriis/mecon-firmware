@@ -1,4 +1,5 @@
 #include "MqttController.h"
+#include "../iface/Wipe.h"
 #include "../CryptoRNG.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -265,10 +266,15 @@ void MqttController::takeResult() {
   _cur_port = j.port;
   _core.onConnected(now, j.tls && j.has_anchor);
   _sessions++;
-  if (_cli_fn) _psc.subscribe(_req_topic);   // before the status, so a client that sees the status can send at once
+  if (_cli_fn) _psc.subscribe(_req_topic);
   if (_iface_fn) _psc.subscribe(_iface_req);
-  if (_cli_fn || _iface_fn) _cli_open_at = millis() + CLI_SETTLE_MS;
-  publishStatus();
+  if (_cli_fn || _iface_fn) {
+    // The status waits for the window onMessage() ignores requests in, so a client that sees "online" can send at once.
+    _cli_open_at = millis() + CLI_SETTLE_MS;
+    _status_due = true;
+  } else {
+    publishStatus();
+  }
 }
 
 void MqttController::trampoline(char* topic, uint8_t* payload, unsigned int len) {
@@ -292,11 +298,22 @@ Cli::Context MqttController::sessionContext() const {
 
 // One device-interface request (DEVICE_INTERFACE.md section 7). Same session context and the same retained-message
 // guard as the CLI topic; the result envelope goes to .../resp, never retained.
+//
+// payload sits in PubSubClient's one buffer, and a job's state change publishes its event while the request is still being
+// handled, which writes over that buffer. So the request is handled from a copy of its own.
 void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
   char* out = static_cast<char*>(malloc(IFACE_PACKET_BUFFER));
-  if (!out) return;
-  const size_t n = _iface_fn(_iface_user, sessionContext(), payload, len, out, IFACE_PACKET_BUFFER - 64);
-  if (n) _psc.publish(_iface_resp, (const uint8_t*)out, (unsigned)n, false);
+  uint8_t* req = static_cast<uint8_t*>(malloc(len + 1));
+  if (out && req) {
+    memcpy(req, payload, len);
+    req[len] = 0;
+    const size_t n = _iface_fn(_iface_user, sessionContext(), req, len, out, IFACE_PACKET_BUFFER - 64);
+    if (n) _psc.publish(_iface_resp, (const uint8_t*)out, (unsigned)n, false);
+  }
+  if (req) {
+    Iface::wipe(req, len + 1);   // a write may have carried a secret
+    free(req);
+  }
   free(out);
 }
 
@@ -350,7 +367,8 @@ void MqttController::loop() {
     if (!_psc.loop()) {
       dropTransport();
       _core.onSessionLost(now, MqttFail::Dropped);
-    } else if ((int32_t)(now - _next_status) >= 0) {
+    } else if (_status_due ? (int32_t)(now - _cli_open_at) >= 0 : (int32_t)(now - _next_status) >= 0) {
+      _status_due = false;
       publishStatus();
     }
   }
