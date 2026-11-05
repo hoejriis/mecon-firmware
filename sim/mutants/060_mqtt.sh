@@ -169,3 +169,5 @@ MQ_DATES=$MQ_SIM::test_an_expired_certificate_is_refused_by_a_set_clock_and_pass
 mutate mqtt_dates_always_judged $MQ_CTRL "  oa.dates_unknown = j.dates_unknown;" "  oa.dates_unknown = false;" $MQ_DATES
 mutate mqtt_dates_never_judged $MQ_CTRL "  j.dates_unknown = _clock_known && !_clock_known();" "  j.dates_unknown = true;" $MQ_DATES
 mutate mqtt_clock_check_not_wired examples/companion_radio/main.cpp "      mqttController().setClockKnown([]() -> bool { return rtc_clock.isSet(); });" "" $MQ_DATES
+mutate mqtt_cert_expiry_not_compared src/helpers/mqtt/MqttProfiles.cpp "return certStamp(now) >= certStamp(from) && certStamp(now) <= certStamp(to);" "return certStamp(now) >= certStamp(from);" unit:test_mqtt_prefs
+mutate mqtt_cert_not_before_not_compared src/helpers/mqtt/MqttProfiles.cpp "return certStamp(now) >= certStamp(from) && certStamp(now) <= certStamp(to);" "return certStamp(now) <= certStamp(to);" unit:test_mqtt_prefs

@@ -64,6 +64,14 @@ static int b64val(char c) {
   return -1;
 }
 
+static uint64_t certStamp(const MqttCertTime& t) {
+  return ((uint64_t)t.year * 12 + t.mon) * 2678400ULL + (uint64_t)t.day * 86400 + (uint64_t)t.hour * 3600 + (uint64_t)t.min * 60 + t.sec;
+}
+
+bool mqttCertDatesHold(const MqttCertTime& from, const MqttCertTime& to, const MqttCertTime& now) {
+  return certStamp(now) >= certStamp(from) && certStamp(now) <= certStamp(to);
+}
+
 int mqttCaDecode(const char* b64, uint8_t* der, size_t cap) {
   size_t n = 0;
   uint32_t acc = 0;
