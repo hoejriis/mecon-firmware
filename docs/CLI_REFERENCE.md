@@ -144,7 +144,7 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | `reboot` | Restart the node. | stock | reboot | No reply is sent. Only the exact line `reboot` is the reboot class; the handler also reboots on a line that merely starts with `reboot` (for example `reboot now`), and that line is classified `write`. |
 | `poweroff` | Power the board off. | stock, behaviour changed | destructive | Stock let any remote admin run it. Now the cable only; a remote admin gets `ERR: not permitted`. Needs someone on site to power the board on again. Matched by prefix. |
 | `shutdown` | Same as `poweroff`. | stock, behaviour changed | destructive | As `poweroff`. |
-| `clkreboot` | Reset the clock to 15 May 2024 and reboot. | stock | write | Classified `write`, not `reboot`: refused for a Hardened remote admin. |
+| `clkreboot` | Reset the clock to 15 May 2024 and reboot. The clock then counts as not set. | stock | write | Classified `write`, not `reboot`: refused for a Hardened remote admin. |
 | `advert` | Send a flood advert. | stock | write | Matched by prefix (any line starting `advert` that is not `advert.zerohop`). |
 | `advert.zerohop` | Send a zero-hop advert. | stock | write |  |
 | `clock` | Show the time (UTC). | stock | read | Exactly `clock`. |
@@ -230,7 +230,7 @@ The posture and audit commands are handled in the Repeater and Room server front
 | `get posture` | Show the posture. | MECON | read | `> normal` or `> hardened`; a remote reader may ask. |
 | `set posture hardened` | Raise the posture to Hardened. | MECON | posture | Cable. Remote callers are refused and audited (`ERR: not permitted`). Saved atomically with its audit entry. |
 | `set posture normal confirm` | Lower the posture to Normal. | MECON | posture | Cable only. Without `confirm` the reply is `ERR: lowering the posture needs: set posture normal confirm` and nothing changes. An argument other than `hardened` or `normal` gives `ERR: set posture hardened \| set posture normal confirm`. |
-| `get audit [start]` | Read the audit log: two entries per reply, newest first, `... next:<n>` continues. | MECON | posture | `> <n> entries` then `<time> <event> <caller> <what> x<count>`. Cable only on these roles; every remote caller is refused (`ERR: not permitted`). |
+| `get audit [start]` | Read the audit log: two entries per reply, newest first, `... next:<n>` continues. | MECON | posture | `> <n> entries` then `<time> <event> <caller> <what> x<count>`. `<time>` is 0 for an entry recorded while the clock was not set. Cable only on these roles; every remote caller is refused (`ERR: not permitted`). |
 
 ### Repeater only
 

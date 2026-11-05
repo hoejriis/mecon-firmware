@@ -59,6 +59,9 @@ public:
 
   AuditRing() { clear(); }
 
+  // Whether the time passed to add() is a real one; unset: it is taken as given.
+  void setClockCheck(bool (*clock_set)()) { _clock_set = clock_set; }
+
   void clear() {
     memset(e, 0, sizeof(e));
     memset(serial, 0, sizeof(serial));
@@ -72,6 +75,7 @@ public:
   // and moved to the newest position. Posture changes, connectivity-mode changes and factory resets are flushed at once, the rest
   // at most every FLUSH_INTERVAL_MS (the first one after a boot at once).
   void add(uint32_t ts, uint8_t event, uint8_t caller, uint8_t what) {
+    if (_clock_set && !_clock_set()) ts = 0;   // a guessed time is not a record of when
     int at = find(event, caller, what);
     AuditEntry rec = {ts, event, caller, what, 1};
     if (at >= 0) {
@@ -231,6 +235,7 @@ public:
 
 private:
   bool _dirty, _urgent, _flushed_once;
+  bool (*_clock_set)() = nullptr;
   uint32_t _last_flush;
 
   int find(uint8_t event, uint8_t caller, uint8_t what) const {

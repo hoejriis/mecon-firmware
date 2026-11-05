@@ -1,4 +1,5 @@
 #include "SensorMesh.h"
+#include <helpers/AuditLog.h>
 #ifdef ESP32
   #include <helpers/esp32/SpiffsBoot.h>
 #endif
@@ -57,6 +58,7 @@ static char command[160];
 static bool command_dropping = false;   // inside an over-long console line (#165)
 
 void setup() {
+  Posture::audit().setClockCheck([]() -> bool { return the_mesh.getRTCClock()->isSet(); });
   Serial.begin(115200);
   delay(1000);
 

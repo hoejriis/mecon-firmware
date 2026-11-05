@@ -104,13 +104,14 @@ void BaseChatMesh::noteDirectMessage(const ContactInfo& contact) {
 }
 
 void BaseChatMesh::bootstrapRTCfromContacts() {
+  if (getRTCClock()->isSet()) return;   // a real time, kept over a soft reset or on a chip: a guess must not replace it
   ensureContacts();
   uint32_t latest = cstore.newestLastmod();
   for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
     if (anon[i].lastmod > latest) latest = anon[i].lastmod;
   }
   if (latest != 0) {
-    getRTCClock()->setCurrentTime(latest + 1);
+    getRTCClock()->setGuess(latest + 1);
   }
 }
 

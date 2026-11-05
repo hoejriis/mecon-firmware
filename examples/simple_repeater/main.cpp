@@ -1,4 +1,5 @@
 #include <Arduino.h>   // needed for PlatformIO
+#include <helpers/AuditLog.h>
 #include <helpers/BootTimes.h>
 #include <helpers/BootPresence.h>
 #include <Mesh.h>
@@ -56,7 +57,7 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   }
   static uint8_t ifacePosture(void*) { return the_mesh.getNodePrefs()->posture; }
   static uint16_t ifaceBattery(void*) { return board.getBattMilliVolts(); }
-  static uint32_t ifaceClock(void*) { return the_mesh.getRTCClock()->getCurrentTime(); }
+  static uint32_t ifaceClock(void*) { return the_mesh.getRTCClock()->knownTime(); }
   static const char* const ROT_REMOVED[] = {"acl", nullptr};
   static int ifaceRotate(void*, const char* device_id_hex, uint32_t job_id, const char** err) {
     return the_mesh.rotateIdentity(device_id_hex, job_id, err);
@@ -88,6 +89,7 @@ static unsigned long userBtnDownAt = 0;
 #endif
 
 void setup() {
+  Posture::audit().setClockCheck([]() -> bool { return the_mesh.getRTCClock()->isSet(); });
 #if defined(ESP_PLATFORM) && defined(ENABLE_MECON_IFACE)
   // A device-interface line is up to 1,600 bytes. Over a board's native USB (Heltec V4) the host delivers it at USB
   // speed, faster than the loop drains the default 256-byte buffer, and the rest is lost; a UART at 115200 is slow enough.
