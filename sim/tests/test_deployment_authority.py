@@ -248,6 +248,17 @@ def test_an_older_job_id_is_a_replay_and_a_newer_one_runs(nodes):
     assert r["status"] == "refused" and r["error"] == "replay", r
 
 
+def test_a_resend_at_the_mark_is_answered_and_not_run_again(nodes):
+    """contact.put says whether it created the contact, so a second run would answer differently."""
+    d = boot(nodes, "rs")
+    d.provision()
+    w = wrap(d.node_key, "contact.put", {"key": "ab" * 32, "name": "once", "type": "chat"}, job=1)
+    r = d.send(w)
+    assert r["status"] == "ok" and r["result"]["created"] is True, r
+    again = d.send(w)
+    assert again["result"]["created"] is True and bare(again) == bare(r), again
+
+
 def _marks_files(d):
     out = []
     for root, _, names in os.walk(d.n.dir):
