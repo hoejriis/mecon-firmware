@@ -223,16 +223,20 @@ A revert therefore always finds data the previous image can read. A forced rever
 - HTTPS: 32.9 s, about 53 KB/s; free heap fell from 74 KB to 11 KB, the largest block to 7 KB, and the lowest point was 3.5 KB. That is why step 12 asks 96 KB for HTTPS.
 - There was no broker session open during either.
 
-**Measured, a push over a TLS-verified broker session, 2026-11-05.** Standalone Companion, chunks of 1,024 bytes, session up throughout, the image attested and confirmed over the broker in every run:
+**Measured, a push over a TLS-verified broker session, 2026-11-05.** Chunks of 1,024 bytes, session up throughout, the image attested and confirmed over the broker in every run; a standalone Companion unless the row says otherwise:
 
 | Board | Runs | Image | Time | Retries | Lowest free | Lowest largest block |
 |---|---|---|---|---|---|---|
 | Heltec V3 | 3 | 1.74 MB | 184 to 198 s | 0 of 5,091 chunks | 11,740 to 15,468 | 12,788 to 14,836 |
 | Heltec V4 | 1 | 1.72 MB | 107 s | 0 of 1,684 chunks | 84,824 | 31,732 |
+| Heltec V3, six streams and radio traffic | 2 | 1.74 MB | 186 and 192 s | 0 of 3,395 chunks | 15,604 and 14,716 | 14,324 and 13,300 |
+| Heltec V3 Repeater, six streams and radio traffic | 1 | 1.51 MB | 158 s | 0 of 1,474 chunks | 129,264 | 69,620 |
+| Heltec V3 Room server, six streams and radio traffic | 1 | 1.50 MB | 161 s | 0 of 1,469 chunks | 125,576 | 65,524 |
 
 - On a V3 a push costs about 23 KB. In one V3 run the broker ended the session mid-transfer: a new verified session came up in 10 s, at about 32 KB free, and the transfer went on.
 - The broker carried about 3.1 MB in, and about the same out, for the V3's image. A second client's ping through a bench broker showed no change, with a 115 ms floor of its own, from one device.
-- These runs had no streams subscribed and no radio traffic.
+- The streams were health, radio, runtime, observations, connectivity and logs, over the broker. The radio traffic was light: one short channel message from another board every 18 s, on a private setting.
+- A V3 on a verified session is idle at 34.7 to 39 KB free, which is the range the 20 KB check admits. One under it is refused; a reboot gives it a fresh session's 39 KB.
 
 **Measured, a download beside a verified session, 2026-11-05.** A V4 over HTTPS, 1.72 MB: about 16 s, lowest free 39,728, session up throughout. A V3 over plain HTTP: finished, but with 2 KB free at its lowest, which is why HTTP asks for 64 KB. A V3 with the session closed: plain HTTP lowest 33,300, HTTPS failed 2 of 3 times and reached 1 KB; so a V3 pushes.
 
