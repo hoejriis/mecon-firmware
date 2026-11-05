@@ -44,6 +44,7 @@ int main(int argc, char** argv) {
     else if (a == "--seed") g_sim.seed = strtoul(next(), nullptr, 10);
     else if (a == "--time-scale") g_sim.time_scale = atof(next());
     else if (a == "--lockstep") g_sim.lockstep = true;
+    else if (a == "--serial-stutter") g_sim.serial_stutter = strtoul(next(), nullptr, 10);
     else if (a == "--quantum-us") g_sim.quantum_us = strtoul(next(), nullptr, 10);
     else if (a == "--wifi-env") g_sim.wifi_env = next();
     else if (a == "--mqtt-env") g_sim.mqtt_env = next();
