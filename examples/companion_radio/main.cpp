@@ -198,6 +198,7 @@ static uint64_t ifaceConnSignature() {
 #endif  // ENABLE_MECON_IFACE
 
 void setup() {
+  Posture::audit().setClockCheck([]() -> bool { return rtc_clock.isSet(); });
 #if defined(ENABLE_MECON_IFACE) && defined(ESP32)
   // A multi-frame interface request arrives as one burst; a native USB port (TinyUSB CDC) delivers it at full speed
   // and drops what its receive queue cannot hold (seen on v4test). Sized per board: MECON_IFACE_SERIAL_RX.

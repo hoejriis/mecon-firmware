@@ -144,8 +144,8 @@ void MeconIface::jobChanged(void* user, const Iface::Job& j) {
   MeconIface* m = static_cast<MeconIface*>(user);
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
   if (!ev) return;   // the state is still in job.get and job.list
-  const uint32_t ts = m->_mesh->getRTCClock()->getCurrentTime();
-  int n = m->_jobs.writeEvent(ev, RESULT_MAX, m->_epoch, ts >= 1704067200, ts, j);
+  const uint32_t ts = m->_mesh->getRTCClock()->knownTime();
+  int n = m->_jobs.writeEvent(ev, RESULT_MAX, m->_epoch, ts != 0, ts, j);
   if (n > 0) n = m->_prov.sign("job", ev, (size_t)n, RESULT_MAX);
   if (n > 0) {
     for (Link& l : m->_links) {

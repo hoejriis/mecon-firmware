@@ -94,10 +94,12 @@ const char* SimBoard::getResetReasonString(uint32_t reason) {
 void SimBoard::reboot() { fflush(NULL); exit(75); }
 void SimBoard::powerOff() { fflush(NULL); exit(0); }
 
-SimRTCClock::SimRTCClock() { _base = 0; _set_at_us = 0; _init = false; }
+SimRTCClock::SimRTCClock() { _base = 0; _set_at_us = 0; _init = false; _set = false; }
 uint32_t SimRTCClock::getCurrentTime() {
   if (!_init) { _init = true; _base = g_sim.rtc_epoch; } return _base + (uint32_t)((sim_clock()->nowUs() - _set_at_us) / 1000000); }
-void SimRTCClock::setCurrentTime(uint32_t t) { _init = true; _base = t; _set_at_us = sim_clock()->nowUs(); }
+void SimRTCClock::setCurrentTime(uint32_t t) { _init = true; _set = true; _base = t; _set_at_us = sim_clock()->nowUs(); }
+bool SimRTCClock::isSet() { return _set || !g_sim.rtc_unset; }
+void SimRTCClock::setGuess(uint32_t t) { setCurrentTime(t); _set = false; }
 
 bool radio_init() {
   radio_driver.begin();

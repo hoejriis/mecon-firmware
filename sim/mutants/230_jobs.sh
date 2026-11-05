@@ -54,3 +54,7 @@ mutate apply_batch_left_open src/helpers/PrefsBatch.h '  state() = State();
   if (s.save)' '  if (s.save)' sim/tests/test_device_interface.py::test_apply_writes_through_the_cli_and_survives_a_reboot
 # the operation matrix accounts for what hello says (#268)
 mutate op_without_a_matrix_row examples/companion_radio/MeconIface.cpp 'const char* const CAPABILITIES[] = {"hello", ' 'const char* const CAPABILITIES[] = {"zz.op", "hello", ' sim/tests/test_operations_matrix.py
+mutate revert_saves_per_key src/helpers/iface/IfaceConfig.cpp '  PrefsBatch::begin();   // as for the apply: one save after the last line, before the snapshot goes' '' sim/tests/test_device_interface.py::test_a_revert_saves_the_prefs_once_and_puts_back_every_key
+mutate revert_owed_save_dropped src/helpers/iface/IfaceConfig.cpp '  PrefsBatch::end();
+  if (buf) { wipe(buf, ConfigSnap::IMAGE_MAX); free(buf); }' '  PrefsBatch::state() = PrefsBatch::State();
+  if (buf) { wipe(buf, ConfigSnap::IMAGE_MAX); free(buf); }' sim/tests/test_device_interface.py::test_a_revert_saves_the_prefs_once_and_puts_back_every_key

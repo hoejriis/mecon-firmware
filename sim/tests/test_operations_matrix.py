@@ -58,7 +58,7 @@ def hello(nodes, kind):
 
 def test_the_table_is_read():
     rows = matrix()
-    assert len(rows) > 30 and rows["hello"] == {"C", "R", "S"} and "R" not in rows["channel.list"]
+    assert len(rows) > 30 and rows["hello"] == {"C", "R", "S"} and "R" not in rows["message.send"]
 
 
 @pytest.mark.parametrize("kind,role", ROLES.items())

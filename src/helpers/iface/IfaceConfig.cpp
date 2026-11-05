@@ -352,6 +352,7 @@ bool configRevert(const ConfigHost& h, const Job& j, bool* reboot) {
   }
   ConfigSnap::Rec r;
   char line[LINE_MAX], reply[LINE_MAX];
+  PrefsBatch::begin();   // as for the apply: one save after the last line, before the snapshot goes
   for (int i = 0; ok && s->rec(i, &r); i++) {
     // Every record is tried; one that fails leaves the job failed, never pending.
     const bool line_ok = restoreLine(tk, nk, r, line, sizeof(line));
@@ -360,6 +361,7 @@ bool configRevert(const ConfigHost& h, const Job& j, bool* reboot) {
     wipe(line, sizeof(line));
     wipe(reply, sizeof(reply));
   }
+  PrefsBatch::end();
   if (buf) { wipe(buf, ConfigSnap::IMAGE_MAX); free(buf); }
   delete s;
   ch->snap->discard();

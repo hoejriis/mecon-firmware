@@ -274,6 +274,32 @@ def _renames(path):
     return int(dict(kv.split("=") for kv in open(path).read().split())["rename"])
 
 
+def test_a_revert_saves_the_prefs_once_and_puts_back_every_key(nodes, tmp_path):
+    """A revert key by key held the main loop about 6 s for a broker profile, as an apply did before it saved once."""
+    calls = str(tmp_path / "calls")
+    n = nodes("companion_standalone", "rev_save", seed=12, rtc=RTC, extra=["--fs-calls", calls]).start()
+    c, i = client(n)
+
+    def revert_cost(keys):
+        r = i.request("config.apply", {"set": keys, "confirm": {"within_s": 300}})
+        assert r["status"] == "ok" and r["result"]["state"] == "awaiting-confirm", r
+        before = _renames(calls)
+        q = i.request("job.cancel", {"job": r["result"]["job"]})
+        assert q["status"] == "ok", q
+        return _renames(calls) - before
+
+    assert i.request("config.apply", {"set": {"wifi.profile.1.ssid": "first", "wifi.profile.1.priority": 10}})["status"] == "ok"
+    one = revert_cost({"wifi.profile.1.ssid": "other"})
+    three = revert_cost({"wifi.profile.1.ssid": "other", "wifi.profile.1.priority": 60, "wifi.profile.2.ssid": "lab"})
+    assert three == one, "three keys cost one save, as one key does"
+    v = i.request("config.get", {"keys": ["wifi.profile.1.ssid", "wifi.profile.1.priority", "wifi.profile.2.ssid"]})["result"]["values"]
+    assert v == {"wifi.profile.1.ssid": "first", "wifi.profile.1.priority": 10, "wifi.profile.2.ssid": ""}, v
+    n.stop()
+    n.start()
+    c, i = client(n)
+    assert i.request("config.get", {"keys": ["wifi.profile.1.ssid"]})["result"]["values"] == {"wifi.profile.1.ssid": "first"}, "the one save reached the flash"
+
+
 def test_an_apply_saves_the_prefs_once_and_a_cut_leaves_all_or_none(nodes, tmp_path):
     """Issue #231: one prefs save per key made a broker profile take about 10 s on a V4, and a power cut kept some keys."""
     calls = str(tmp_path / "calls")
