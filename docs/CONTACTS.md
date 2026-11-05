@@ -13,7 +13,7 @@ Everything that touched `contacts[]`, `num_contacts` or `sort_array`, and everyt
 | Function | What it does with the table | Why it matters for a cache |
 |---|---|---|
 | constructor, `resetContacts()` | zero the first `MAX_ANON_CONTACTS` (8) slots, `num_contacts = 8` | the 8 anon slots are transient (type `ADV_TYPE_NONE`), never saved, used for anonymous requests (login to a repeater, room) |
-| `bootstrapRTCfromContacts()` | scan all for the newest `lastmod` | needs `lastmod` of every contact, not their bodies |
+| `bootstrapRTCfromContacts()` (only while the clock is not set; the result still counts as not set) | scan all for the newest `lastmod` | needs `lastmod` of every contact, not their bodies |
 | `allocateContactSlot(transient_only)` | transient: oldest anon slot; else append, or (if `shouldOverwriteWhenFull()`) replace the non-favourite with the oldest `lastmod` and raise `onContactOverwrite()` before reuse; `NULL` when full and nothing may be replaced | the only place eviction happens |
 | `onAdvertRecv()` | scan all for `id.matches()`, replay check on `last_advert_timestamp`, allocate for a new contact, fill it in place through the returned pointer | holds a `ContactInfo*` across `allocate` and the callbacks |
 | `searchPeersByHash()` | scan all, store the matching **indexes** in `matching_peer_indexes[]` (up to 24) for the later `getPeerSharedSecret(peer_idx)` / `onPeerDataRecv(sender_idx)` calls of the same packet | an index must stay meaningful between the three calls |

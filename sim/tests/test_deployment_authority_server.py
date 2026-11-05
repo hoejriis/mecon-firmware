@@ -500,3 +500,13 @@ def test_the_server_secret_is_in_no_reply_or_text_and_goes_with_the_record(nodes
         assert not os.path.isfile(p) or bytes.fromhex(SECRET) not in open(p, "rb").read(), f
     from sim import harness
     assert harness.files_containing(d.n, SECRET) == []
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_a_byte_that_arrives_while_a_line_is_collected_stays_with_that_line(nodes, kind):
+    """--serial-stutter makes the interface's read see an empty buffer with bytes waiting, so the stock reader that runs next
+    would take one. The window is microseconds on a board; here it comes up on every line."""
+    d = boot(nodes, kind, "race" + kind[:2], 95, extra=["--serial-stutter", "7"])
+    for k in range(3):
+        rid = "p%d" % k
+        d.i.send_raw(json.dumps({"v": 1, "id": rid, "op": "hello", "args": {"pad": "x" * 800}}))
+        assert d.i.wait_result(rid, 5)["status"] == "ok", "line %d" % k

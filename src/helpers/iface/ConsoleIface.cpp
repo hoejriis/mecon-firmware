@@ -439,7 +439,7 @@ void ConsoleIface::jobChanged(void* user, const Job& j) {
   if (!s->_out || s->_collecting) return;
   char ev[512 + Job::RESULT_CAP];
   const uint32_t ts = s->_host.clock_s ? s->_host.clock_s(s->_host.user) : 0;
-  int n = s->_jobs.writeEvent(ev, sizeof(ev), s->_epoch, ts >= 1704067200, ts, j);
+  int n = s->_jobs.writeEvent(ev, sizeof(ev), s->_epoch, ts != 0, ts, j);
   if (n > 0) n = s->_prov.sign("job", ev, (size_t)n, sizeof(ev));
   if (n > 0) s->printLine(*s->_out, ev, (size_t)n);
 }

@@ -546,8 +546,7 @@ bool MyMesh::keepReceived(mesh::Packet* pkt, const uint8_t* from, int channel, u
   if (!e) return true;
   pkt->calculatePacketHash(e->hash);
   e->ts = ts;
-  const uint32_t now = getRTCClock()->getCurrentTime();
-  e->rx_ts = now >= 1704067200 ? now : 0;
+  e->rx_ts = getRTCClock()->knownTime();
   e->rx_ms = millis();
   if (from) memcpy(e->from, from, sizeof(e->from));
   if (signer) memcpy(e->signer, signer, sizeof(e->signer));

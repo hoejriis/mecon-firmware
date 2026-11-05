@@ -121,6 +121,22 @@ public:
   virtual void setCurrentTime(uint32_t time) = 0;
 
   /**
+   * \returns  true when a real source (an app, a manager, GPS) has set the time. A clock that only runs on from a seed or
+   *           a guess reads as a plausible date, so the value cannot tell. Kept across a soft reset where the time is.
+  */
+  virtual bool isSet() { return false; }
+
+  /**
+   * \param time  a time to run on from that no real source gave (the newest contact's, a reset): isSet() stays false.
+  */
+  virtual void setGuess(uint32_t time) { setCurrentTime(time); }
+
+  /**
+   * \returns  the current time, or 0 while it is not set: what a report may state as the time.
+  */
+  uint32_t knownTime() { return isSet() ? getCurrentTime() : 0; }
+
+  /**
    * override in classes that need to periodically update internal state
    */
   virtual void tick() { /* no op */}
