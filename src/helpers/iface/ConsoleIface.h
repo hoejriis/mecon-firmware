@@ -17,6 +17,8 @@
 #include "helpers/updates/UpdService.h"
 #include "Provenance.h"
 #include "Streams.h"
+#include "MgmtChannel.h"
+#include "MgmtSlot.h"
 
 namespace Iface {
 
@@ -58,6 +60,11 @@ public:
     int (*rotate)(void* user, const char* device_id_hex, uint32_t job_id, const char** err);
     bool (*read_rotation)(void* user, char* text, size_t tcap, char* sig_b64, size_t scap);
     const char* const* removed;   // null-terminated
+    // The management channel (MANAGEMENT_CHANNEL.md section 6): its slot, binding record and pending change's snapshot.
+    // Null: the role offers none.
+    SnapStore* mgmt_slot;
+    SnapStore* mgmt_record;
+    SnapStore* mgmt_snap;
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |
@@ -87,6 +94,8 @@ public:
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
   ConfigHost configHost();
+  ChannelHost channelHost() { return _mgmt_slot.host(); }
+  MgmtHost mgmtHost();
   SubSet& subs() { return _subs; }
   uint32_t produced() const { return streamsProduced(); }
   void scheduleStream(int stream, uint32_t now) {
@@ -114,6 +123,12 @@ private:
   static bool jobClasses(void* self, uint8_t cls);
   static void jobChanged(void* self, const Job& j);
   mesh::LocalIdentity* _old_id = nullptr;   // the key identity.rotate retired: signs that one result, then is wiped
+  MgmtSlot _mgmt_slot;
+  ChannelHost _chan_host = {};
+  uint8_t _public_fp[MGMT_FP_BYTES] = {0};
+  static bool mgmtSlotFp(void* user, int slot, uint8_t out[MGMT_FP_BYTES]);
+  static void mgmtKeyFp(void* user, const uint8_t key[CHANNEL_SECRET_BYTES], uint8_t out[MGMT_FP_BYTES]);
+  static bool mgmtReadSlot(void* user, int slot, char name[CHANNEL_NAME_MAX + 1], uint8_t key[CHANNEL_SECRET_BYTES]);
   ConfirmHost _confirm = {};
   uint32_t _reboot_at = 0;     // a revert restored a key, or an update activated or reverted an image (0: none)
   static bool cliAllow(void* self, const char* line);

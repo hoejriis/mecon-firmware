@@ -1,6 +1,6 @@
 # Management channel
 
-> Every role has a management channel. A Companion binds one slot of its native channel table, as this page specifies. A Repeater or Room server, which has no channel table, holds a single management channel with the same operations and commit-or-revert, and no general channel messaging (owner decision of 2026-11-01; its storage and any differences are not yet specified here). A device lists these operations in `hello` only where it supports them. What travels over the channel is defined in [management over LoRa](LORA_MANAGEMENT.md).
+> Every role has a management channel. A Companion binds one slot of its native channel table, as this page specifies. A Repeater or Room server, which has no channel table, holds a single slot with the same operations and commit-or-revert (section 6). A device lists these operations in `hello` only where it supports them. What travels over the channel is defined in [management over LoRa](LORA_MANAGEMENT.md).
 
 A device can mark one of its native channels as its **management channel**: the private channel a manager reaches it
 on over LoRa. This page defines how that channel is configured. It does not define what travels over it.
@@ -90,3 +90,12 @@ A `channel.put` of the bound slot that is allowed (by the cable, or confirmed) m
 The key is written, never read back: results carry the slot's name, its one-byte on-air hash and its key size. The
 fingerprint is not reported. The snapshot's copy of the old key is wiped from memory once written, and removed with the
 snapshot. Every copy of a key the firmware handles for these operations is wiped once used.
+
+## 6. Repeater and Room server
+
+A Repeater or Room server has no native channel table, so it holds one slot of its own.
+
+- **One slot, slot 0.** `channel.list`, `channel.get`, `channel.put`, `channel.remove` and `mgmt.channel.*` work as on a Companion, on this slot. Another slot number is refused. A slot starts empty, with no public channel: a manager sets a channel and binds it.
+- **Its own file.** `/mgmt_slot` holds the name and the 128-bit key, written atomically and checked with a CRC. A damaged file reads as an empty slot, so the binding is stale. The binding record and the pending change's snapshot are the same files as on a Companion.
+- **No channel messaging.** The slot takes no part in sending or receiving channel messages on these roles, and binding it changes nothing about repeating.
+- **The cable and a signature.** Over the USB console an unsigned change needs no confirmation, as on a Companion. Once enrolled, a change must be signed, and a signed caller is not the cable, so it asks to confirm.
