@@ -47,7 +47,8 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
-                                    "message.send", "message.get", "message.list", "message.ack"
+                                    "message.send", "message.get", "message.list", "message.ack",
+                                    "inbox.list", "inbox.ack"
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -60,6 +61,8 @@ Status opMsgSend(OpContext& c);
 Status opMsgGet(OpContext& c);
 Status opMsgList(OpContext& c);
 Status opMsgAck(OpContext& c);
+Status opInbList(OpContext& c);
+Status opInbAck(OpContext& c);
 Status opSchema(OpContext& c);
 Status opGet(OpContext& c);
 Status opApply(OpContext& c);
@@ -134,6 +137,9 @@ const OpEntry OPS[] = {
   {"message.get", opMsgGet, PRIV_READ, false},
   {"message.list", opMsgList, PRIV_READ, false},
   {"message.ack", opMsgAck, PRIV_READ, false},
+  // Received messages (section 6.4): their text and sender are private, and neither read touches the native queue.
+  {"inbox.list", opInbList, PRIV_READ, false},
+  {"inbox.ack", opInbAck, PRIV_READ, false},
   // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
   {"channel.list", opChanList, PRIV_READ, false},
   {"channel.get", opChanGet, PRIV_READ, false},
@@ -245,6 +251,11 @@ Status opStatus(OpContext& c) {
   w.key("open"); w.num(m->messages() ? m->messages()->open() : 0);
   w.key("owed"); w.num(m->messages() ? m->messages()->owed() : 0);
   w.endObject();
+  w.key("inbox"); w.beginObject();      // the same for what was received, counted even while no slots exist
+  w.key("received"); w.unum(m->inbox().received());
+  w.key("unread"); w.num(m->inbox().unread());
+  w.key("lost"); w.unum(m->inbox().lost());
+  w.endObject();
   m->updates().writeAttestation(w);
   return ST_OK;
 }
@@ -320,6 +331,18 @@ Status opMsgGet(OpContext& c) { return mayReadPrivate(c) ? withMessages(c, opMes
 Status opMsgList(OpContext& c) { return mayReadPrivate(c) ? withMessages(c, opMessageList, false) : ST_REFUSED; }
 Status opMsgAck(OpContext& c) { return mayReadPrivate(c) ? withMessages(c, opMessageAck, false) : ST_REFUSED; }
 
+__attribute__((noinline)) Status withInbox(OpContext& c, Status (*op)(OpContext&)) {
+  if (!mayReadPrivate(c)) return ST_REFUSED;
+  InboxHost host{&self(c)->inbox(), self(c)->epoch(), (uint32_t)millis()};
+  OpContext cc = c;
+  cc.user = &host;
+  Status st = op(cc);
+  c.error = cc.error;
+  return st;
+}
+Status opInbList(OpContext& c) { return withInbox(c, opInboxList); }
+Status opInbAck(OpContext& c) { return withInbox(c, opInboxAck); }
+
 Status opChanList(OpContext& c) { return mayReadPrivate(c) ? withChannels(c, opChannelList) : ST_REFUSED; }
 Status opChanGet(OpContext& c) { return mayReadPrivate(c) ? withChannels(c, opChannelGet) : ST_REFUSED; }
 // A write to the management channel's own slot goes through the binding: confirm-or-revert for a remote caller.
@@ -377,17 +400,35 @@ void MeconIface::tellMessages() {
   if (!e) return;
   char data[96];
   if (!writeMessageEventData(data, sizeof(data), *e)) return;
+  tellReaders("message", ++_msg_ev_seq, data);   // if this cannot be told, the state is still in message.get and message.list
+}
+
+// An inbox event says only that something arrived, so it goes where a job event goes, and many receptions in one pass are
+// told once. A device with no Deployment gets its slots on the first inbox.list, and is told nothing until then.
+void MeconIface::tellInbox() {
+  if (!_inbox.ready() && !_inbox_tried && _auth.enrolled()) {
+    _inbox_tried = true;
+    _inbox.alloc();
+  }
+  if (!_inbox.ready() || _inbox_told == _inbox.received()) return;
+  _inbox_told = _inbox.received();
+  char data[64];
+  if (writeInboxEventData(data, sizeof(data), _inbox)) tellReaders("inbox", ++_inbox_ev_seq, data);
+}
+
+// One event to every link that may read and to the broker, on the loop's own stack, since a signed event is not small.
+void MeconIface::tellReaders(const char* ev_name, uint32_t seq, const char* data) {
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
-  if (!ev) return;   // the state is still in message.get and message.list
+  if (!ev) return;
   const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
-  int n = writeEvent(ev, RESULT_MAX, "message", ++_msg_ev_seq, _epoch, ts >= 1704067200, ts, data);
-  if (n > 0) n = _prov.sign("message", ev, (size_t)n, RESULT_MAX);
+  int n = writeEvent(ev, RESULT_MAX, ev_name, seq, _epoch, ts >= 1704067200, ts, data);
+  if (n > 0) n = _prov.sign(ev_name, ev, (size_t)n, RESULT_MAX);
   if (n > 0) {
     for (Link& l : _links) {
       if (!l.src || !l.may_read || !l.src->isConnected() || !ensureQueue(l)) continue;
       l.q->push(OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
     }
-    if (_mqtt_may_read && _ev_publish && _ev_up && _ev_up()) _ev_publish("message", ev, (size_t)n);
+    if (_mqtt_may_read && _ev_publish && _ev_up && _ev_up()) _ev_publish(ev_name, ev, (size_t)n);
   }
   free(ev);
 }
@@ -1013,6 +1054,7 @@ void MeconIface::loop(uint32_t now) {
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) board.reboot();
   streamTick(now);
   tellMessages();
+  tellInbox();
   drainLogs();   // beside streamTick, not inside it: a signed log event on top of its frame overran the loop stack (#234)
   inventoryTick(now);
   for (Link& l : _links) {

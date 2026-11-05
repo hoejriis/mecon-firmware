@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/inbox.ack.result.json",
+  "title": "Result of inbox.ack",
+  "description": "Request args: {\"epoch\",\"upto\"}. Releases and wipes everything up to that seq in this copy; the native queue is not touched. Failed with wrong-epoch for another boot's epoch, and not-received above what was received. An older upto changes nothing, so a retry of a lost reply is harmless.",
+  "type": "object",
+  "required": [
+    "epoch",
+    "acked",
+    "unread",
+    "lost"
+  ],
+  "properties": {
+    "epoch": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "acked": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unread": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8
+    },
+    "lost": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}
