@@ -227,9 +227,9 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 - **Every other operation**, including any the device does not recognise as a plain read, carries a `job_id` and is subject to section 8. A captured request can then run at most once.
 - **Sensitive operations** are those whose reply is itself secret or private:
   - `identity.key.export` and `ble.pin.get`;
-  - `sub.start` of a private stream: `screen`, `location`, `logs` and `inventory` (which carries the contact and channel entries on the Companion).
+  - `sub.start` of a private stream: `screen`, `location`, `logs` and `inventory` (which carries the contact and channel entries on the Companion). It needs the nonce alone: no `job_id`, and one sent is not looked at. The nonce already stops a replay before and after a reboot, so renewing a stream writes no mark to flash. `sub.stop` of a private stream carries a `job_id` and no nonce.
 
-  On top of the `job_id`, each must carry the `channel_nonce` the device issued for the link it arrives on. A device issues a fresh nonce per link, readable with `hello` on that link and replaced when the link drops, and a nonce is used once. A request captured on one link and replayed over another link (the attacker's own USB, BLE or broker session) fails before the reply exists.
+  On top of the `job_id` where one is required, each must carry the `channel_nonce` the device issued for the link it arrives on. A device issues a fresh nonce per link, readable with `hello` on that link and replaced when the link drops, and a nonce is used once. A request captured on one link and replayed over another link (the attacker's own USB, BLE or broker session) fails before the reply exists.
 
 ## 8. Replay
 
@@ -237,8 +237,9 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 - **Why strict, and not a window.** With a window, a request that an intermediary (a broker, a bridge) held back could still run after newer ones, out of order. A held `config.apply` released after its successor would put back an old setting, and a held reboot or reset could fire late. With one strict sequence, the moment a newer request runs, every older one the intermediary still holds is dead.
 - **Retry with the same bytes.** A manager that gets no answer resends the **same signed request**, never the same work under a new id. The answer is the stored result, or `duplicate` (it ran, or a power cut lost it after the mark was saved) and the manager reads the state. Signing a new id is how a manager deliberately abandons the older request.
 - **One request at a time per member.** A manager sends its next state-changing request when the previous one has an answer. Managers of one Deployment do not drive one device concurrently. Their sequences are independent, so the device cannot order one manager's held request against another's.
+- **A refusal as `replay` carries the mark** (`result.mark`, the same figure `deployment.get` shows), so a manager continues above it without another request. A new id refused as `replay` never ran: sign that work again under a new id. A retry of the same bytes refused as `replay` may have run earlier: read the state.
 - **At most once.** The mark is persisted **before** the request runs. The other order would let a redelivered request run twice after a power cut.
-- **No adoption.** A run of verified ids below the mark can only be old signed requests, so a device never adopts a "restarted" sequence. A manager that lost its sequence reads its mark (`deployment.get`) and continues above it. If it cannot, it is re-admitted with a higher `admitted_revision`, which resets its mark while check 6 refuses everything it signed before.
+- **No adoption.** A run of verified ids below the mark can only be old signed requests, so a device never adopts a "restarted" sequence. A manager that lost its sequence reads its mark (`deployment.get`, or a `replay` refusal) and continues above it. If it cannot, it is re-admitted with a higher `admitted_revision`, which resets its mark while check 6 refuses everything it signed before.
 
 ## 9. Caller kinds
 

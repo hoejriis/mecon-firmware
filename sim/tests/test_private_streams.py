@@ -348,3 +348,47 @@ def test_a_signed_subscriber_gets_no_logs_over_an_unverified_broker(nodes, tmp_p
     d.c.cli("set posture hardened")   # an audited act, as in the verified case: no entry may reach this broker
     t.join()
     assert not got, got
+
+
+def _mark(d):
+    return d.i.request("deployment.get")["result"]["members"][0]["mark"]
+
+
+def test_a_private_renewal_takes_no_job_and_moves_no_mark(nodes):
+    """Issue #293: on an nRF52 a mark save costs about 5 erases on one page. The nonce already stops a replay, before and
+    after a reboot, so a renewal writes nothing."""
+    n = nodes("companion_standalone", "rnw", seed=70, rtc=RTC).start()
+    d = Dev(n)
+    assert d.provision()["status"] == "ok"
+    assert d.send(wrap(d.node_key, "sub.stop", {"stream": "logs"}, job=40))["status"] == "ok"
+    before = _mark(d)
+    assert before == 40
+    args = {"stream": "logs", "lifetime_s": 120}
+    nonce = d.send(wrap(d.node_key, "hello", {}, job=None, rid="h1"))["result"]["channel_nonce"]
+    w = wrap(d.node_key, "sub.start", args, job=None, nonce=nonce, rid="r1")
+    assert d.send(w)["status"] == "ok"
+    assert _mark(d) == before, "a renewal moves no mark"
+    # The same bytes again: the nonce is spent, so it is no second request, with no mark to say so.
+    r = d.send(w)
+    assert r["status"] == "refused" and r["error"] == "bad_channel_nonce", r
+    # A job id sent anyway is not looked at, even one below the mark.
+    nonce = d.send(wrap(d.node_key, "hello", {}, job=None, rid="h2"))["result"]["channel_nonce"]
+    r = d.send(wrap(d.node_key, "sub.start", args, job=3, nonce=nonce, rid="r2"))
+    assert r["status"] == "ok", r
+    assert _mark(d) == before
+    # After a reboot the nonce is gone, so a captured renewal is still dead.
+    nonce = d.send(wrap(d.node_key, "hello", {}, job=None, rid="h3"))["result"]["channel_nonce"]
+    held = wrap(d.node_key, "sub.start", args, job=None, nonce=nonce, rid="r3")
+    d.reboot()
+    r = d.send(held)
+    assert r["status"] == "refused" and r["error"] == "bad_channel_nonce", r
+
+
+def test_a_private_stop_stays_on_the_mark(nodes):
+    n = nodes("companion_standalone", "rns", seed=71, rtc=RTC).start()
+    d = Dev(n)
+    assert d.provision()["status"] == "ok"
+    r = d.send(wrap(d.node_key, "sub.stop", {"stream": "logs"}, job=None, rid="s0"))
+    assert r["status"] == "refused", r
+    assert d.send(wrap(d.node_key, "sub.stop", {"stream": "logs"}, job=9))["status"] == "ok"
+    assert _mark(d) == 9

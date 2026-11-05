@@ -199,6 +199,14 @@ TEST_F(Fx, SensitiveOperationsNeedThisLinksNonce) {
   EXPECT_EQ(WR_OK, checkOp("ble.pin.get", "{}", ",\"job_id\":8,\"channel_nonce\":\"n0nce-for-this-link\""));
   EXPECT_EQ(OPC_SENSITIVE, v.cls);
   EXPECT_EQ(WR_BAD_CHANNEL_NONCE, checkOp("sub.start", "{\"stream\":\"screen\"}", job));
+  // A private stream's nonce alone is enough: no job id, so no mark and no flash write for a renewal.
+  EXPECT_EQ(WR_BAD_CHANNEL_NONCE, checkOp("sub.start", "{\"stream\":\"logs\"}", ""));
+  EXPECT_EQ(WR_OK, checkOp("sub.start", "{\"stream\":\"logs\"}", ",\"channel_nonce\":\"n0nce-for-this-link\""));
+  EXPECT_EQ(OPC_NONCE, v.cls);
+  EXPECT_EQ(WR_OK, checkOp("sub.start", "{\"stream\":\"logs\"}", ",\"job_id\":8,\"channel_nonce\":\"n0nce-for-this-link\""));
+  EXPECT_EQ(OPC_NONCE, v.cls) << "a job id sent anyway changes nothing";
+  // A private sub.stop has no nonce, so it stays on the mark.
+  EXPECT_EQ(WR_MALFORMED, checkOp("sub.stop", "{\"stream\":\"logs\"}", ""));
   EXPECT_EQ(WR_BAD_CHANNEL_NONCE, checkOp("sub.start", "{}", job));                        // unreadable stream: strict
   nonce = nullptr;   // a link with no nonce issued: no sensitive operation at all
   EXPECT_EQ(WR_BAD_CHANNEL_NONCE,

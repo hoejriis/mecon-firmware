@@ -45,6 +45,18 @@ int writeResult(char* buf, size_t cap, const char* id, Status st, const char* re
   return finish(w);
 }
 
+int writeReplayRefusal(char* buf, size_t cap, const char* id, uint32_t mark) {
+  JsonWriter w(buf, cap);
+  w.beginObject();
+  w.key("v"); w.num(INTERFACE_MAJOR);
+  w.key("id"); w.str(id);
+  w.key("status"); w.str(statusName(ST_REFUSED));
+  w.key("error"); w.str("replay");
+  w.key("result"); w.beginObject(); w.key("mark"); w.unum(mark); w.endObject();
+  w.endObject();
+  return finish(w);
+}
+
 int writeEvent(char* buf, size_t cap, const char* ev, uint32_t seq, uint32_t epoch, bool ts_known, int64_t ts,
                const char* data_json) {
   JsonWriter w(buf, cap);

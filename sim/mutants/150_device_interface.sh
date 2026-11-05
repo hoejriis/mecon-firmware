@@ -62,12 +62,12 @@ mutate dep_marks_fallback_reopens src/helpers/deployment/DepRecord.cpp '      nm
 mutate dep_marks_missing_member_fresh src/helpers/deployment/DepRecord.cpp '      nm.wm.mark = mem.admitted_revision > stored->revision ? 0 : MARK_BLOCKED;' '      nm.wm.mark = 0;' unit:test_dep_record
 mutate dep_marks_lost_fresh src/helpers/deployment/DepRecord.cpp '      nm.wm.mark = MARK_BLOCKED;                          // the marks were lost: nothing to trust' '      nm.wm.mark = 0;' unit:test_dep_record
 mutate dep_removal_newer_first src/helpers/deployment/DepRecord.h '  order[0] = known ? 1 - newer_slot : 0;' '  order[0] = known ? newer_slot : 0;' unit:test_dep_record
-mutate dep_job_id_optional src/helpers/deployment/DepWrapper.cpp '    if (out->cls != OPC_PLAIN && !out->has_job) goto done;' '' unit:test_dep_wrapper
+mutate dep_job_id_optional src/helpers/deployment/DepWrapper.cpp '    if ((out->cls == OPC_JOB || out->cls == OPC_SENSITIVE) && !out->has_job) goto done;' '' unit:test_dep_wrapper
 mutate dep_unknown_op_plain src/helpers/deployment/DepWrapper.cpp '  return OPC_JOB;
 }' '  return OPC_PLAIN;
 }' unit:test_dep_wrapper
 mutate dep_issuer_unbound src/helpers/deployment/DepWrapper.cpp '    if (memcmp(bound_issuer, issuer, ID_LEN) != 0) { e = WR_BAD_SIGNATURE; goto done; }' '' unit:test_dep_wrapper
-mutate dep_nonce_unchecked src/helpers/deployment/DepWrapper.cpp '    if (out->cls == OPC_SENSITIVE) {' '    if (false) {' unit:test_dep_wrapper
+mutate dep_nonce_unchecked src/helpers/deployment/DepWrapper.cpp '    if (out->cls == OPC_SENSITIVE || out->cls == OPC_NONCE) {' '    if (false) {' unit:test_dep_wrapper
 mutate dep_private_stream_plain src/helpers/deployment/DepWrapper.cpp '    if (strcmp(name, p) == 0) return true;' '    if (strcmp(name, p) == 0) return false;' unit:test_dep_wrapper
 # the Repeater and Room server console interface, and the per-role key table
 mutate config_onoff_word_dropped src/helpers/iface/IfaceConfig.cpp '      const bool onoff = (k.flags & KF_ONOFF) != 0;' '      const bool onoff = false;' unit:test_iface_config
