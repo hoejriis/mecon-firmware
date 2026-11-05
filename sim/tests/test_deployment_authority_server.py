@@ -122,11 +122,11 @@ def test_a_signed_config_apply_runs_once_and_its_duplicate_and_replay_run_nothin
     assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 2
     d.reboot()   # the result cache is gone, the mark is not
     assert d.name() == "> Meanwhile"
-    dup = d.send(w2)
-    assert dup["status"] == "failed" and dup["error"] == "duplicate", dup
+    again = d.send(w2)
+    assert again["status"] == "refused" and again["error"] == "replay" and again["result"]["mark"] == 257, again
     assert d.send(w)["error"] == "replay"
     assert d.name() == "> Meanwhile"
-    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 2, "the mark survived the reboot"
+    assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 257, "the reserved mark survived the reboot"
 
 
 def test_persist_before_run_a_mark_that_cannot_be_written_runs_nothing(nodes):

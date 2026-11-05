@@ -8,8 +8,12 @@ ReplayVerdict replayCheck(const Watermark& w, uint32_t job_id) {
   return job_id == w.mark ? RV_DUPLICATE : RV_TOO_OLD;
 }
 
-void markAccepted(Watermark* w, uint32_t job_id) {
+bool markAccepted(Watermark* w, uint32_t job_id) {
   if (job_id > w->mark) w->mark = job_id;
+  if (job_id <= w->reserved) return false;
+  // Never up to MARK_BLOCKED, which means the member is blocked.
+  w->reserved = job_id < MARK_BLOCKED - MARK_RESERVE ? job_id + MARK_RESERVE : MARK_BLOCKED - 1;
+  return true;
 }
 
 }  // namespace Dep

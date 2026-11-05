@@ -1,12 +1,7 @@
 # Mutants for sim/mutate.sh, sourced in file-name order into its shell (variables set here are seen by later files).
 # --- the Deployment authority layer (docs/contract/AUTHORITY.md): undo each rule and its tests must go red
 DA=sim/tests/test_deployment_authority.py
-mutate deploy_mark_not_persisted_before_run src/helpers/iface/DeployAuth.cpp '    Dep::markAccepted(&wm, v.job_id);
-    if (!persistMarks()) {' '    Dep::markAccepted(&wm, v.job_id);
-    if (false) {' $DA::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
-mutate deploy_failed_mark_write_still_runs src/helpers/iface/DeployAuth.cpp '    if (!persistMarks()) {
-      wm.mark = old;' '    if (false) {
-      wm.mark = old;' $DA::test_a_mark_that_cannot_be_written_runs_nothing_and_is_not_consumed
+mutate deploy_failed_mark_write_still_runs src/helpers/iface/DeployAuth.cpp '    if (Dep::markAccepted(&wm, v.job_id) && !persistMarks()) {' '    if (Dep::markAccepted(&wm, v.job_id) && (persistMarks(), false)) {' $DA::test_a_mark_that_cannot_be_written_runs_nothing_and_is_not_consumed
 mutate deploy_channel_nonce_not_compared src/helpers/deployment/DepWrapper.cpp 'strcmp(nonce, link_nonce) != 0)' 'false)' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
 mutate deploy_channel_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once' '' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
 mutate deploy_mqtt_provisions_unsigned src/helpers/iface/DeployAuth.cpp '  if (!has && !_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after
@@ -179,3 +174,9 @@ mutate private_sub_needs_no_nonce src/helpers/deployment/DepWrapper.cpp '    if 
 mutate private_sub_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once' '  if (v.cls == Dep::OPC_SENSITIVE) issueNonce(nonce_slot);' sim/tests/test_private_streams.py::test_a_private_renewal_takes_no_job_and_moves_no_mark
 mutate private_stop_off_the_mark src/helpers/deployment/DepWrapper.cpp 'strcmp(op, "sub.start") == 0 ? OPC_NONCE : OPC_JOB' 'strcmp(op, "sub.start") == 0 ? OPC_NONCE : OPC_PLAIN' sim/tests/test_private_streams.py::test_a_private_stop_stays_on_the_mark
 mutate replay_without_the_mark src/helpers/iface/DeployAuth.cpp '      n = writeReplayRefusal(out, cap, id, wm.mark);' '      n = writeResult(out, cap, id, ST_REFUSED, nullptr, "replay");' sim/tests/test_deployment_authority.py::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
+# The mark on flash is reserved ahead (#293): one id in 256 writes, and a reboot lands on the reserved value
+mutate reserved_mark_not_saved src/helpers/deployment/DepRecord.cpp '    w.u32(m.m[i].wm.mark > m.m[i].wm.reserved ? m.m[i].wm.mark : m.m[i].wm.reserved);' '    w.u32(m.m[i].wm.mark);' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
+mutate reserved_mark_every_id_writes src/helpers/deployment/DepReplay.cpp '  if (job_id <= w->reserved) return false;' '' unit:test_dep_replay sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
+mutate reserved_mark_write_skipped src/helpers/iface/DeployAuth.cpp '    if (Dep::markAccepted(&wm, v.job_id) && !persistMarks()) {' '    if (Dep::markAccepted(&wm, v.job_id) && false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
+mutate reserved_mark_reaches_blocked src/helpers/deployment/DepReplay.cpp '  w->reserved = job_id < MARK_BLOCKED - MARK_RESERVE ? job_id + MARK_RESERVE : MARK_BLOCKED - 1;' '  w->reserved = job_id + MARK_RESERVE;' unit:test_dep_replay
+mutate reserved_mark_new_id_gets_a_bare_duplicate src/helpers/iface/DeployAuth.cpp '      } else if (wm.mark == wm.reserved) {' '      } else if (false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it

@@ -17,6 +17,25 @@ TEST(DepReplay, FreshStateTakesAnyRealId) {
   EXPECT_EQ(RV_TOO_OLD, replayCheck(w, 0));
 }
 
+// Issue #293: one id in MARK_RESERVE writes to flash, and what is on flash is always ahead of what ran.
+TEST(DepReplay, OnlyAnIdAboveTheReservationNeedsAWrite) {
+  Watermark w = { 0, 0 };
+  EXPECT_TRUE(markAccepted(&w, 1));
+  EXPECT_EQ(1u + MARK_RESERVE, w.reserved);
+  for (uint32_t id = 2; id <= 1 + MARK_RESERVE; id++) EXPECT_FALSE(markAccepted(&w, id)) << id;
+  EXPECT_EQ(1u + MARK_RESERVE, w.mark);
+  EXPECT_TRUE(markAccepted(&w, 2 + MARK_RESERVE));
+  EXPECT_EQ(2u + 2 * MARK_RESERVE, w.reserved);
+  EXPECT_GE(w.reserved, w.mark);
+}
+
+TEST(DepReplay, TheReservationNeverReachesTheBlockedValue) {
+  Watermark w = { 0, 0 };
+  EXPECT_TRUE(markAccepted(&w, MARK_BLOCKED - 2));
+  EXPECT_EQ(MARK_BLOCKED - 1, w.reserved);
+  EXPECT_FALSE(markAccepted(&w, MARK_BLOCKED - 1));
+}
+
 TEST(DepReplay, TheMarkIsADuplicate) {
   Watermark w = accept({ 0 }, 5);
   EXPECT_EQ(RV_DUPLICATE, replayCheck(w, 5));
