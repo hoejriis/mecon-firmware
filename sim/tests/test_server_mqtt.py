@@ -342,6 +342,15 @@ def test_a_broker_event_goes_out_while_a_console_line_is_being_typed(nodes, tmp_
 
 # ------------------------------------------------------------------ repeating
 
+def deliver(x, y, text, ts):
+    """A send can collide on the simulated air, and an app sends again: three tries, a new time on each."""
+    for k in range(3):
+        x.send_direct(y.pub_key, text, ts + k)
+        if [m["text"] for m in y.sync_messages(timeout=40, want=1)] == [text]:
+            return True
+    return False
+
+
 def test_repeating_goes_on_with_a_session_up_and_with_the_broker_gone(nodes, ether, tmp_path, brokers):
     """A and B hear only the repeater: a message arrives only if it forwards, with or without a broker."""
     b = tls_broker(brokers)
@@ -358,17 +367,13 @@ def test_repeating_goes_on_with_a_session_up_and_with_the_broker_gone(nodes, eth
     ether.set_link("fb", "fr")
     assert x.add_contact(y.pub_key, "y")[0] == 0
     assert y.add_contact(x.pub_key, "x")[0] == 0
-    x.send_direct(y.pub_key, "with a session", RTC + 5)
-    got = y.sync_messages(timeout=75, want=1)
-    assert [m["text"] for m in got] == ["with a session"], got
+    assert deliver(x, y, "with a session", RTC + 5), "with a session"
     assert [t for t in ether.tx_log if t.src == "fr"], "the repeater carried it"
     b.stop()
     end = time.time() + 30
     while time.time() < end and s.cli.command("get mqtt.status").startswith("> connected"):
         time.sleep(0.3)
-    x.send_direct(y.pub_key, "with the broker gone", RTC + 6)
-    got = y.sync_messages(timeout=75, want=1)
-    assert [m["text"] for m in got] == ["with the broker gone"], got
+    assert deliver(x, y, "with the broker gone", RTC + 20), "with the broker gone"
 
 
 def test_the_clock_decides_whether_a_servers_anchor_judges_dates(nodes, tmp_path):

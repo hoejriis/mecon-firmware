@@ -118,11 +118,11 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | `online` means requests are accepted (Heltec V3 standalone Companion, verified broker) | a request sent the moment `online` is seen is answered about 0.2 s later, 3 of 3 boots, no resend | 2026-11-05, d23437d5 |
 | A tentative change over a broker keeps its answer (Heltec V3 standalone Companion, verified broker) | the answer arrives, the change is in effect, unconfirmed it reverts and the profile is as it was | 2026-11-05, d23437d5 |
 | HTTPS download beside a verified broker session (Heltec V4 standalone Companion, test key, budget lowered) | 1.72 MB in about 16 s; session up throughout; lowest free 39,728 B, lowest largest block 31,732 B; attested and confirmed | 2026-11-05, 082fa4b6 |
-
-Builds b6d0a50e and d23437d5 were bench merges of branches then open; their features are on `main` by these rows' merge.
 | Management-channel slot and `identity.rotate` (Heltec V3 and V4, Repeater and Room server, USB console) | bind, rotate and remove over the cable; a signed change that reverts unconfirmed; a confirmed one that stays; a reboot while pending that reverts; rotation of the key with the record kept; 34 of 34 on each of the four builds | 2026-11-05, adaf9fed and f0067d70 |
 | Device interface over a TLS-verified broker (Heltec V3 and V4, Repeater and Room server) | hello; a plain session changes and reads nothing; hardened keeps a verified broker across a reboot; signed logs (plain refused, signed with no nonce refused, signed with the nonce allowed, an entry arrives); a health event; a tentative change answers and reverts; the session returns after a reboot; 22 of 22 on each of the four builds | 2026-11-05, adaf9fed and a76e33d7 |
 | Repeater and Room server heap with a verified session (Heltec V3, V4) | free about 137 and 133 KB on V3, about 164 and 161 KB on V4; lowest loop stack free about 1,300 B, at a revert | 2026-11-05, adaf9fed and a76e33d7 |
+
+Builds b6d0a50e, d23437d5, adaf9fed, f0067d70 and a76e33d7 were bench merges of branches then open; their features are on `main` by these rows' merge.
 
 ## Not yet verified on hardware
 
