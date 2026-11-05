@@ -56,7 +56,7 @@ bool readSecret(Prefs& p, const Iface::KeyDef& k, unsigned idx, char* out, size_
 // Whether the links run, as on the Companion: with a profile, and in Hardened only for a broker that posture permits.
 // Returns whether Wi-Fi started.
 template <class Mesh, class Prefs, class Board>
-bool begin(Mesh& mesh, Prefs& p, Board& board, Iface::ConsoleIface& iface, uint32_t (*clock)()) {
+bool begin(Mesh& mesh, Prefs& p, Board& board, Iface::ConsoleIface& iface, uint32_t (*clock)(), bool (*clock_known)()) {
   bool on = p.wifi_enabled && p.wifi_profiles.configuredCount() > 0;
   bool mqtt_may_run = false;
 #ifdef ENABLE_MQTT
@@ -77,6 +77,7 @@ bool begin(Mesh& mesh, Prefs& p, Board& board, Iface::ConsoleIface& iface, uint3
     char node_id[9];
     for (int k = 0; k < 4; k++) sprintf(&node_id[k * 2], "%02x", mesh.self_id.pub_key[k]);
     mqttController().setAuditClock(clock);
+    mqttController().setClockKnown(clock_known);
     mqttController().setCliHandler(&runCli<Mesh>, &mesh);
     mqttController().setIfaceHandler(&runIface, &iface, iface.deviceIdHex());
     iface.setRolesListener([](const uint8_t* t, uint8_t n, void*) { mqttController().setBrokerTiers(t, n); }, nullptr);

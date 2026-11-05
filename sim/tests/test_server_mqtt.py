@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_schema  # noqa: E402
 from test_companion_mqtt import brokers, _tools  # noqa: F401,E402  (fixtures)
 from test_companion_mqtt import PLAIN, TLS, static  # noqa: E402
+from sim.mqtt_broker import Broker, ca_commands, make_ca, make_leaf  # noqa: E402
 from test_deployment_authority import provision_args, wrap  # noqa: E402
 from test_deployment_authority_server import RTC, Srv  # noqa: E402
 
@@ -368,3 +369,20 @@ def test_repeating_goes_on_with_a_session_up_and_with_the_broker_gone(nodes, eth
     x.send_direct(y.pub_key, "with the broker gone", RTC + 6)
     got = y.sync_messages(timeout=75, want=1)
     assert [m["text"] for m in got] == ["with the broker gone"], got
+
+
+def test_the_clock_decides_whether_a_servers_anchor_judges_dates(nodes, tmp_path):
+    """As on a Companion: a server whose clock no real source has set cannot judge a certificate's dates."""
+    ca = make_ca(str(tmp_path), "ca")
+    cert, key, _ = make_leaf(str(tmp_path), "old", ca, ip="127.0.0.2", days=-1)
+    b = Broker(tmp_path, "old", "127.0.0.2", TLS, cert, key, cafile=ca[0]).start()
+    try:
+        cmds = static(0, b.ip, b.port, 50, tls=True) + ca_commands(0, ca[0])
+        s = boot(nodes, tmp_path, "repeater_wifi", "dunset", cmds, rtc_unset=True)
+        assert "tls=verified" in up(s), "a clock never set cannot judge the date"
+        s = boot(nodes, tmp_path, "repeater_wifi", "dset", cmds, seed=42)
+        time.sleep(8.0)
+        assert not s.cli.command("get mqtt.status").startswith("> connected"), "a set clock refuses it"
+        assert "last=pin" in s.cli.command("get mqtt.profile 0")
+    finally:
+        b.stop()

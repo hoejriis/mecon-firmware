@@ -22,3 +22,4 @@ mutate server_wifi_keys_on_every_build src/helpers/iface/IfaceConfig.cpp '#ifdef
 #include "IfaceNetKeys.inc"
 #endif' '#include "IfaceNetKeys.inc"' $SM::test_no_profile_starts_no_link_and_the_build_without_wifi_has_no_settings
 mutate server_net_blocks_repeating examples/simple_repeater/main.cpp '  if (net_started) ServerNet::loop();' '  if (net_started) { ServerNet::loop(); return; }' $SM::test_repeating_goes_on_with_a_session_up_and_with_the_broker_gone
+mutate server_clock_check_not_wired src/helpers/net/ServerNet.h '    mqttController().setClockKnown(clock_known);' '' $SM::test_the_clock_decides_whether_a_servers_anchor_judges_dates

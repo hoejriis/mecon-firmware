@@ -192,7 +192,8 @@ void setup() {
     the_iface.begin(host, device_id, epoch, epoch_saved);
 #ifdef ENABLE_WIFI_INTERFACE
     net_started = ServerNet::begin(the_mesh, *the_mesh.getNodePrefs(), board, the_iface,
-                                   []() -> uint32_t { return the_mesh.getRTCClock()->getCurrentTime(); });
+                                   []() -> uint32_t { return the_mesh.getRTCClock()->getCurrentTime(); },
+                                   []() -> bool { return the_mesh.getRTCClock()->isSet(); });
 #endif
   }
 #endif
