@@ -420,8 +420,8 @@ void MeconIface::tellInbox() {
 void MeconIface::tellReaders(const char* ev_name, uint32_t seq, const char* data) {
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
   if (!ev) return;
-  const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
-  int n = writeEvent(ev, RESULT_MAX, ev_name, seq, _epoch, ts >= 1704067200, ts, data);
+  const uint32_t ts = _mesh->getRTCClock()->knownTime();
+  int n = writeEvent(ev, RESULT_MAX, ev_name, seq, _epoch, ts != 0, ts, data);
   if (n > 0) n = _prov.sign(ev_name, ev, (size_t)n, RESULT_MAX);
   if (n > 0) {
     for (Link& l : _links) {
@@ -743,8 +743,8 @@ void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw
   if (!m->_obs.take(now)) return;
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
   if (!ev) { m->_obs.dropped++; return; }
-  const uint32_t ts = m->_mesh->getRTCClock()->getCurrentTime();
-  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts >= 1704067200, ts, snr, rssi, raw, len,
+  const uint32_t ts = m->_mesh->getRTCClock()->knownTime();
+  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts != 0, ts, snr, rssi, raw, len,
                                  m->_obs.dropped);
   if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);   // -1: not signable, so not sent
   if (n <= 0) m->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing
@@ -888,8 +888,8 @@ void MeconIface::streamTick(uint32_t now) {
   sets[LINKS] = &_mqtt_subs;
   const uint32_t due = _clock.due(sets, LINKS + 1, now);
   if (!due && !_boot_pending) return;
-  const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
-  const bool ts_known = ts >= 1704067200;   // 2024-01-01: an RTC that has never been set reads far earlier
+  const uint32_t ts = _mesh->getRTCClock()->knownTime();
+  const bool ts_known = ts != 0;
   for (int s = 0; s < STREAM_COUNT; s++) {
     if (!(due & (1u << s))) continue;
     if (s == SID_INVENTORY) { startInventory(now); continue; }   // paged: inventoryTick sends it
@@ -944,10 +944,10 @@ void MeconIface::drainLogs() {
   uint32_t dropped = 0;
   const int k = _logs.poll(millis(), Posture::audit(), a, &dropped);
   if (!k) return;
-  const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
+  const uint32_t ts = _mesh->getRTCClock()->knownTime();
   for (int j = 0; j < k; j++) {
     static char ev[480];   // the event and its signature; static for the loop task's stack (#234), loop only
-    int n = writeLog(ev, sizeof(ev), _clock, _epoch, ts >= 1704067200, ts, a[j], j == 0 ? dropped : 0);
+    int n = writeLog(ev, sizeof(ev), _clock, _epoch, ts != 0, ts, a[j], j == 0 ? dropped : 0);
     if (n > 0) n = _prov.sign(STREAMS[SID_LOGS].name, ev, (size_t)n, sizeof(ev));   // signed like every event (#234)
     if (n > 0) sendEvent(SID_LOGS, ev, (size_t)n);
   }
@@ -1032,8 +1032,8 @@ void MeconIface::inventoryTick(uint32_t now) {
   }
   const size_t dn = ok ? page.finish(done) : 0;
   if (dn) {
-    const uint32_t ts = _mesh->getRTCClock()->getCurrentTime();
-    int n = writeEvent(ev, INV_EVENT, STREAMS[SID_INVENTORY].name, ++_clock.seq[SID_INVENTORY], _epoch, ts >= 1704067200,
+    const uint32_t ts = _mesh->getRTCClock()->knownTime();
+    int n = writeEvent(ev, INV_EVENT, STREAMS[SID_INVENTORY].name, ++_clock.seq[SID_INVENTORY], _epoch, ts != 0,
                        ts, data);
     if (n > 0) n = _prov.sign(STREAMS[SID_INVENTORY].name, ev, (size_t)n, INV_EVENT);
     if (n > 0) sendEvent(SID_INVENTORY, ev, (size_t)n);   // a page that is not sent is not retried: the next snapshot is

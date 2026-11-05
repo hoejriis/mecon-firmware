@@ -82,7 +82,27 @@ uint32_t AutoDiscoverRTCClock::getCurrentTime() {
   return _fallback->getCurrentTime();
 }
 
+// A chip keeps its time on its battery and reads far earlier once that has run out (or after clkreboot's 2024), so here
+// the value can tell. A guess written to a chip that had lost its time reads as set after the next boot: accepted, the
+// guess is a recent contact's time.
+bool AutoDiscoverRTCClock::isSet() {
+  if (ds3231_success || rv3028_success || rtc_8563_success || rtc_8130_success) {
+    return !_guessed && getCurrentTime() >= 1772323200;   // 1 Mar 2026
+  }
+  return _fallback->isSet();
+}
+
+void AutoDiscoverRTCClock::setGuess(uint32_t time) {
+  if (ds3231_success || rv3028_success || rtc_8563_success || rtc_8130_success) {
+    setCurrentTime(time);
+    _guessed = true;
+  } else {
+    _fallback->setGuess(time);
+  }
+}
+
 void AutoDiscoverRTCClock::setCurrentTime(uint32_t time) { 
+  _guessed = false;
   if (ds3231_success) {
     rtc_3231.adjust(DateTime(time));
   } else if (rv3028_success) {

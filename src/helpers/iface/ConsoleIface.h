@@ -45,7 +45,8 @@ public:
     // Where the Deployment record's files live (docs/contract/AUTHORITY.md section 4): the role's own file system. Null
     // leaves the device a standalone one that cannot be enrolled.
     Dep::CopyStore* dep_store;
-    // Wall-clock seconds for the audit entries of the unlock handshake; null: seconds since boot.
+    // Wall-clock seconds for the audit entries of the unlock handshake and for job events, 0 while the clock is not set
+    // (RTCClock::knownTime); null: seconds since boot for the audit, and no time on an event.
     uint32_t (*clock_s)(void* user);
     // The node identity, to sign results and events with (AUTHORITY.md section 3.4); null: nothing is signed.
     const mesh::LocalIdentity* identity;

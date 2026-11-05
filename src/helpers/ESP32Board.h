@@ -204,7 +204,9 @@ public:
 
 static RTC_NOINIT_ATTR uint32_t _rtc_backup_time;
 static RTC_NOINIT_ATTR uint32_t _rtc_backup_magic;
+static RTC_NOINIT_ATTR uint32_t _rtc_set_magic;   // RTC_SET_MAGIC: the backed-up time came from a real source
 #define RTC_BACKUP_MAGIC  0xAA55CC33
+#define RTC_SET_MAGIC     0x5AC3E17D
 #define RTC_TIME_MIN      1772323200  // 1 Mar 2026
 
 class ESP32RTCClock : public mesh::RTCClock {
@@ -218,10 +220,11 @@ public:
     // All other resets (power-on, crash, WDT, brownout) lose system time.
     // Restore from RTC backup if valid, otherwise use hardcoded seed.
     struct timeval tv;
-    if (_rtc_backup_magic == RTC_BACKUP_MAGIC && _rtc_backup_time > RTC_TIME_MIN) {
+    if (reason != ESP_RST_POWERON && _rtc_backup_magic == RTC_BACKUP_MAGIC && _rtc_backup_time > RTC_TIME_MIN) {
       tv.tv_sec = _rtc_backup_time;
     } else {
       tv.tv_sec = RTC_TIME_MIN;
+      _rtc_set_magic = 0;
     }
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
@@ -238,7 +241,10 @@ public:
     settimeofday(&tv, NULL);
     _rtc_backup_time = time;
     _rtc_backup_magic = RTC_BACKUP_MAGIC;
+    _rtc_set_magic = RTC_SET_MAGIC;
   }
+  bool isSet() override { return _rtc_set_magic == RTC_SET_MAGIC; }
+  void setGuess(uint32_t time) override { setCurrentTime(time); _rtc_set_magic = 0; }
   void tick() override {
     time_t now;
     time(&now);

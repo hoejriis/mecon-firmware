@@ -207,7 +207,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       _board->reboot();  // doesn't return
     } else if (memcmp(command, "clkreboot", 9) == 0) {
       // Reset clock
-      getRTCClock()->setCurrentTime(1715770351);  // 15 May 2024, 8:50pm
+      getRTCClock()->setGuess(1715770351);  // 15 May 2024, 8:50pm
       _board->reboot();  // doesn't return
      } else if (memcmp(command, "advert.zerohop", 14) == 0 && (command[14] == 0 || command[14] == ' ')) {
       // send zerohop advert

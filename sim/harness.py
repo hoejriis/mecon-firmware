@@ -246,8 +246,9 @@ def wifi_events(node):
 
 class Node:
     def __init__(self, kind, name, workdir, ether_path=None, seed=1, time_scale=1.0, fault=None, rtc=None, fault_before=None,
-                 binary=None, wifi=None, mqtt=None, extra=None, lockstep=False, quantum_us=None):
+                 binary=None, wifi=None, mqtt=None, extra=None, lockstep=False, quantum_us=None, rtc_unset=False):
         self.kind, self.name = kind, name
+        self.rtc_unset = rtc_unset
         self.dir = os.path.join(str(workdir), name)
         os.makedirs(self.dir, exist_ok=True)
         self.port_file = os.path.join(str(workdir), name + ".port")
@@ -288,6 +289,8 @@ class Node:
             cmd += ["--fault-before", self.fault_before]
         if self.rtc:
             cmd += ["--rtc", str(self.rtc)]
+        if self.rtc_unset:
+            cmd += ["--rtc-unset"]
         if self.wifi:
             cmd += ["--wifi-env", self.wifi.path]
         if self.mqtt:

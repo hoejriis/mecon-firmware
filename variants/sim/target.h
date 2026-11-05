@@ -33,10 +33,13 @@ class SimRTCClock : public mesh::RTCClock {
   uint32_t _base;
   uint64_t _set_at_us;
   bool _init;   // epoch is read from the command line on first use
+  bool _set;
 public:
   SimRTCClock();
   uint32_t getCurrentTime() override;
   void setCurrentTime(uint32_t t) override;
+  bool isSet() override;
+  void setGuess(uint32_t t) override;
 };
 
 // Radio that exchanges raw packets with the ether broker over a unix socket.

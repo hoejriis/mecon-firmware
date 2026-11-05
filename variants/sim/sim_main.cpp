@@ -58,6 +58,7 @@ int main(int argc, char** argv) {
     else if (a == "--fs-write-ms") g_sim.fs_write_ms = strtoul(next(), nullptr, 10);
     else if (a == "--write-fail") g_sim.write_fail = next();
     else if (a == "--rtc") g_sim.rtc_epoch = strtoul(next(), nullptr, 10);
+    else if (a == "--rtc-unset") g_sim.rtc_unset = true;
     else if (a == "--millis-start") g_sim.millis_start = strtoul(next(), nullptr, 10);
     else if (a == "--fault") {   // --fault /path:BYTES
       std::string v = next(); size_t c = v.rfind(':');
