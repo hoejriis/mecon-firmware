@@ -2495,63 +2495,16 @@ void MyMesh::reloadContactSecrets() {
 }
 
 #ifdef ENABLE_MECON_IFACE
-namespace {
-// Replays 32 bytes already drawn and checked, so the key is built from exactly the seed that was tested for zeros.
-class SeedRng : public mesh::RNG {
-public:
-  explicit SeedRng(const uint8_t* s) { memcpy(_s, s, sizeof(_s)); }
-  ~SeedRng() { Iface::wipe(_s, sizeof(_s)); }
-  void random(uint8_t* dest, size_t sz) override {
-    for (size_t i = 0; i < sz; i++) dest[i] = i < sizeof(_s) ? _s[i] : 0;
-  }
-private:
-  uint8_t _s[32];
-};
-}  // namespace
-
-namespace {
-const char ROT_DOMAIN[] = "MECON-NODEROT-v1";   // + 0x00 + the statement text, signed with the key being retired
-// The stored file: the statement text, '\n', the base64 signature, and a third line "P" while the drop is pending. The
-// flag is outside the signed text because the retired key is gone by the time it is cleared.
-const size_t ROT_FILE_MAX = 512;
-
-void hex32(char* out, const uint8_t* k) {
-  static const char H[] = "0123456789abcdef";
-  for (int i = 0; i < PUB_KEY_SIZE; i++) { out[2 * i] = H[k[i] >> 4]; out[2 * i + 1] = H[k[i] & 15]; }
-  out[2 * PUB_KEY_SIZE] = 0;
-}
-
-size_t rotFile(char* out, size_t cap, const char* text, const char* sig_b64, bool pending) {
-  const int n = snprintf(out, cap, "%s\n%s\n%s", text, sig_b64, pending ? "P" : "");
-  return n > 0 && (size_t)n < cap ? (size_t)n : 0;
-}
-
-// Splits a stored file: false when it is not whole. text and sig_b64 are copied out NUL terminated.
-bool rotSplit(char* file, size_t n, const char** text, const char** sig_b64, bool* pending) {
-  file[n] = 0;
-  char* nl = strchr(file, '\n');
-  if (!nl) return false;
-  *nl = 0;
-  char* sig = nl + 1;
-  char* nl2 = strchr(sig, '\n');
-  if (!nl2 || nl2 - sig != 88) return false;
-  *nl2 = 0;
-  *text = file;
-  *sig_b64 = sig;
-  *pending = nl2[1] == 'P';
-  return true;
-}
-}  // namespace
+// The statement's file and the role's half of a rotation, for the steps in helpers/iface/IdentityRotation.cpp.
+size_t MyMesh::rotLoad(void* u, uint8_t* buf, size_t cap) { return static_cast<MyMesh*>(u)->_store->loadRotation(buf, cap); }
+bool MyMesh::rotSave(void* u, const uint8_t* buf, size_t len) { return static_cast<MyMesh*>(u)->_store->saveRotation(buf, len); }
+void MyMesh::rotRemove(void* u) { static_cast<MyMesh*>(u)->_store->removeRotation(); }
+bool MyMesh::rotSaveKey(void* u, const mesh::LocalIdentity& id) { return static_cast<MyMesh*>(u)->_store->saveMainIdentity(id); }
+bool MyMesh::rotDrop(void* u) { return static_cast<MyMesh*>(u)->dropOldKeyState(); }
+Iface::RotationStore MyMesh::rotationStore() { return Iface::RotationStore{rotLoad, rotSave, rotRemove, rotSaveKey, rotDrop, this}; }
 
 bool MyMesh::readRotation(char* text, size_t tcap, char* sig_b64, size_t scap) {
-  char file[ROT_FILE_MAX + 1];
-  const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
-  const char *t, *s;
-  bool pending;
-  if (!n || !rotSplit(file, n, &t, &s, &pending) || strlen(t) >= tcap || strlen(s) >= scap) return false;
-  strcpy(text, t);
-  strcpy(sig_b64, s);
-  return true;
+  return Iface::rotationRead(rotationStore(), text, tcap, sig_b64, scap);
 }
 
 // Drops what belonged to the old key: contacts (their shared secrets), the message queue and what was cached from them.
@@ -2588,104 +2541,16 @@ __attribute__((noinline)) void MyMesh::recoverRotationJob(void* self) { static_c
 // for received packets (Dispatcher::recvOnLoop); the stack gate does not count it (stack-gate.yml).
 __attribute__((noinline)) void MyMesh::recoverRotationOnLoop() { recoverRotation(); }
 
-void MyMesh::recoverRotation() {
-  char file[ROT_FILE_MAX + 1];
-  const size_t n = _store->loadRotation(reinterpret_cast<uint8_t*>(file), ROT_FILE_MAX);
-  if (!n) return;
-  const char *text, *sig;
-  bool pending;
-  if (!rotSplit(file, n, &text, &sig, &pending)) { _store->removeRotation(); return; }
-  char cur[2 * PUB_KEY_SIZE + 1];
-  hex32(cur, self_id.pub_key);
-  char want[2 * PUB_KEY_SIZE + 16];
-  snprintf(want, sizeof(want), "\"new\":\"%s\"", cur);
-  if (!strstr(text, want)) { _store->removeRotation(); return; }   // the key change never took effect
-  if (!pending) return;
-  if (!dropOldKeyState()) return;   // stays pending: tried again at the next boot
-  char out[ROT_FILE_MAX + 1];
-  const size_t m = rotFile(out, sizeof(out), text, sig, false);
-  if (m) _store->saveRotation(reinterpret_cast<uint8_t*>(out), m);
-}
+void MyMesh::recoverRotation() { Iface::rotationRecover(rotationStore(), self_id); }
 
 int MyMesh::rotateIdentity(const char** err, const char* device_id_hex, uint32_t job_id) {
-  // 1. Generate. The cryptographic RNG (AUTHORITY.md section 12); a source that delivers nothing is a refusal, never a
-  // fixed key. The reserved id hashes and the current key are redrawn.
-  CryptoRNG crng;
-  mesh::LocalIdentity fresh;
-  bool ok = false;
-  uint8_t prev[32] = {0};
-  for (int tries = 0; tries < 10 && !ok; tries++) {
-    uint8_t seed[32];
-    memset(seed, 0, sizeof(seed));
-    crng.random(seed, sizeof(seed));
-    bool nonzero = false;
-    for (uint8_t b : seed) nonzero = nonzero || b != 0;
-    // A source stuck at a constant or a short pattern passes the zero test: a draw with fewer than 16 distinct byte values, or
-    // one equal to the previous draw, is a failing source too (a random 32 bytes has about 28 distinct values).
-    bool seen[256];
-    memset(seen, 0, sizeof(seen));
-    int distinct = 0;
-    for (uint8_t b : seed) { if (!seen[b]) { seen[b] = true; distinct++; } }
-    if (!nonzero || distinct < 16 || (tries > 0 && memcmp(seed, prev, sizeof(seed)) == 0)) { Iface::wipe(seed, sizeof(seed)); Iface::wipe(prev, sizeof(prev)); Iface::wipe(&fresh, sizeof(fresh)); *err = "rng"; return 0; }
-    memcpy(prev, seed, sizeof(prev));
-    SeedRng r(seed);
-    Iface::wipe(seed, sizeof(seed));
-    fresh = mesh::LocalIdentity(&r);
-    ok = fresh.pub_key[0] != 0x00 && fresh.pub_key[0] != 0xFF && !fresh.matches(self_id);
-  }
-  Iface::wipe(prev, sizeof(prev));
-  if (!ok) { *err = "rng"; Iface::wipe(&fresh, sizeof(fresh)); return 0; }
-  // 2. The rotation statement: the old key signs "old key is replaced by new key" before anything changes, and it is
-  // stored (marked drop-pending) before the key is. A manager that lost the result reads it back (identity.rotation).
-  {
-    char oldhex[2 * PUB_KEY_SIZE + 1], newhex[2 * PUB_KEY_SIZE + 1];
-    hex32(oldhex, self_id.pub_key);
-    hex32(newhex, fresh.pub_key);
-    char msg[sizeof(ROT_DOMAIN) + 256];
-    memcpy(msg, ROT_DOMAIN, sizeof(ROT_DOMAIN));   // with its NUL
-    char* text = msg + sizeof(ROT_DOMAIN);
-    const int tl = snprintf(text, 256, "{\"v\":1,\"old\":\"%s\",\"new\":\"%s\",\"device_id\":\"%s\",\"job_id\":%lu}", oldhex,
-                            newhex, device_id_hex, (unsigned long)job_id);
-    if (tl <= 0 || tl >= 256) { *err = "failed"; Iface::wipe(&fresh, sizeof(fresh)); return 0; }
-    uint8_t sig[64];
-    self_id.sign(sig, reinterpret_cast<const uint8_t*>(msg), (int)(sizeof(ROT_DOMAIN) + tl));
-    char sig_b64[89];
-    Iface::base64Encode(sig_b64, sig, 64);
-    char file[ROT_FILE_MAX + 1];
-    const size_t fl = rotFile(file, sizeof(file), text, sig_b64, true);
-    if (!fl || !_store->saveRotation(reinterpret_cast<uint8_t*>(file), fl)) {
-      _store->removeRotation();
-      *err = "storage";
-      Iface::wipe(&fresh, sizeof(fresh));
-      return 0;
-    }
-  }
-  // 3. Save the key, atomically. A failed save leaves the old key in place and the device exactly as it was.
-  if (!_store->saveMainIdentity(fresh)) {
-    _store->removeRotation();
-    Iface::wipe(&fresh, sizeof(fresh));
-    *err = "storage";
-    return 0;
-  }
-  // 4. Swap.
-  self_id = fresh;
-  // 5. Drop what belonged to the old key. A cut before this ends is finished at the next boot (the statement is still
-  // marked drop-pending).
-  const bool dropped = dropOldKeyState();
-  if (dropped) {
-    char text[256], sig_b64[89];
-    char out[ROT_FILE_MAX + 1];
-    if (readRotation(text, sizeof(text), sig_b64, sizeof(sig_b64))) {
-      const size_t m = rotFile(out, sizeof(out), text, sig_b64, false);
-      if (m) _store->saveRotation(reinterpret_cast<uint8_t*>(out), m);
-    }
-  }
-  // 6. One self-advert, zero hop like the app's default.
+  const int r = Iface::rotationRun(rotationStore(), self_id, device_id_hex, job_id, err);
+  if (!r) return 0;
+  // One self-advert, zero hop like the app's default.
   mesh::Packet* pkt = _prefs.advert_loc_policy == ADVERT_LOC_NONE ? createSelfAdvert(_prefs.node_name)
                                                                    : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
   if (pkt) sendZeroHop(pkt);
-  Iface::wipe(&fresh, sizeof(fresh));
-  return dropped ? 1 : 2;
+  return r;
 }
 #endif
 

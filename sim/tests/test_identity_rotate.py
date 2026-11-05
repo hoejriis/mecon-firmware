@@ -1,5 +1,6 @@
 """identity.rotate (docs/contract/AUTHORITY.md section 11) and revocation on the simulated Companion, Repeater and Room:
-a rotation needs a member's signature and a readable record, replaces the node key and drops the contacts, keeps the
+a rotation needs a member's signature and a readable record, replaces the node key and drops the contacts (a server's ACL,
+and a room's posts), keeps the
 configuration, channels, posture, device_id and every part of the authority state, and a revoked member can neither
 command the device nor rotate its key. Requests are signed here with sim/ed25519_ref.py; the DAK seed of the public
 vectors signs the set that revokes a member."""
@@ -12,6 +13,8 @@ import time
 
 import pytest
 from sim import ed25519_ref
+from sim.ether import Ether  # noqa: F401
+from sim.harness import CompanionClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 from test_deployment_authority import (DEP, INST_A, INST_B, SET1, V, apply_name, boot as boot_companion, wreck_record,  # noqa: E402
@@ -157,16 +160,6 @@ def test_a_revoked_member_is_refused_and_cannot_rotate_the_key(nodes, kind):
     assert d.node_key == key
 
 
-@pytest.mark.parametrize("kind", ["repeater", "room_server"])
-def test_the_server_roles_do_not_rotate_their_key(nodes, kind):
-    d = boot_server(nodes, kind, "rs" + kind, 47)
-    assert d.provision()["status"] == "ok"
-    key = d.node_key
-    r = d.send(wrap(key, "identity.rotate", job=1, nonce=d.nonce()))
-    assert r["status"] == "unknown-op", r
-    assert d.i.request("hello")["result"]["node_key"] == key
-
-
 # ------------------------------------------------------------------ the rotation statement (AUTHORITY.md section 11)
 
 def rotation_file(d):
@@ -291,3 +284,154 @@ def test_the_native_signer_never_signs_bytes_that_look_like_a_mecon_message(node
         r = sign_with_native_signer(d.c, text)
         assert r[0] == 1 and r[1] == 6, "ILLEGAL_ARG, not a signature: %r" % r
     assert sign_with_native_signer(d.c, b"MECON")[0] == 20, "only the MECON- prefix is held back"
+
+
+# ------------------------------------------------------------------ the server roles: the same steps, their own drop
+
+SERVERS = ["repeater", "room_server"]
+ACL_KEY = "ab" * 32
+
+
+def acl_file(d):
+    return os.path.join(d.n.dir, "s_contacts")
+
+
+def enrolled_server(nodes, kind, name, seed, **kw):
+    """Enrolled, holding one ACL entry on flash."""
+    d = boot_server(nodes, kind, name, seed, **kw)
+    assert d.cli.command("setperm %s 3" % ACL_KEY) == "OK"
+    end = time.time() + 20
+    while time.time() < end and not os.path.exists(acl_file(d)):
+        time.sleep(0.3)
+    assert os.path.exists(acl_file(d)), "the ACL entry was never written"
+    assert d.provision()["status"] == "ok"
+    return d
+
+
+@pytest.mark.parametrize("kind", SERVERS)
+def test_a_server_rotation_changes_the_key_drops_the_acl_and_keeps_the_rest(nodes, kind):
+    d = enrolled_server(nodes, kind, "sr" + kind[:2], 61)
+    old_key = d.node_key
+    device_id = d.i.request("hello")["result"]["device_id"]
+    assert d.send(wrap(old_key, "config.apply", apply_name("Kept"), job=1))["status"] == "ok"
+    g0 = d.i.request("deployment.get")["result"]
+    assert "rotation" not in g0 and "rotation" not in d.i.request("identity.rotation")["result"]
+    r = rotate(d, 2, old_key)
+    assert r["status"] == "ok", r
+    assert verifies(r.raw, old_key, "result"), "the answer is signed by the key being retired, so its manager can verify it"
+    new_key = r["result"]["new_public_key"]
+    assert r["result"]["old_public_key"] == old_key and new_key != old_key, r
+    removed = ["node_key", "acl"] + (["posts"] if kind == "room_server" else [])
+    assert r["result"]["removed"] == removed, r
+    assert r["result"]["kept"] == ["configuration", "record", "posture", "device_id"], r
+    assert not os.path.exists(acl_file(d)), "the shared secrets were made with the old key"
+    h = d.i.request("hello")["result"]
+    assert h["node_key"] == new_key and h["device_id"] == device_id, h
+    statement_checks(d.i.request("identity.rotation")["result"]["rotation"], old_key, new_key, device_id, 2)
+    g1 = d.i.request("deployment.get")["result"]
+    assert g1["rotation"] == d.i.request("identity.rotation")["result"]["rotation"]
+    assert open(rotation_file(d), "rb").read().endswith(b"\n"), "the drop is done, so nothing is pending"
+    old = d.send(wrap(old_key, "config.apply", apply_name("ToOld"), job=3))
+    assert old["status"] == "refused" and old["error"] == "wrong_device", old
+    assert d.send(wrap(new_key, "config.apply", apply_name("ToNew"), job=3))["status"] == "ok"
+    assert d.name() == "> ToNew"
+    d.reboot()
+    assert d.node_key == new_key, "the new key survives a reboot"
+    assert d.i.request("status.get")["result"]["deployment"]["deployment_id"] == DEP
+    assert not os.path.exists(acl_file(d))
+    statement_checks(d.i.request("identity.rotation")["result"]["rotation"], old_key, new_key, device_id, 2)
+
+
+@pytest.mark.parametrize("kind", SERVERS)
+def test_a_server_rotation_needs_a_signature_and_a_record(nodes, kind):
+    d = boot_server(nodes, kind, "sn" + kind[:2], 63)
+    key = d.node_key
+    r = d.i.request("identity.rotate")
+    assert r["status"] == "refused" and r["error"] == "not_enrolled", r
+    assert d.provision()["status"] == "ok"
+    r = d.i.request("identity.rotate")
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    r = d.send(wrap(key, "identity.rotate", job=1))
+    assert r["status"] == "refused", "sensitive: it needs the channel nonce too"
+    assert d.i.request("hello")["result"]["node_key"] == key
+    wreck_record(d)
+    d.reboot()
+    r = d.send(wrap(key, "identity.rotate", job=2))
+    assert r["status"] == "refused", r
+    assert d.i.request("hello")["result"]["node_key"] == key
+
+
+@pytest.mark.parametrize("kind", SERVERS)
+def test_a_cut_before_the_key_save_leaves_a_server_as_it_was(nodes, kind):
+    d = enrolled_server(nodes, kind, "sc" + kind[:2], 65)
+    key = d.node_key
+    d.n.stop()
+    d.n.fault_before = "rename:/identity/_main.id.tmp"
+    d.n.start()
+    d.attach()
+    d.i.send_raw(json.dumps(wrap(key, "identity.rotate", job=2, nonce=d.nonce()), separators=(",", ":")))
+    assert d.n.wait_exit(10) == 99, "the rotation never reached the injected power cut"
+    d.n.fault_before = None
+    assert os.path.exists(rotation_file(d)), "the statement was stored before the key save"
+    d.n.start()
+    d.attach()
+    assert d.node_key == key, "the key change never took effect"
+    assert "rotation" not in d.i.request("identity.rotation")["result"] and not os.path.exists(rotation_file(d))
+    assert os.path.getsize(acl_file(d)) > 0, "and nothing was dropped"
+
+
+@pytest.mark.parametrize("kind", SERVERS)
+def test_a_cut_before_a_server_drop_finishes_at_boot(nodes, kind):
+    d = enrolled_server(nodes, kind, "sd" + kind[:2], 67)
+    old_key = d.node_key
+    device_id = d.i.request("hello")["result"]["device_id"]
+    d.n.stop()
+    d.n.fault_before = "remove:/s_contacts"
+    d.n.start()
+    d.attach()
+    d.i.send_raw(json.dumps(wrap(old_key, "identity.rotate", job=2, nonce=d.nonce()), separators=(",", ":")))
+    assert d.n.wait_exit(10) == 99, "the rotation never reached the injected power cut"
+    d.n.fault_before = None
+    assert open(rotation_file(d), "rb").read().endswith(b"\nP"), "the statement still says the drop is pending"
+    assert os.path.exists(acl_file(d))
+    d.n.start()
+    d.attach()
+    assert d.node_key != old_key, "the new key was saved before the cut"
+    assert not os.path.exists(acl_file(d)), "the old owner's clients are gone after the boot"
+    assert open(rotation_file(d), "rb").read().endswith(b"\n"), "and the pending mark is cleared"
+    statement_checks(d.i.request("identity.rotation")["result"]["rotation"], old_key, d.node_key, device_id, 2)
+
+
+def test_a_rotated_room_keeps_no_posts_of_the_old_owner(nodes, ether):
+    room = boot_server(nodes, "room_server", "sp", 69, ether_path=ether.path)
+    assert room.cli.command("set guest.password joinme").startswith("OK")
+    assert room.provision()["status"] == "ok"
+    na = nodes("companion_standalone", "spa", ether_path=ether.path, seed=71, rtc=1792800000).start()
+    nb = nodes("companion_standalone", "spb", ether_path=ether.path, seed=72, rtc=1792800000).start()
+    nc = nodes("companion_standalone", "spc", ether_path=ether.path, seed=73, rtc=1792800000).start()
+    clients = []
+    for n in (na, nb, nc):
+        c = CompanionClient(n)
+        c.device_query()
+        c.app_start()
+        clients.append(c)
+    alice, bob, carol = clients
+    assert ether.wait_for_nodes(["sp", "spa", "spb", "spc"])
+    for name in ("spa", "spb", "spc"):
+        ether.set_link("sp", name)
+    old_key = bytes.fromhex(room.node_key)
+    assert alice.add_contact(old_key, "room", ctype=3)[0] == 0
+    assert bob.add_contact(old_key, "room", ctype=3)[0] == 0
+    assert alice.login(old_key, "joinme", timeout=75)
+    assert alice.send_direct(old_key, "the old owner's post", 1792800100)[0] != 1
+    time.sleep(3.0)
+    assert bob.login(old_key, "joinme", timeout=75)
+    got = bob.sync_messages(timeout=60, want=1)
+    assert got and "the old owner's post" in got[0]["text"], "with no rotation a new member is given it: %s" % got
+    r = rotate(room, 1, room.node_key)
+    assert r["status"] == "ok", r
+    new_key = bytes.fromhex(r["result"]["new_public_key"])
+    assert carol.add_contact(new_key, "room", ctype=3)[0] == 0
+    time.sleep(3.0)   # let the air clear: a native login is not retried, and a collision would lose it
+    assert carol.login(new_key, "joinme", timeout=25) or carol.login(new_key, "joinme", timeout=25)
+    assert carol.sync_messages(timeout=25, want=1) == [], "nothing of the old owner's room reaches a new member"
