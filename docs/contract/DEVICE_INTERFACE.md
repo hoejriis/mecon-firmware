@@ -68,6 +68,7 @@ UTF-8 JSON objects. Three shapes:
 | `contact.put` / `contact.remove` / `contact.protect` | write the native contact table as `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` and the favourite flag do: a put adds a contact (name and type required; type 0 has no spelling) or updates the fields it names, keeps the contact's flags and path, and never grants telemetry or the remote CLI; a full table overwrites the oldest unprotected contact when the overwrite setting is on, otherwise `failed` `table-full`; a repeat is the same state (`changed` false, nothing written); `remove` of a key that is not stored is `ok` with `removed` false; `protect` takes `protected` true or false and a key that is not stored is `failed` `not-found`. Saved by the native lazy write. Companion only | write |
 | `message.send` / `message.get` / `message.list` / `message.ack` | send one native direct or channel message, and read what became of it ([operations contract](OPERATIONS.md) section 6). Results follow `message.send.result.json`, `message.get.result.json`, `message.list.result.json` and `message.ack.result.json` |
 | `inbox.list` / `inbox.ack` | read what the Companion received from a copy kept for the manager, and release it, with the native queue left to the stock app ([operations contract](OPERATIONS.md) section 6.4). Results follow `inbox.list.result.json` and `inbox.ack.result.json` |
+| `message.deliver` | a message the device missed, to the local stock app, marked in its text and never on the radio ([operations contract](OPERATIONS.md) section 6.5). The result follows `message.deliver.result.json` |
 | `mgmt.channel.get` / `bind` / `rotate` / `unbind` | the management channel: one native slot marked as the channel a manager reaches the device on, its state (none, bound or stale), and its changes, which confirm-or-revert for anyone but the cable ([management channel](MANAGEMENT_CHANNEL.md)). Companion only | read (`get`); write |
 | `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 
@@ -105,7 +106,7 @@ Every operation and every key is checked by the CLI privilege engine (`src/helpe
 | `req` | to device | request envelopes |
 | `resp` | from device | result envelopes, QoS 0, not retained |
 | `ev/<stream>` | from device | event envelopes, QoS 0, not retained |
-| `status` | from device | the status snapshot, retained, with a last will `{"online":false}` |
+| `status` | from device | the status snapshot, retained, with a last will `{"online":false}`. `online:true` means requests are accepted: for 1.5 s after subscribing a device ignores requests, because retained ones arrive then, and it publishes this when that ends |
 
 One status topic: a build that speaks this interface publishes `mecon/<device_id>/status` (with its last will) and no longer publishes the earlier `mecon/<node id>/status`, so presence never comes from two last wills. Which topic a device uses follows from its build; `hello` reports the interface version.
 
