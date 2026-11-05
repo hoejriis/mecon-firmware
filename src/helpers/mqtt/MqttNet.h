@@ -26,8 +26,8 @@ struct MqttOpenArgs {
   const char* anchor_hex;
   const char* ca_b64;
   const char* name;
-  bool dates_unknown;
   uint32_t timeout_ms;
+  bool dates_unknown = false;   // last, with a default: a download fills this struct in order and has no anchor
 };
 
 enum class MqttOpen : uint8_t { Ok, Tcp, Tls, Pin };
