@@ -732,7 +732,7 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
       break;
     }
     case SID_POWER: writePower(w, *_host.board); break;
-    case SID_RUNTIME: writeRuntime(w, *_host.board, _gap); break;
+    case SID_RUNTIME: writeRuntime(w, *_host.board, _gap, -1, &Posture::staleLogins()); break;
     case SID_ENVIRONMENT:
       if (!_host.sensors || writeEnvironment(w, *_host.sensors, *_host.board) == 0) return false;
       break;

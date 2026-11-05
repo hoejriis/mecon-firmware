@@ -33,6 +33,20 @@ namespace Posture {
 
 enum Level : uint8_t { NORMAL = 0, HARDENED = 1 };
 
+// Remote logins refused as stale since boot, and the last refused client's key prefix: the runtime stream reads them.
+struct StaleLogins {
+  uint32_t count = 0;
+  uint8_t last[4] = {0, 0, 0, 0};
+  void note(const uint8_t* pub_key) {
+    count++;
+    memcpy(last, pub_key, sizeof(last));
+  }
+};
+inline StaleLogins& staleLogins() {
+  static StaleLogins s;
+  return s;
+}
+
 inline bool isHardened(uint8_t posture) { return posture != NORMAL; }   // fail closed on a damaged value
 
 // ---- start-up decisions
