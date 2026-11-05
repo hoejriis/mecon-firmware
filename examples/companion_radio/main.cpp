@@ -353,6 +353,7 @@ void setup() {
       char node_id[9];
       for (int k = 0; k < 4; k++) sprintf(&node_id[k * 2], "%02x", the_mesh.self_id.pub_key[k]);
       mqttController().setAuditClock([]() -> uint32_t { return rtc_clock.getCurrentTime(); });
+      mqttController().setClockKnown([]() -> bool { return rtc_clock.isSet(); });
       mqttController().setCliHandler(&mqttCliRun, &the_mesh);   // the command line over MQTT (docs/CLI.md)
 #ifdef ENABLE_MECON_IFACE
       mqttController().setIfaceHandler(&mqttIfaceRun, &the_mesh, the_mesh.iface().deviceIdHex());   // DEVICE_INTERFACE.md

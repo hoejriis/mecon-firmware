@@ -18,6 +18,7 @@ struct MqttResponder {
 // authenticated. `name` is the broker's host name (a static profile whose host is not an address literal), or nullptr:
 // it is sent as the TLS server name (SNI) with any TLS profile, and with a CA anchor the certificate must also carry it.
 // With a CA anchor and no name (an address literal, or a discovered broker) only the chain to the CA is checked.
+// `dates_unknown`: no real source has set this device's clock, so a CA anchor's validity dates cannot be judged.
 struct MqttOpenArgs {
   bool tls;
   uint32_t addr;
@@ -25,6 +26,7 @@ struct MqttOpenArgs {
   const char* anchor_hex;
   const char* ca_b64;
   const char* name;
+  bool dates_unknown;
   uint32_t timeout_ms;
 };
 

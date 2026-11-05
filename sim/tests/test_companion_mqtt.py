@@ -77,13 +77,13 @@ def discovery(i, site, anchor, prio):
             "set mqtt.profile %d anchor %s" % (i, anchor), "set mqtt.profile %d priority %d" % (i, prio)]
 
 
-def boot(nodes, tmp_path, name, commands, hardened=False, menv=None, seed=3):
+def boot(nodes, tmp_path, name, commands, hardened=False, menv=None, seed=3, **node_kw):
     """A node with the given MQTT profile commands, Wi-Fi profile 0 = the simulated access point, rebooted so both
     controllers run. Returns (node, client, mqtt_env)."""
     wenv = WifiEnv(str(tmp_path / (name + ".wifi")))
     wenv.set("sim")
     menv = menv or MqttEnv(str(tmp_path / (name + ".mqtt")))
-    n = nodes("companion_wifi_usb", name, wifi=wenv, mqtt=menv, seed=seed, rtc=RTC).start()
+    n = nodes("companion_wifi_usb", name, wifi=wenv, mqtt=menv, seed=seed, rtc=RTC, **node_kw).start()
     c = _client(n)
     assert "ssid is now" in c.cli("set wifi.profile 0 ssid sim")
     for cmd in commands:
@@ -481,8 +481,8 @@ def ca_brokers(tmp_path):
     .fingerprint. renew() starts a new broker on the same address with a fresh certificate under the same CA."""
     made = []
 
-    def make(name, ip, ca, dns=None, port=TLS, cert_ip=None):
-        cert, key, fp = make_leaf(str(tmp_path), name, ca, dns=dns, ip=cert_ip)
+    def make(name, ip, ca, dns=None, port=TLS, cert_ip=None, days=2):
+        cert, key, fp = make_leaf(str(tmp_path), name, ca, dns=dns, ip=cert_ip, days=days)
         b = Broker(tmp_path, name, ip, port, cert, key, cafile=ca[0]).start()
         b.fingerprint = fp
         made.append(b)
@@ -495,6 +495,34 @@ def ca_brokers(tmp_path):
 
 def ca_static(i, host, prio, ca):
     return static(i, host, TLS, prio, tls=True) + ca_commands(i, ca[0])
+
+
+def test_an_expired_certificate_is_refused_by_a_set_clock_and_passes_an_unset_one(nodes, tmp_path, ca_brokers):
+    """Only the date check depends on the clock: a clock that was set refuses, one that never was cannot judge."""
+    ca = make_ca(str(tmp_path), "ca")
+    ca_brokers("exp", "127.0.0.4", ca, dns="broker.test", days=-1)
+    menv = MqttEnv(str(tmp_path / "exp.mqtt"))
+    menv.host("broker.test", "127.0.0.4")
+    n, c, _ = boot(nodes, tmp_path, "dset", ca_static(0, "broker.test", 90, ca), menv=menv)
+    wait_until(lambda: last(c, 0) == "pin" or None, "a clock that was set judges the date")
+    assert "open-fail pin" in mqtt_events(n)
+    n, c, _ = boot(nodes, tmp_path, "dunset", ca_static(0, "broker.test", 90, ca), menv=menv, rtc_unset=True)
+    s = wait_status(c, "connected")
+    assert "profile=0" in s and "tls=verified" in s, s
+
+
+def test_an_unset_clock_still_checks_the_chain_and_the_name(nodes, tmp_path, ca_brokers):
+    ca = make_ca(str(tmp_path), "ca")
+    other = make_ca(str(tmp_path), "other")
+    ca_brokers("oth", "127.0.0.4", other, dns="broker.test")
+    ca_brokers("nam", "127.0.0.5", ca, dns="elsewhere.test")
+    menv = MqttEnv(str(tmp_path / "chk.mqtt"))
+    menv.host("broker.test", "127.0.0.4")
+    menv.host("named.test", "127.0.0.5")
+    n, c, _ = boot(nodes, tmp_path, "uchain", ca_static(0, "broker.test", 90, ca), menv=menv, rtc_unset=True)
+    wait_until(lambda: last(c, 0) == "pin" or None, "another CA certificate")
+    n, c, _ = boot(nodes, tmp_path, "uname", ca_static(0, "named.test", 90, ca), menv=menv, rtc_unset=True)
+    wait_until(lambda: last(c, 0) == "pin" or None, "a certificate for another name")
 
 
 def test_a_ca_anchor_survives_the_broker_certificate_being_renewed(nodes, tmp_path, ca_brokers):
