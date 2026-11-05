@@ -17,3 +17,5 @@ mutate dutycycle_hour_not_seeded_at_boot src/helpers/DutyWindow.h "    if (is_se
     is_seeded = true;" "    is_seeded = true;
     return;" sim/tests/test_duty_cycle.py::test_reboots_do_not_reset_the_hour
 mutate dutycycle_room_server_floor_missing examples/simple_room_server/MyMesh.h "    return radio_freq > 0;" "    return false;" sim/tests/test_duty_cycle.py::test_room_server_gets_the_floor_too
+mutate dutycycle_no_rule_not_said src/Dispatcher.cpp '          strcmp(flo, "none") == 0 ? ", no time rule enforced" : "");' '          "");' sim/tests/test_duty_cycle.py::test_get_dutycycle_reports_band_limit_floor_and_use
+mutate dutycycle_no_rule_said_everywhere src/Dispatcher.cpp '          strcmp(flo, "none") == 0 ? ", no time rule enforced" : "");' '          ", no time rule enforced");' sim/tests/test_duty_cycle.py::test_get_dutycycle_reports_band_limit_floor_and_use

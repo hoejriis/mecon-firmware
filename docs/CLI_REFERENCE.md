@@ -352,6 +352,19 @@ get dutycycle
 
 `limit` is what the node enforces: the stricter of `user` (from `set dutycycle`/`set af`) and the regulatory `floor` of the band the radio is tuned to.
 
+The floor is chosen from the frequency alone, because a device has no country setting. Where the node enforces no rule it says so:
+
+```
+> band none, limit 100.00%, floor none, user 100.00%, used 3200 ms (0.09%), no time rule enforced
+```
+
+| Band | What the node does | Source |
+|---|---|---|
+| EU 863-870 MHz, 433.05-434.79 MHz | enforces the band's floor | ERC/REC 70-03 annex 1, EN 300 220 |
+| US 902-928 MHz | no time limit | Read as 47 CFR 15.249, for one fixed channel like MeshCore's US preset (910.525 MHz, SF7, BW 62.5 kHz): 15.247's 0.4 s limit is for frequency hopping systems, and its digital modulation rule needs 500 kHz of bandwidth. 15.249 sets a field strength (50 mV/m at 3 m, about 0.75 mW EIRP by calculation), so the limit there is power |
+
+The US row is an engineering reading, not legal advice. Compliance outside the enforced bands rests with the operator: their power, their antenna, their licence (for example Part 97), and any national rule. A rule the node does not enforce can still be met with `set dutycycle`, which lowers `limit`.
+
 ### Read the heap, the version and the boot times
 
 ```

@@ -6,6 +6,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include <helpers/RegulatoryDutyCycle.h>
 #include <helpers/RxDelay.h>
 #if defined(NRF52_PLATFORM)
@@ -111,7 +112,9 @@ void Dispatcher::formatDutyCycleReply(char* reply) {
   fmtBp(lim, limit);
   fmtBp(usr, user);
   fmtBp(pct, (uint32_t)((uint64_t)used * 10000 / DUTY_WINDOW_MS));
-  sprintf(reply, "> band %s, limit %s, floor %s, user %s, used %u ms (%s)", band, lim, flo, usr, (unsigned)used, pct);
+  // After the fields, which stay as they were for whatever reads them.
+  sprintf(reply, "> band %s, limit %s, floor %s, user %s, used %u ms (%s)%s", band, lim, flo, usr, (unsigned)used, pct,
+          strcmp(flo, "none") == 0 ? ", no time rule enforced" : "");
 }
 
 int Dispatcher::calcRxDelay(float score, uint32_t air_time) const {
