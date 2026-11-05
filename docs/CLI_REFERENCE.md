@@ -362,8 +362,9 @@ The floor is chosen from the frequency alone, because a device has no country se
 |---|---|---|
 | EU 863-870 MHz, 433.05-434.79 MHz | enforces the band's floor | ERC/REC 70-03 annex 1, EN 300 220 |
 | US 902-928 MHz | no time limit | Read as 47 CFR 15.249, for one fixed channel like MeshCore's US preset (910.525 MHz, SF7, BW 62.5 kHz): 15.247's 0.4 s limit is for frequency hopping systems, and its digital modulation rule needs 500 kHz of bandwidth. 15.249 sets a field strength (50 mV/m at 3 m, about 0.75 mW EIRP by calculation), so the limit there is power |
+| Japan 920.5-928.1 MHz | no time limit: a device has no country setting, and these frequencies also lie in the US band. An operator there sets `set dutycycle 10`, and must also meet the standard's carrier sense, which the node does not provide | ARIB STD-T108 version 1.4, section 3.4.1: 360 s or less per hour at 922.4-923.4 MHz (Part 1) and 922.4-928.0 MHz (Part 2, with the shorter carrier sense) |
 
-The US row is an engineering reading, not legal advice. Compliance outside the enforced bands rests with the operator: their power, their antenna, their licence (for example Part 97), and any national rule. A rule the node does not enforce can still be met with `set dutycycle`, which lowers `limit`.
+The US and Japan rows are engineering readings, not legal advice. Compliance outside the enforced bands rests with the operator: their power, their antenna, their licence (for example Part 97), and any national rule. A rule the node does not enforce can still be met with `set dutycycle`, which lowers `limit`.
 
 ### Read the heap, the version and the boot times
 
