@@ -22,7 +22,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 |---|---|---|
 | L4 | A USB unlock outlives a change of cable user until it expires | Deferred: follow-up "clear the unlock on a USB line-state change and shorten the window" |
 | L5 | An unlock in Normal opens the whole posture class, not only the posture command | Deferred: follow-up "narrow the unlocked cable to `set posture`", with the contract wording |
-| L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Deferred: follow-up "decide the Ethernet console's row in the caller table" |
+| L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Fixed by the owner's decision of 2026-11-06: once enrolled the console only reads, in the caller table of section 9 |
 | L7 | The highest `job_id` value is the blocked-mark sentinel | Deferred: follow-up "refuse that `job_id` and say so in section 8"; small, status-only effect |
 | L8 | Entropy of the ESP32 RNG on server roles that run no radio | Deferred: follow-up "enable the bootloader random source around boot-time draws, or mix in radio noise" |
 | I1 | The duplicate-result cache key uses a truncated instance id | Fixed: an authority set whose members share those 6 bytes is refused. The id stays short, since it is the job identity managers see |
@@ -37,7 +37,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 
 - Section 6.1: BLE no longer counts for an unsigned first provisioning (M1).
 - Sections 9 and 11: the rescue console's file commands (H1), a signed request lowering the posture (M2), and the
-  Ethernet console row (L6) belong in the caller table.
+  Ethernet console row (L6, done) belong in the caller table.
 - Section 4: the marks fallback flag and its effect (L1).
 - Sections 6.1 and 10: `usb_only` for the unlock secret (L3).
 - Section 10: Hardened with a record needs the secret, reported as `no-unlock-secret` (M2).

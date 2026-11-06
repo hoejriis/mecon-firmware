@@ -254,6 +254,7 @@ This contract adds one principal to the [CLI privilege table](../CLI.md): **sign
 | MQTT, TLS verified, unsigned | today's table | reads (`status.get`, `config.schema`, `deployment.get`); state changes refused `unauthenticated` | the same | reads; else `deployment_record_corrupt` |
 | local unlock (section 10) | not applicable | as signed, for reads and to unlock the posture | the management surface | `deployment.reset` only |
 | LoRa remote admin (native) | today's table | reads only | reads and `reboot` | reads |
+| Ethernet console, logged in | today's table | reads only | off | reads |
 
 Its point is that a transport never becomes authority: once a device belongs to a Deployment, changing it needs a member's signature or someone physically present.
 

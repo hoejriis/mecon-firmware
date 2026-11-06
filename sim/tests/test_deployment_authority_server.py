@@ -240,6 +240,7 @@ def test_unsigned_writes_are_refused_over_the_ethernet_console_once_enrolled(nod
     reply = eth.command("set name Post")
     assert reply.startswith("ERR"), reply
     assert eth.command("get name") == "> Pre"
+    assert eth.command("reboot").startswith("ERR"), "and no reboot: the owner's decision of 2026-11-06"
 
 
 @pytest.mark.lockstep()
