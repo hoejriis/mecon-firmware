@@ -18,7 +18,6 @@ The other pages describe the finished product. This page and the release notes s
 | Compact telemetry over LoRa | Not built | [#116](https://github.com/hoejriis/mecon-firmware/issues/116) |
 | Standing instructions and periodic reports | Not built, and no contract yet | [#266](https://github.com/hoejriis/mecon-firmware/issues/266) |
 | The `screen` telemetry stream | Being built. The other streams are on `main` | [#96](https://github.com/hoejriis/mecon-firmware/issues/96) |
-| Device interface on the T1000-E Room server | Not in that build yet | [#348](https://github.com/hoejriis/mecon-firmware/issues/348) |
 | Signed updates with production release keys | The update path is built and proven with test keys. The keys themselves do not exist yet | [#110](https://github.com/hoejriis/mecon-firmware/issues/110) |
 | Every feature checked on all four boards | In progress. [Hardware evidence](HARDWARE_VERIFIED.md) lists what has been checked. A feature not listed there for a board is not verified on it | [#117](https://github.com/hoejriis/mecon-firmware/issues/117) |
 

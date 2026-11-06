@@ -1157,6 +1157,7 @@ def test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_open
     assert r["status"] == "ok" and r["result"] == {"unlocked": True, "expires_in_s": 600}, r
     assert d.c.cli("set posture normal confirm") == "OK - already normal", "the posture is open to the unlocked cable"
     assert d.c.cli("set name Nope") == NOT_ENROLLED_REFUSAL, "never a configuration write"
+    assert d.c.cli("set connectivity.mode ble") == NOT_ENROLLED_REFUSAL, "the posture, not the rest of its class"
     assert d.c.cli("get prv.key").startswith("ERR"), "never key export"
     r = d.i.request("config.apply", apply_name("Nope"))
     assert r["status"] == "refused" and r["error"] == "unauthenticated", "nor over the interface: %s" % r
