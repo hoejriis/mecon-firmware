@@ -65,11 +65,13 @@ jobs:
           fi
           sed -i '/^$/d' mutants.txt
           echo "$(wc -l < mutants.txt) mutants"
-          batches=$(jq -R -s -c 'split("\n") | map(select(length > 0)) | [range(0; length; 4) as $i | .[$i:$i+4] | join(" ")]' mutants.txt)
+          # four to a batch, more once four would need over 240 jobs: the suite grows with every change
+          size=$(( ($(wc -l < mutants.txt) + 239) / 240 )); [ "$size" -ge 4 ] || size=4
+          batches=$(jq -R -s -c --argjson size "$size" 'split("\n") | map(select(length > 0)) | [range(0; length; $size) as $i | .[$i:$i+$size] | join(" ")]' mutants.txt)
           n=$(echo "$batches" | jq length)
-          echo "$n batches"
+          echo "$n batches of up to $size"
           # fail loudly here (a visible check) rather than let an oversized matrix fail the run with no check at all
-          if [ "$n" -gt 256 ]; then echo "::error::$n mutant batches exceed the 256-job matrix limit; raise the batch size"; exit 1; fi
+          if [ "$n" -gt 256 ]; then echo "::error::$n mutant batches exceed the 256-job matrix limit"; exit 1; fi
           echo "mutants=$batches" >> "$GITHUB_OUTPUT"
 
   mutant:
