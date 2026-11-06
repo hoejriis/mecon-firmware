@@ -144,11 +144,12 @@ bool DeployAuth::persistMarks() {
 }
 
 // The marks for a newly committed set, written after the record (AUTHORITY.md section 4): a member still present at its
-// admission keeps its mark, a re-admitted one restarts at 0, and with the marks lost nobody is trusted.
+// admission keeps its mark and a re-admitted one restarts at 0. With the marks lost, the load has already blocked everyone
+// at the set's admissions, so "keeps its mark" stays blocked and a re-admission is what clears it.
 bool DeployAuth::saveMarksFor(const Dep::AuthoritySet& set) {
   if (!_dep) return false;
   Dep::Marks next;
-  const int blocked = Dep::reconcileMarks(_dep->marks_lost ? nullptr : &_dep->marks, set, &next);
+  const int blocked = Dep::reconcileMarks(&_dep->marks, set, &next);
   _dep->marks = next;
   _dep->blocked = blocked;
   _dep->marks_dirty = true;
@@ -360,8 +361,8 @@ bool DeployAuth::isWrapper(const char* m, size_t n) {
   return w;
 }
 // The verified body of a signed request, freed wiped: a config.apply carries passwords in clear.
-static void freeBody(char* body) {
-  if (body) Iface::wipe(body, Dep::MAX_WRAPPED + 1);
+static void freeBody(char* body, size_t cap) {
+  if (body) Iface::wipe(body, cap);
   free(body);
 }
 
@@ -373,18 +374,21 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (_dep) _dep->auth_rejections++;
     return writeResult(out, cap, "", ST_REFUSED, nullptr, "deployment_record_corrupt");
   }
-  char* body = static_cast<char*>(malloc(Dep::MAX_WRAPPED + 1));
+  // The body is a string inside the wrapper, so it is never longer than the message. A small signed request on a V3 in a
+  // transfer has no 4 KB to spare (#312).
+  const size_t body_cap = (len < Dep::MAX_WRAPPED ? len : Dep::MAX_WRAPPED) + 1;
+  char* body = static_cast<char*>(malloc(body_cap));
   if (!body) return writeResult(out, cap, "", ST_BUSY, nullptr, "no-memory");
   Dep::Verified v;
   memset(&v, 0, sizeof(v));
   const char* nonce = nonce_slot;
   const Dep::WrapErr e = Dep::verifyWrapped(msg, len, _dep->rec, _dep->set, _env.node_key, Dep::contractOpClass,
-                                            nonce[0] ? nonce : nullptr, body, Dep::MAX_WRAPPED + 1, &v);
+                                            nonce[0] ? nonce : nullptr, body, body_cap, &v);
   int n;
   if (e != Dep::WR_OK) {
     _dep->auth_rejections++;
     n = writeResult(out, cap, "", ST_REFUSED, nullptr, Dep::wrapErrCode(e));
-    freeBody(body);
+    freeBody(body, body_cap);
     return n;
   }
   strncpy(_answering.op, v.op, sizeof(_answering.op) - 1);   // the verified request: its result names it
@@ -400,13 +404,13 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     // Marks that could not be written back at boot, or after a set change, are retried before anything is accepted.
     if (_dep->marks_dirty && !persistMarks()) {
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
-      freeBody(body);
+      freeBody(body, body_cap);
       return n;
     }
     if (v.member < 0 || v.member >= _dep->marks.n ||
         memcmp(_dep->marks.m[v.member].instance_id, _dep->set.members[v.member].instance_id, Dep::ID_LEN) != 0) {
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "marks");   // marks and set disagree: run nothing
-      freeBody(body);
+      freeBody(body, body_cap);
       return n;
     }
     Dep::Watermark& wm = _dep->marks.m[v.member].wm;
@@ -422,7 +426,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
       _dep->auth_rejections++;
       // The mark, so a manager that lost its place continues above it without another request (AUTHORITY.md section 8).
       n = writeReplayRefusal(out, cap, id, wm.mark);
-      freeBody(body);
+      freeBody(body, body_cap);
       return n;
     }
     if (rv == Dep::RV_DUPLICATE) {
@@ -439,7 +443,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
       } else {
         n = writeResult(out, cap, id, ST_FAILED, nullptr, "duplicate");   // it ran (or a cut lost it); read the state
       }
-      freeBody(body);
+      freeBody(body, body_cap);
       return n;
     }
     // New: a reservation above it is persisted BEFORE the request runs, so a redelivery after a power cut cannot run it
@@ -448,7 +452,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     if (Dep::markAccepted(&wm, v.job_id) && !persistMarks()) {
       wm = old;
       n = writeResult(out, cap, id, ST_BUSY, nullptr, "storage");
-      freeBody(body);
+      freeBody(body, body_cap);
       return n;
     }
   }
@@ -462,7 +466,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   _signed = false;
   if (n > 0 && key[0] && cache) cache->store(key, SIGNED_OP, out, (size_t)n);
   if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once
-  freeBody(body);
+  freeBody(body, body_cap);
   return n;
 }
 

@@ -714,6 +714,19 @@ static Context unlockedCtx(uint8_t t, uint8_t a, uint8_t posture) {
   return c;
 }
 
+TEST(Unlocked, AnUnlockOpensAuditAndPostureButNotTheOtherWritesInTheClass) {
+  const Context c = unlockedCtx(T_USB, A_CABLE, 0);
+  for (const char* line : {"get audit", "set posture normal confirm"}) {
+    const Resolved r = resolve(line, ROLE_COMPANION);
+    EXPECT_TRUE(decide(c, r.cls, r.flags).allow) << line;
+  }
+  for (const char* line : {"set connectivity.mode ble", "set mqtt.profile 0 manage 1"}) {
+    const Resolved r = resolve(line, ROLE_COMPANION);
+    EXPECT_EQ(r.cls, C_POSTURE) << line;
+    EXPECT_EQ(decide(c, r.cls, r.flags).reason, R_ENROLLED) << line;
+  }
+}
+
 TEST(Unlocked, AnUnlockedCableOpensOnlyThePostureAndOnlyInNormal) {
   EXPECT_FALSE(decide(enrolledCtx(T_USB, A_CABLE, 0), C_POSTURE).allow) << "control: enrolled, locked";
   EXPECT_TRUE(decide(unlockedCtx(T_USB, A_CABLE, 0), C_POSTURE).allow);

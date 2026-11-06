@@ -66,7 +66,8 @@ enum Class : uint8_t {
 enum Flags : uint8_t {
   F_CABLE_ONLY = 1,   // lowers protection: only the cable may, whatever the class cell says for the other local callers
   F_QUIET = 2,        // registry only: a "local console only" refusal is explained but not audited
-  F_RAISES = 4        // raises protection to Hardened: with a record, only once the record holds a local unlock secret
+  F_RAISES = 4,       // raises protection to Hardened: with a record, only once the record holds a local unlock secret
+  F_NO_UNLOCK = 8     // a write in the posture class that is not the posture: a local unlock does not open it
 };
 
 enum Reason : uint8_t {
@@ -235,7 +236,7 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   // A local unlock opens one more thing in Normal: the posture (section 9, "local unlock"). In Hardened it opens the
   // management surface (reads and deployment.reset, decided by that operation), never a configuration write, a key export
   // or a posture change: the posture stays as the signed callers and the factory reset leave it.
-  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0;
+  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0 && !(flags & F_NO_UNLOCK);
   if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote && p != P_NETCON_ADMIN) &&
       !(p == P_CABLE && cls == C_DESTRUCTIVE) && !unlock_posture)
     r = R_ENROLLED;
