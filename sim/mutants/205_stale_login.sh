@@ -2,3 +2,7 @@
 # --- issue #112: a stale login (right password, older timestamp) is audited as stale-login
 mutate stale_login_not_named_repeater examples/simple_repeater/MyMesh.cpp '                           Posture::W_STALE_LOGIN);' '                           Posture::W_BAD_PASSWORD);' sim/tests/test_stale_login.py::test_a_stale_login_is_refused_and_audited
 mutate stale_login_not_named_room examples/simple_room_server/MyMesh.cpp '                             Posture::W_STALE_LOGIN);' '                             Posture::W_BAD_PASSWORD);' sim/tests/test_stale_login.py::test_a_stale_login_is_refused_and_audited
+mutate stale_count_not_noted_repeater examples/simple_repeater/MyMesh.cpp '      Posture::staleLogins().note(sender.pub_key);' '' sim/tests/test_stale_login.py::test_the_runtime_stream_counts_stale_logins_and_names_the_client
+mutate stale_count_not_noted_room examples/simple_room_server/MyMesh.cpp '        Posture::staleLogins().note(sender.pub_key);' '' sim/tests/test_stale_login.py::test_the_runtime_stream_counts_stale_logins_and_names_the_client
+mutate stale_last_not_kept src/helpers/Posture.h '    memcpy(last, pub_key, sizeof(last));' '' sim/tests/test_stale_login.py::test_the_runtime_stream_counts_stale_logins_and_names_the_client
+mutate stale_fields_left_out src/helpers/iface/ConsoleIface.cpp 'writeRuntime(w, *_host.board, _gap, -1, &Posture::staleLogins());' 'writeRuntime(w, *_host.board, _gap);' sim/tests/test_stale_login.py::test_the_runtime_stream_counts_stale_logins_and_names_the_client
