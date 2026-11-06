@@ -204,7 +204,7 @@ private:
   void* _lora_send_user = nullptr;
   bool _on_lora = false, _lora_channel = false;
   static bool loraChannelKey(void* user, uint8_t out[16]);
-  static void onLoraChannelFrame(void* user, const uint8_t* data, size_t n);
+  static bool onLoraChannelFrame(void* user, const uint8_t* data, size_t n);
   uint8_t _lora_key[16] = {0};   // the bound channel's key, read again every few seconds: the mesh asks on each group packet
   bool _lora_key_ok = false;
   uint32_t _lora_key_at = 0;

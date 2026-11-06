@@ -66,7 +66,7 @@ public:
   Iface::Status rfRequest(Iface::OpContext& c);
   void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
   bool onLora() const { return _on_lora; }
-  void onLoraChannel(int slot, const uint8_t* data, size_t n);
+  bool onLoraChannel(int slot, const uint8_t* data, size_t n);
   void onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n);
   Iface::StandingService& standing() { return _standing; }
   const Iface::LoraLink& lora() const { return _lora; }

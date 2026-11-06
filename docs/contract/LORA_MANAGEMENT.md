@@ -73,7 +73,8 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   only on its bound channel, and only while the binding is `bound` (MANAGEMENT_CHANNEL section 2): a `stale` or
   absent binding takes nothing. The device consumes its own frames; they are not passed to the app as channel data.
 - A group datagram names no sender and no recipient, so each frame header carries both, as 8-byte prefixes of the node
-  public keys: the target's, and the sender's (for the reply). Every member of the channel can read them; they reveal
+  public keys: the target's, and the sender's (for the reply), then one byte that changes on each send, so a repeater that
+  heard a frame the first time still carries its retry. Every member of the channel can read them; they reveal
   which keys talk, never a `device_id`.
 - Only the node whose key matches the target prefix reads further. The signed body's `target_public_key` then
   confirms the full key, as on the point-to-point path. Every other node drops the frame without answering.
@@ -105,9 +106,10 @@ encrypted on both paths. A node is addressed by its node public key, as native M
 - **A gap is reported on point to point only.** A message incomplete when its deadline passes (section 8) is
   discarded. On the point-to-point path the device answers `parts-missing`, with the `xid` and a mask of the frames
   it holds, so the sender re-sends only those. The answer is subject to the budget for unverified answers
-  (section 7). On the channel nothing is answered: only the manager can know that its message is incomplete, and it
-  re-sends the whole message after its deadline.
+  (section 7). On the channel nothing is answered: only the manager can know that its message is incomplete. It
+  re-sends the whole message under the same `xid`, and the frames the device already holds count.
 - **A repeated frame is ignored**, so a frame heard twice (a flood, a retry) costs nothing.
+- **A frame addressed to this node stops here.** It is not repeated further, so the target's radio stays listening for the rest of the message.
 
 ## 5. Results and correlation
 

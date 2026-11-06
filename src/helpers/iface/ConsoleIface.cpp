@@ -838,10 +838,11 @@ bool ConsoleIface::loraChannelKey(void* user, uint8_t out[16]) {
   return s->_lora_key_ok;
 }
 
-void ConsoleIface::onLoraChannelFrame(void* user, const uint8_t* data, size_t n) {
+bool ConsoleIface::onLoraChannelFrame(void* user, const uint8_t* data, size_t n) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
-  if (n <= LORA_CH_ADDR + LORA_HDR || !s->_host.node_key || memcmp(data, s->_host.node_key, LORA_CH_PREFIX) != 0) return;
+  if (n <= LORA_CH_ADDR + LORA_HDR || !s->_host.node_key || memcmp(data, s->_host.node_key, LORA_CH_PREFIX) != 0) return false;
   s->_lora.feedChannel(data + LORA_CH_PREFIX, data + LORA_CH_ADDR, n - LORA_CH_ADDR, millis());
+  return true;
 }
 
 // One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).

@@ -183,6 +183,28 @@ def test_a_signed_request_runs_over_the_channel_with_the_same_result(ether, node
     assert again and again["status"] == "ok" and again["result"] == r["result"], "a retry on the other path runs nothing: %s" % again
 
 
+def test_a_retry_under_the_same_number_fills_a_gap_on_the_channel(ether, nodes):
+    d, m = on_channel(nodes, ether, "repeater", "cg")
+    text = json.dumps(wrap(d.node_key, "config.apply", apply_name("Filled"), job=1), separators=(",", ":"))
+    ether.set_loss("mgrcg", "cg", 0.35, both=False)   # the request loses frames, and the reply does not
+    args = {"to": d.node_key, "message": text, "slot": CH}
+    q = m.i.request("rf.request", args)
+    assert q["status"] == "ok", q
+    xid = q["result"]["xid"]
+    res = None
+    for attempt in range(8):
+        end = time.time() + 7
+        while time.time() < end and not res:
+            msg = m.i.read_message(0.5)
+            if msg and msg.get("ev") == "rf" and msg["data"].get("xid") == xid:
+                res = json.loads(msg["data"]["message"])
+        if res:
+            break
+        assert m.i.request("rf.request", dict(args, xid=xid))["status"] == "ok"
+    assert res and res["status"] == "ok", res
+    assert "Filled" in d.name()
+
+
 def test_the_channel_refuses_what_its_members_could_read_and_says_nothing_unverified(ether, nodes):
     d, m = on_channel(nodes, ether, "repeater", "cr")
     r = m.send(d.node_key, wrap(d.node_key, "status.get", {}, job=None, rid="s1"), slot=CH)

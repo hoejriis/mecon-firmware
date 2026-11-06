@@ -1139,28 +1139,29 @@ void MeconIface::loraTick(uint32_t now) {
 
 // A frame heard on a channel. Taken only on the bound channel while its binding is bound (MANAGEMENT_CHANNEL.md section 2), and
 // only when addressed to this node; a reply to this Companion's own rf.request is taken on whichever slot it sent on.
-void MeconIface::onLoraChannel(int slot, const uint8_t* data, size_t n) {
+bool MeconIface::onLoraChannel(int slot, const uint8_t* data, size_t n) {
   static const uint8_t ALL[LORA_CH_PREFIX] = {0};   // a report may name no one: whoever holds the channel may read it
   if (n > LORA_CH_ADDR && data[LORA_CH_ADDR] == REPORT_MARKER && memcmp(data, ALL, LORA_CH_PREFIX) == 0) {
     onRfReport(data + LORA_CH_PREFIX, LORA_CH_PREFIX, data + LORA_CH_ADDR, n - LORA_CH_ADDR);
-    return;
+    return false;
   }
-  if (n <= LORA_CH_ADDR + LORA_HDR || memcmp(data, _mesh->self_id.pub_key, LORA_CH_PREFIX) != 0) return;
+  if (n <= LORA_CH_ADDR + LORA_HDR || memcmp(data, _mesh->self_id.pub_key, LORA_CH_PREFIX) != 0) return false;
   const uint8_t* sender = data + LORA_CH_PREFIX;
   const uint8_t* f = data + LORA_CH_ADDR;
   const size_t len = n - LORA_CH_ADDR;
-  if (f[0] == REPORT_MARKER) { onRfReport(sender, LORA_CH_PREFIX, f, len); return; }
+  if (f[0] == REPORT_MARKER) { onRfReport(sender, LORA_CH_PREFIX, f, len); return true; }
   if (memcmp(f, LORA_REPLY_MAGIC, 4) == 0) {
     uint8_t key[32] = {0};
     memcpy(key, sender, LORA_CH_PREFIX);
     onRfReply(key, f, len);
-    return;
+    return true;
   }
   MgmtHost h = mgmtHost();
   MgmtRecord rec;
-  if (mgmtState(h, &rec) != MGMT_BOUND || rec.slot != slot) return;
+  if (mgmtState(h, &rec) != MGMT_BOUND || rec.slot != slot) return false;
   _lora_slot = slot;
   _lora.feedChannel(sender, f, len, millis());
+  return true;
 }
 
 // rf.request {"to":"<node key hex>","message":"<the signed request, as text>"[,"slot":n]}: this Companion is the manager's radio.
@@ -1193,7 +1194,11 @@ Status MeconIface::rfRequest(OpContext& c) {
   _rf_len = strlen(msg);
   _rf_off = 0;
   _rf_idx = 0;
-  _rf_xid++;
+  // A retry of a message whose frames did not all arrive names its xid: the target keeps what it has, and this fills the gap.
+  const int xt = jsonFind(d, c.req->args, "xid");
+  int64_t xv;
+  if (xt >= 0 && jsonGetInt(d, xt, 0, 255, &xv)) _rf_xid = (uint8_t)xv;
+  else _rf_xid++;
   _rf_count = (uint8_t)((_rf_len + LORA_REQ_PAYLOAD - 1) / LORA_REQ_PAYLOAD);
   _rf_next = millis();
   JsonWriter& w = *c.out;

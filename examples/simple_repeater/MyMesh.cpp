@@ -602,12 +602,12 @@ int MyMesh::searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channel
   return 1;
 }
 
-void MyMesh::onGroupDataRecv(mesh::Packet*, uint8_t type, const mesh::GroupChannel&, uint8_t* data, size_t len) {
+void MyMesh::onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel&, uint8_t* data, size_t len) {
   Iface::LoraChannelSink& s = Iface::loraChannelSink();
   if (type != PAYLOAD_TYPE_GRP_DATA || len < 3 || !s.frame) return;
   const uint16_t data_type = (uint16_t)data[0] | ((uint16_t)data[1] << 8);
   if (data_type != Iface::LORA_CHANNEL_TYPE || (size_t)data[2] > len - 3) return;
-  s.frame(s.user, data + 3, data[2]);
+  if (s.frame(s.user, data + 3, data[2])) packet->markDoNotRetransmit();   // it has arrived: no need to carry it further
 }
 
 // A reply frame on the bound channel, addressed to the sender's prefix.
@@ -626,6 +626,8 @@ bool MyMesh::loraChannelReply(const uint8_t* to_key, const uint8_t* frame, size_
   temp[2] = (uint8_t)(Iface::LORA_CH_ADDR + n);
   memcpy(temp + 3, to_key, Iface::LORA_CH_PREFIX);
   memcpy(temp + 3 + Iface::LORA_CH_PREFIX, self_id.pub_key, Iface::LORA_CH_PREFIX);
+  static uint8_t send_tag = 0;
+  temp[3 + Iface::LORA_CH_ADDR - 1] = ++send_tag;
   memcpy(temp + 3 + Iface::LORA_CH_ADDR, frame, n);
   mesh::Packet* pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, ch, temp, 3 + Iface::LORA_CH_ADDR + n);
   if (!pkt) return false;

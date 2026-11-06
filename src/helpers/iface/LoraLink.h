@@ -24,9 +24,11 @@ const uint8_t LORA_REPLY_MAGIC[4] = {0x1D, 'M', 'C', '1'};
 const size_t LORA_REPLY_HDR = 7;
 const size_t LORA_REPLY_PAYLOAD = 150;
 // On the management channel the same frames follow two addresses, 8-byte prefixes of the node keys: the target's and the sender's.
-// A group datagram names neither, and every member can read them; they reveal which keys talk, never a device_id.
+// A group datagram names neither, and every member can read them; they reveal which keys talk, never a device_id. A byte that
+// changes on each send follows: encryption is deterministic here, so a re-sent frame would otherwise be the same packet, and a
+// repeater that heard it the first time would not carry the retry.
 const uint16_t LORA_CHANNEL_TYPE = 0x4D43;   // "MC"
-const size_t LORA_CH_PREFIX = 8, LORA_CH_ADDR = 16;
+const size_t LORA_CH_PREFIX = 8, LORA_CH_ADDR = 17;
 const size_t LORA_CH_REPLY_PAYLOAD = 139;
 const size_t LORA_MSG_MAX = 1024;
 const size_t LORA_CIPHER_BLOCK = 16;
@@ -299,7 +301,7 @@ inline LoraSink& loraSink() {
 // The server roles have no channel table: the mesh asks the interface for the bound channel's key, and hands it what it hears.
 struct LoraChannelSink {
   bool (*key)(void* user, uint8_t out[16]) = nullptr;
-  void (*frame)(void* user, const uint8_t* data, size_t n) = nullptr;
+  bool (*frame)(void* user, const uint8_t* data, size_t n) = nullptr;   // true: addressed to this node
   void* user = nullptr;
 };
 inline LoraChannelSink& loraChannelSink() {

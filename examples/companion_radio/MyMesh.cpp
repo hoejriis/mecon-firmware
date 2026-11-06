@@ -815,7 +815,7 @@ void MyMesh::onChannelDataRecv(const mesh::GroupChannel &channel, mesh::Packet *
                                const uint8_t *data, size_t data_len) {
 #ifdef ENABLE_MECON_IFACE
   if (data_type == Iface::LORA_CHANNEL_TYPE) {   // the device's own frames: never passed to the app as channel data
-    _iface.onLoraChannel(findChannelIdx(channel), data, data_len);
+    if (_iface.onLoraChannel(findChannelIdx(channel), data, data_len)) pkt->markDoNotRetransmit();   // it has arrived
     return;
   }
 #endif
@@ -945,6 +945,8 @@ bool MyMesh::loraChannelSend(int slot, const uint8_t* to_key, const uint8_t* fra
   temp[2] = (uint8_t)(Iface::LORA_CH_ADDR + n);
   memcpy(temp + 3, to_key, Iface::LORA_CH_PREFIX);
   memcpy(temp + 3 + Iface::LORA_CH_PREFIX, self_id.pub_key, Iface::LORA_CH_PREFIX);
+  static uint8_t send_tag = 0;
+  temp[3 + Iface::LORA_CH_ADDR - 1] = ++send_tag;
   memcpy(temp + 3 + Iface::LORA_CH_ADDR, frame, n);
   mesh::Packet* pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, ch.channel, temp, 3 + Iface::LORA_CH_ADDR + n);
   if (!pkt) return false;
