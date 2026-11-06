@@ -308,3 +308,84 @@ def test_an_observation_is_signed_as_its_own_stream(ether, nodes, kind):
     assert members(e)[-3:] == ["usig_boot", "usig_seq", "usig"], members(e)
     assert verifies(e.raw, d.node_key, "observations"), e.raw
     assert not verifies(e.raw, d.node_key, "result"), "an observation and a result are not interchangeable"
+
+
+@pytest.mark.parametrize("kind", ["companion_standalone", "repeater"])
+def test_the_last_sequence_number_signs_and_the_next_message_says_exhausted(nodes, kind):
+    d = boot_companion(nodes, "sx" + kind[:2], 37) if kind == "companion_standalone" else boot_server(nodes, kind, "sx" + kind[:2], 37)
+    assert d.provision()["status"] == "ok"
+    d.n.stop()
+    d.n.extra_env = {"SIM_SIGN_SEQ": str(0xFFFFFFFF - 200)}
+    d.n.start()
+    d.attach()
+    seen_last = False
+    for _ in range(400):
+        r = d.i.request("status.get")
+        if "unsigned" in r:
+            break
+        assert r["usig_seq"] <= 0xFFFFFFFF and verifies(r.raw, d.node_key, "result"), r
+        seen_last = r["usig_seq"] == 0xFFFFFFFF
+    assert seen_last, "the last number of the boot signed"
+    assert r["unsigned"] == "seq_exhausted", r
+    assert not any(k.startswith("usig") for k in r), "nothing is signed once the numbers run out, and they never wrap"
+    assert d.i.request("status.get")["unsigned"] == "seq_exhausted", "and it stays so until the next boot"
+    d.n.stop()
+    d.n.extra_env = {}
+    d.n.start()
+    d.attach()
+    r = d.i.request("status.get")
+    assert r["usig_seq"] < 10 and verifies(r.raw, d.node_key, "result"), "a new boot starts a new sequence"
+
+
+def test_the_largest_config_apply_answers_signed_well_under_the_limit(nodes):
+    # Why no operation that changes something needs a cap of its own (the result is built after the change has run): a
+    # config.apply has at most 16 keys, each echoed with "ok" or "failed", and every other write answers with less.
+    d = boot_companion(nodes, "pm", 39)
+    assert d.provision()["status"] == "ok"
+    keys = {"mqtt.profile.%d.%s" % (p, k): "x" for p in range(3) for k in ("host", "path", "site", "user", "pwd")}
+    keys["wifi.profile.0.ssid"] = "x"
+    assert len(keys) == 16
+    r = d.send(wrap(d.node_key, "config.apply", {"set": keys, "confirm": {"within_s": 60}}, job=1))
+    assert r["status"] == "ok" and len(r["result"]["applied"]) == 16, r
+    assert verifies(r.raw, d.node_key, "result")
+    print("largest apply result: %d bytes" % len(r.raw))
+    assert len(r.raw) < 1100, "the room a signature needs below the 1,536 B limit is no longer there: %d" % len(r.raw)
+
+
+def test_a_full_page_of_a_paged_read_still_fits_its_signature(nodes):
+    d = boot_companion(nodes, "pp", 41)
+    assert d.provision()["status"] == "ok"
+    longest = 0
+    cursor, pages = None, 0
+    while cursor is not False:
+        r = d.send(wrap(d.node_key, "config.schema", {"cursor": cursor} if cursor else {}, job=None, rid="i" * 32))
+        assert r["status"] == "ok" and verifies(r.raw, d.node_key, "result"), r
+        longest = max(longest, len(r.raw))
+        pages += 1
+        cursor = r["result"].get("next") or False
+    print("config.schema: %d pages, longest %d bytes" % (pages, longest))
+    assert longest > 1100, "not near the limit, so this proves nothing: %d" % longest
+
+
+def test_a_result_that_just_fits_is_signed_and_one_byte_more_is_a_signed_busy(nodes):
+    d = boot_companion(nodes, "pc", 43)
+    assert d.provision()["status"] == "ok"
+
+    limit = os.path.join(d.n.dir, "sign-cap")
+    d.n.stop()
+    d.n.extra_env = {"SIM_SIGN_CAP_FILE": limit}
+    d.n.start()
+    d.attach()
+
+    def read_with_cap(cap):
+        with open(limit, "w") as f:
+            f.write(str(cap))
+        return d.i.request("config.schema")
+
+    size = len(read_with_cap(0).raw)
+    r = read_with_cap(size + 2)   # the text, its NUL and one spare byte: the smallest buffer the signer accepts
+    assert r["status"] == "ok" and len(r.raw) == size and verifies(r.raw, d.node_key, "result"), r
+    r = read_with_cap(size + 1)
+    assert r["status"] == "busy" and r["error"] == "too-large-to-sign", r
+    assert verifies(r.raw, d.node_key, "result"), "the refusal to answer in full is signed"
+    assert "result" not in r, r

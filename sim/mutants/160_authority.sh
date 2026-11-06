@@ -199,3 +199,20 @@ mutate session_oom_silent src/helpers/mqtt/MqttController.cpp '    _psc.publish(
 mutate signed_body_too_small src/helpers/iface/DeployAuth.cpp 'const size_t body_cap = (len < Dep::MAX_WRAPPED ? len : Dep::MAX_WRAPPED) + 1;' 'const size_t body_cap = (len < Dep::MAX_WRAPPED ? len : Dep::MAX_WRAPPED) / 4;' sim/tests/test_provenance.py::test_a_signed_request_fits_its_body_buffer
 mutate observation_unsigned_companion examples/companion_radio/MeconIface.cpp '  if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream
 mutate observation_unsigned_console src/helpers/iface/ConsoleIface.cpp '  if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream
+mutate lost_marks_need_two_re_admissions src/helpers/iface/DeployAuth.cpp 'Dep::reconcileMarks(&_dep->marks, set, &next);' 'Dep::reconcileMarks(_dep->marks_lost ? nullptr : &_dep->marks, set, &next);' sim/tests/test_deployment_authority.py::test_after_lost_marks_one_re_admission_clears_a_member_and_only_that_member
+# the refusals of a rotation that cannot run, and the end of the signature sequence
+mutate rotation_rng_any_draw_goes src/helpers/iface/IdentityRotation.cpp '    if (!nonzero || distinct < 16 || (tries > 0 && memcmp(seed, prev, sizeof(seed)) == 0)) {' '    if (false) {' $IR::test_a_random_source_that_fails_refuses_the_rotation
+mutate rotation_rng_fifteen_values_pass src/helpers/iface/IdentityRotation.cpp 'distinct < 16' 'distinct < 15' $IR::test_a_random_source_that_fails_refuses_the_rotation
+mutate rotation_statement_save_ignored src/helpers/iface/IdentityRotation.cpp 'if (!fl || !st.save(st.user, reinterpret_cast<uint8_t*>(file), fl)) {' 'if (!fl) {' $IR::test_a_rotation_that_cannot_save_leaves_the_device_as_it_was
+mutate rotation_key_save_keeps_the_statement src/helpers/iface/IdentityRotation.cpp 'if (!st.save_key(st.user, fresh)) {
+    st.remove(st.user);' 'if (!st.save_key(st.user, fresh)) {' $IR::test_a_rotation_that_cannot_save_leaves_the_device_as_it_was
+mutate rotation_failed_drop_reports_ok src/helpers/iface/IdentityRotation.cpp 'return dropped ? 1 : 2;' 'return 1;' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
+mutate rotation_failed_drop_clears_pending src/helpers/iface/IdentityRotation.cpp '  if (dropped) {
+    char text[256], sig_b64[89];' '  {
+    char text[256], sig_b64[89];' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
+mutate rotation_console_hides_a_failed_drop src/helpers/iface/ConsoleIface.cpp 'if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }' '' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
+mutate rotation_companion_hides_a_failed_drop examples/companion_radio/MeconDeploy.cpp 'if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }' '' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
+mutate sign_sequence_wraps src/helpers/iface/Provenance.cpp 'if (!_epoch_saved || _seq == 0xFFFFFFFFu) {' 'if (!_epoch_saved) {' sim/tests/test_provenance.py::test_the_last_sequence_number_signs_and_the_next_message_says_exhausted
+mutate sign_sequence_stops_one_early src/helpers/iface/Provenance.cpp '_seq == 0xFFFFFFFFu' '_seq == 0xFFFFFFFEu' sim/tests/test_provenance.py::test_the_last_sequence_number_signs_and_the_next_message_says_exhausted
+mutate sign_limit_one_byte_short src/helpers/iface/Provenance.cpp 'if (text_len + SIG_MEMBER >= cap) return -1;' 'if (text_len + SIG_MEMBER + 1 >= cap) return -1;' sim/tests/test_provenance.py::test_a_result_that_just_fits_is_signed_and_one_byte_more_is_a_signed_busy
+mutate sign_too_large_goes_unsigned src/helpers/iface/Provenance.cpp '  return sign("result", buf, (size_t)n, cap, signer, extra);' '  return n;' sim/tests/test_provenance.py::test_a_result_that_just_fits_is_signed_and_one_byte_more_is_a_signed_busy

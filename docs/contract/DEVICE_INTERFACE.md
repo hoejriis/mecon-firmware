@@ -72,7 +72,7 @@ UTF-8 JSON objects. Three shapes:
 | `mgmt.channel.get` / `bind` / `rotate` / `unbind` | the management channel: one native slot marked as the channel a manager reaches the device on, its state (none, bound or stale), and its changes, which confirm-or-revert for anyone but the cable ([management channel](MANAGEMENT_CHANNEL.md)). Companion only | read (`get`); write |
 | `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 
-Native operations stay native: messaging, contacts, channels (which `channel.*` also reaches, on the same table), adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.
+Native operations stay native: messaging, contacts, channels, adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. The interface operations that reach the same state ([managed operations](OPERATIONS.md)) stand beside them, on the same tables. Telemetry families and their streams are specified in [telemetry](TELEMETRY.md).
 
 ### 5. Settings: one store, the CLI's
 

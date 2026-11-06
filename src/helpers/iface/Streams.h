@@ -12,6 +12,7 @@
 #include "../GnssHealth.h"
 
 namespace mesh { class Dispatcher; class Radio; class MainBoard; }
+namespace Posture { struct StaleLogins; }
 class SensorManager;
 class LocationProvider;
 
@@ -170,7 +171,9 @@ void writeCount(JsonWriter& w, const char* key, int count, int capacity);
 
 // Reset reason, boot times, and the loop's longest gap since the previous runtime event.
 // heap_low: 1 or 0 where the build checks the heap floor (the Companion), -1 to leave the field out.
-void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low = -1);
+// stale: where the role takes remote logins (the Repeater and Room server), null to leave its fields out.
+void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low = -1,
+                  const Posture::StaleLogins* stale = nullptr);
 
 // The location stream (TELEMETRY.md): a GNSS fix as integers, never floats. lat_e6/lon_e6 in millionths of a degree,
 // alt_m in metres; position members are null without a fix; age_s is null when the provider cannot tell or has had no
