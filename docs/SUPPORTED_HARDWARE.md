@@ -19,7 +19,7 @@ The four hardware test targets, with the role builds that carry the managed-devi
 |---|---|---|---|---|---|---|
 | Heltec V3 (ESP32-S3) | Companion (`Heltec_v3_companion_radio_standalone`), Repeater (`Heltec_v3_repeater`), Room server (`Heltec_v3_room_server`) | Companion: USB and BLE. Repeater, Room server: USB console | Wi-Fi, MQTT | Point to point, and over a private management channel | OLED | Signed, over USB, BLE or IP where the role has that link. Boots on trial and rolls back if not confirmed |
 | Heltec V4 (ESP32-S3, 2 MB PSRAM) | Companion (`heltec_v4_companion_radio_standalone`), Repeater (`heltec_v4_repeater`), Room server (`heltec_v4_room_server`) | As the V3 | As the V3 | As the V3 | OLED | As the V3 |
-| SenseCAP T1000-E (nRF52840) | Companion (`t1000e_companion_radio_usb`, `t1000e_companion_radio_ble`), Repeater (`t1000e_repeater`), Room server (`t1000e_room_server`, [not available yet](AVAILABILITY.md)) | USB, and BLE on the BLE Companion | None | As the V3 | None | Signed offer, then the bootloader's serial DFU over USB. No previous image to return to |
+| SenseCAP T1000-E (nRF52840) | Companion (`t1000e_companion_radio_usb`, `t1000e_companion_radio_ble`), Repeater (`t1000e_repeater`), Room server (`t1000e_room_server`) | USB, and BLE on the BLE Companion | None | As the V3 | None | Signed offer, then the bootloader's serial DFU over USB. No previous image to return to |
 | Seeed Wio Tracker L1 (nRF52840) | Companion (`WioTrackerL1_companion_radio_usb`, `WioTrackerL1_companion_radio_ble`), Repeater (`WioTrackerL1_repeater`), Room server (`WioTrackerL1_room_server`) | USB, and BLE on the BLE Companion | None | As the V3 | OLED | As the T1000-E |
 
 ## What differs, and why
