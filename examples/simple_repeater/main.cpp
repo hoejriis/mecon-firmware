@@ -104,6 +104,7 @@ static unsigned long userBtnDownAt = 0;
 #endif
 
 void setup() {
+  CryptoRNG::seedAtBoot();
   Posture::audit().setClockCheck([]() -> bool { return the_mesh.getRTCClock()->isSet(); });
 #if defined(ESP_PLATFORM) && defined(ENABLE_MECON_IFACE)
   // A device-interface line is up to 1,600 bytes. Over a board's native USB (Heltec V4) the host delivers it at USB
