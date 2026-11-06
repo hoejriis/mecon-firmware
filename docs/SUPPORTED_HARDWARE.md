@@ -1,6 +1,6 @@
 # Supported hardware and roles
 
-Which board to choose, which role to run on it, and what each combination can do. A device also reports its own capabilities (`hello` lists every operation and telemetry stream the build and board support), so a manager should read those rather than infer them from the board name.
+Which board to choose, which role to run on it, and what each combination can do when finished. Some of it is not built yet, management over LoRa included: see [availability](AVAILABILITY.md). A device also reports its own capabilities (`hello` lists every operation and telemetry stream the build and board support), so a manager should read those rather than infer them from the board name.
 
 ## Choosing a board
 
@@ -13,14 +13,37 @@ Which board to choose, which role to run on it, and what each combination can do
 
 ## Boards and roles
 
-The four hardware test targets, with the role builds that carry the managed-device interface. The other environments for these boards (for example the separate `_ble`, `_usb` and `_wifi` Companion builds) stay stock-derived builds without it.
+The four hardware test targets, with the role builds that carry the managed-device interface. The other environments for these boards, such as the Heltec `_usb`, `_ble` and `_wifi` Companion environments, are upstream build targets: unsupported, with no device interface.
 
 | Board | Roles (environment) | Local management | IP and MQTT | LoRa management | Screen | Firmware update |
 |---|---|---|---|---|---|---|
 | Heltec V3 (ESP32-S3) | Companion (`Heltec_v3_companion_radio_standalone`), Repeater (`Heltec_v3_repeater`), Room server (`Heltec_v3_room_server`) | Companion: USB and BLE. Repeater, Room server: USB console | Wi-Fi, MQTT | Point to point, and over a private management channel | OLED | Signed, over USB, BLE or IP where the role has that link. Boots on trial and rolls back if not confirmed |
 | Heltec V4 (ESP32-S3, 2 MB PSRAM) | Companion (`heltec_v4_companion_radio_standalone`), Repeater (`heltec_v4_repeater`), Room server (`heltec_v4_room_server`) | As the V3 | As the V3 | As the V3 | OLED | As the V3 |
-| SenseCAP T1000-E (nRF52840) | Companion (`t1000e_companion_radio_usb`, `t1000e_companion_radio_ble`), Repeater (`t1000e_repeater`) | USB, and BLE on the BLE Companion | None | As the V3 | None | Signed offer, then the bootloader's serial DFU over USB. No previous image to return to |
+| SenseCAP T1000-E (nRF52840) | Companion (`t1000e_companion_radio_usb`, `t1000e_companion_radio_ble`), Repeater (`t1000e_repeater`), Room server (`t1000e_room_server`, [not available yet](AVAILABILITY.md)) | USB, and BLE on the BLE Companion | None | As the V3 | None | Signed offer, then the bootloader's serial DFU over USB. No previous image to return to |
 | Seeed Wio Tracker L1 (nRF52840) | Companion (`WioTrackerL1_companion_radio_usb`, `WioTrackerL1_companion_radio_ble`), Repeater (`WioTrackerL1_repeater`), Room server (`WioTrackerL1_room_server`) | USB, and BLE on the BLE Companion | None | As the V3 | OLED | As the T1000-E |
+
+## What differs, and why
+
+One management model covers every path: an operation means the same wherever it is carried, and is authorized the same way. This table is the canonical list of what is not carried everywhere. `hello` remains the answer for a given device.
+
+| Difference | What applies | Why |
+|---|---|---|
+| Wi-Fi, MQTT and IP updates on the T1000-E and Wio Tracker L1 | None | Hardware: no Wi-Fi |
+| Screen snapshots on the T1000-E | None | Hardware: no screen |
+| T1000-E Companion contacts | The stock fixed table | Hardware: its small file system cannot hold the store beside the stock data |
+| BLE on a Repeater or Room server | None. Local management is the USB console | Owner decision |
+| BLE and Wi-Fi together on the Heltec Companion | One per boot | Owner decision, to keep memory headroom |
+| A Hardened Companion in Wi-Fi mode | No app transport. Use USB | Owner decision |
+| Firmware updates on nRF52 boards | Over USB only, written by the bootloader, with no previous image to return to | Hardware: one image slot and a bootloader that checks no signature. Owner decision: no BLE update path |
+| The sensor role | No device interface | Owner decision |
+| Local access on each role | Companion: app frames over USB and BLE. Repeater, Room server: a console line over USB | Role: the stock roles differ |
+| Messages, received-message collection, contact operations and `rf.request` | Companion only | Role: a Repeater or Room server has no stock chat client |
+| Channels on a Repeater or Room server | One management slot, with no channel messaging | Role: no native channel table |
+| Secrets and sensitive operations over LoRa | Never, on either path | Security rule |
+| Results that list or reveal state, over LoRa | Point to point only | Privacy rule: every channel member can read a channel reply |
+| Subscriptions, full logs and screen snapshots over LoRa | Not carried. Compact telemetry instead | Airtime rule |
+| Unverified traffic over LoRa | Dropped and counted on the channel. Within a small budget on point to point | Airtime rule: nothing unverified may make a node transmit at will |
+| Messaging only, on the TCP port and default-PIN BLE | No device-interface operation | Security rule: untrusted links |
 
 ## What each mechanism means
 
