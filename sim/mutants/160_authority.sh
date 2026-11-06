@@ -204,3 +204,5 @@ mutate job_id_may_block src/helpers/deployment/DepWrapper.cpp ' || out->job_id >
 mutate job_id_cap_one_low src/helpers/deployment/DepWrapper.cpp 'out->job_id >= MARK_BLOCKED)) goto done;' 'out->job_id >= MARK_BLOCKED - 1)) goto done;' unit:test_dep_wrapper
 mutate load_skips_door_repeater examples/simple_repeater/MyMesh.cpp 'reply, 150, load_changed)) {' 'reply, 150, load_changed) && false) {' sim/tests/test_region_map.py::test_a_load_in_progress_leaves_the_front_door_working
 mutate load_skips_door_room examples/simple_room_server/MyMesh.cpp 'reply, 150, load_changed)) {' 'reply, 150, load_changed) && false) {' sim/tests/test_region_map.py::test_a_load_in_progress_leaves_the_front_door_working
+mutate observation_unsigned_companion examples/companion_radio/MeconIface.cpp '  if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream
+mutate observation_unsigned_console src/helpers/iface/ConsoleIface.cpp '  if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream

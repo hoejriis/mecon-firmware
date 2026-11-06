@@ -110,6 +110,11 @@ void setup() {
   Serial.setRxBufferSize(2048);
 #endif
   Serial.begin(115200);
+#if defined(ENABLE_MECON_IFACE) && defined(ESP32) && !ARDUINO_USB_CDC_ON_BOOT
+  // As on the Companion: at this baud rate the core raises the UART interrupt only at 120 of the FIFO's 128 bytes, about
+  // 0.7 ms before an overflow, and mesh traffic delays that interrupt by more. At 32 the margin is about 8 ms (#199).
+  Serial.setRxFIFOFull(32);
+#endif
   delay(1000);
 
   board.begin();
