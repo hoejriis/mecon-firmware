@@ -17,7 +17,7 @@ from sim.harness import CliClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
-from test_deployment_authority import Dev, V, boot as boot_companion, broker, mqtt_boot, wrap, apply_name  # noqa: E402,F401
+from test_deployment_authority import Dev, RTC, V, boot as boot_companion, broker, mqtt_boot, wrap, apply_name  # noqa: E402,F401
 from test_deployment_authority_server import Srv, boot as boot_server  # noqa: E402
 
 USIG = re.compile(r',"usig":"([A-Za-z0-9+/]{86}==)"\}$')
@@ -287,3 +287,24 @@ def test_a_signed_request_fits_its_body_buffer(nodes, tmp_path, broker):
     nonce = b.iface_request(dev, {"v": 1, "id": "n1", "op": "hello"})["result"]["channel_nonce"]
     r = b.iface_request(dev, wrap(d.node_key, "config.apply", apply_name("Big" + "x" * 20), job=1, nonce=nonce))
     assert r and r["status"] == "ok", r
+
+
+@pytest.mark.parametrize("kind", ["companion_standalone", "repeater"])
+def test_an_observation_is_signed_as_its_own_stream(ether, nodes, kind):
+    ether.set_link("obssrx", "obsstx")
+    if kind == "repeater":
+        d = boot_server(nodes, "repeater", "obssrx", ether_path=ether.path)
+    else:
+        d = Dev(nodes(kind, "obssrx", seed=21, rtc=RTC, ether_path=ether.path).start())
+    assert d.provision()["status"] == "ok"
+    assert d.i.request("sub.start", {"stream": "observations", "lifetime_s": 120})["status"] == "ok"
+    nodes("repeater", "obsstx", ether_path=ether.path, seed=5, rtc=RTC).start()
+    assert ether.wait_tx("obsstx", timeout=120), "no boot advert from the sender"
+    e, end = None, time.time() + 60
+    while e is None and time.time() < end:
+        m = d.i.read_message(1.0)
+        e = m if m and m.get("ev") == "observations" else None
+    assert e, "no observation"
+    assert members(e)[-3:] == ["usig_boot", "usig_seq", "usig"], members(e)
+    assert verifies(e.raw, d.node_key, "observations"), e.raw
+    assert not verifies(e.raw, d.node_key, "result"), "an observation and a result are not interchangeable"
