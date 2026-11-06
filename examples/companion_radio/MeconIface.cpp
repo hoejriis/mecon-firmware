@@ -816,14 +816,21 @@ void MeconIface::sendSmall(Link& l, Status st, const char* error) {
   if (n > 0) queueResult(l, msg, (size_t)n);
 }
 
+// One lost byte throws the frame reader out of step, and each frame it then misreads looks like a new message, dropping the
+// one before. Answered once a second: otherwise one lost request reads to the client as many.
+void MeconIface::sendIncomplete(Link& l, uint32_t now) {
+  if (l.incomplete_sent && (uint32_t)(now - l.incomplete_ms) < INCOMPLETE_QUIET_MS) return;
+  l.incomplete_sent = true;
+  l.incomplete_ms = now;
+  sendSmall(l, ST_INVALID, "incomplete");
+}
+
 void MeconIface::onFrame(const BaseSerialInterface* src, const uint8_t* frame, size_t len, uint32_t now) {
   Link* l = linkFor(src, true);
   if (!l) return;
   RxResult r = l->rx.feed(frame, len, now);
   uint8_t xid;
-  if (l->rx.takeDiscard(&xid)) {
-    sendSmall(*l, ST_INVALID, "incomplete");
-  }
+  if (l->rx.takeDiscard(&xid)) sendIncomplete(*l, now);
   if (r == RX_NOMEM) {
     sendSmall(*l, ST_BUSY, "no-memory");
     return;
@@ -1093,7 +1100,7 @@ void MeconIface::loop(uint32_t now) {
     if (l.rx.tick(now)) {
       uint8_t xid;
       l.rx.takeDiscard(&xid);
-      sendSmall(l, ST_INVALID, "incomplete");
+      sendIncomplete(l, now);
     }
     if (!l.q || !l.q->count()) continue;
     uint8_t f[FRAME_MAX];
