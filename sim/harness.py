@@ -258,6 +258,7 @@ class Node:
         self.log_path = os.path.join(str(workdir), name + ".log")
         self.ether_path, self.seed, self.time_scale = ether_path, seed, time_scale
         self.fault, self.rtc, self.fault_before = fault, rtc, fault_before
+        self.extra_env = {}   # more environment for the node, for the sim's own test seams
         self.binary = binary or BIN[kind]
         if wifi is None and kind == "companion_wifi":
             # the build's compile-time default network, "sim" (open), exists unless the test defines its own environment
@@ -306,7 +307,7 @@ class Node:
             open(self.ui.input_path, "w").close()
             cmd += ["--ui-frames", self.ui.frames_path, "--ui-input", self.ui.input_path, "--ble-env", self.ui.ble_path]
         self.log = open(self.log_path, "ab")
-        env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="print_stacktrace=1")
+        env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="print_stacktrace=1", **self.extra_env)
         self.proc = subprocess.Popen(cmd, stdout=self.log, stderr=self.log, env=env)
         end = time.time() + 10
         while time.time() < end:

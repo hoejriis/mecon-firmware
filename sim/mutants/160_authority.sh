@@ -64,8 +64,8 @@ mutate unlock_challenge_never_expires src/helpers/iface/DeployAuth.cpp '        
 mutate unlock_survives_a_new_session examples/companion_radio/MeconDeploy.cpp '  if (l) l->unlock.clear();' '' $DA::test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_opens_only_the_posture
 mutate unlock_cli_flag_not_stamped examples/companion_radio/MyMesh.cpp '      ctx.unlocked = ctx.transport == Cli::T_USB && ctx.auth == Cli::A_CABLE && _iface.unlockedFor(_cmd_src);   // section 10' '      (void)0;' $DA::test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_opens_only_the_posture
 mutate unlock_server_cli_flag_not_published src/helpers/iface/ConsoleIface.cpp '    Cli::serverCaller().unlocked = consoleUnlocked;   // the console lines of the stock CLI see the unlock too' '' $DS::test_the_console_unlock_opens_the_posture_in_normal_and_nothing_else
-mutate unlock_policy_opens_hardened_posture src/helpers/cli/CliPolicy.h '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0;' '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE;' unit:test_cli_engine
-mutate unlock_policy_opens_writes src/helpers/cli/CliPolicy.h '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0;' '  const bool unlock_posture = unlockManagement(c) && c.posture == 0;' unit:test_cli_engine
+mutate unlock_policy_opens_hardened_posture src/helpers/cli/CliPolicy.h '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0 && !(flags & F_NO_UNLOCK);' '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE;' unit:test_cli_engine
+mutate unlock_policy_opens_writes src/helpers/cli/CliPolicy.h '  const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0 && !(flags & F_NO_UNLOCK);' '  const bool unlock_posture = unlockManagement(c) && c.posture == 0;' unit:test_cli_engine
 mutate unlock_policy_honoured_for_any_principal src/helpers/cli/CliPolicy.h 'inline bool unlockManagement(const Context& c) { return c.unlocked && principalOf(c) == P_CABLE; }' 'inline bool unlockManagement(const Context& c) { return c.unlocked; }' unit:test_cli_engine
 mutate unlock_hmac_ignores_the_message src/helpers/deployment/DepHmac.cpp '  update(&c, msg, msg_len);' '' unit:test_dep_hmac
 mutate unlock_compare_checks_one_byte src/helpers/deployment/DepHmac.cpp '  for (size_t i = 0; i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' '  for (size_t i = 0; i < 1 && i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' unit:test_dep_hmac
@@ -195,6 +195,15 @@ mutate reserved_mark_every_id_writes src/helpers/deployment/DepReplay.cpp '  if 
 mutate reserved_mark_write_skipped src/helpers/iface/DeployAuth.cpp '    if (Dep::markAccepted(&wm, v.job_id) && !persistMarks()) {' '    if (Dep::markAccepted(&wm, v.job_id) && false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
 mutate reserved_mark_reaches_blocked src/helpers/deployment/DepReplay.cpp '  w->reserved = job_id < MARK_BLOCKED - MARK_RESERVE ? job_id + MARK_RESERVE : MARK_BLOCKED - 1;' '  w->reserved = job_id + MARK_RESERVE;' unit:test_dep_replay
 mutate reserved_mark_new_id_gets_a_bare_duplicate src/helpers/iface/DeployAuth.cpp '      } else if (wm.mark == wm.reserved) {' '      } else if (false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
+
+# --- the deferred items of the second authority review
+mutate unlock_opens_connectivity src/helpers/cli/CliRegistry.h 'C_POSTURE,     F_NO_UNLOCK,  Posture::W_CONNMODE,' 'C_POSTURE,     0,            Posture::W_CONNMODE,' unit:test_cli_engine
+mutate unlock_opens_mgmt_flag src/helpers/cli/CliRegistry.h '    r.flags = F_NO_UNLOCK;' '' unit:test_cli_engine
+mutate unlock_flag_ignored src/helpers/cli/CliPolicy.h ' && c.posture == 0 && !(flags & F_NO_UNLOCK);' ' && c.posture == 0;' unit:test_cli_engine
+mutate job_id_may_block src/helpers/deployment/DepWrapper.cpp ' || out->job_id >= MARK_BLOCKED)) goto done;' ')) goto done;' unit:test_dep_wrapper
+mutate job_id_cap_one_low src/helpers/deployment/DepWrapper.cpp 'out->job_id >= MARK_BLOCKED)) goto done;' 'out->job_id >= MARK_BLOCKED - 1)) goto done;' unit:test_dep_wrapper
+mutate load_skips_door_repeater examples/simple_repeater/MyMesh.cpp 'reply, 150, load_changed)) {' 'reply, 150, load_changed) && false) {' sim/tests/test_region_map.py::test_a_load_in_progress_leaves_the_front_door_working
+mutate load_skips_door_room examples/simple_room_server/MyMesh.cpp 'reply, 150, load_changed)) {' 'reply, 150, load_changed) && false) {' sim/tests/test_region_map.py::test_a_load_in_progress_leaves_the_front_door_working
 mutate session_oom_silent src/helpers/mqtt/MqttController.cpp '    _psc.publish(_iface_resp, (const uint8_t*)BUSY, (unsigned)(sizeof(BUSY) - 1), false);' '' sim/tests/test_provenance.py::test_a_session_with_no_memory_says_busy_and_recovers
 mutate signed_body_too_small src/helpers/iface/DeployAuth.cpp 'const size_t body_cap = (len < Dep::MAX_WRAPPED ? len : Dep::MAX_WRAPPED) + 1;' 'const size_t body_cap = (len < Dep::MAX_WRAPPED ? len : Dep::MAX_WRAPPED) / 4;' sim/tests/test_provenance.py::test_a_signed_request_fits_its_body_buffer
 mutate observation_unsigned_companion examples/companion_radio/MeconIface.cpp '  if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream
@@ -233,3 +242,20 @@ mutate standing_remove_keeps src/helpers/iface/StandingOps.cpp '      s = Standi
 mutate lora_retry_new_number examples/companion_radio/MeconIface.cpp 'if (xt >= 0 && jsonGetInt(d, xt, 0, 255, &xv)) _rf_xid = (uint8_t)xv;
   else _rf_xid++;' '_rf_xid++;' $LM::test_a_retry_under_the_same_number_fills_a_gap_on_the_channel
 mutate lora_binding_not_reread src/helpers/iface/ConsoleIface.cpp '  _lora_key_dirty = true;   // cheaper than asking which operations touch the binding: requests are rare beside packets' '' $LM::test_an_unbind_takes_effect_at_once
+mutate lost_marks_need_two_re_admissions src/helpers/iface/DeployAuth.cpp 'Dep::reconcileMarks(&_dep->marks, set, &next);' 'Dep::reconcileMarks(_dep->marks_lost ? nullptr : &_dep->marks, set, &next);' sim/tests/test_deployment_authority.py::test_after_lost_marks_one_re_admission_clears_a_member_and_only_that_member
+# the refusals of a rotation that cannot run, and the end of the signature sequence
+mutate rotation_rng_any_draw_goes src/helpers/iface/IdentityRotation.cpp '    if (!nonzero || distinct < 16 || (tries > 0 && memcmp(seed, prev, sizeof(seed)) == 0)) {' '    if (false) {' $IR::test_a_random_source_that_fails_refuses_the_rotation
+mutate rotation_rng_fifteen_values_pass src/helpers/iface/IdentityRotation.cpp 'distinct < 16' 'distinct < 15' $IR::test_a_random_source_that_fails_refuses_the_rotation
+mutate rotation_statement_save_ignored src/helpers/iface/IdentityRotation.cpp 'if (!fl || !st.save(st.user, reinterpret_cast<uint8_t*>(file), fl)) {' 'if (!fl) {' $IR::test_a_rotation_that_cannot_save_leaves_the_device_as_it_was
+mutate rotation_key_save_keeps_the_statement src/helpers/iface/IdentityRotation.cpp 'if (!st.save_key(st.user, fresh)) {
+    st.remove(st.user);' 'if (!st.save_key(st.user, fresh)) {' $IR::test_a_rotation_that_cannot_save_leaves_the_device_as_it_was
+mutate rotation_failed_drop_reports_ok src/helpers/iface/IdentityRotation.cpp 'return dropped ? 1 : 2;' 'return 1;' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
+mutate rotation_failed_drop_clears_pending src/helpers/iface/IdentityRotation.cpp '  if (dropped) {
+    char text[256], sig_b64[89];' '  {
+    char text[256], sig_b64[89];' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
+mutate rotation_console_hides_a_failed_drop src/helpers/iface/ConsoleIface.cpp 'if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }' '' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
+mutate rotation_companion_hides_a_failed_drop examples/companion_radio/MeconDeploy.cpp 'if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }' '' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
+mutate sign_sequence_wraps src/helpers/iface/Provenance.cpp 'if (!_epoch_saved || _seq == 0xFFFFFFFFu) {' 'if (!_epoch_saved) {' sim/tests/test_provenance.py::test_the_last_sequence_number_signs_and_the_next_message_says_exhausted
+mutate sign_sequence_stops_one_early src/helpers/iface/Provenance.cpp '_seq == 0xFFFFFFFFu' '_seq == 0xFFFFFFFEu' sim/tests/test_provenance.py::test_the_last_sequence_number_signs_and_the_next_message_says_exhausted
+mutate sign_limit_one_byte_short src/helpers/iface/Provenance.cpp 'if (text_len + SIG_MEMBER >= cap) return -1;' 'if (text_len + SIG_MEMBER + 1 >= cap) return -1;' sim/tests/test_provenance.py::test_a_result_that_just_fits_is_signed_and_one_byte_more_is_a_signed_busy
+mutate sign_too_large_goes_unsigned src/helpers/iface/Provenance.cpp '  return sign("result", buf, (size_t)n, cap, signer, extra);' '  return n;' sim/tests/test_provenance.py::test_a_result_that_just_fits_is_signed_and_one_byte_more_is_a_signed_busy

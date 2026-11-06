@@ -6,15 +6,15 @@ Every management action a device offers, on which board, role and transport, und
 
 ## 1. One operation, every transport
 
-- **One name, one meaning.** An operation is `<family>.<verb>` (`device.reboot`, `contact.put`, `job.confirm`). It has the same arguments, result, errors and authority over MQTT, over a Reader's USB or BLE bridge, on the Repeater and Room server console, and over LoRa once #115 carries it. A transport never adds a permission, and a bridge forwards envelopes verbatim (DEVICE_INTERFACE section 7).
+- **One name, one meaning.** An operation is `<family>.<verb>` (`device.reboot`, `contact.put`, `job.confirm`). It has the same arguments, result, errors and authority over MQTT, over a Reader's USB or BLE bridge, on the Repeater and Room server console, and over LoRa where the operation opts in ([management over LoRa](LORA_MANAGEMENT.md)). A transport never adds a permission, and a bridge forwards envelopes verbatim (DEVICE_INTERFACE section 7).
 - **Native state stays authoritative.** Each operation is implemented by the native MeshCore function or CLI line it stands for. `contact.put` writes the native contact table, `channel.put` the native channel table, and `config.apply` the CLI settings. Nothing keeps a second copy. A native Companion frame or CLI line and the operation that stands for it change the same state and are decided by the same table cell.
 - **Allowlisted, not a shell.** Only named operations exist. There is no "run this CLI line" operation on the interface. The MQTT `cli/req` topic stays only until the interface covers what it is used for (DEVICE_INTERFACE section 7), and then it is withdrawn.
 - **What a target can do, it says.** `hello` lists an operation in `capabilities` (as `op.<name>`) only when this build, board and role can run it. An operation absent from the list answers `unknown-op`. Permission is never inferred from the transport: a listed operation can still be `refused` for this caller.
-- **Messaging is native.** Sending and receiving messages keep their Companion frames. MECON messaging over the interface is [#119](https://github.com/hoejriis/mecon-firmware/issues/119) and is out of this page's scope.
+- **Messages are generic, and policy is not.** Native sending and receiving keep their Companion frames. Section 6 adds what a manager may ask for: a native send with correlated outcomes, collecting received messages, and supplying one to the local app. Choosing a gateway, retrying and deciding what to catch up on belong to the manager.
 
 ## 2. Authority
 
-Every operation carries one class of the CLI table: `read`, `write`, `secret`, `posture`, `destructive` or `reboot`. The caller's principal (cable, paired BLE, verified broker, remote admin, ...) and the posture select the table cell. #95 adds the Deployment-signed principal and changes what unsigned callers may do once a device holds a Deployment record. This page does not restate those rules; each operation below names its class, and #95's table decides.
+Every operation carries one class of the CLI table: `read`, `write`, `secret`, `posture`, `destructive` or `reboot`. The caller's principal (cable, paired BLE, verified broker, remote admin, ...) and the posture select the table cell. The Deployment-signed principal, and what unsigned callers may do once a device holds a Deployment record, are in [AUTHORITY](AUTHORITY.md) section 9. This page does not restate those rules; each operation below names its class, and that table decides.
 
 - An operation whose class the caller lacks answers `refused` with the table's reason as `error`. Nothing runs, and the refusal is audited like a refused CLI line.
 - An operation that maps to a CLI line is decided on that line, with the caller's real context, as `config.apply` already is per key. Its class cannot be weaker than the line's.
@@ -116,7 +116,7 @@ The bound on any pending change is therefore `within_s` plus at most one reboot.
 
 ### 3.5 Reset scopes
 
-`device.reset {"scope"}` removes exactly one named scope and keeps everything else. #95 owns the Deployment-related scopes and their rules; this page lists the scopes and what each keeps.
+`device.reset {"scope"}` removes exactly one named scope and keeps everything else. [AUTHORITY](AUTHORITY.md) section 11 owns the Deployment-related scopes and their rules; this page lists the scopes and what each keeps.
 
 | Scope | Removes | Keeps | Class |
 |---|---|---|---|
@@ -125,8 +125,8 @@ The bound on any pending change is therefore `within_s` plus at most one reboot.
 | `channels` | every channel except the public one | everything else | destructive |
 | `radio` | radio settings, back to the build's defaults | everything else | destructive |
 | `bonds` | BLE bonds (executed at the next BLE start if BLE is not running) | everything else | destructive; physical USB only (SECURITY_AND_AUTHORITY) |
-| `deployment` | Deployment record and watermarks | as #95 decides | #95 |
-| `identity` | the node key, contacts and the message queue (a new key generated on the device) | as #95 decides | #95 |
+| `deployment` | Deployment record and watermarks | per AUTHORITY section 11 | per AUTHORITY section 11 |
+| `identity` | the node key, contacts and the message queue (a new key generated on the device) | per AUTHORITY section 11 | per AUTHORITY section 11 |
 | `factory` | everything (the native factory reset) | nothing | destructive |
 
 A reset scope that removes the caller's own path (`network` over MQTT) is not a commit-or-revert change. Its purpose is to remove the path, and the class decides who may ask for it.
@@ -134,7 +134,7 @@ A reset scope that removes the caller's own path (`network` over MQTT) is not a 
 ## 4. Routing a request
 
 ```
-transport adapter ──► envelope (v1.0; signed wrapper per #95) ──► caller context ──► operation table
+transport adapter ──► envelope (v1.0; signed wrapper, AUTHORITY) ──► caller context ──► operation table
      MQTT req / 0x7F frame / console line / LoRa              │                    │
                                                                       ▼                    ▼
                                                     CLI privilege table cell ◄── class (+ per-line check)
@@ -153,7 +153,7 @@ transport adapter ──► envelope (v1.0; signed wrapper per #95) ──► ca
 
 ## 5. The matrix
 
-Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** cable (a Reader bridge or a host), **BLE** paired link (a Reader bridge or the app), **TCP** the Companion's Wi-Fi or Ethernet companion port, **MQTT** a broker session, **Con** the Repeater/Room console (USB), **Eth** the Repeater/Room Ethernet console, **RF** LoRa remote admin. Status: **built** is in the firmware; **planned** names its Issue. Classes are those of the CLI table.
+Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** cable (a Reader bridge or a host), **BLE** paired link (a Reader bridge or the app), **TCP** the Companion's Wi-Fi or Ethernet companion port, **MQTT** a broker session, **Con** the Repeater/Room console (USB), **Eth** the Repeater/Room Ethernet console, **RF** LoRa remote admin. Classes are those of the CLI table.
 
 ### 5.1 Device-interface operations
 
@@ -239,7 +239,7 @@ Each of the following stands for its existing CLI line:
 | 21 | `CMD_SET_TUNING_PARAMS` | write | refused | `config.apply` (its keys) |
 | 22 | `CMD_DEVICE_QUERY` | read | served; the BLE PIN reads 0 | `hello` |
 | 23 | `CMD_EXPORT_PRIVATE_KEY` | secret | refused | `identity.key.export` |
-| 24 | `CMD_IMPORT_PRIVATE_KEY` | secret | refused | none (refused once provisioned, #95) |
+| 24 | `CMD_IMPORT_PRIVATE_KEY` | secret | refused | none (refused once provisioned) |
 | 25 | `CMD_SEND_RAW_DATA` | write | refused | none |
 | 26 | `CMD_SEND_LOGIN` | messaging (the client supplies the password) | served | `rf.request` |
 | 27 | `CMD_SEND_STATUS_REQ` | messaging (a guest-level request) | served | `rf.request` |
@@ -303,7 +303,7 @@ Every CLI line is classed by the registry; a line the registry does not name is 
 | OTA | `start ota` | write | yes | refused | `update.*` |
 
 Notes the matrix depends on, as the code stands:
-- `start ota` on an ESP32 Repeater or Room server opens an unauthenticated Wi-Fi access point that accepts an image. This is stock behaviour. It is unsigned and is not the update path #110 builds. Under #110 a remote caller will not be able to start it on a Deployment-aware device.
+- `start ota` on an ESP32 Repeater or Room server opens an unauthenticated Wi-Fi access point that accepts an image. This is stock behaviour, and it is unsigned. It is compiled out unless a build defines `ENABLE_WIFI_OTA`, and every build with the device interface refuses it ([CLI reference](../CLI_REFERENCE.md)).
 - The Repeater runs any line that starts with `reboot`, while the registry classes only the exact `reboot` as reboot. A longer form is `write`, which is stricter (refused to a Hardened remote admin), not weaker.
 - The sensor role (`simple_sensor`) is not a MECON target. It has no device interface and no posture front door, and nothing on this page applies to it. This is a recorded exception to the rule that the firmware works the same way in all modes: the owner's decision of 2026-11-04.
 
@@ -332,6 +332,8 @@ A standing instruction runs only what it names: a compact report to a named dest
 
 The device-interface operations go over LoRa point to point ([LORA_MANAGEMENT](LORA_MANAGEMENT.md)): `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `deployment.get`, `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm`, `posture.set`, `report.now`, `standing.put`, `standing.list` and `standing.remove`. Only a signed request runs. Any other operation answers `unknown-op` there. On the management channel only `config.apply`, `job.get`, `job.ack`, `job.cancel`, `job.confirm`, `posture.set` and `report.now` go: every member can read a reply there.
 
+These native facilities sit beside the device interface over LoRa, which is a separate path ([management over LoRa](LORA_MANAGEMENT.md)). A channel key, an RF route or a proxy is never authority on that path: the request carries its own signature.
+
 ### 5.5 Boards and roles
 
 | Build | Interface | MQTT | BLE | Notes |
@@ -341,8 +343,9 @@ The device-interface operations go over LoRa point to point ([LORA_MANAGEMENT](L
 | Heltec V3 Repeater, Room server | yes (console) | yes | no (owner decision) | |
 | Heltec V4 Repeater, Room server | yes (console) | yes | no (owner decision) | |
 | Heltec V3/V4 Companion `_usb`, `_ble`, `_wifi` | no | `_wifi` only (CLI topic) | `_ble` | stock-shaped builds; native frames only |
-| SenseCAP T1000-E Companion (`_usb`, `_ble`), Repeater | yes (Companion: frames; Repeater: console) | no | Companion `_ble` | no Wi-Fi. The Companion keeps the stock contact array |
-| Wio Tracker L1 and other nRF52 builds | no | no | Companion builds | no Wi-Fi |
+| SenseCAP T1000-E Companion (`_usb`, `_ble`), Repeater, Room server | yes (Companion: frames; Repeater, Room server: console) | no | Companion `_ble` | no Wi-Fi. The Companion keeps the stock contact array. The Room server build does not have the interface yet ([availability](../AVAILABILITY.md)) |
+| Wio Tracker L1 Companion (`_usb`, `_ble`), Repeater, Room server | yes (Companion: frames; Repeater, Room server: console) | no | Companion `_ble` | no Wi-Fi |
+| Other nRF52 builds | no | no | Companion builds | no Wi-Fi; software-verified only |
 | simulated Companion, Repeater, Room server | yes | Companion | simulated | the conformance target |
 
 ### 5.6 Not supported, and why

@@ -9,6 +9,7 @@
 #include <MeshCore.h>
 #include "helpers/BootTimes.h"
 #include "helpers/MeconVersion.h"
+#include "helpers/Posture.h"
 #include "helpers/SensorManager.h"
 #include "Lpp.h"
 #include "../cli/CliPolicy.h"
@@ -256,7 +257,7 @@ int abnormalReset(mesh::MainBoard& b) {
          containsNoCase(why, "lockup");
 }
 
-void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low) {
+void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low, const Posture::StaleLogins* stale) {
   const char* why = b.getResetReasonString(b.getResetReason());
   const bool known = why && strcmp(why, "Not available") != 0;
   w.key("reset_reason"); if (known) w.str(why); else w.null();
@@ -275,6 +276,17 @@ void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low)
   w.key("max"); w.unum(gap.take());
   w.endObject();
   if (heap_low >= 0) { w.key("heap_low"); w.boolean(heap_low != 0); }
+  if (stale) {
+    w.key("stale_logins"); w.unum(stale->count);
+    w.key("stale_login_last");
+    if (stale->count) {
+      char hex[9];
+      snprintf(hex, sizeof(hex), "%02x%02x%02x%02x", stale->last[0], stale->last[1], stale->last[2], stale->last[3]);
+      w.str(hex);
+    } else {
+      w.null();
+    }
+  }
   GnssHealth g;
   if (b.getGnssHealth(g)) writeGnss(w, g);   // absent on a board without a receiver
 }

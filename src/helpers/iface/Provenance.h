@@ -11,6 +11,7 @@
 // that cannot be signed is never sent as if it had been.
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <Identity.h>
 #include "DeployAuth.h"
 #include "CompactReport.h"
@@ -26,6 +27,9 @@ public:
   void begin(const mesh::LocalIdentity* id, const DeployAuth* auth, uint32_t boot_epoch, bool epoch_saved) {
     _id = id; _auth = auth; _boot = boot_epoch; _epoch_saved = epoch_saved; _seq = 0;
     _tokens = RATE_BURST * 1000; _tok_ms = 0; _tok_init = false;
+#if defined(SIM_FREE_HEAP)   // the simulated board: a test starts close to the end of the sequence
+    if (const char* s = getenv("SIM_SIGN_SEQ")) _seq = strtoul(s, nullptr, 0);
+#endif
   }
 
   // buf holds one JSON object of len bytes, ending in '}'; cap is its capacity. Returns the new length, or -1 when the

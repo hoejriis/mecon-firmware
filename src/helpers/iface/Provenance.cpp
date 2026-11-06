@@ -115,6 +115,15 @@ bool isRefusal(const char* buf, size_t len) {
 int Provenance::signResult(char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer, const Answering* a,
                            bool was_enrolled) {
   if (!_auth || (!_auth->enrolled() && !was_enrolled)) return (int)len;   // a standalone device signs nothing
+#if defined(SIM_FREE_HEAP)   // the simulated board: a test puts the limit right at a result's length, from a file
+  if (const char* s = getenv("SIM_SIGN_CAP_FILE")) {
+    if (FILE* f = fopen(s, "r")) {
+      unsigned long v = 0;
+      if (fscanf(f, "%lu", &v) == 1 && v) cap = v;
+      fclose(f);
+    }
+  }
+#endif
   _force = was_enrolled;
   const int r = signResultInner(buf, len, cap, signer, a);
   _force = false;
