@@ -161,6 +161,9 @@ TEST_F(Fx, JobId) {
   EXPECT_FALSE(v.has_job);
   EXPECT_STREQ("status.get", v.op);
   EXPECT_EQ(WR_MALFORMED, check(wrap(bodyText(2, PUB_DEVICE_NODE, ",\"job_id\":0"), SEED_INSTANCE_B, INSTANCE_IDS_B)));
+  // The highest value is the mark of a blocked member, and the one below it is still an ordinary id.
+  EXPECT_EQ(WR_MALFORMED, check(wrap(bodyText(2, PUB_DEVICE_NODE, ",\"job_id\":4294967295"), SEED_INSTANCE_B, INSTANCE_IDS_B)));
+  EXPECT_EQ(WR_OK, check(wrap(bodyText(2, PUB_DEVICE_NODE, ",\"job_id\":4294967294"), SEED_INSTANCE_B, INSTANCE_IDS_B)));
 }
 
 TEST_F(Fx, TheBodyNamesTheSignedIssuer) {

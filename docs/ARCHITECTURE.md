@@ -27,8 +27,7 @@ mecon-firmware is MeshCore 1.18.0 (upstream commit `81dbae5`) with upstream hist
 
 Four rules hold everywhere:
 
-- **The same everywhere.** The firmware works the same way in every mode, on every role and over every transport: the same operations, the same results and the same security rules. A difference is either a limit of the hardware, stated as such, or an exception the project owner has decided. It is never left by omission.
-
+- **One model, explicit limits.** An operation has the same meaning, result and authorization on every mode, role and transport that carries it. Which operations a path carries does differ. Each difference is a limit of the hardware, a stated privacy or airtime rule, or a decision of the project owner, and all are listed in [what differs, and why](SUPPORTED_HARDWARE.md#what-differs-and-why). A difference that is none of these is a defect to fix, not a rule to document.
 - **Native state is authoritative.** Settings live in the role's own preferences, contacts in the native contact table, channels in the native channel table. An interface operation is implemented by the native function or CLI line it stands for, and nothing keeps a second copy.
 - **The CLI is the one management plane.** Every setting is a CLI setting. The device interface reads and writes through it, and each request is decided by the same privilege cell as the CLI line it maps to. The interface is an allowlist of named operations, never a raw shell.
 - **A transport is never authority.** USB, BLE, MQTT, a TLS session, a LoRa route and a channel key are ways in. What a caller may do is decided by the privilege table, the posture and, on an enrolled device, a manager's signature.
@@ -101,4 +100,4 @@ CI runs the unit tests, simulated boards and target-board builds with size budge
 
 ## Management over LoRa
 
-LoRa is a transport for the same device interface, not a second command model. A request travels point to point as an encrypted native datagram, or as a group datagram on the device's management channel. It is dispatched through the same operation table and privilege cell, deduplicated by the same id cache and replay watermark, and limited by the duty-cycle window. Compact, low-rate telemetry travels the same paths. The wire form is defined in [management over LoRa](contract/LORA_MANAGEMENT.md).
+LoRa is a transport for the same device interface, not a second command model. It carries fewer operations: only signed requests run, secrets and subscriptions never travel on it, and anything that reveals state goes point to point only. A request travels point to point as an encrypted native datagram, or as a group datagram on the device's management channel. It is dispatched through the same operation table and privilege cell, deduplicated by the same id cache and replay watermark, and limited by the duty-cycle window. Compact, low-rate telemetry travels the same paths. The wire form is defined in [management over LoRa](contract/LORA_MANAGEMENT.md).
