@@ -46,7 +46,7 @@ A broker login, a TLS session, a paired BLE link, a USB cable, a LoRa route and 
 
 Carried as a string beside its signature (`authority_set`, `authority_set_sig`).
 
-- **Members:** at most 8. No two members may share an `instance_id` or a public key.
+- **Members:** at most 8. No two members may share an `instance_id`, its first 6 bytes (a job's identity names its issuer by them, [OPERATIONS](OPERATIONS.md) section 3.1) or a public key.
 - **`admitted_revision`:** the revision at which that member was (re)admitted. It is never greater than the set's `authority_revision`.
 - **`revoked`:** at most 16 ids. A revoked id may not also be a member. Revoked ids that no longer matter (the manager can no longer be admitted under that id) may be dropped by a later revision.
 - **`authority_epoch`:** 1 to 2³¹. A device refuses a larger epoch, which could never rotate.
