@@ -513,6 +513,24 @@ Status opConfigGet(OpContext& c) {
   return ST_OK;
 }
 
+// The posture runs as the caller's own CLI line, so the table and the rules on it (raising needs an unlock secret once
+// enrolled, lowering a cable or a signature) are the ones `set posture` has. The role reboots once it has changed.
+Status opPostureSet(OpContext& c) {
+  ConfigHost* h = hostOf(c);
+  const JsonDoc& d = *c.doc;
+  char want[12];
+  if (c.req->args < 0 || !jsonGetString(d, jsonFind(d, c.req->args, "posture"), want, sizeof(want), CS_NAME, 1)) return ST_INVALID;
+  const bool hardened = strcmp(want, "hardened") == 0;
+  if (!hardened && strcmp(want, "normal") != 0) return ST_INVALID;
+  char reply[120];
+  reply[0] = 0;
+  const bool known = h->run(h->user, hardened ? "set posture hardened" : "set posture normal confirm", reply, sizeof(reply));
+  if (!known || !cliOk(reply)) { c.error = "not-permitted"; return ST_REFUSED; }
+  JsonWriter& w = *c.out;
+  w.key("posture"); w.str(want);
+  return ST_OK;
+}
+
 Status opConfigApply(OpContext& c) {
   ConfigHost* h = hostOf(c);
   const JsonDoc& d = *c.doc;

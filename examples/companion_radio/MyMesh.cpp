@@ -2512,9 +2512,7 @@ bool MyMesh::dropOldKeyState() {
   bool dropped = true;
   {
     ContactStore& cs = contactStore();
-    int cursor = 0;
-    ContactInfo ci;
-    while (cs.next(cursor, ci)) _store->deleteBlobByKey(ci.id.pub_key, PUB_KEY_SIZE);
+    _store->deleteAllBlobs();
     dropped = cs.clearAll();
     resetContacts();   // the transient anon slots
 #ifdef CONTACTS_STOCK_ARRAY

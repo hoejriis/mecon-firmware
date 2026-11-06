@@ -18,6 +18,7 @@
 #include "helpers/updates/UpdService.h"
 #include "CableLine.h"
 #include "Provenance.h"
+#include "ScreenFeed.h"
 #include "Streams.h"
 #include "MgmtChannel.h"
 #include "MgmtSlot.h"
@@ -118,6 +119,9 @@ public:
   MgmtHost mgmtHost();
   SubSet& subs() { return _on_mqtt ? _mqtt_subs : _subs; }
   uint32_t produced() const { return streamsProduced(); }
+  void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read
+  uint8_t postureNow() const { return _host.posture(_host.user); }
+  void rebootSoon() { _reboot_at = millis() + 1500; }
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);
     if (stream == SID_RUNTIME && !_boot_sent) _boot_pending = true;
@@ -209,8 +213,10 @@ private:
   uint32_t _env_at = 0;
   uint32_t streamsProduced() const {
     return STREAMS_PRODUCED | (_env_ok ? (1u << SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << SID_LOCATION) : 0) |
-           (_conn_write ? (1u << SID_CONNECTIVITY) : 0);
+           (_conn_write ? (1u << SID_CONNECTIVITY) : 0) | (_screen.available() ? (1u << SID_SCREEN) : 0);
   }
+  void screenTick(uint32_t now);
+  ScreenFeed _screen;
   LoopGap _gap;
   bool _boot_sent = false, _boot_pending = false;   // the runtime boot event: once per epoch
   LogFeed _logs;

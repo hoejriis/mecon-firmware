@@ -8,7 +8,7 @@
                                                     the broker topics, through mosquitto_pub / mosquitto_sub
 
 Prints one line per case (PASS/FAIL with the answer) and exits non-zero on any failure. Opening the serial port
-resets an ESP32 board; the script waits for it to boot.
+resets an ESP32 board; the script waits for it to boot. Set MECON_SERIAL_DTR=1 for an nRF52 board.
 """
 import json
 import os
@@ -24,12 +24,14 @@ import mecon_iface  # noqa: E402
 import mecon_schema  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "..", "docs", "contract", "fixtures")
+# An nRF52 board stays silent on USB until the host asserts DTR. On an ESP32 board DTR drives reset, so it stays low.
+NRF52_DTR = os.environ.get("MECON_SERIAL_DTR") == "1"
 
 
 def serial_transport(port):
     import serial
     s = serial.Serial(port, 115200, timeout=0.05)
-    s.dtr = False
+    s.dtr = NRF52_DTR
     s.rts = False
     buf = bytearray()
 
@@ -62,7 +64,7 @@ def console_transport(port):
     socket://127.0.0.1:<port> for the simulated console."""
     import serial
     s = serial.serial_for_url(port, 115200, timeout=0.05, do_not_open=True)
-    s.dtr = False
+    s.dtr = NRF52_DTR
     s.rts = False
     s.open()
     buf = bytearray()

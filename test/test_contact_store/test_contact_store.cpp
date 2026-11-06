@@ -966,6 +966,27 @@ TEST(ContactStore, RebuildOfABackendThatListsItsFilesProbesNoBucket) {
   }
 }
 
+// Clearing lists the file system once too: identity.rotate clears the store on the loop, and per-bucket lookups held it for
+// about 52 s on a Heltec V3 with no contacts, long enough to lose the broker session and the signed result.
+TEST(ContactStore, ClearAllOfABackendThatListsItsFilesProbesNoBucket) {
+  for (int listing = 0; listing < 2; listing++) {
+    MemBackend be;
+    be.can_list = listing == 1;
+    ContactStore s;
+    ASSERT_TRUE(s.begin(&be, nullptr, cfg()));
+    for (int i = 0; i < 30; i++) ASSERT_GE(add(s, mk(i)), 0);
+    ASSERT_TRUE(s.flush());
+    ASSERT_FALSE(be.files.empty());
+    be.files[3] = std::vector<uint8_t>(16, 0);   // a bucket the boot listing did not see still goes
+    be.exists_calls = 0;
+    ASSERT_TRUE(s.clearAll());
+    EXPECT_EQ(0, s.count());
+    EXPECT_TRUE(be.files.empty()) << "every bucket file goes, either way";
+    if (listing) EXPECT_EQ(0, be.exists_calls) << "the listing replaces every per-bucket lookup";
+    else EXPECT_GT(be.exists_calls, 0) << "a backend that cannot list keeps the per-bucket probe";
+  }
+}
+
 // The listing is taken when rebuild runs, not reused from boot: rebuild is for a file system that is not trusted, and
 // a bucket the boot listing did not see must still be found.
 TEST(ContactStore, RebuildFindsABucketThatAppearedAfterBoot) {

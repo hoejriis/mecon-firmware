@@ -111,7 +111,7 @@ def test_radio_counts_a_transmission_repeater(nodes):
 @pytest.mark.parametrize("make", [companion, repeater], ids=["companion", "repeater"])
 def test_the_stream_table_bounds_requests(nodes, make):
     n, c, i = make(nodes, "bounds")
-    r = i.request("sub.start", {"stream": "screen"})
+    r = i.request("sub.start", {"stream": "no-such-stream"})
     assert r["status"] == "invalid" and r["error"] == "unknown-stream", r
     r = i.request("sub.start", {"stream": "power", "period_s": 5})   # power's minimum is 30 s
     assert r["status"] == "invalid", r
@@ -485,3 +485,117 @@ def test_logs_do_not_replay_history(nodes):
     c._send(bytes([harness.CMD_EXPORT_PRIVATE_KEY]))
     evs = collect(i, "logs", 3.0)
     assert [(e["data"]["event"], e["data"]["what"]) for e in evs] == [("refused", "key-export")], evs
+
+
+# ------------------------------------------------------------------ the screen stream (the Companion's own UI)
+
+import base64  # noqa: E402
+
+
+def screen_companion(nodes, name, **kw):
+    n = nodes("companion_standalone", name, rtc=RTC, **kw).start()
+    c = CompanionClient(n)
+    c.app_start()
+    return n, c, mecon_iface.IfaceClient(c._send, c._read_frame)
+
+
+def pin_off_the_screen(n):
+    """A phone connected: the home screen stops showing the pairing PIN."""
+    assert n.ui.wait_text("Pin:", 20), n.ui.last_text()
+    n.ui.phone(True)
+    end = time.time() + 10
+    while time.time() < end and "Pin:" in n.ui.last_text():
+        time.sleep(0.2)
+    assert "Pin:" not in n.ui.last_text(), n.ui.last_text()
+
+
+def screen_event(i, timeout):
+    end = time.time() + timeout
+    while time.time() < end:
+        m = i.read_message(0.5)
+        if m and m.get("ev") == "screen":
+            return m
+    return None
+
+
+def screen_frame(i, timeout=15.0):
+    """The parts of one whole frame, as they arrive."""
+    parts = []
+    end = time.time() + timeout
+    while time.time() < end:
+        m = screen_event(i, 1.0)
+        if not m:
+            continue
+        d = m["data"]
+        assert not mecon_schema.check(d, mecon_schema.load("event.screen.json")), d
+        assert d["part"] == len(parts) + 1, parts + [d]
+        parts.append(d)
+        if d["last"]:
+            return parts
+    raise AssertionError("no whole frame: %s" % parts)
+
+
+def test_a_screen_frame_arrives_in_parts_and_is_what_the_display_shows(nodes):
+    n, c, i = screen_companion(nodes, "sc")
+    assert "stream.screen" in i.request("hello")["result"]["capabilities"]
+    pin_off_the_screen(n)
+    r = i.request("sub.start", {"stream": "screen", "period_s": 3600, "lifetime_s": 60})
+    assert r["status"] == "ok", r
+    parts = screen_frame(i)
+    assert len(parts) == 2 and [p["offset"] for p in parts] == [0, 512], parts
+    assert {p["frame"] for p in parts} == {parts[0]["frame"]}, parts
+    for p in parts:
+        assert p["width"] == 128 and p["height"] == 64 and p["format"] == "mono1" and p["age_s"] >= 0, p
+        assert "withheld" not in p
+    raw = b"".join(base64.b64decode(p["data"]) for p in parts)
+    assert len(raw) == 1024
+    text = raw.rstrip(b"\0").decode()
+    assert "Unread Msg" in text, text   # the sim's "pixels" are the text of the last frame
+
+
+def test_a_stream_period_under_five_seconds_is_refused(nodes):
+    n, c, i = screen_companion(nodes, "sp")
+    r = i.request("sub.start", {"stream": "screen", "period_s": 4})
+    assert r["status"] == "invalid", r
+
+
+def test_a_screen_stream_that_stops_ends_its_frame(nodes):
+    n, c, i = screen_companion(nodes, "sq")
+    pin_off_the_screen(n)
+    assert i.request("sub.start", {"stream": "screen", "period_s": 5, "lifetime_s": 60})["status"] == "ok"
+    screen_frame(i)
+    assert i.request("sub.stop", {"stream": "screen"})["status"] == "ok"
+    assert screen_event(i, 7) is None, "the stream stopped"
+
+
+def test_a_frame_that_shows_the_pairing_pin_is_withheld(nodes):
+    n, c, i = screen_companion(nodes, "sw")
+    assert n.ui.wait_text("Pin:", 20), n.ui.last_text()
+    assert i.request("sub.start", {"stream": "screen", "period_s": 5, "lifetime_s": 60})["status"] == "ok"
+    parts = screen_frame(i)
+    assert len(parts) == 1 and parts[0]["withheld"] == "pairing-pin" and parts[0]["last"], parts
+    assert "data" not in parts[0], parts
+    n.ui.phone(True)   # a phone connected: the PIN goes from the screen, and the next frame is sent
+    end = time.time() + 30
+    while time.time() < end:
+        parts = screen_frame(i)
+        if "withheld" not in parts[0]:
+            break
+    assert "withheld" not in parts[0], parts
+    assert b"Pin:" not in b"".join(base64.b64decode(p["data"]) for p in parts)
+
+
+def test_a_repeater_with_a_display_streams_it_over_the_console_and_one_without_has_no_stream(nodes):
+    n = nodes("repeater_ui", "sr").start()
+    cli = CliClient(n)
+    i = mecon_iface.ConsoleClient(cli.sock.sendall, mecon_iface.socket_lines(cli.sock))
+    assert "stream.screen" in i.request("hello")["result"]["capabilities"]
+    assert i.request("sub.start", {"stream": "screen", "period_s": 3600, "lifetime_s": 60})["status"] == "ok"
+    parts = screen_frame(i)
+    assert len(parts) == 2 and [p["offset"] for p in parts] == [0, 512], parts
+    assert parts[0]["on"] in (True, False) and "withheld" not in parts[0]
+    assert len(b"".join(base64.b64decode(p["data"]) for p in parts)) == 1024
+    n2, c2, i2 = repeater(nodes, "sn")
+    assert "stream.screen" not in i2.request("hello")["result"]["capabilities"]
+    r = i2.request("sub.start", {"stream": "screen"})
+    assert r["status"] == "invalid" and r["error"] == "unknown-stream", r

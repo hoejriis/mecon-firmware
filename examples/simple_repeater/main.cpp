@@ -220,6 +220,9 @@ void setup() {
     mgmt_record_store.setFs(fs);
     mgmt_snap_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
+#ifdef DISPLAY_CLASS
+    if (display.frameDrawn()) the_iface.attachScreen(&display);   // began at the top of setup: it drew "Please wait..."
+#endif
 #ifdef ENABLE_WIFI_INTERFACE
     net_started = ServerNet::begin(the_mesh, *the_mesh.getNodePrefs(), board, the_iface,
                                    []() -> uint32_t { return the_mesh.getRTCClock()->getCurrentTime(); },
