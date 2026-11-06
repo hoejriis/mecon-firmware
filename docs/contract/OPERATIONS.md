@@ -328,7 +328,7 @@ These native facilities sit beside the device interface over LoRa, which is a se
 | Heltec V3 Repeater, Room server | yes (console) | yes | no (owner decision) | |
 | Heltec V4 Repeater, Room server | yes (console) | yes | no (owner decision) | |
 | Heltec V3/V4 Companion `_usb`, `_ble`, `_wifi` | no | `_wifi` only (CLI topic) | `_ble` | stock-shaped builds; native frames only |
-| SenseCAP T1000-E Companion (`_usb`, `_ble`), Repeater, Room server | yes (Companion: frames; Repeater, Room server: console) | no | Companion `_ble` | no Wi-Fi. The Companion keeps the stock contact array. The Room server build does not have the interface yet ([availability](../AVAILABILITY.md)) |
+| SenseCAP T1000-E Companion (`_usb`, `_ble`), Repeater, Room server | yes (Companion: frames; Repeater, Room server: console) | no | Companion `_ble` | no Wi-Fi. The Companion keeps the stock contact array. |
 | Wio Tracker L1 Companion (`_usb`, `_ble`), Repeater, Room server | yes (Companion: frames; Repeater, Room server: console) | no | Companion `_ble` | no Wi-Fi |
 | Other nRF52 builds | no | no | Companion builds | no Wi-Fi; software-verified only |
 | simulated Companion, Repeater, Room server | yes | Companion | simulated | the conformance target |

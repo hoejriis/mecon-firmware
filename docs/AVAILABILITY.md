@@ -18,13 +18,13 @@ The other pages describe the finished product. This page and the release notes s
 | Compact telemetry over LoRa | Not built | [#116](https://github.com/hoejriis/mecon-firmware/issues/116) |
 | Standing instructions and periodic reports | Not built, and no contract yet | [#266](https://github.com/hoejriis/mecon-firmware/issues/266) |
 | The `screen` telemetry stream | Being built. The other streams are on `main` | [#96](https://github.com/hoejriis/mecon-firmware/issues/96) |
-| Enrolling a T1000-E Companion in a Deployment | Refused: its builds have no store for the provisioned marker yet. Its device interface works without enrolment | [#332](https://github.com/hoejriis/mecon-firmware/issues/332) |
-| Device interface on the T1000-E Room server | Not in that build yet | [#348](https://github.com/hoejriis/mecon-firmware/issues/348) |
 | Signed updates with production release keys | The update path is built and proven with test keys. The keys themselves do not exist yet | [#110](https://github.com/hoejriis/mecon-firmware/issues/110) |
 | Every feature checked on all four boards | In progress. [Hardware evidence](HARDWARE_VERIFIED.md) lists what has been checked. A feature not listed there for a board is not verified on it | [#117](https://github.com/hoejriis/mecon-firmware/issues/117) |
 
 Work on the management authority is still open too ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)), so its contract can still gain detail.
 
 ## What only a manager brings
+
+Managed use needs a manager, and this project publishes none. [MeshContinuum](https://github.com/hoejriis/MeshContinuum) publishes its documentation and target contracts, but no application source or installable release. Standalone use needs no manager.
 
 MECON connected messaging, backfill, RF health monitoring, autonomous outage forwarding and firmware-image delivery over LoRa are later work, outside the product these pages describe ([what the firmware leaves to a manager](INTEGRATION.md#what-the-firmware-does-and-what-a-manager-does)).
