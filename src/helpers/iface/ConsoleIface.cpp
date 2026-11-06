@@ -492,12 +492,16 @@ void ConsoleIface::jobChanged(void* user, const Job& j) {
   const bool con = s->_out && !s->_collecting;
   const bool net = s->_mqtt_may_read && s->_ev_publish && s->_ev_up && s->_ev_up();
   if (!con && !net) return;
-  char ev[512 + Job::RESULT_CAP];
+  // On the heap: a job opens from inside a request, already deep in the loop's stack.
+  const size_t cap = 512 + Job::RESULT_CAP;
+  char* ev = static_cast<char*>(malloc(cap));
+  if (!ev) return;   // job.get and job.list still have it
   const uint32_t ts = s->_host.clock_s ? s->_host.clock_s(s->_host.user) : 0;
-  int n = s->_jobs.writeEvent(ev, sizeof(ev), s->_epoch, ts != 0, ts, j);
-  if (n > 0) n = s->_prov.sign("job", ev, (size_t)n, sizeof(ev));
+  int n = s->_jobs.writeEvent(ev, cap, s->_epoch, ts != 0, ts, j);
+  if (n > 0) n = s->_prov.sign("job", ev, (size_t)n, cap);
   if (n > 0 && con) s->printLine(*s->_out, ev, (size_t)n);
   if (n > 0 && net) s->_ev_publish("job", ev, (size_t)n);
+  free(ev);
 }
 
 bool ConsoleIface::jobClasses(void* user, uint8_t cls) {

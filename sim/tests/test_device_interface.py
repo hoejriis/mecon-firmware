@@ -29,6 +29,29 @@ def client(n):
     return c, mecon_iface.IfaceClient(c._send, c._read_frame)
 
 
+def test_a_burst_of_broken_frames_answers_incomplete_once(nodes):
+    """One lost byte throws the frame reader out of step, and each misread frame looks like a new message. That is one lost
+    request, so a client hears of it once; the next burst, later, is told again, and a real request still runs between."""
+    n = nodes("companion_standalone", "burst", seed=19, rtc=RTC).start()
+    c, i = client(n)
+
+    def burst(first):
+        for x in range(first, first + 7):
+            c._send(bytes([mecon_iface.FRAME_CODE, x, 0, 3]) + b"x" * mecon_iface.FRAME_PAYLOAD)
+        answers = []
+        end = time.time() + 0.8
+        while time.time() < end:
+            m = i.read_message(0.2)
+            if m is not None and m.get("error") == "incomplete":
+                answers.append(m)
+        return answers
+
+    assert len(burst(1)) == 1, "seven broken frames, one answer"
+    assert i.request("hello", timeout=8)["status"] == "ok", "the link still works"
+    time.sleep(1.2)
+    assert len(burst(21)) == 1, "a later burst is told again"
+
+
 def test_hello_reports_identity_versions_and_capabilities(nodes):
     n, (c, i) = start(nodes)
     r = i.request("hello")

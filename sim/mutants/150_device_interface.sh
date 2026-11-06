@@ -135,3 +135,5 @@ mutate inv_repeater_callback_missing examples/simple_repeater/main.cpp 'ifaceRad
 mutate online_before_requests_open src/helpers/mqtt/MqttController.cpp '    _status_due = true;
 ' '    publishStatus();
 ' sim/tests/test_device_interface.py::test_a_request_sent_the_moment_online_appears_is_answered
+mutate iface_incomplete_answered_every_time examples/companion_radio/MeconIface.cpp '  if (l.incomplete_sent && (uint32_t)(now - l.incomplete_ms) < INCOMPLETE_QUIET_MS) return;' '' sim/tests/test_device_interface.py::test_a_burst_of_broken_frames_answers_incomplete_once
+mutate iface_incomplete_silenced_for_good examples/companion_radio/MeconIface.cpp '  if (l.incomplete_sent && (uint32_t)(now - l.incomplete_ms) < INCOMPLETE_QUIET_MS) return;' '  if (l.incomplete_sent) return;' sim/tests/test_device_interface.py::test_a_burst_of_broken_frames_answers_incomplete_once
