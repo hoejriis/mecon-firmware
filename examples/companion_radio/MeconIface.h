@@ -60,6 +60,8 @@ public:
                                            (1u << Iface::SID_POWER) | (1u << Iface::SID_RUNTIME) |
                                            (1u << Iface::SID_OBSERVATIONS) | (1u << Iface::SID_INVENTORY) |
                                            (1u << Iface::SID_LOGS);
+  uint8_t postureNow() const;
+  void rebootSoon() { _reboot_at = millis() + 1500; }
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
   // stream's data; signature changes whenever a link changes state, which sends an event at once.

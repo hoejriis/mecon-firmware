@@ -33,7 +33,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 }
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "posture.set", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
@@ -125,6 +125,13 @@ Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
 Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
+Status opPostureW(OpContext& c) {
+  ConsoleIface* s = self(c);
+  const uint8_t before = s->postureNow();
+  const Status st = withConfig(c, opPostureSet);
+  if (st == ST_OK && s->postureNow() != before) s->rebootSoon();   // what starts in each posture is decided at boot
+  return st;
+}
 // The stored set is an open read; the rotation statement in it names device_id, so only a caller the table lets read gets it.
 Status opDeployGet(OpContext& c) {
   const Status st = self(c)->auth().opGet(c);
@@ -185,6 +192,7 @@ const OpEntry OPS[] = {
   {"config.schema", opSchema, PRIV_READ, false},
   {"config.get", opGet, PRIV_READ, false},
   {"config.apply", opApply, PRIV_WRITE, true},
+  {"posture.set", opPostureW, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
   {"deployment.get", opDeployGet, PRIV_READ, false},

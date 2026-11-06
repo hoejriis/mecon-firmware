@@ -260,7 +260,7 @@ Its point is that a transport never becomes authority: once a device belongs to 
 
 - "Reads" here means operations of the read class that change nothing. `job.ack` is of the read class but releases an owed result, so an unsigned caller is refused it (`unauthenticated`) once a record exists; otherwise any link could discard a result before its manager collects it. Signed, it carries a `job_id` (section 7.1).
 - A firmware update (`update.offer`, and `job.confirm` and `job.cancel` of an update job) is the `update` class ([UPDATES](UPDATES.md) section 5): a signed request on any transport, or the unsigned cable while the device holds no record. Once it holds one, the unsigned cable is refused like any other unsigned change, a local unlock included. No other caller has it, BLE with the device's own PIN included.
-- Entering Hardened while a record exists is refused unless the record holds a local unlock secret. A signed request may lower the posture, as the cable may.
+- Entering Hardened while a record exists is refused unless the record holds a local unlock secret. A signed `posture.set` lowers the posture. On a device with a record that takes a signature: neither the cable nor a local unlock can lower it from Hardened.
 - BLE loses the native factory reset once a record exists. Otherwise a BLE factory reset followed by a BLE first provisioning would let a paired phone take a device over without touching it.
 - Every path that formats or rebuilds storage keeps the record, or is gated as `deployment.reset` is. That includes the rescue console's `rebuild`, which reformats and saves back identity, settings, contacts and channels: it saves the record back too. A recovery path is never a silent unenrollment.
 
@@ -282,7 +282,7 @@ The unlock grants the reads and posture unlock shown in section 9. It never gran
 | re-enrollment into the same Deployment | nothing | everything; the set and revision move forward | signed `deployment.provision` |
 | `deployment.reset` (unenroll), healthy record | the record, watermarks, local unlock secret, provisioned marker | node key, `device_id`, configuration, contacts, channels | signed, over USB only, in Normal |
 | `deployment.reset`, corrupt record | the same | the same | USB cable in Normal; local unlock in Hardened |
-| posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed, or the cable |
+| posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed (`posture.set`); the cable only with no record |
 | `identity.rotate` (new owner) | node key, and what was made with it. Companion: contacts, message queue. Repeater: the client ACL. Room server: the client ACL and its posts | configuration, record, posture, `device_id`, and a Companion's channels | signed and sensitive; refused without a readable record. Every role |
 | rescue `rebuild` | nothing: it reformats and saves everything back, the record included | everything | the cable |
 | factory reset | everything, the record, the provisioned marker and `device_id` included | nothing | the cable only; never remote, never BLE once enrolled |

@@ -41,7 +41,7 @@ const size_t HELLO_SIGNED_BUDGET = 1350;
 const size_t HELLO_PLAIN_BUDGET = 1500;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "posture.set", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
@@ -67,6 +67,7 @@ Status opMsgDeliver(OpContext& c);
 Status opSchema(OpContext& c);
 Status opGet(OpContext& c);
 Status opApply(OpContext& c);
+Status opPostureW(OpContext& c);
 Status opSubStart(OpContext& c);
 Status opSubStop(OpContext& c);
 Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
@@ -99,6 +100,7 @@ const OpEntry OPS[] = {
   {"config.schema", opSchema, PRIV_READ, false},
   {"config.get", opGet, PRIV_READ, false},
   {"config.apply", opApply, PRIV_WRITE, true},
+  {"posture.set", opPostureW, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
   {"deployment.get", MeconIface::opDeployGet, PRIV_READ, false},
@@ -289,6 +291,13 @@ Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
 Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
+Status opPostureW(OpContext& c) {
+  MeconIface* m = self(c);
+  const uint8_t before = m->postureNow();
+  const Status st = withConfig(c, opPostureSet);
+  if (st == ST_OK && m->postureNow() != before) m->rebootSoon();   // what starts in each posture is decided at boot
+  return st;
+}
 
 Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
   ChannelHost host = self(c)->channelHost();
@@ -1077,6 +1086,8 @@ void MeconIface::inventoryTick(uint32_t now) {
   free(data);
   free(ev);
 }
+
+uint8_t MeconIface::postureNow() const { return _mesh->postureValue(); }
 
 void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
