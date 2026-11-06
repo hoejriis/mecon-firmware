@@ -25,7 +25,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 | L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Deferred: follow-up "decide the Ethernet console's row in the caller table" |
 | L7 | The highest `job_id` value is the blocked-mark sentinel | Deferred: follow-up "refuse that `job_id` and say so in section 8"; small, status-only effect |
 | L8 | Entropy of the ESP32 RNG on server roles that run no radio | Deferred: follow-up "enable the bootloader random source around boot-time draws, or mix in radio noise" |
-| I1 | The duplicate-result cache key uses a truncated instance id | Deferred: follow-up "use the full id or the member index" |
+| I1 | The duplicate-result cache key uses a truncated instance id | Fixed: an authority set whose members share those 6 bytes is refused. The id stays short, since it is the job identity managers see |
 | I2 | The record is stored in plaintext on flash, like the node key | Accepted: same protection class as the node key; the contract wording "stored as a secret" is to be clarified |
 | I3 | The unlock lockout counter lives in RAM | Accepted: the secret is 256 bits, so a reset of the counter buys nothing |
 | I4 | The unlock HMAC has no domain prefix | Accepted: challenges are random per link; a prefix is a possible later hardening |

@@ -47,6 +47,9 @@ mutate dep_weak_dak_pinned src/helpers/deployment/DepProvision.cpp '    if (p.n_
 mutate dep_provision_rotation_applied src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0) return P_UNTRUSTED_AUTHORITY_KEY;' '' unit:test_dep_provision
 mutate dep_duplicate_member_key_ok src/helpers/deployment/DepAuthority.cpp '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0 ||
           memcmp(s->members[j].public_key, mb.public_key, KEY_LEN) == 0)' '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0)' unit:test_dep_authority
+mutate dep_member_id_prefix_ok src/helpers/deployment/DepAuthority.cpp '      if (memcmp(s->members[j].instance_id, mb.instance_id, 6) == 0) return BAD_AUTHORITY_SET;' '      ;' unit:test_dep_authority
+mutate dep_member_id_prefix_too_long src/helpers/deployment/DepAuthority.cpp 'mb.instance_id, 6) == 0) return BAD_AUTHORITY_SET;' 'mb.instance_id, 7) == 0) return BAD_AUTHORITY_SET;' unit:test_dep_authority
+mutate dep_member_id_prefix_too_short src/helpers/deployment/DepAuthority.cpp 'mb.instance_id, 6) == 0) return BAD_AUTHORITY_SET;' 'mb.instance_id, 5) == 0) return BAD_AUTHORITY_SET;' unit:test_dep_authority
 mutate dep_weak_member_key_ok src/helpers/deployment/DepAuthority.cpp '    if (weakKey(mb.public_key)) return BAD_AUTHORITY_SET;' '' unit:test_dep_authority
 mutate dep_weak_rotation_key_ok src/helpers/deployment/DepAuthority.cpp ' && to <= MAX_EPOCH && !weakKey(key)) {' ' && to <= MAX_EPOCH) {' unit:test_dep_authority
 mutate dep_weak_key_test_disabled src/helpers/deployment/DepAuthority.cpp '  return !fe_isnonzero(p.X) && !fe_isnonzero(d);   // the identity: X = 0, Y = Z' '  return false;' unit:test_dep_authority

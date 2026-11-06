@@ -155,6 +155,10 @@ static Err parseSet(const JsonDoc& d, AuthoritySet* s) {
     // Admitted at a revision this set has not reached yet: malformed, not something to round down.
     if (mb.admitted_revision == 0 || mb.admitted_revision > s->authority_revision) return BAD_AUTHORITY_SET;
     if (weakKey(mb.public_key)) return BAD_AUTHORITY_SET;
+    // A job's identity names its issuer by the first 6 bytes of the id (OPERATIONS.md 3.1), and so does the result kept
+    // for a retry. Two members sharing them would answer for each other, so a set like that is refused.
+    for (int j = 0; j < i; j++)
+      if (memcmp(s->members[j].instance_id, mb.instance_id, 6) == 0) return BAD_AUTHORITY_SET;
     // Distinct ids and distinct keys: the issuer field is not signed, so two members sharing a key would let a
     // command signed by one be presented under the other's name and replay window.
     for (int j = 0; j < i; j++)
