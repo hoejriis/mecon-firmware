@@ -6,9 +6,9 @@
 //
 //   ESP32 (ESP_PLATFORM)  NVS namespace "mecon", key "prov"
 //   simulated boards      a file beside the data directory (<dir>.prov), not inside it, so a simulated format leaves it
-//   nRF52 with MECON_MARKER_PAGE   that flash page, a slot log (DepMarkerPage.h); the env names it only where the page is
-//                         in the bootloader's preserved region and in no file system of the build
-//   anything else         unsupported (including the T1000-E Companion, whose ExtraFS covers the preserved region)
+//   nRF52 with MECON_MARKER_PAGE   that flash page, a slot log (DepMarkerPage.h); the env names it only where a serial
+//                         DFU leaves the page alone and it is in no file system of the build
+//   anything else         unsupported
 //
 // Only deployment.reset and the factory reset clear it. A file system format does not.
 #include <stdint.h>

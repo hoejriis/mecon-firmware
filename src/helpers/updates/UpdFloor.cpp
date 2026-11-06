@@ -141,8 +141,7 @@ bool floorRaise(uint32_t v) {
 }  // namespace Upd
 
 #elif defined(NRF52_PLATFORM)
-// An nRF52 env that names no floor page: the T1000-E Companion, whose ExtraFS covers the whole preserved region. It has
-// nowhere to keep a floor, so it reads as unreadable and every install is refused, never taken without one.
+// An nRF52 env that names no floor page. It has nowhere to keep a floor, so it reads as unreadable and every install is refused, never taken without one.
 
 namespace Upd {
 bool floorSupported() { return false; }
