@@ -24,10 +24,11 @@ mutate deploy_rebuild_without_reading_the_record examples/companion_radio/MyMesh
       if (!snap) {' '      MeconIface::RecordSnapshot* snap = _iface.snapshotRecord();
       if (false) {' $DA::test_a_rescue_rebuild_that_cannot_read_the_record_refuses_and_changes_nothing
 mutate deploy_cli_gate_not_told_the_device_is_enrolled examples/companion_radio/MyMesh.cpp '    ctx.enrolled = _iface.enrolled();   // the one place that gates a command line: every adapter and the rescue console' '    ctx.enrolled = false;' $DA::test_an_unsigned_cli_write_over_the_usb_frame_is_refused_once_enrolled_but_a_read_works
-mutate deploy_enrolled_rule_dropped_from_the_table src/helpers/cli/CliPolicy.h '  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&' '  if (false && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&' unit:test_cli_engine
+mutate deploy_enrolled_rule_dropped_from_the_table src/helpers/cli/CliPolicy.h '  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote && p != P_NETCON_ADMIN) &&' '  if (false && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote && p != P_NETCON_ADMIN) &&' unit:test_cli_engine
 mutate deploy_enrolled_rule_takes_the_cables_destructive_class src/helpers/cli/CliPolicy.h '      !(p == P_CABLE && cls == C_DESTRUCTIVE) && !unlock_posture)' '      false)' unit:test_cli_engine
 mutate deploy_marker_alone_reads_as_absent src/helpers/deployment/DepMarker.h 'return (ls == LS_ABSENT && m == MK_PRESENT) ? LS_CORRUPT : ls;' 'return ls;' unit:test_dep_state
-mutate deploy_remote_reboot_unsigned_when_enrolled src/helpers/cli/CliPolicy.h ' && !(cls == C_REBOOT && !c.remote) &&' ' && !(cls == C_REBOOT) &&' unit:test_cli_engine
+mutate deploy_remote_reboot_unsigned_when_enrolled src/helpers/cli/CliPolicy.h ' && !(cls == C_REBOOT && !c.remote && p != P_NETCON_ADMIN) &&' ' && !(cls == C_REBOOT) &&' unit:test_cli_engine
+mutate enrolled_ethernet_console_reboots src/helpers/cli/CliPolicy.h ' && !c.remote && p != P_NETCON_ADMIN) &&' ' && !c.remote) &&' unit:test_cli_engine
 mutate deploy_frames_not_told_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '    (void)0;' sim/tests/test_deployment_authority.py::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
 
 # ---- the authority layer on the Repeater and Room server console
@@ -195,6 +196,12 @@ mutate reserved_mark_every_id_writes src/helpers/deployment/DepReplay.cpp '  if 
 mutate reserved_mark_write_skipped src/helpers/iface/DeployAuth.cpp '    if (Dep::markAccepted(&wm, v.job_id) && !persistMarks()) {' '    if (Dep::markAccepted(&wm, v.job_id) && false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
 mutate reserved_mark_reaches_blocked src/helpers/deployment/DepReplay.cpp '  w->reserved = job_id < MARK_BLOCKED - MARK_RESERVE ? job_id + MARK_RESERVE : MARK_BLOCKED - 1;' '  w->reserved = job_id + MARK_RESERVE;' unit:test_dep_replay
 mutate reserved_mark_new_id_gets_a_bare_duplicate src/helpers/iface/DeployAuth.cpp '      } else if (wm.mark == wm.reserved) {' '      } else if (false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
+mutate entropy_seed_static src/helpers/EntropyPool.h '    mesh::Utils::sha256(_seed, POOL_SIZE, in, sizeof(in));' '' unit:test_entropy_pool
+mutate entropy_no_counter src/helpers/EntropyPool.h '      memcpy(in + POOL_SIZE, &counter, sizeof(counter));' '      memset(in + POOL_SIZE, 0, sizeof(counter));' unit:test_entropy_pool
+mutate entropy_next_seed_is_output src/helpers/EntropyPool.h '    in[POOL_SIZE + sizeof(uint32_t)] = 1;' '    in[POOL_SIZE + sizeof(uint32_t)] = 0;' unit:test_entropy_pool
+mutate entropy_mix_replaces src/helpers/EntropyPool.h 'dest[off + k] ^= block[k];' 'dest[off + k] = block[k];' unit:test_entropy_pool
+mutate entropy_unseeded_mixes src/helpers/EntropyPool.h '    if (!_seeded) return;' '' unit:test_entropy_pool
+mutate entropy_partial_block_dropped src/helpers/EntropyPool.h 'const size_t n = sz - off < POOL_SIZE ? sz - off : POOL_SIZE;' 'const size_t n = sz - off < POOL_SIZE ? 0 : POOL_SIZE;' unit:test_entropy_pool
 
 # --- the deferred items of the second authority review
 mutate unlock_opens_connectivity src/helpers/cli/CliRegistry.h 'C_POSTURE,     F_NO_UNLOCK,  Posture::W_CONNMODE,' 'C_POSTURE,     0,            Posture::W_CONNMODE,' unit:test_cli_engine

@@ -198,6 +198,7 @@ static uint64_t ifaceConnSignature() {
 #endif  // ENABLE_MECON_IFACE
 
 void setup() {
+  CryptoRNG::seedAtBoot();
   Posture::audit().setClockCheck([]() -> bool { return rtc_clock.isSet(); });
 #if defined(ENABLE_MECON_IFACE) && defined(ESP32)
   // A multi-frame interface request arrives as one burst; a native USB port (TinyUSB CDC) delivers it at full speed
