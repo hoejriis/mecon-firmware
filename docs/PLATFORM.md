@@ -68,9 +68,12 @@ What is set:
 
 - **Wi-Fi TX buffers are dynamic** (`CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER=y`, 16 buffers), not a static pool of 8 buffers of about 1.6 KB. `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n` goes with it: Arduino's base config puts Wi-Fi and LWIP buffers in PSRAM, which locks out dynamic TX. The V3 has no PSRAM, so nothing else moves there. On a board with PSRAM Wi-Fi and LWIP buffers would come from internal RAM instead, which is why the V4's set leaves this out (below).
 - **The IPC tasks get a 2,048-byte stack** (`CONFIG_ESP_IPC_TASK_STACK_SIZE=2048`) instead of the stock 1,024. Installing the GPIO ISR service at boot runs on the IPC task, and with heap poisoning on it overran the 1,024-byte stack in 4 of 304 resets on v3test (`Stack canary watchpoint triggered (ipc0/ipc1)`, Issue #216). Upstream's library builder made the same change. It costs 2 KB of internal heap (two tasks).
+- **The TLS output buffer is 4 KB** (`CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y`, `CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=4096`), not 16 KB. The largest write the firmware makes over TLS is an MQTT packet of at most 1,600 bytes. mbedTLS cuts a longer write at the buffer's size and PubSubClient treats that as a failure, so a larger packet needs this raised with it. The input buffer stays 16 KB, since a broker or download server may send full records.
 - **13 unused managed components are removed** from the library build: esp_insights, esp_rainmaker, rmaker_common, esp_diagnostics, esp_diag_data_store, esp_schedule, esp-sr, esp-zboss-lib, esp-zigbee-lib, esp_modem, esp-modbus, esp_rcp_update and esp-libhelix-mp3.
 
-**The mbedTLS buffers stay static.** Dynamic mbedTLS buffers (`CONFIG_MBEDTLS_DYNAMIC_BUFFER`) were tried and break Wi-Fi: the radio never leaves `scanning` once a TLS session starts. Do not add them to `custom_sdkconfig`.
+**The mbedTLS libraries need their own copy step.** pioarduino copies the libraries one level under each component, and mbedTLS builds its three a level deeper, so a `CONFIG_MBEDTLS_*` option alone changes the headers and not the code. `bin/idf5_mbedtls_libs.py` copies them for the V3's library set. The package names the TLS library `libmbedtls_2.a`.
+
+**The mbedTLS buffers stay static.** Dynamic mbedTLS buffers (`CONFIG_MBEDTLS_DYNAMIC_BUFFER`) were tried and the radio never left `scanning` once a TLS session started. That trial ran before the copy step, so its mbedTLS code had not been rebuilt, and the cause is not known. Do not add them without measuring again.
 
 Measured on v3test (V3 standalone Companion, `get mecon.mem` idle and 20 s after a pinned-TLS MQTT session verified, main bafb88d5 against this build in one session, 2026-10-31): idle free heap 98,276 B against 105,228 B, largest block 36,852 B against 42,996 B; with the TLS session free 36,956 B against 50,764 B (about 14 KB more), largest block 14,836 B against 31,732 B, low-water 24,860 B against 38,228 B (about 13 KB more). That is net of the 2 KB the larger IPC stacks take. The largest block moves with the memory layout (an unchanged tree has measured both 14,836 B and 31,732 B), so the free and low-water gains are the ones to rely on. An earlier split (Issue #100) put about 8 KB of free heap on the component removal and about 7 KB on the dynamic TX buffers. Both gains need the rebuilt libraries; there is no runtime-only route, because the prebuilt libraries reserve the static pool from their own sdkconfig.
 
@@ -145,7 +148,7 @@ What carried over unchanged: identity, name, PIN, contacts (50 of 50) and settin
 What is worse, and stays recorded until it is won back:
 
 - **Largest free block.** On ESP-IDF 5.3 the largest allocatable block of internal RAM is about 43–45 KB on both boards whatever the free total, where 2.0.17 had 90–130 KB. Every allocation the firmware makes today fits.
-- **Wi-Fi + TLS heap on the Heltec V3.** About 17 KB less free and 19 KB less low-water than 2.0.17, which leaves about 12 KB above the 20,480 B heap floor during a TLS session. The V4 is far from its floor.
+- **Wi-Fi + TLS heap on the Heltec V3.** Measured on v3test with a verified TLS MQTT session, the 16 KB output buffer against 4 KB: free 48,572 B against about 60,840 B, low-water 35,476 B against 49,056 and 52,420 B (two runs), and with ten streams low-water 22,936 B against 34,092 and 36,100 B. The heap floor is 20,480 B. The V4 is far from its floor and keeps the 16 KB buffer.
 
 ## Board exceptions
 
