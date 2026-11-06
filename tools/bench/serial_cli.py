@@ -20,6 +20,7 @@ Examples:
 Exit status: 0 if every command got a reply, 1 otherwise. Nothing is written except the commands given.
 """
 import argparse
+import json
 import socket
 import struct
 import sys
@@ -42,8 +43,9 @@ class Link:
         else:
             import serial  # pyserial
             self.ser = serial.Serial(port, baud, timeout=0.1)
-            self.ser.dtr = dtr     # low: do not hold an ESP32 board in reset or bootloader; high: native USB nRF52 speaks
+            # Opening raises both lines. RTS goes first: on ESP32 auto-reset wiring, RTS high with DTR low pulls EN low.
             self.ser.rts = False
+            self.ser.dtr = dtr     # low: leave an ESP32 board out of reset and bootloader; high: native USB nRF52 speaks
 
     def write(self, b):
         (self.sock.sendall if self.sock else self.ser.write)(b)
@@ -90,6 +92,7 @@ def frames_cmd(link, line, timeout):
 
 def iface_cmd(link, request, timeout, xid=1):
     body = request.encode()
+    req_id = json.dumps(json.loads(request)["id"], separators=(",", ":"))
     parts = [body[i:i + MECON_FRAME_BYTES] for i in range(0, len(body), MECON_FRAME_BYTES)] or [b""]
     for index, part in enumerate(parts):
         f = bytes([CMD_MECON, xid, index, len(parts)]) + part
@@ -113,7 +116,7 @@ def iface_cmd(link, request, timeout, xid=1):
                 if len(got) == f[3]:       # a device event may interleave; only a request's answer is wanted here
                     msg = b"".join(got[k] for k in sorted(got)).decode(errors="replace")
                     got = {}
-                    if ('"id":' in msg) and ('"ev":' not in msg):
+                    if '"ev":' not in msg and ('"id":%s' % req_id) in msg:
                         return msg
     return None
 

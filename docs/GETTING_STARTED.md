@@ -14,7 +14,7 @@ Decide what you would lose before you install. What a backup can do depends on t
 
 | Board | Backup | Restoring it | Installing over existing data |
 |---|---|---|---|
-| Heltec V3, V4 | A full flash dump with `esptool read-flash`, which reads every setting, key and record | Puts back the whole device, but also rolls back its counters. A manager that has seen a later boot rejects its signed messages until the device has booted past that point, and replay marks go back too | Writing the application alone over an earlier build of this firmware kept the identity, name, PIN and contacts, checked on both boards. BLE bonds do not carry over from a build on the older BLE stack: pair again |
+| Heltec V3, V4 | A full flash dump with `esptool read-flash`, which reads every setting, key and record | Puts back the whole device, but also rolls back its counters. A manager that has seen a later boot rejects its signed messages until the device has booted past that point, and replay marks go back too | Writing the application alone over an earlier build of this firmware kept the identity, name, PIN and contacts, checked on both boards. PlatformIO's upload steps over a stock Companion on a V3 kept the identity and name. BLE bonds do not carry over from a build on the older BLE stack: pair again |
 | T1000-E, Wio Tracker L1 | No full dump: the bootloader's serial DFU cannot read flash. Save what the device will report: contacts and channels through an app, settings with `get`, and the private key if it is not enrolled | Set the saved values again. An enrolment cannot be saved: re-enrol the device | The Wio USB Companion build over stock, then stock again, kept all 27 settings checked. The identity survived too. A T1000-E Companion booted on the private firmware's data with all 350 contacts and 40 channels |
 
 Some things hold on every board:
@@ -38,15 +38,22 @@ sim/run.sh pio run -e Heltec_v3_companion_radio_standalone
 
 Replace the environment name with the one for your board and role. The image lands in `.pio/build/<env>/`. The container's user is uid 1000, so the checkout must be writable by that uid. Under rootless Docker the build stops with `Path '/workspaces/mecon-firmware' is not writable`. There, run the build as `SIM_DOCKER_ARGS="--user 0 -e HOME=/home/dev" sim/run.sh pio run -e <env>`.
 
-On a Heltec V3 or V4, run `bin/idf5_libs.sh <env>` before the first build, and again after building another board in the same PlatformIO directory. It rebuilds that board's ESP-IDF libraries (about 6 minutes, and seconds when nothing changed), and without it the build stops at once and says so. It is idempotent and prints "nothing to do" for any environment that does not need it, so running it before every build is safe. Keeping each board in its own PlatformIO directory (`PLATFORMIO_CORE_DIR=<dir>`) avoids the rebuild when you switch ([runtime platform](PLATFORM.md#building)).
+On a Heltec V3 or V4, run `bin/idf5_libs.sh <env>` before the first build, and again after building another board in the same PlatformIO directory. It rebuilds that board's ESP-IDF libraries (6 to 25 minutes depending on the machine, and seconds when nothing changed), and without it the build stops at once and says so. It is idempotent and prints "nothing to do" for any environment that does not need it, so running it before every build is safe. Keeping each board in its own PlatformIO directory (`PLATFORMIO_CORE_DIR=<dir>`) avoids the rebuild when you switch ([runtime platform](PLATFORM.md#building)).
 
-Flashing happens on your computer, because the container does not see USB. Install the tools there with `pip install adafruit-nrfutil esptool pyserial`, then write the image with `esptool` on the Heltec boards, or on the nRF52 boards:
+Flashing happens on your computer, because the container does not see USB. Install the tools there with `pip install adafruit-nrfutil esptool pyserial`, then write the image. On the Heltec boards, the first time over stock:
+
+```sh
+sim/run.sh cat /home/dev/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin > boot_app0.bin
+esptool --port <port> --baud 460800 write-flash 0x0 .pio/build/<env>/bootloader.bin 0x8000 .pio/build/<env>/partitions.bin 0xe000 boot_app0.bin 0x10000 .pio/build/<env>/firmware.bin
+```
+
+Over an earlier build of this firmware, write the application alone: `esptool --port <port> write-flash 0x10000 .pio/build/<env>/firmware.bin`. On the nRF52 boards:
 
 ```sh
 adafruit-nrfutil dfu serial --package .pio/build/<env>/firmware.zip -p <port> -b 115200 --singlebank --touch 1200
 ```
 
-`--touch 1200` restarts the board into its bootloader. If the tool says the board is not in DFU mode, wait a few seconds and run it again. With PlatformIO installed on your computer, `pio run -e <env> -t upload` also works. PlatformIO's upload on a Heltec board also writes the bootloader and partition table. The run in step 2 wrote the application alone, so take a dump first if the data matters.
+`--touch 1200` restarts the board into its bootloader. If the tool says the board is not in DFU mode, wait a few seconds and run it again. With PlatformIO installed on your computer, `pio run -e <env> -t upload` also works. On a Heltec board that upload also writes the bootloader, the partition table and the boot selector. Those steps were run by hand with `esptool` on one V3, over stock, and kept what step 2 says, so take a dump first if the data matters.
 
 ## 4. Check the device
 
