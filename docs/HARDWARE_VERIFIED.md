@@ -110,6 +110,7 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 
 | Feature | Result | Date, build |
 |---|---|---|
+| Public T1000-E Companion USB build, enrolled | a private fork's record cleared over the cable with the node key and `device_id` kept; first provisioning; a signed change and an unsigned one refused; the marker and floor pages present after a serial DFU, read at boot; signed `update.offer` accepted; management channel bind, confirmed rotate, reverted rotate and unbind; signed reset. Contacts and channels kept | 2026-11-06, PR's build plus the test key |
 | Companion on a board carrying the private firmware's data | boots and stays up; 350 of 350 contacts and 40 of 40 channels identical to a prior backup (the stock contact table); a change to the full table survives a reboot; the private firmware, flashed back, reads every contact and channel unchanged | 2026-10-31, bce8ef8c |
 | Companion heap and loop stack (USB build) | idle free 54,160 B; loop stack free 816 B; 5 of 5 log events signed | 2026-11-01, 90d46a9f |
 | Management writes with the private firmware's Deployment record | refused `deployment_record_corrupt` (fail closed); the record itself left unchanged | 2026-10-31, bce8ef8c |
