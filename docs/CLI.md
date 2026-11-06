@@ -46,7 +46,7 @@ The Companion frames that are not command lines are gated by the same table: `CM
 
 Messaging, contact handling (short of a grant) and reads are not gated, so the TCP port and a default-PIN BLE link keep serving the app's messaging. Two reads they are served carry no secret: the device info answers the BLE PIN as 0, and `CMD_GET_CHANNEL` answers a channel's secret as zeros (the name is enough to send and receive on it). A refused frame is audited as `app-frame` unless it has its own entry above. Wi-Fi and MQTT passwords are `write` commands whose *read* is answered `> wifi.pwd is write-only` by the engine, or shows only `set` / `unset`: no reply on any transport carries a secret of this kind.
 
-Lowering protection (`set posture normal`, and any `set posture` argument that is not `hardened`) carries a *cable only* flag: whatever the class cell says, no caller but the cable gets through.
+Lowering protection (`set posture normal`, and any `set posture` argument that is not `hardened`) carries a *cable only* flag: whatever the class cell says, no caller but the cable or a signed request gets through. Once the device holds a Deployment record the cable is refused too, so lowering takes a signed `posture.set` ([Management authority contract](contract/AUTHORITY.md) section 9).
 
 ## The table
 
