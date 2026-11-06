@@ -201,3 +201,5 @@ mutate entropy_next_seed_is_output src/helpers/EntropyPool.h '    in[POOL_SIZE +
 mutate entropy_mix_replaces src/helpers/EntropyPool.h 'dest[off + k] ^= block[k];' 'dest[off + k] = block[k];' unit:test_entropy_pool
 mutate entropy_unseeded_mixes src/helpers/EntropyPool.h '    if (!_seeded) return;' '' unit:test_entropy_pool
 mutate entropy_partial_block_dropped src/helpers/EntropyPool.h 'const size_t n = sz - off < POOL_SIZE ? sz - off : POOL_SIZE;' 'const size_t n = sz - off < POOL_SIZE ? 0 : POOL_SIZE;' unit:test_entropy_pool
+mutate observation_unsigned_companion examples/companion_radio/MeconIface.cpp '  if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream
+mutate observation_unsigned_console src/helpers/iface/ConsoleIface.cpp '  if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream
