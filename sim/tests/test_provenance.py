@@ -284,3 +284,30 @@ def test_an_observation_is_signed_as_its_own_stream(ether, nodes, kind):
     assert members(e)[-3:] == ["usig_boot", "usig_seq", "usig"], members(e)
     assert verifies(e.raw, d.node_key, "observations"), e.raw
     assert not verifies(e.raw, d.node_key, "result"), "an observation and a result are not interchangeable"
+
+
+@pytest.mark.parametrize("kind", ["companion_standalone", "repeater"])
+def test_the_last_sequence_number_signs_and_the_next_message_says_exhausted(nodes, kind):
+    d = boot_companion(nodes, "sx" + kind[:2], 37) if kind == "companion_standalone" else boot_server(nodes, kind, "sx" + kind[:2], 37)
+    assert d.provision()["status"] == "ok"
+    d.n.stop()
+    d.n.extra_env = {"SIM_SIGN_SEQ": str(0xFFFFFFFF - 200)}
+    d.n.start()
+    d.attach()
+    seen_last = False
+    for _ in range(400):
+        r = d.i.request("status.get")
+        if "unsigned" in r:
+            break
+        assert r["usig_seq"] <= 0xFFFFFFFF and verifies(r.raw, d.node_key, "result"), r
+        seen_last = r["usig_seq"] == 0xFFFFFFFF
+    assert seen_last, "the last number of the boot signed"
+    assert r["unsigned"] == "seq_exhausted", r
+    assert not any(k.startswith("usig") for k in r), "nothing is signed once the numbers run out, and they never wrap"
+    assert d.i.request("status.get")["unsigned"] == "seq_exhausted", "and it stays so until the next boot"
+    d.n.stop()
+    d.n.extra_env = {}
+    d.n.start()
+    d.attach()
+    r = d.i.request("status.get")
+    assert r["usig_seq"] < 10 and verifies(r.raw, d.node_key, "result"), "a new boot starts a new sequence"
