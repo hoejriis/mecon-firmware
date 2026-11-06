@@ -676,6 +676,7 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
   if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);
+  _lora_bound_dirty = true;   // cheaper than asking which operations touch the binding: requests are rare beside packets
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -1112,6 +1113,14 @@ bool MeconIface::loraSend(void* user, const LoraLink::Peer& p, const uint8_t* fr
 
 // One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).
 void MeconIface::loraTick(uint32_t now) {
+  if (!_lora_bound_read || _lora_bound_dirty || now - _lora_bound_at >= 60000) {   // as ConsoleIface::loraKeyRefresh
+    _lora_bound_read = true;
+    _lora_bound_dirty = false;
+    _lora_bound_at = now;
+    MgmtHost h = mgmtHost();
+    MgmtRecord rec;
+    _lora_bound_slot = mgmtState(h, &rec) == MGMT_BOUND ? rec.slot : -1;
+  }
   if (LoraLink::Peer* p = _lora.nextComplete()) {
     char* res = static_cast<char*>(malloc(LORA_MSG_MAX + 1));
     if (res) {
@@ -1156,9 +1165,7 @@ bool MeconIface::onLoraChannel(int slot, const uint8_t* data, size_t n) {
     onRfReply(key, f, len);
     return true;
   }
-  MgmtHost h = mgmtHost();
-  MgmtRecord rec;
-  if (mgmtState(h, &rec) != MGMT_BOUND || rec.slot != slot) return false;
+  if (_lora_bound_slot != slot) return false;   // read on the main pass: a file read here would hold the radio's next packet
   _lora_slot = slot;
   _lora.feedChannel(sender, f, len, millis());
   return true;

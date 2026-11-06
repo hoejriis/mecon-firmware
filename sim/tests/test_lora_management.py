@@ -228,6 +228,19 @@ def test_a_device_takes_only_its_bound_channel(ether, nodes, kind):
     assert "NoBinding" not in d.name()
 
 
+def test_an_unbind_takes_effect_at_once(ether, nodes):
+    d, m = on_channel(nodes, ether, "repeater", "cb")
+    r = m.send(d.node_key, wrap(d.node_key, "config.apply", apply_name("Bound"), job=1), slot=CH)
+    assert r and r["status"] == "ok", r
+    r = d.send(wrap(d.node_key, "mgmt.channel.unbind", {"confirm": {"within_s": 60}}, job=2))
+    assert r["status"] == "ok", r
+    assert d.send(wrap(d.node_key, "job.confirm", {"job": r["result"]["job"]}, job=3))["status"] == "ok"
+    time.sleep(1)
+    r = m.send(d.node_key, wrap(d.node_key, "config.apply", apply_name("Unbound"), job=4), slot=CH, timeout=10.0)
+    assert r is None, "no longer bound: not read: %s" % r
+    assert "Unbound" not in d.name()
+
+
 def test_only_the_addressed_node_answers_on_the_channel(ether, nodes):
     d, m = on_channel(nodes, ether, "repeater", "cn")
     other = target(nodes, ether, "repeater", "co", seed=33)

@@ -268,6 +268,9 @@ private:
   uint8_t _rf_xid = 0, _rf_idx = 0, _rf_count = 0;
   int _rf_slot = -1;            // rf.request on this channel slot, or -1: point to point
   int _lora_slot = -1;          // the bound slot a channel reply goes out on
+  int _lora_bound_slot = -1;    // the binding, read on the main pass
+  bool _lora_bound_read = false, _lora_bound_dirty = false;
+  uint32_t _lora_bound_at = 0;
   uint32_t _rf_next = 0;
   static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
   static const uint32_t INV_PAGE_MS = 200;

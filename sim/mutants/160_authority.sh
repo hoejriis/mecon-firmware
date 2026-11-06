@@ -232,3 +232,4 @@ mutate standing_remove_keeps src/helpers/iface/StandingOps.cpp '      s = Standi
       if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' '      if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
 mutate lora_retry_new_number examples/companion_radio/MeconIface.cpp 'if (xt >= 0 && jsonGetInt(d, xt, 0, 255, &xv)) _rf_xid = (uint8_t)xv;
   else _rf_xid++;' '_rf_xid++;' $LM::test_a_retry_under_the_same_number_fills_a_gap_on_the_channel
+mutate lora_binding_not_reread src/helpers/iface/ConsoleIface.cpp '  _lora_key_dirty = true;   // cheaper than asking which operations touch the binding: requests are rare beside packets' '' $LM::test_an_unbind_takes_effect_at_once

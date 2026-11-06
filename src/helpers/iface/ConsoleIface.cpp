@@ -564,6 +564,7 @@ int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
   if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);
+  _lora_key_dirty = true;   // cheaper than asking which operations touch the binding: requests are rare beside packets
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -822,20 +823,25 @@ bool ConsoleIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int
   return n && s->_report_send(s->_report_user, to, slot, b, n);
 }
 
-// The bound channel's key, or false: a stale or absent binding takes nothing (MANAGEMENT_CHANNEL.md section 2).
+// The bound channel's key, or false: a stale or absent binding takes nothing (MANAGEMENT_CHANNEL.md section 2). The mesh asks on
+// every group packet it hears, and a file read here holds the radio's next packet, so it answers from what loraKeyRefresh read.
 bool ConsoleIface::loraChannelKey(void* user, uint8_t out[16]) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
-  const uint32_t now = millis();
-  if (!s->_lora_key_read || now - s->_lora_key_at > 5000) {
-    s->_lora_key_read = true;
-    s->_lora_key_at = now;
-    MgmtHost h = s->mgmtHost();
-    MgmtRecord rec;
-    char name[CHANNEL_NAME_MAX + 1];
-    s->_lora_key_ok = mgmtState(h, &rec) == MGMT_BOUND && s->_mgmt_slot.read(name, s->_lora_key);
-  }
   if (s->_lora_key_ok) memcpy(out, s->_lora_key, 16);
   return s->_lora_key_ok;
+}
+
+// On the main pass, never on a received packet: after a request that may have changed the binding, and once a minute for a
+// change no request made (a confirmation that lapsed and reverted).
+void ConsoleIface::loraKeyRefresh(uint32_t now) {
+  if (_lora_key_read && !_lora_key_dirty && now - _lora_key_at < 60000) return;
+  _lora_key_read = true;
+  _lora_key_dirty = false;
+  _lora_key_at = now;
+  MgmtHost h = mgmtHost();
+  MgmtRecord rec;
+  char name[CHANNEL_NAME_MAX + 1];
+  _lora_key_ok = mgmtState(h, &rec) == MGMT_BOUND && _mgmt_slot.read(name, _lora_key);
 }
 
 bool ConsoleIface::onLoraChannelFrame(void* user, const uint8_t* data, size_t n) {
@@ -848,6 +854,7 @@ bool ConsoleIface::onLoraChannelFrame(void* user, const uint8_t* data, size_t n)
 // One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).
 void ConsoleIface::loraTick(uint32_t now) {
   if (!_lora_send) return;
+  loraKeyRefresh(now);
   if (LoraLink::Peer* p = _lora.nextComplete()) {
     char* res = static_cast<char*>(malloc(LORA_MSG_MAX + 1));
     if (res) {
