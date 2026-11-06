@@ -98,6 +98,7 @@ Status opStatus(OpContext& c) {
   writeHealth(w, m);
   const bool hardened = Posture::isHardened(m->host().posture(m->host().user));
   w.key("posture"); w.str(hardened ? "hardened" : "normal");
+  m->lora().writeCounts(w);
   m->auth().writeStatus(w, hardened);
   m->jobs().writeStatus(w);
   m->updates().writeAttestation(w);

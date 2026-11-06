@@ -69,6 +69,7 @@ public:
   void onLoraChannel(int slot, const uint8_t* data, size_t n);
   void onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n);
   Iface::StandingService& standing() { return _standing; }
+  const Iface::LoraLink& lora() const { return _lora; }
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
   // stream's data; signature changes whenever a link changes state, which sends an event at once.

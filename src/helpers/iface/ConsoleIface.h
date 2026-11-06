@@ -104,6 +104,7 @@ public:
   typedef bool (*ReportSendFn)(void* user, const uint8_t* to, int slot, const uint8_t* bytes, size_t n);
   void setReportSend(ReportSendFn fn, void* user, SnapStore* store);
   StandingService& standing() { return _standing; }
+  const LoraLink& lora() const { return _lora; }
   bool onLora() const { return _on_lora; }
   typedef bool (*EventPublishFn)(const char* stream, const char* payload, size_t len);
   typedef bool (*SessionUpFn)();

@@ -94,6 +94,7 @@ def test_a_signed_request_runs_once_and_its_signed_result_comes_back(ether, node
     again = m.send(d.node_key, w)
     assert again and again["status"] == "ok" and again["result"] == r["result"], "the stored result, not a second run: %s" % again
     assert d.i.request("deployment.get")["result"]["members"][0]["mark"] == 1, "nothing ran twice"
+    assert d.i.request("status.get")["result"]["lora"]["frames"] >= 5, "the link counts what it heard"
 
 
 @pytest.mark.parametrize("kind", ["repeater"])

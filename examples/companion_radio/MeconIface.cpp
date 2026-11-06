@@ -262,6 +262,7 @@ Status opStatus(OpContext& c) {
   w.key("posture"); w.str(Posture::isHardened(mesh->postureValue()) ? "hardened" : "normal");
   m->writeDeploymentStatus(w, Posture::isHardened(mesh->postureValue()));
   m->jobs().writeStatus(w);
+  m->lora().writeCounts(w);
   w.key("messages"); w.beginObject();   // a manager that reconnects learns there are outcomes to collect
   w.key("open"); w.num(m->messages() ? m->messages()->open() : 0);
   w.key("owed"); w.num(m->messages() ? m->messages()->owed() : 0);

@@ -153,6 +153,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
     a known direct path. Such answers share one budget across all peers: a token bucket of 4 per minute, under the
     duty window. Beyond it they are dropped and counted. A per-peer budget would not hold, since keys are free.
   - **A verified result** may use the known path or flood.
+- **Counted where a manager can read it.** `status.get` reports `lora`: `frames`, `incomplete`, `dropped_bad`, `dropped_budget`, `dropped_deadline`, `dropped_memory` and `evicted`, since boot.
 - **Deferred is a state, never a silent drop.** A reply the duty window holds is queued with its deadline. It is sent
   when the window allows, or dropped at its deadline and counted. It is never lost without a trace. The manager's
   re-send then gets the stored result. Every frame of a reply is the same message, so a window that holds frame 3

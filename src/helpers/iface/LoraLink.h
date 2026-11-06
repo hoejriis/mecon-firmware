@@ -64,7 +64,7 @@ public:
     uint32_t tx_deadline;
   };
   struct Counts {
-    uint32_t frames, dropped_bad, dropped_budget, dropped_deadline, dropped_memory, evicted;
+    uint32_t frames, incomplete, dropped_bad, dropped_budget, dropped_deadline, dropped_memory, evicted;
   };
   enum Feed { F_IGNORED, F_PARTIAL, F_COMPLETE, F_NOMEM };
   typedef bool (*SendFn)(void* user, const Peer& p, const uint8_t* frame, size_t n, bool flood_ok);
@@ -75,6 +75,18 @@ public:
   LoraLink& operator=(const LoraLink&) = delete;
 
   const Counts& counts() const { return _c; }
+  // status.get's "lora" (LORA_MANAGEMENT.md section 7): what was dropped, so a manager can see why nothing came back.
+  template <class W> void writeCounts(W& w) const {
+    w.key("lora"); w.beginObject();
+    w.key("frames"); w.unum(_c.frames);
+    w.key("incomplete"); w.unum(_c.incomplete);
+    w.key("dropped_bad"); w.unum(_c.dropped_bad);
+    w.key("dropped_budget"); w.unum(_c.dropped_budget);
+    w.key("dropped_deadline"); w.unum(_c.dropped_deadline);
+    w.key("dropped_memory"); w.unum(_c.dropped_memory);
+    w.key("evicted"); w.unum(_c.evicted);
+    w.endObject();
+  }
 
   // One frame from this peer, without any tag: marker, xid, index, count, bytes. payload is the size every frame but the last
   // must have. A frame of another message from the same peer discards the incomplete one: parts of two messages never combine.
@@ -227,7 +239,8 @@ private:
 
   // A message incomplete at its deadline: the sender hears which frames arrived, so it re-sends only those.
   void partsMissing(Peer& p, uint32_t now) {
-    if (p.channel) { _c.dropped_bad++; freeRx(p); return; }   // only the manager can know its message is incomplete
+    _c.incomplete++;
+    if (p.channel) { freeRx(p); return; }   // only the manager can know its message is incomplete
     char m[96];
     const int n = snprintf(m, sizeof(m), "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"parts-missing\",\"xid\":%u,\"have\":%u}",
                            p.xid, p.have);
