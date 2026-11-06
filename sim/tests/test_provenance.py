@@ -263,3 +263,20 @@ def test_the_result_of_the_reset_that_removes_the_record_is_still_signed(nodes):
     assert r["op"] == "deployment.reset" and r["job_id"] == 2
     h = d.i.request("hello")
     assert not any(k.startswith("usig") for k in h), "and from then on the device signs nothing again"
+
+
+@pytest.mark.parametrize("gone", ["mecon_dev", "mecon_dev2"])
+def test_losing_one_copy_keeps_the_device_id_and_the_rising_boot(nodes, gone):
+    d = boot_companion(nodes, "pl" + gone[-1], 31)
+    assert d.provision()["status"] == "ok"
+    h = d.i.request("hello")
+    d.reboot()
+    h1 = d.i.request("hello")
+    assert h1["usig_boot"] == h["usig_boot"] + 1, h1
+    d.n.stop()
+    os.remove(os.path.join(d.n.dir, gone))
+    d.n.start()
+    d.attach()
+    h2 = d.i.request("hello")
+    assert h2["usig_boot"] == h1["usig_boot"] + 1, "the boot started again: %s" % h2
+    assert h2["result"]["device_id"] == h1["result"]["device_id"], "device_id changed"
