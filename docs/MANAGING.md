@@ -1,5 +1,7 @@
 # Manage a device
 
+This page describes the finished product. Management over LoRa and standing instructions are among the parts not built yet: see [availability](AVAILABILITY.md).
+
 A device can be managed in two ways, and both are decided by the same privilege table ([command-line engine](CLI.md)):
 
 - **CLI commands**, typed on a console or sent as a CLI line. Every setting is a CLI setting.

@@ -1,6 +1,6 @@
 # Supported hardware and roles
 
-Which board to choose, which role to run on it, and what each combination can do. A device also reports its own capabilities (`hello` lists every operation and telemetry stream the build and board support), so a manager should read those rather than infer them from the board name.
+Which board to choose, which role to run on it, and what each combination can do when finished. Some of it is not built yet, management over LoRa included: see [availability](AVAILABILITY.md). A device also reports its own capabilities (`hello` lists every operation and telemetry stream the build and board support), so a manager should read those rather than infer them from the board name.
 
 ## Choosing a board
 
@@ -34,7 +34,7 @@ One management model covers every path: an operation means the same wherever it 
 | BLE on a Repeater or Room server | None. Local management is the USB console | Owner decision |
 | BLE and Wi-Fi together on the Heltec Companion | One per boot | Owner decision, to keep memory headroom |
 | A Hardened Companion in Wi-Fi mode | No app transport. Use USB | Owner decision |
-| Firmware updates on nRF52 boards | USB only, by the bootloader, with no previous image to return to | Owner decision |
+| Firmware updates on nRF52 boards | Over USB only, written by the bootloader, with no previous image to return to | Hardware: one image slot and a bootloader that checks no signature. Owner decision: no BLE update path |
 | The sensor role | No device interface | Owner decision |
 | The Heltec `_usb`, `_ble` and `_wifi` Companion builds | Stock-derived, without the device interface. The `standalone` build carries all of it | Build choice |
 | Local access on each role | Companion: app frames over USB and BLE. Repeater, Room server: a console line over USB | Role: the stock roles differ |

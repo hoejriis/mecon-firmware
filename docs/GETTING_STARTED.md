@@ -15,7 +15,7 @@ Decide what you would lose before you install. What a backup can do depends on t
 | Board | Backup | Restoring it | Installing over existing data |
 |---|---|---|---|
 | Heltec V3, V4 | A full flash dump with `esptool read-flash`, which reads every setting, key and record | Puts back the whole device, but also rolls back its counters. A manager that has seen a later boot rejects its signed messages until the device has booted past that point, and replay marks go back too | Writing the application alone over an earlier build of this firmware kept the identity, name, PIN and contacts, checked on both boards. BLE bonds do not carry over from a build on the older BLE stack: pair again |
-| T1000-E, Wio Tracker L1 | No full dump: the bootloader's serial DFU cannot read flash. Save what the device will report: contacts and channels through an app, settings with `get`, and the private key if it is not enrolled | Set the saved values again. An enrolment cannot be saved: re-enrol the device | A Wio Companion build over stock, then stock again, kept the identity and all 27 settings checked. A T1000-E Companion booted on the private firmware's data with all 350 contacts and 40 channels |
+| T1000-E, Wio Tracker L1 | No full dump: the bootloader's serial DFU cannot read flash. Save what the device will report: contacts and channels through an app, settings with `get`, and the private key if it is not enrolled | Set the saved values again. An enrolment cannot be saved: re-enrol the device | The Wio USB Companion build over stock, then stock again, kept all 27 settings checked. The identity survived too. A T1000-E Companion booted on the private firmware's data with all 350 contacts and 40 channels |
 
 Some things hold on every board:
 
@@ -72,7 +72,7 @@ Then check ordinary MeshCore operation, which needs no manager: send a message t
 mecon> {"v":1,"id":"r-1","op":"status.get"}
 ```
 
-The answer is one `mecon> {...}` line. A Companion takes the same request as a `0x7F` app frame, through a tool or a manager ([device interface](contract/DEVICE_INTERFACE.md)). To reach the device over the network, [connect it to Wi-Fi and MQTT](CONNECTING.md) (every role on the Heltec boards). To see what else it reports, read [monitor a device](MONITORING.md).
+The answer is one `mecon> {...}` line. A Companion takes the same request as a `0x7F` app frame, through a tool or a manager ([device interface](contract/DEVICE_INTERFACE.md)). To reach the device over the network, [connect it to Wi-Fi and MQTT](CONNECTING.md) (Companion, Repeater and Room server on the Heltec boards). To see what else it reports, read [monitor a device](MONITORING.md).
 
 **With a manager.** Managed workflows need an application that implements the [public contracts](contract/README.md). [MeshContinuum](https://github.com/hoejriis/MeshContinuum) is one, and its Reader needs its Backend. Enrol the device once, over the USB cable, as that manager describes, then check one result from the manager:
 
