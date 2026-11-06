@@ -15,8 +15,8 @@ heltec_v4_companion_radio_usb            698368      41984
 heltec_v4_companion_radio_wifi          1420288     118784
 heltec_v4_repeater                      1495040      82944
 heltec_v4_room_server                   1488896      87040
-t1000e_companion_radio_ble               513024     163840
-t1000e_companion_radio_usb               501760     159744
+t1000e_companion_radio_ble               515072     163840
+t1000e_companion_radio_usb               508928     159744
 t1000e_repeater                           464896      43008
 WioTrackerL1_companion_radio_ble         610304      94208
 WioTrackerL1_companion_radio_usb         601088      90112
