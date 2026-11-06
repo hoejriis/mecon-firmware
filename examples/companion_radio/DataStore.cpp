@@ -745,6 +745,8 @@ bool DataStore::putBlobByKey(const uint8_t key[], int key_len, const uint8_t src
 bool DataStore::deleteBlobByKey(const uint8_t key[], int key_len) {
   return true; // this is just a stub on NRF52/STM32 platforms
 }
+
+void DataStore::deleteAllBlobs() { }   // no blob files on these platforms
 #else
 inline void makeBlobPath(const uint8_t key[], int key_len, char* path, size_t path_size) {
   char fname[18];
@@ -784,5 +786,24 @@ bool DataStore::deleteBlobByKey(const uint8_t key[], int key_len) {
   AtomicFile::discard(_fs, path);
 
   return true; // return true even if file did not exist
+}
+
+void DataStore::deleteAllBlobs() {
+  char names[8][32];
+  // A batch at a time, never removing while the directory is open. The bound only guards against a file that cannot go.
+  for (int pass = 0; pass < 256; pass++) {
+    int n = 0;
+    File dir = openRead(_fs, "/bl");
+    if (!dir) return;
+    if (dir.isDirectory()) {
+      for (File f = dir.openNextFile(); f && n < 8; f = dir.openNextFile()) {
+        const char* base = strrchr(f.name(), '/');
+        snprintf(names[n++], sizeof(names[0]), "/bl/%s", base ? base + 1 : f.name());
+      }
+    }
+    dir.close();
+    for (int i = 0; i < n; i++) _fs->remove(names[i]);
+    if (n < 8) return;
+  }
 }
 #endif
