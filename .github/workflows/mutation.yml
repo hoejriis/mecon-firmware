@@ -57,11 +57,14 @@ jobs:
             echo "mode: full"; python3 sim/mutate_select.py full > mutants.txt
           else
             # a PR is checked out as its merge commit (parent 1 is the base); a push to main diffs from the previous head
-            if [ "${{ github.event_name }}" = pull_request ]; then git diff --name-only HEAD^1 HEAD > changed.txt
-            elif git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then git diff --name-only "$BEFORE" HEAD > changed.txt
+            BASE=
+            if [ "${{ github.event_name }}" = pull_request ]; then BASE=HEAD^1
+            elif git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then BASE=$BEFORE; fi
+            if [ -n "$BASE" ]; then git diff --name-only "$BASE" HEAD > changed.txt
             else echo sim/mutate.sh > changed.txt; fi   # no usable base: the smoke set
             echo "mode: spot, $(wc -l < changed.txt) changed paths"
-            python3 sim/mutate_select.py spot changed.txt > mutants.txt
+            : > mutants.diff; [ -z "$BASE" ] || git diff "$BASE" HEAD -- sim/mutants > mutants.diff
+            python3 sim/mutate_select.py spot changed.txt mutants.diff > mutants.txt
           fi
           sed -i '/^$/d' mutants.txt
           echo "$(wc -l < mutants.txt) mutants"
