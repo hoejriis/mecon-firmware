@@ -198,6 +198,8 @@ A newer authority set, with any rotations before it, for a device that holds a r
 
 An open read: the stored set and its signature, `deployment_id`, the epoch and revisions, the fallback flag, each member's current sequence mark, and the `broker_roles` the provisioning set (an empty list when it set none). A manager that lost track of its sequence (a restore from backup) reads its mark and continues above it. It reveals nothing secret. The same set is published retained at `mecon/<device_id>/authority` over MQTT.
 
+The members, their marks and any rotation statement always come. The set's text and signature come only if the whole result fits its limit. Otherwise `authority_set_len` gives the length of the text. A manager that needs the text and gets the length holds its own copy from when it issued the set.
+
 ## 7. Checking a signed request
 
 In this order; a failure refuses the request (`status:"refused"`, `error` the code) and nothing runs:

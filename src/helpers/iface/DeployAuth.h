@@ -96,7 +96,9 @@ public:
                      RunFn run, void* run_user, char* out, size_t cap);
 
   // ---- the operations (OpContext.user is the host; the host forwards to these)
-  Status opGet(OpContext& c);
+  // reserve: what the caller adds to the result after this. ROTATION_MEMBER is the rotation statement with its key.
+  static const size_t ROTATION_MEMBER = 330;
+  Status opGet(OpContext& c, size_t reserve = 0);
   Status opProvision(OpContext& c);
   Status opUpdate(OpContext& c);
   Status opReset(OpContext& c);

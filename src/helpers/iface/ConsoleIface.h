@@ -107,6 +107,7 @@ public:
   DeployAuth& auth() { return _auth; }
   Status rotateIdentity(OpContext& c);   // the operations identity.rotate and identity.rotation, and deployment.get's member
   bool writeRotation(JsonWriter& w);
+  bool rotationStored();
   bool mayRead();
   JobService& jobs() { return _jobs; }
   Upd::UpdateService& updates() { return _updates; }
