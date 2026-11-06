@@ -220,6 +220,7 @@ void setup() {
     mgmt_snap_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
     the_iface.setLoraSend([](void* u, const Iface::LoraLink::Peer& p, const uint8_t* f, size_t n, bool flood_ok) {
+      if (p.channel) return static_cast<MyMesh*>(u)->loraChannelReply(p.key, f, n);
       return static_cast<MyMesh*>(u)->loraReply(p.key, p.secret, p.path, p.path_len, f, n, flood_ok);
     }, &the_mesh);
 #ifdef ENABLE_WIFI_INTERFACE

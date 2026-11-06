@@ -170,6 +170,34 @@ TEST(LoraLink, EveryStateEndsByItsDeadline) {
   EXPECT_EQ(1u, held.counts().dropped_deadline) << "dropped at its deadline, and counted";
 }
 
+TEST(LoraLink, OnTheChannelOnlyAVerifiedResultIsAnswered) {
+  LoraLink l;
+  const uint8_t prefix[LORA_CH_PREFIX] = {1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<uint8_t> f = frame(5, 0, 1, 10);
+  ASSERT_EQ(LoraLink::F_COMPLETE, l.feedChannel(prefix, f.data(), f.size(), 1000));
+  LoraLink::Peer* p = l.nextComplete();
+  ASSERT_NE(nullptr, p);
+  EXPECT_TRUE(p->channel);
+  EXPECT_FALSE(l.queueReply(*p, "x", 1, false, 1000)) << "never an unverified answer, whatever the budget";
+  std::string msg(LORA_CH_REPLY_PAYLOAD + 1, 'r');
+  ASSERT_TRUE(l.queueReply(*p, msg.data(), msg.size(), true, 1000));
+  l.release(*p);
+  Sent s;
+  l.tick(1000, sendTo, &s);
+  ASSERT_EQ(1u, s.frames.size());
+  EXPECT_EQ(LORA_REPLY_HDR + LORA_CH_REPLY_PAYLOAD, s.frames[0].size());
+  EXPECT_EQ(2, s.frames[0][6]);
+
+  LoraLink gap;
+  std::vector<uint8_t> part = frame(6, 0, 2, LORA_REQ_PAYLOAD);
+  gap.feedChannel(prefix, part.data(), part.size(), 1000);
+  Sent none;
+  gap.tick(1000 + LORA_REASSEMBLY_MS, sendTo, &none);
+  EXPECT_TRUE(none.frames.empty()) << "no parts-missing on a channel";
+  EXPECT_FALSE(loraChannelOpAllowed("status.get")) << "a read reveals state to every member";
+  EXPECT_TRUE(loraChannelOpAllowed("config.apply"));
+}
+
 TEST(LoraLink, AReplyPathIsTheFloodReversed) {
   const uint8_t path[] = {1, 2, 3, 4};
   uint8_t out[8];

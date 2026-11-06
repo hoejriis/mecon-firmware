@@ -38,17 +38,25 @@ class Radio:
         r = self.i.request("sub.start", {"stream": "rf", "lifetime_s": 300})
         assert r["status"] == "ok", r
 
-    def send(self, to, message, timeout=45.0):
-        """The message as text to node key `to`; the reply as a parsed message, with .raw, or None."""
+    def send(self, to, message, timeout=45.0, slot=None):
+        """The message as text to node key `to`; the reply as a parsed message, with .raw, or None. With a slot, on that channel."""
         text = message if isinstance(message, str) else json.dumps(message, separators=(",", ":"))
-        r = self.i.request("rf.request", {"to": to, "message": text})
+        args = {"to": to, "message": text}
+        if slot is not None:
+            args["slot"] = slot
+        r = self.i.request("rf.request", args)
         assert r["status"] == "ok", r
         xid = r["result"]["xid"]
+        sender = to if slot is None else to[:16]
         end = time.time() + timeout
         while time.time() < end:
+            for e in list(self.i.events):   # a reply may have come while the request above was being answered
+                if e.get("ev") == "rf" and e["data"]["from"] == sender and e["data"]["xid"] == xid:
+                    self.i.events.remove(e)
+                    return Reply(e["data"]["message"])
             m = self.i.read_message(0.5)
-            if m and m.get("ev") == "rf" and m["data"]["from"] == to and m["data"]["xid"] == xid:
-                return Reply(m["data"]["message"])
+            if m and "ev" in m:
+                self.i.events.append(m)
         return None
 
 
@@ -143,3 +151,68 @@ def test_a_native_login_on_the_same_datagram_type_still_works(ether, nodes):
     assert d.i.request("status.get")["status"] == "ok"
     # a marker-free anonymous request is a password, as ever: refused here, and not read as a management frame
     assert m.c.cli("get name") is not None
+
+
+# ------------------------------------------------------------------ the management channel
+
+KEY = bytes(range(0x10, 0x20))
+CH = 1
+
+
+def on_channel(nodes, ether, kind, name):
+    """Bound to the management channel, then enrolled; the manager's radio holds the same channel in slot CH."""
+    d = target(nodes, ether, kind, name)
+    slot = 1 if kind == "companion_standalone" else 0
+    assert d.i.request("channel.put", {"slot": slot, "name": "ops", "secret": KEY.hex()})["status"] == "ok"
+    assert d.i.request("mgmt.channel.bind", {"slot": slot})["status"] == "ok"
+    assert d.provision()["status"] == "ok"
+    m = Radio(nodes, ether, name)
+    assert m.i.request("channel.put", {"slot": CH, "name": "ops", "secret": KEY.hex()})["status"] == "ok"
+    return d, m
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_signed_request_runs_over_the_channel_with_the_same_result(ether, nodes, kind):
+    d, m = on_channel(nodes, ether, kind, "ct" + kind[:2])
+    r = m.send(d.node_key, wrap(d.node_key, "config.apply", apply_name("OnChannel"), job=1), slot=CH)
+    assert r and r["status"] == "ok", r
+    assert verifies(r.raw, d.node_key, "result")
+    assert "OnChannel" in d.name()
+    again = m.send(d.node_key, wrap(d.node_key, "config.apply", apply_name("OnChannel"), job=1))
+    assert again and again["status"] == "ok" and again["result"] == r["result"], "a retry on the other path runs nothing: %s" % again
+
+
+def test_the_channel_refuses_what_its_members_could_read_and_says_nothing_unverified(ether, nodes):
+    d, m = on_channel(nodes, ether, "repeater", "cr")
+    r = m.send(d.node_key, wrap(d.node_key, "status.get", {}, job=None, rid="s1"), slot=CH)
+    assert r and r["status"] == "unknown-op", "a read reveals state to every member: %s" % r
+    assert m.send(d.node_key, {"v": 1, "id": "u1", "op": "status.get"}, slot=CH, timeout=8.0) is None, "never answered"
+    assert m.send(d.node_key, wrap("ab" * 32, "config.apply", apply_name("No"), job=2), slot=CH, timeout=8.0) is None, "nor a wrong target"
+    assert "No" != d.name()[2:]
+
+
+def test_a_device_takes_only_its_bound_channel(ether, nodes):
+    d = target(nodes, ether, "repeater", "cu")
+    assert d.provision()["status"] == "ok"
+    m = Radio(nodes, ether, "cu")
+    assert m.i.request("channel.put", {"slot": CH, "name": "ops", "secret": KEY.hex()})["status"] == "ok"
+    r = m.send(d.node_key, wrap(d.node_key, "config.apply", apply_name("NoBinding"), job=1), slot=CH, timeout=10.0)
+    assert r is None, "no binding: not read at all: %s" % r
+    assert "NoBinding" not in d.name()
+
+
+def test_only_the_addressed_node_answers_on_the_channel(ether, nodes):
+    d, m = on_channel(nodes, ether, "repeater", "cn")
+    other = target(nodes, ether, "repeater", "co", seed=33)
+    ether.set_link("mgrcn", "co")
+    ether.set_link("cn", "co")
+    assert other.i.request("channel.put", {"slot": 0, "name": "ops", "secret": KEY.hex()})["status"] == "ok"
+    assert other.i.request("mgmt.channel.bind", {"slot": 0})["status"] == "ok"
+    assert other.provision()["status"] == "ok"
+    r = m.send(d.node_key, wrap(d.node_key, "config.apply", apply_name("JustOne"), job=1), slot=CH)
+    assert r and r["status"] == "ok", r
+    time.sleep(2)
+    assert "JustOne" in d.name() and "JustOne" not in other.name()
+    # it may repeat what it hears, as any repeater does (a hop in the path), and starts nothing of its own on the channel
+    own = [t for t in ether.tx_of("co") if (t.data[0] >> 2) & 15 == 6 and t.data[1] & 63 == 0]
+    assert not own, "only the addressed node answers: %d" % len(own)

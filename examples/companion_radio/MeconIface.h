@@ -65,6 +65,7 @@ public:
   Iface::Status rfRequest(Iface::OpContext& c);
   void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
   bool onLora() const { return _on_lora; }
+  void onLoraChannel(int slot, const uint8_t* data, size_t n);
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
   // stream's data; signature changes whenever a link changes state, which sends an event at once.
@@ -247,11 +248,13 @@ private:
   void rfTick(uint32_t now);
   Iface::LoraLink _lora, _rf;
   Link _lora_link;
-  bool _on_lora = false;
+  bool _on_lora = false, _lora_channel = false;
   uint8_t* _rf_out = nullptr;   // the message rf.request is sending, and where it has got to
   size_t _rf_len = 0, _rf_off = 0;
   uint8_t _rf_to[32] = {0};
   uint8_t _rf_xid = 0, _rf_idx = 0, _rf_count = 0;
+  int _rf_slot = -1;            // rf.request on this channel slot, or -1: point to point
+  int _lora_slot = -1;          // the bound slot a channel reply goes out on
   uint32_t _rf_next = 0;
   static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
   static const uint32_t INV_PAGE_MS = 200;

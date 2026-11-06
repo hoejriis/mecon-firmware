@@ -23,6 +23,11 @@ const size_t LORA_REQ_PAYLOAD = 128;     // what an anonymous datagram takes (13
 const uint8_t LORA_REPLY_MAGIC[4] = {0x1D, 'M', 'C', '1'};
 const size_t LORA_REPLY_HDR = 7;
 const size_t LORA_REPLY_PAYLOAD = 150;
+// On the management channel the same frames follow two addresses, 8-byte prefixes of the node keys: the target's and the sender's.
+// A group datagram names neither, and every member can read them; they reveal which keys talk, never a device_id.
+const uint16_t LORA_CHANNEL_TYPE = 0x4D43;   // "MC"
+const size_t LORA_CH_PREFIX = 8, LORA_CH_ADDR = 16;
+const size_t LORA_CH_REPLY_PAYLOAD = 139;
 const size_t LORA_MSG_MAX = 1024;
 const size_t LORA_CIPHER_BLOCK = 16;
 const unsigned LORA_MAX_FRAMES = 8;
@@ -42,6 +47,7 @@ public:
     uint8_t path[64];
     uint8_t path_len;     // PATH_UNKNOWN when the way back is not known
     bool used;
+    bool channel;         // on the management channel: key holds the sender's prefix only, and only a verified result is answered
     uint32_t last_ms;
     // the message being reassembled
     uint8_t* rx;
@@ -113,6 +119,16 @@ public:
     return F_COMPLETE;
   }
 
+  // One frame heard on the bound channel, addresses already checked. Nothing is ever answered unless verified, not even a gap.
+  Feed feedChannel(const uint8_t sender_prefix[LORA_CH_PREFIX], const uint8_t* f, size_t n, uint32_t now) {
+    uint8_t key[32] = {0};
+    memcpy(key, sender_prefix, LORA_CH_PREFIX);
+    static const uint8_t NO_SECRET[32] = {0};
+    const Feed r = feed(key, NO_SECRET, nullptr, PATH_UNKNOWN, f, n, LORA_REQ_PAYLOAD, now);
+    if (Peer* p = find(key)) p->channel = true;
+    return r;
+  }
+
   // The next message ready to run, or null. Once answered, release() frees it.
   Peer* nextComplete() {
     for (Peer& p : _p) if (p.used && p.complete && !p.tx) return &p;
@@ -126,13 +142,14 @@ public:
   // known way back, within a budget shared by all peers: keys are free, so a per-peer budget would not hold.
   bool queueReply(Peer& p, const char* msg, size_t len, bool verified, uint32_t now) {
     if (len == 0 || len > LORA_MSG_MAX) { _c.dropped_bad++; return false; }
-    if (!verified && (p.path_len == PATH_UNKNOWN || !takeBudget(now))) { _c.dropped_budget++; return false; }
+    if (!verified && (p.channel || p.path_len == PATH_UNKNOWN || !takeBudget(now))) { _c.dropped_budget++; return false; }
     freeTx(p);
     p.tx = static_cast<uint8_t*>(malloc(len));
     if (!p.tx) { _c.dropped_memory++; return false; }
     memcpy(p.tx, msg, len);
     p.tx_len = len; p.tx_off = 0; p.tx_xid = p.xid; p.tx_idx = 0;
-    p.tx_count = (uint8_t)((len + LORA_REPLY_PAYLOAD - 1) / LORA_REPLY_PAYLOAD);
+    const size_t pay = p.channel ? LORA_CH_REPLY_PAYLOAD : LORA_REPLY_PAYLOAD;
+    p.tx_count = (uint8_t)((len + pay - 1) / pay);
     p.tx_flood_ok = verified;
     p.tx_deadline = now + LORA_REPLY_MS;
     _next_send = now;
@@ -152,7 +169,8 @@ public:
       Peer& p = _p[k];
       if (!p.used || !p.tx) continue;
       uint8_t f[LORA_REPLY_HDR + LORA_REPLY_PAYLOAD];
-      const size_t take = p.tx_len - p.tx_off < LORA_REPLY_PAYLOAD ? p.tx_len - p.tx_off : LORA_REPLY_PAYLOAD;
+      const size_t pay = p.channel ? LORA_CH_REPLY_PAYLOAD : LORA_REPLY_PAYLOAD;
+      const size_t take = p.tx_len - p.tx_off < pay ? p.tx_len - p.tx_off : pay;
       memcpy(f, LORA_REPLY_MAGIC, 4);
       f[4] = p.tx_xid; f[5] = p.tx_idx; f[6] = p.tx_count;
       memcpy(f + LORA_REPLY_HDR, p.tx + p.tx_off, take);
@@ -186,6 +204,11 @@ private:
 
   static uint8_t fullMask(uint8_t cnt) { return cnt >= 8 ? 0xFF : (uint8_t)((1u << cnt) - 1); }
 
+  Peer* find(const uint8_t key[32]) {
+    for (Peer& p : _p) if (p.used && memcmp(p.key, key, 32) == 0) return &p;
+    return nullptr;
+  }
+
   Peer* peerFor(const uint8_t key[32], uint32_t now) {
     Peer* oldest = nullptr;
     for (Peer& p : _p) {
@@ -204,6 +227,7 @@ private:
 
   // A message incomplete at its deadline: the sender hears which frames arrived, so it re-sends only those.
   void partsMissing(Peer& p, uint32_t now) {
+    if (p.channel) { _c.dropped_bad++; freeRx(p); return; }   // only the manager can know its message is incomplete
     char m[96];
     const int n = snprintf(m, sizeof(m), "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"parts-missing\",\"xid\":%u,\"have\":%u}",
                            p.xid, p.have);
@@ -240,6 +264,13 @@ inline bool loraOpAllowed(const char* op) {
   return false;
 }
 
+// The channel carries only results that say nothing beyond the job (LORA_MANAGEMENT.md section 3.2): every member can read them.
+inline bool loraChannelOpAllowed(const char* op) {
+  static const char* const OPS[] = {"config.apply", "job.get", "job.ack", "job.cancel", "job.confirm", "posture.set"};
+  for (const char* o : OPS) if (strcmp(o, op) == 0) return true;
+  return false;
+}
+
 // Where the mesh hands a frame: set by the role's interface. secret is the pairwise secret the datagram was decrypted with.
 struct LoraSink {
   void (*fn)(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame,
@@ -248,6 +279,17 @@ struct LoraSink {
 };
 inline LoraSink& loraSink() {
   static LoraSink s;
+  return s;
+}
+
+// The server roles have no channel table: the mesh asks the interface for the bound channel's key, and hands it what it hears.
+struct LoraChannelSink {
+  bool (*key)(void* user, uint8_t out[16]) = nullptr;
+  void (*frame)(void* user, const uint8_t* data, size_t n) = nullptr;
+  void* user = nullptr;
+};
+inline LoraChannelSink& loraChannelSink() {
+  static LoraChannelSink s;
   return s;
 }
 

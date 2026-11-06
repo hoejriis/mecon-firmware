@@ -813,6 +813,12 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
 
 void MyMesh::onChannelDataRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint16_t data_type,
                                const uint8_t *data, size_t data_len) {
+#ifdef ENABLE_MECON_IFACE
+  if (data_type == Iface::LORA_CHANNEL_TYPE) {   // the device's own frames: never passed to the app as channel data
+    _iface.onLoraChannel(findChannelIdx(channel), data, data_len);
+    return;
+  }
+#endif
   if (data_len > MAX_CHANNEL_DATA_LENGTH) {
     MESH_DEBUG_PRINTLN("onChannelDataRecv: dropping payload_len=%d exceeds frame limit=%d",
                        (uint32_t)data_len, (uint32_t)MAX_CHANNEL_DATA_LENGTH);
@@ -924,6 +930,23 @@ bool MyMesh::loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t*
   if (!reply) return false;
   if (path_len != Iface::LoraLink::PATH_UNKNOWN) sendDirect(reply, path, path_len, 300);
   else sendFlood(reply, 300);
+  return true;
+}
+
+// A frame on a channel slot, with its two addresses, as a flood on that channel.
+bool MyMesh::loraChannelSend(int slot, const uint8_t* to_key, const uint8_t* frame, size_t n) {
+  ChannelDetails ch;
+  if (n > 160 || !getChannel(slot, ch)) return false;
+  uint8_t temp[3 + Iface::LORA_CH_ADDR + 160];
+  temp[0] = (uint8_t)(Iface::LORA_CHANNEL_TYPE & 0xFF);
+  temp[1] = (uint8_t)(Iface::LORA_CHANNEL_TYPE >> 8);
+  temp[2] = (uint8_t)(Iface::LORA_CH_ADDR + n);
+  memcpy(temp + 3, to_key, Iface::LORA_CH_PREFIX);
+  memcpy(temp + 3 + Iface::LORA_CH_PREFIX, self_id.pub_key, Iface::LORA_CH_PREFIX);
+  memcpy(temp + 3 + Iface::LORA_CH_ADDR, frame, n);
+  mesh::Packet* pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, ch.channel, temp, 3 + Iface::LORA_CH_ADDR + n);
+  if (!pkt) return false;
+  sendFlood(pkt, 300);
   return true;
 }
 

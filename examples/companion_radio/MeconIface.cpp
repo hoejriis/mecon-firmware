@@ -662,7 +662,7 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
-  if (_on_lora) d.setOpFilter(loraOpAllowed);
+  if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -1092,7 +1092,9 @@ void MeconIface::onLoraFrame(void* user, const uint8_t* key, const uint8_t* secr
 }
 
 bool MeconIface::loraSend(void* user, const LoraLink::Peer& p, const uint8_t* frame, size_t n, bool flood_ok) {
-  return static_cast<MeconIface*>(user)->_mesh->loraReply(p.key, p.secret, p.path, p.path_len, frame, n, flood_ok);
+  MeconIface* m = static_cast<MeconIface*>(user);
+  if (p.channel) return m->_lora_slot >= 0 && m->_mesh->loraChannelSend(m->_lora_slot, p.key, frame, n);
+  return m->_mesh->loraReply(p.key, p.secret, p.path, p.path_len, frame, n, flood_ok);
 }
 
 // One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).
@@ -1106,6 +1108,7 @@ void MeconIface::loraTick(uint32_t now) {
       bool verified = false;
       if (DeployAuth::isWrapper(msg, len)) {
         _on_lora = true;
+        _lora_channel = p->channel;
         const Cli::Context ctx(Cli::T_LORA, Cli::A_NONE, _mesh->postureValue());
         n = dispatch(ctx, Posture::CALLER_REMOTE_ADMIN, &_lora_link, msg, len, res, LORA_MSG_MAX + 1);
         _on_lora = false;
@@ -1121,8 +1124,29 @@ void MeconIface::loraTick(uint32_t now) {
   _lora.tick(now, loraSend, this);
 }
 
-// rf.request {"to":"<node key hex>","message":"<the signed request, as text>"}: this Companion is the manager's radio. It adds
-// no authority: the message is carried as it came, and the target verifies it. Replies come back on the rf stream.
+// A frame heard on a channel. Taken only on the bound channel while its binding is bound (MANAGEMENT_CHANNEL.md section 2), and
+// only when addressed to this node; a reply to this Companion's own rf.request is taken on whichever slot it sent on.
+void MeconIface::onLoraChannel(int slot, const uint8_t* data, size_t n) {
+  if (n <= LORA_CH_ADDR + LORA_HDR || memcmp(data, _mesh->self_id.pub_key, LORA_CH_PREFIX) != 0) return;
+  const uint8_t* sender = data + LORA_CH_PREFIX;
+  const uint8_t* f = data + LORA_CH_ADDR;
+  const size_t len = n - LORA_CH_ADDR;
+  if (memcmp(f, LORA_REPLY_MAGIC, 4) == 0) {
+    uint8_t key[32] = {0};
+    memcpy(key, sender, LORA_CH_PREFIX);
+    onRfReply(key, f, len);
+    return;
+  }
+  MgmtHost h = mgmtHost();
+  MgmtRecord rec;
+  if (mgmtState(h, &rec) != MGMT_BOUND || rec.slot != slot) return;
+  _lora_slot = slot;
+  _lora.feedChannel(sender, f, len, millis());
+}
+
+// rf.request {"to":"<node key hex>","message":"<the signed request, as text>"[,"slot":n]}: this Companion is the manager's radio.
+// With a slot it goes on that channel, else point to point. It adds no authority: the message is carried as it came, and the
+// target verifies it. Replies come back on the rf stream.
 Status MeconIface::rfRequest(OpContext& c) {
   if (_rf_out) { c.error = "rf-busy"; return ST_BUSY; }
   const JsonDoc& d = *c.doc;
@@ -1142,6 +1166,10 @@ Status MeconIface::rfRequest(OpContext& c) {
     return ST_INVALID;
   }
   memcpy(_rf_to, to, 32);
+  int64_t slot = -1;
+  const int st = jsonFind(d, c.req->args, "slot");
+  if (st >= 0 && !jsonGetInt(d, st, 0, 255, &slot)) { free(msg); return ST_INVALID; }
+  _rf_slot = (int)slot;
   _rf_out = reinterpret_cast<uint8_t*>(msg);
   _rf_len = strlen(msg);
   _rf_off = 0;
@@ -1161,7 +1189,8 @@ void MeconIface::rfTick(uint32_t now) {
   const size_t take = _rf_len - _rf_off < LORA_REQ_PAYLOAD ? _rf_len - _rf_off : LORA_REQ_PAYLOAD;
   f[0] = LORA_MARKER; f[1] = _rf_xid; f[2] = _rf_idx; f[3] = _rf_count;
   memcpy(f + LORA_HDR, _rf_out + _rf_off, take);
-  if (!_mesh->rfSend(_rf_to, f, LORA_HDR + take)) { _rf_next = now + 200; return; }   // no packet free: the next pass tries
+  const bool sent = _rf_slot >= 0 ? _mesh->loraChannelSend(_rf_slot, _rf_to, f, LORA_HDR + take) : _mesh->rfSend(_rf_to, f, LORA_HDR + take);
+  if (!sent) { _rf_next = now + 200; return; }   // no packet free: the next pass tries
   _rf_off += take;
   _rf_idx++;
   _rf_next = now + LORA_FRAME_GAP_MS;
@@ -1180,7 +1209,7 @@ void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
   memcpy(f, frame + 3, n - 3);   // the three bytes before the xid become the header's marker
   f[0] = LORA_MARKER;
   static const uint8_t NO_SECRET[32] = {0};
-  const LoraLink::Feed r = _rf.feed(key, NO_SECRET, nullptr, LoraLink::PATH_UNKNOWN, f, n - 3, LORA_REPLY_PAYLOAD, millis());
+  const LoraLink::Feed r = _rf.feed(key, NO_SECRET, nullptr, LoraLink::PATH_UNKNOWN, f, n - 3, _rf_slot >= 0 ? LORA_CH_REPLY_PAYLOAD : LORA_REPLY_PAYLOAD, millis());
   free(f);
   if (r != LoraLink::F_COMPLETE) return;
   LoraLink::Peer* p = _rf.nextComplete();
@@ -1190,6 +1219,7 @@ void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
   if (data && ev) {
     char hex[65];
     hexOf(hex, key, 32);
+    if (_rf_slot >= 0) hex[2 * LORA_CH_PREFIX] = 0;   // the channel names a prefix, no whole key
     JsonWriter w(data, RESULT_MAX);
     w.beginObject();
     w.key("from"); w.str(hex);

@@ -553,7 +553,7 @@ int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
-  if (_on_lora) d.setOpFilter(loraOpAllowed);
+  if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -766,6 +766,28 @@ void ConsoleIface::onLoraFrame(void* user, const uint8_t* key, const uint8_t* se
   static_cast<ConsoleIface*>(user)->_lora.feed(key, secret, path, path_len, frame, n, LORA_REQ_PAYLOAD, millis());
 }
 
+// The bound channel's key, or false: a stale or absent binding takes nothing (MANAGEMENT_CHANNEL.md section 2).
+bool ConsoleIface::loraChannelKey(void* user, uint8_t out[16]) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  const uint32_t now = millis();
+  if (!s->_lora_key_read || now - s->_lora_key_at > 5000) {
+    s->_lora_key_read = true;
+    s->_lora_key_at = now;
+    MgmtHost h = s->mgmtHost();
+    MgmtRecord rec;
+    char name[CHANNEL_NAME_MAX + 1];
+    s->_lora_key_ok = mgmtState(h, &rec) == MGMT_BOUND && s->_mgmt_slot.read(name, s->_lora_key);
+  }
+  if (s->_lora_key_ok) memcpy(out, s->_lora_key, 16);
+  return s->_lora_key_ok;
+}
+
+void ConsoleIface::onLoraChannelFrame(void* user, const uint8_t* data, size_t n) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (n <= LORA_CH_ADDR + LORA_HDR || !s->_host.node_key || memcmp(data, s->_host.node_key, LORA_CH_PREFIX) != 0) return;
+  s->_lora.feedChannel(data + LORA_CH_PREFIX, data + LORA_CH_ADDR, n - LORA_CH_ADDR, millis());
+}
+
 // One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).
 void ConsoleIface::loraTick(uint32_t now) {
   if (!_lora_send) return;
@@ -778,6 +800,7 @@ void ConsoleIface::loraTick(uint32_t now) {
       bool verified = false;
       if (DeployAuth::isWrapper(msg, len)) {
         _on_lora = true;
+        _lora_channel = p->channel;
         const Cli::Context ctx(Cli::T_LORA, Cli::A_NONE, _host.posture(_host.user));
         n = (int)onMqtt(ctx, reinterpret_cast<const uint8_t*>(msg), len, res, LORA_MSG_MAX + 1);
         _on_lora = false;

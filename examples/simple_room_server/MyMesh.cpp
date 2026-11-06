@@ -330,6 +330,51 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
 }
 
 #ifdef ENABLE_MECON_IFACE
+// The management channel: the only group this role reads. Both calls go to the interface, which holds the binding.
+int MyMesh::searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) {
+  uint8_t key[16];
+  Iface::LoraChannelSink& s = Iface::loraChannelSink();
+  if (max_matches < 1 || !s.key || !s.key(s.user, key)) return 0;
+  mesh::GroupChannel ch;
+  memset(&ch, 0, sizeof(ch));
+  memcpy(ch.secret, key, sizeof(key));
+  mesh::Utils::sha256(ch.hash, sizeof(ch.hash), ch.secret, sizeof(key));
+  if (ch.hash[0] != hash[0]) return 0;
+  channels[0] = ch;
+  return 1;
+}
+
+void MyMesh::onGroupDataRecv(mesh::Packet*, uint8_t type, const mesh::GroupChannel&, uint8_t* data, size_t len) {
+  Iface::LoraChannelSink& s = Iface::loraChannelSink();
+  if (type != PAYLOAD_TYPE_GRP_DATA || len < 3 || !s.frame) return;
+  const uint16_t data_type = (uint16_t)data[0] | ((uint16_t)data[1] << 8);
+  if (data_type != Iface::LORA_CHANNEL_TYPE || (size_t)data[2] > len - 3) return;
+  s.frame(s.user, data + 3, data[2]);
+}
+
+// A reply frame on the bound channel, addressed to the sender's prefix.
+bool MyMesh::loraChannelReply(const uint8_t* to_key, const uint8_t* frame, size_t n) {
+  uint8_t key[16];
+  Iface::LoraChannelSink& s = Iface::loraChannelSink();
+  if (!s.key || !s.key(s.user, key)) return true;   // no longer bound: the reply goes, and its result stays owed
+  mesh::GroupChannel ch;
+  memset(&ch, 0, sizeof(ch));
+  memcpy(ch.secret, key, sizeof(key));
+  mesh::Utils::sha256(ch.hash, sizeof(ch.hash), ch.secret, sizeof(key));
+  uint8_t temp[3 + Iface::LORA_CH_ADDR + Iface::LORA_REPLY_HDR + Iface::LORA_CH_REPLY_PAYLOAD];
+  if (n > sizeof(temp) - 3 - Iface::LORA_CH_ADDR) return true;
+  temp[0] = (uint8_t)(Iface::LORA_CHANNEL_TYPE & 0xFF);
+  temp[1] = (uint8_t)(Iface::LORA_CHANNEL_TYPE >> 8);
+  temp[2] = (uint8_t)(Iface::LORA_CH_ADDR + n);
+  memcpy(temp + 3, to_key, Iface::LORA_CH_PREFIX);
+  memcpy(temp + 3 + Iface::LORA_CH_PREFIX, self_id.pub_key, Iface::LORA_CH_PREFIX);
+  memcpy(temp + 3 + Iface::LORA_CH_ADDR, frame, n);
+  mesh::Packet* pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, ch, temp, 3 + Iface::LORA_CH_ADDR + n);
+  if (!pkt) return false;
+  sendFlood(pkt, SERVER_RESPONSE_DELAY);
+  return true;
+}
+
 bool MyMesh::loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n,
                        bool flood_ok) {
   if (path_len == Iface::LoraLink::PATH_UNKNOWN && !flood_ok) return true;   // never a flood for an unverified answer: dropped

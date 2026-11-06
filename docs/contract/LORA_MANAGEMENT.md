@@ -1,9 +1,9 @@
 # Management over LoRa
 
-> **Status.** The point-to-point path is built on the Companion, Repeater and Room server, proven in the simulator. The channel
-> path below is not built yet, and neither has run on a board. It carries the [device interface](DEVICE_INTERFACE.md) under the
-> [management authority contract](AUTHORITY.md). It defines no new operation on the device: the [managed operations](OPERATIONS.md)
-> are what travels. Compact telemetry and firmware-image bytes over LoRa are not defined here.
+> **Status.** Both paths are built on the Companion, Repeater and Room server and proven in the simulator. Neither has run on a
+> board. It carries the [device interface](DEVICE_INTERFACE.md) under the [management authority contract](AUTHORITY.md). It defines
+> no new operation on the device: the [managed operations](OPERATIONS.md) are what travels. Compact telemetry and firmware-image
+> bytes over LoRa are not defined here.
 
 ## 1. LoRa is a transport
 
@@ -90,7 +90,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
 ## 4. Frames
 
 - **One message, several frames.** A message (one signed request, or one result) is cut into frames that fit one
-  LoRa packet: 128 bytes of a request and 150 of a reply per frame on the point-to-point path, up to 140 on the channel (the
+  LoRa packet: 128 bytes of a request and 150 of a reply per frame on the point-to-point path; 128 and 139 on the channel (the
   addresses take the rest). Each frame carries a message number per sender (`xid`), its index and the frame count,
   as the Companion's `0x7F` frames do (DEVICE_INTERFACE section 7).
 - **A smaller bound than the other links.** A message over LoRa is at most 1,024 bytes (8 frames at most). A longer
@@ -205,5 +205,4 @@ the limit on unverified answers (section 7). Still open:
    It is to be checked against a real one with several keys.
 2. **The deadlines** of section 8, and the unverified budget's 4 a minute, are to be confirmed against airtime on the
    slowest preset in use, with the duty window's boot seeding taken into account.
-3. **Roles.** The Companion carries both paths once #114's binding and #109's job table are in. The Repeater and Room
-   server have no channel table (MANAGEMENT_CHANNEL's status) and would carry the point-to-point path only, until #151.
+3. **Roles.** All three carry both paths. A Repeater or Room server reads no group but its bound management channel.

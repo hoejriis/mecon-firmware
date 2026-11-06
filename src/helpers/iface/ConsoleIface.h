@@ -93,7 +93,11 @@ public:
   size_t onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap);
   // The LoRa link (LORA_MANAGEMENT.md): a complete message runs as the broker's does, as its own caller. The role's main
   // gives the way to send a reply.
-  void setLoraSend(LoraLink::SendFn fn, void* user) { _lora_send = fn; _lora_send_user = user; loraSink().fn = onLoraFrame; loraSink().user = this; }
+  void setLoraSend(LoraLink::SendFn fn, void* user) {
+    _lora_send = fn; _lora_send_user = user;
+    loraSink().fn = onLoraFrame; loraSink().user = this;
+    loraChannelSink().key = loraChannelKey; loraChannelSink().frame = onLoraChannelFrame; loraChannelSink().user = this;
+  }
   LoraLink::Counts loraCounts() const { return _lora.counts(); }
   bool onLora() const { return _on_lora; }
   typedef bool (*EventPublishFn)(const char* stream, const char* payload, size_t len);
@@ -192,7 +196,13 @@ private:
   LoraLink _lora;
   LoraLink::SendFn _lora_send = nullptr;
   void* _lora_send_user = nullptr;
-  bool _on_lora = false;
+  bool _on_lora = false, _lora_channel = false;
+  static bool loraChannelKey(void* user, uint8_t out[16]);
+  static void onLoraChannelFrame(void* user, const uint8_t* data, size_t n);
+  uint8_t _lora_key[16] = {0};   // the bound channel's key, read again every few seconds: the mesh asks on each group packet
+  bool _lora_key_ok = false;
+  uint32_t _lora_key_at = 0;
+  bool _lora_key_read = false;
   bool _on_mqtt = false;       // the request being handled came over the broker
   Cli::Context _link_ctx;      // its transport's own context, before any signature replaced it
   char _mqtt_nonce[33] = {0};
