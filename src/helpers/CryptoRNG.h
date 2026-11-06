@@ -15,6 +15,8 @@
 
 #if defined(ESP_PLATFORM)
   #include <esp_random.h>
+  #include <bootloader_random.h>
+  #include "helpers/EntropyPool.h"
 #elif defined(NRF52_PLATFORM)
   #include <nrf_soc.h>
   #include <nrf_sdm.h>   // sd_softdevice_is_enabled: included here, not left to whatever a user included first
@@ -29,9 +31,24 @@ class CryptoRNG : public mesh::RNG {
 public:
   explicit CryptoRNG(mesh::RNG* fallback = nullptr) : _fallback(fallback) { }
 
+  // Call first thing in setup(), before Wi-Fi, BLE or an ADC user starts: the SAR ADC's noise must not run beside them.
+  // Elsewhere the hardware source does not depend on a radio, and there is nothing to do.
+  static void seedAtBoot() {
+#if defined(ESP_PLATFORM)
+    uint8_t s[EntropyPool::POOL_SIZE];
+    bootloader_random_enable();
+    esp_fill_random(s, sizeof(s));
+    bootloader_random_disable();
+    pool().seed(s);
+    volatile uint8_t* v = s;
+    for (size_t i = 0; i < sizeof(s); i++) v[i] = 0;
+#endif
+  }
+
   void random(uint8_t* dest, size_t sz) override {
 #if defined(ESP_PLATFORM)
     esp_fill_random(dest, sz);   // the hardware RNG, whitened; full entropy while the radio (Wi-Fi or BLE) is on
+    pool().mix(dest, sz);        // the boot seed, for a role that runs neither
 #elif defined(NRF52_PLATFORM)
     if (!nrf52Fill(dest, sz)) {
       // Neither source delivered in its bound: the caller's RNG, never a hang. Without one the output is zero, which the
@@ -65,6 +82,12 @@ public:
 
 private:
   mesh::RNG* _fallback;
+#if defined(ESP_PLATFORM)
+  static EntropyPool& pool() {
+    static EntropyPool p;
+    return p;
+  }
+#endif
 #if defined(NRF52_PLATFORM)
   // Polls are bounded by count: this runs before the SoftDevice may be up (the Companion draws its BLE PIN at boot), so
   // it can neither wait on the SoftDevice's pool nor assume it exists.
