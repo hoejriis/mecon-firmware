@@ -1,13 +1,13 @@
 # mecon-firmware documentation
 
-mecon-firmware is MeshCore 1.18.0 with secure management, diagnostics and signed updates added. Start with the [project README](../README.md) for what it does and how it compares with stock MeshCore. These pages describe the finished product. For what a given release contains, see [availability](../README.md#getting-it).
+mecon-firmware is MeshCore 1.18.0 with secure management, diagnostics and signed updates added. Start with the [project README](../README.md) for what it does and how it compares with stock MeshCore. These pages describe the finished product. For what you can get today, see [availability](AVAILABILITY.md).
 
 ## Using it, task by task
 
 1. [Choose hardware and a role](SUPPORTED_HARDWARE.md): what each board and role can do, and its limits.
-2. [Install and set up a device](GETTING_STARTED.md): build, flash, and the first settings over USB.
+2. [Install and set up a device](GETTING_STARTED.md): keep what is on the device, install, check it, and get one useful result.
 3. [Connect to Wi-Fi and MQTT](CONNECTING.md): Wi-Fi profiles, broker profiles and TLS, and BLE or Wi-Fi mode.
-4. [Manage a device](MANAGING.md): over USB, BLE, MQTT and LoRa, and with a private management channel.
+4. [Manage a device](MANAGING.md): over USB, BLE, MQTT and LoRa, with a private management channel, and sending and collecting messages through a manager.
 5. [Monitor a device](MONITORING.md): telemetry streams, logs and screen snapshots.
 6. [Update and recover](UPDATING_AND_RECOVERY.md): signed updates, confirm-or-revert, resets and recovery.
 
@@ -19,6 +19,7 @@ mecon-firmware is MeshCore 1.18.0 with secure management, diagnostics and signed
 - [Wi-Fi profiles](WIFI.md), [MQTT broker profiles](MQTT.md), [connectivity mode](CONNECTIVITY_MODE.md)
 - [Contact memory](CONTACTS.md)
 - [Screens and buttons](UI.md)
+- [Availability](AVAILABILITY.md): what you can get today, and what is not built yet
 - [Hardware evidence](HARDWARE_VERIFIED.md): what has been checked on real boards
 
 ## Integrating a manager

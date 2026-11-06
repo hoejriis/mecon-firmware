@@ -435,3 +435,120 @@ def test_a_rotated_room_keeps_no_posts_of_the_old_owner(nodes, ether):
     time.sleep(3.0)   # let the air clear: a native login is not retried, and a collision would lose it
     assert carol.login(new_key, "joinme", timeout=25) or carol.login(new_key, "joinme", timeout=25)
     assert carol.sync_messages(timeout=25, want=1) == [], "nothing of the old owner's room reaches a new member"
+
+
+# ------------------------------------------------------------------ the refusals: a rotation that cannot run changes nothing
+
+ALL_KINDS = ["companion_standalone"] + SERVERS
+
+
+def enrolled_any(nodes, kind, name, seed):
+    if kind != "companion_standalone":
+        return enrolled_server(nodes, kind, name, seed)
+    d = enrolled_companion(nodes, name, seed)
+    contacts_on_flash(d)   # a restart below would otherwise lose it: the store writes lazily
+    return d
+
+
+def old_state_kept(d, kind):
+    if kind == "companion_standalone":
+        return d.c.get_contacts()[0] == 1
+    return os.path.getsize(acl_file(d)) > 0
+
+
+def assert_nothing_changed(d, kind, key):
+    assert d.i.request("hello")["result"]["node_key"] == key, "the key stays"
+    assert "rotation" not in d.i.request("identity.rotation")["result"] and not os.path.exists(rotation_file(d))
+    assert old_state_kept(d, kind), "and nothing was dropped"
+
+
+def block(d, path):
+    """The path cannot be written or removed: a directory that holds a file."""
+    full = os.path.join(d.n.dir, path)
+    if os.path.exists(full):
+        os.remove(full)
+    os.makedirs(os.path.join(full, "keep"))
+    return full
+
+
+def unblock(full):
+    os.rmdir(os.path.join(full, "keep"))
+    os.rmdir(full)
+
+
+def stuck_source(d):
+    """Restart the node reading its random bytes through a link, and return what re-points that link."""
+    link = os.path.join(d.n.dir, "random-source")
+    os.symlink("/dev/urandom", link)
+    d.n.stop()
+    d.n.extra_env = {"SIM_RANDOM_FILE": link}
+    d.n.start()
+    d.attach()
+
+    def point_at(target):
+        os.remove(link)
+        os.symlink(target, link)
+    return point_at
+
+
+@pytest.mark.parametrize("kind", ALL_KINDS)
+@pytest.mark.parametrize("source", ["zero", "pattern"])
+def test_a_random_source_that_fails_refuses_the_rotation(nodes, kind, source):
+    d = enrolled_any(nodes, kind, "rr" + kind[:2] + source[0], 71)
+    key = d.node_key
+    point_at = stuck_source(d)
+    target = "/dev/zero"
+    if source == "pattern":   # not zero, and only 15 byte values, one short of what a draw must have
+        target = os.path.join(d.n.dir, "pattern-source")
+        with open(target, "wb") as f:
+            f.write(bytes(range(1, 16)) * 8)
+    nonce = d.nonce()
+    point_at(target)
+    r = d.send(wrap(key, "identity.rotate", job=2, nonce=nonce))
+    assert r["status"] == "failed" and r["error"] == "rng", r
+    assert verifies(r.raw, key, "result"), "the refusal is signed, so the manager can trust it"
+    assert_nothing_changed(d, kind, key)
+    point_at("/dev/urandom")
+    r = rotate(d, 3, key)
+    assert r["status"] == "ok" and r["result"]["new_public_key"] != key, "a source that recovers can rotate"
+
+
+@pytest.mark.parametrize("kind", ALL_KINDS)
+@pytest.mark.parametrize("blocked", ["rotation.tmp", "identity/_main.id.tmp"])
+def test_a_rotation_that_cannot_save_leaves_the_device_as_it_was(nodes, kind, blocked):
+    d = enrolled_any(nodes, kind, "rs" + kind[:2] + blocked[0], 73)
+    key = d.node_key
+    full = block(d, blocked)
+    r = rotate(d, 2, key)
+    assert r["status"] == "busy" or r["status"] == "failed", r
+    assert r["error"] == "storage", r
+    assert verifies(r.raw, key, "result"), "signed by the key that stayed"
+    assert_nothing_changed(d, kind, key)
+    unblock(full)
+    assert rotate(d, 3, key)["status"] == "ok", "the next try runs once the store works"
+
+
+@pytest.mark.parametrize("kind", ALL_KINDS)
+def test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it(nodes, kind):
+    d = enrolled_any(nodes, kind, "rd" + kind[:2], 75)
+    old_key = d.node_key
+    device_id = d.i.request("hello")["result"]["device_id"]
+    held = contacts_on_flash(d)[0] if kind == "companion_standalone" else "s_contacts"
+    full = block(d, held)
+    r = rotate(d, 2, old_key)
+    assert r["status"] == "failed" and r["error"] == "contacts_not_dropped", r
+    assert verifies(r.raw, old_key, "result"), "signed by the retired key, the one its manager knows"
+    new_key = d.i.request("hello")["result"]["node_key"]
+    assert new_key != old_key, "the key had already changed, so the old secrets are useless to anyone holding the new one"
+    rot = d.i.request("identity.rotation")["result"]["rotation"]
+    statement_checks(rot, old_key, new_key, device_id, 2)
+    assert open(rotation_file(d), "rb").read().endswith(b"\nP"), "the statement still says the drop is pending"
+    unblock(full)
+    d.reboot()
+    assert d.node_key == new_key
+    assert open(rotation_file(d), "rb").read().endswith(b"\n"), "the boot finished the drop"
+    assert d.i.request("identity.rotation")["result"]["rotation"] == rot
+    if kind == "companion_standalone":
+        assert d.c.get_contacts()[0] == 0
+    else:
+        assert not os.path.exists(acl_file(d))

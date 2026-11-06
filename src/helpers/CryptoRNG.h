@@ -24,6 +24,7 @@
   #include <Arduino.h>
 #elif defined(__linux__) || defined(__APPLE__)
   #include <stdio.h>
+  #include <stdlib.h>
 #endif
 
 class CryptoRNG : public mesh::RNG {
@@ -67,7 +68,9 @@ public:
       _fallback->random(dest, sz);
       return;
     }
-    FILE* f = fopen("/dev/urandom", "rb");
+    // SIM_RANDOM_FILE stands in for /dev/urandom: a test re-points it to make the source fail on a running node.
+    const char* source = getenv("SIM_RANDOM_FILE");
+    FILE* f = fopen(source ? source : "/dev/urandom", "rb");
     size_t got = f ? fread(dest, 1, sz, f) : 0;
     if (f) fclose(f);
     (void)got;
