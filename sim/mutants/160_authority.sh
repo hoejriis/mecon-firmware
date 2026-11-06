@@ -220,6 +220,12 @@ mutate observation_unsigned_console src/helpers/iface/ConsoleIface.cpp '  if (n 
 mutate unlock_window_stays_ten_minutes src/helpers/iface/DeployAuth.h 'UNLOCK_MS = 5 * 60 * 1000;' 'UNLOCK_MS = 10 * 60 * 1000;' $DA::test_an_unlock_lapses_after_five_minutes
 mutate unlock_outlives_the_host_companion examples/companion_radio/MeconIface.cpp '    if (!cable_up) l.unlock.clear();' '' $DA::test_the_unlock_ends_when_the_usb_host_goes
 mutate unlock_outlives_the_host_console src/helpers/iface/ConsoleIface.cpp '  if (!cableLineUp()) _unlock.clear();' '' sim/tests/test_deployment_authority_server.py::test_the_unlock_ends_when_the_usb_host_goes
+# --- posture.set
+mutate posture_set_no_reboot_companion examples/companion_radio/MeconIface.cpp 'if (st == ST_OK && m->postureNow() != before) m->rebootSoon();' '' sim/tests/test_posture_set.py::test_a_signed_request_raises_and_lowers_an_enrolled_device
+mutate posture_set_no_reboot_console src/helpers/iface/ConsoleIface.cpp 'if (st == ST_OK && s->postureNow() != before) s->rebootSoon();' '' sim/tests/test_posture_set.py::test_a_signed_request_raises_and_lowers_an_enrolled_device
+mutate posture_set_reboots_when_unchanged src/helpers/iface/ConsoleIface.cpp 's->postureNow() != before) s->rebootSoon();' 'true) s->rebootSoon();' sim/tests/test_posture_set.py::test_unsigned_is_refused_once_enrolled_and_a_replay_runs_nothing
+mutate posture_set_ignores_the_answer src/helpers/iface/IfaceConfig.cpp 'if (!known || !cliOk(reply)) { c.error = "not-permitted"; return ST_REFUSED; }' '' sim/tests/test_posture_set.py::test_raising_without_an_unlock_secret_is_refused_and_a_bad_value_is_invalid
+mutate posture_set_wrong_value_goes src/helpers/iface/IfaceConfig.cpp 'if (!hardened && strcmp(want, "normal") != 0) return ST_INVALID;' '' sim/tests/test_posture_set.py::test_raising_without_an_unlock_secret_is_refused_and_a_bad_value_is_invalid
 mutate lost_marks_need_two_re_admissions src/helpers/iface/DeployAuth.cpp 'Dep::reconcileMarks(&_dep->marks, set, &next);' 'Dep::reconcileMarks(_dep->marks_lost ? nullptr : &_dep->marks, set, &next);' sim/tests/test_deployment_authority.py::test_after_lost_marks_one_re_admission_clears_a_member_and_only_that_member
 # the refusals of a rotation that cannot run, and the end of the signature sequence
 mutate rotation_rng_any_draw_goes src/helpers/iface/IdentityRotation.cpp '    if (!nonzero || distinct < 16 || (tries > 0 && memcmp(seed, prev, sizeof(seed)) == 0)) {' '    if (false) {' $IR::test_a_random_source_that_fails_refuses_the_rotation
