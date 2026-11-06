@@ -281,7 +281,11 @@ def test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead
     assert "next" not in d.i.request("hello")["result"], "a hello that fits is one page"
     d.provision()
     plain = d.i.request("hello")["result"]
-    assert plain["capabilities"] == full and "next" not in plain
+    listed = list(plain["capabilities"])
+    if "next" in plain:   # enrolled, the plain hello keeps room for its signature too
+        assert plain["next"] == len(listed)
+        listed += d.i.request("hello", {"cursor": plain["next"]})["result"]["capabilities"]
+    assert listed == full
     r = d.i.request("hello", {"nonce": "n" * 32})
     assert r["status"] == "ok", r
     got, page = list(r["result"]["capabilities"]), r["result"]
