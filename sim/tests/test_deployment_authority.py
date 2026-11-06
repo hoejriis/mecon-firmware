@@ -850,6 +850,45 @@ def test_a_damaged_marks_copy_blocks_every_member_so_a_captured_request_cannot_r
     assert d.name() == "> Mf"
 
 
+def signed_set(revision, members, issued_at):
+    """The DAK's set (epoch 1) at this revision. members: (instance id, its public key, admitted_revision)."""
+    text = json.dumps({"v": 1, "deployment_id": DEP, "authority_epoch": 1, "authority_revision": revision,
+                       "issued_at": issued_at,
+                       "members": [{"instance_id": i, "public_key": k, "admitted_revision": a} for i, k, a in members],
+                       "revoked": []}, separators=(",", ":"))
+    sig = ed25519_ref.sign(bytes.fromhex(V["keys"]["dak epoch 1"]["seed_hex"]), b"MECON-AUTHSET-v1\x00" + text.encode())
+    return {"authority_set": text, "authority_set_sig": base64.b64encode(sig).decode()}
+
+
+def test_after_lost_marks_one_re_admission_clears_a_member_and_only_that_member(nodes):
+    d = boot(nodes, "lm")
+    d.provision()
+    d.n.stop()
+    for f in ("mecon_depm_a", "mecon_depm_b"):
+        if os.path.exists(os.path.join(d.n.dir, f)):
+            os.remove(os.path.join(d.n.dir, f))
+    revive(d)
+    A, B = V["keys"]["instance a"]["public_key"], V["keys"]["instance b"]["public_key"]
+    g = d.i.request("deployment.get")["result"]
+    assert g["members"][0]["mark"] == 4294967295, "lost: nobody is trusted"
+    # A is not re-admitted, and B is new
+    r = d.i.request("deployment.authority_update", signed_set(2, [(INST_A, A, 1), (INST_B, B, 2)], 1790002000))
+    assert r["status"] == "ok", r
+    marks = {m["instance_id"]: m["mark"] for m in r["result"]["members"]}
+    assert marks == {INST_A: 4294967295, INST_B: 0}, "the same admission stays blocked, a new member starts at 0: %s" % marks
+    r = d.send(wrap(d.node_key, "config.apply", apply_name("NoA"), job=1, rev=2))
+    assert r["status"] == "refused", "a member not re-admitted stays blocked: %s" % r
+    time.sleep(1.1)   # one authority update a second
+    r = d.i.request("deployment.authority_update", signed_set(3, [(INST_A, A, 3), (INST_B, B, 2)], 1790003000))
+    assert r["status"] == "ok", r
+    marks = {m["instance_id"]: m["mark"] for m in r["result"]["members"]}
+    assert marks == {INST_A: 0, INST_B: 0}, "one re-admission is enough: %s" % marks
+    r = d.send(wrap(d.node_key, "config.apply", apply_name("YesA"), job=1, rev=3))
+    assert r["status"] == "ok", r
+    d.reboot()
+    assert d.i.request("status.get")["result"]["deployment"]["blocked_members"] == 0, "and that lasts across a reboot"
+
+
 def test_the_rescue_rebuild_keeps_the_record_its_marks_and_the_marker(nodes):
     d = boot(nodes, "rb")
     d.provision()
@@ -1118,6 +1157,7 @@ def test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_open
     assert r["status"] == "ok" and r["result"] == {"unlocked": True, "expires_in_s": 600}, r
     assert d.c.cli("set posture normal confirm") == "OK - already normal", "the posture is open to the unlocked cable"
     assert d.c.cli("set name Nope") == NOT_ENROLLED_REFUSAL, "never a configuration write"
+    assert d.c.cli("set connectivity.mode ble") == NOT_ENROLLED_REFUSAL, "the posture, not the rest of its class"
     assert d.c.cli("get prv.key").startswith("ERR"), "never key export"
     r = d.i.request("config.apply", apply_name("Nope"))
     assert r["status"] == "refused" and r["error"] == "unauthenticated", "nor over the interface: %s" % r
