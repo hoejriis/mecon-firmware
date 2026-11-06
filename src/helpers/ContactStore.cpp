@@ -812,9 +812,15 @@ bool ContactStore::clearAll() {
   if (!_ready) return false;
   bool ok = true;
   if (_persistent) {
+    // One listing, as rebuild() does: asking for each bucket scans a flat SPIFFS file table every time, about 52 s on a
+    // Heltec V3 with no contacts at all, on the loop, which cost identity.rotate its broker session.
+    uint8_t* listed = (uint8_t*)calloc((_nbuckets + 7) / 8 + 1, 1);
+    const bool have_list = listed && _be->listBuckets((uint16_t)_nbuckets, listed);
     for (int b = 0; b < _nbuckets; b++) {
-      if (_be->bucketExists((uint16_t)b) && !removeB(b)) ok = false;
+      const bool have = have_list ? (listed[b >> 3] & (1u << (b & 7))) != 0 : _be->bucketExists((uint16_t)b);
+      if (have && !removeB(b)) ok = false;
     }
+    free(listed);
     memset(_bdirty, 0, (_nbuckets + 7) / 8 + 1);
   }
   for (int i = 0; i < _nslots; i++) if (_slots[i].rec >= 0) unbind(i);
