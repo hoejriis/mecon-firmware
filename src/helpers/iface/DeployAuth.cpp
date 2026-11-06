@@ -144,11 +144,12 @@ bool DeployAuth::persistMarks() {
 }
 
 // The marks for a newly committed set, written after the record (AUTHORITY.md section 4): a member still present at its
-// admission keeps its mark, a re-admitted one restarts at 0, and with the marks lost nobody is trusted.
+// admission keeps its mark and a re-admitted one restarts at 0. With the marks lost, the load has already blocked everyone
+// at the set's admissions, so "keeps its mark" stays blocked and a re-admission is what clears it.
 bool DeployAuth::saveMarksFor(const Dep::AuthoritySet& set) {
   if (!_dep) return false;
   Dep::Marks next;
-  const int blocked = Dep::reconcileMarks(_dep->marks_lost ? nullptr : &_dep->marks, set, &next);
+  const int blocked = Dep::reconcileMarks(&_dep->marks, set, &next);
   _dep->marks = next;
   _dep->blocked = blocked;
   _dep->marks_dirty = true;
