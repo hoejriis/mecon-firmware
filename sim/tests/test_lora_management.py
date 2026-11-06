@@ -115,11 +115,11 @@ def test_unverified_answers_stay_within_their_budget(ether, nodes):
     for i in range(7):   # a burst from one sender: the budget is shared, so more keys would change nothing
         assert m.i.request("rf.request", {"to": d.node_key, "message": json.dumps({"v": 1, "id": "u%d" % i, "op": "status.get"})})["status"] == "ok"
         time.sleep(1.0)
-    answered = 0
     while time.time() < t0 + 14:
         msg = m.i.read_message(0.5)
-        if msg and msg.get("ev") == "rf":
-            answered += 1
+        if msg and "ev" in msg:
+            m.i.events.append(msg)
+    answered = sum(1 for e in m.i.events if e.get("ev") == "rf" and '"status":"refused"' in e["data"]["message"])
     assert 4 <= answered <= 5, "4 a minute, whatever is asked, and one more for the 14 s of this test: %d" % answered
 
 

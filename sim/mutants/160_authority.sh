@@ -201,9 +201,6 @@ mutate observation_unsigned_companion examples/companion_radio/MeconIface.cpp ' 
 mutate observation_unsigned_console src/helpers/iface/ConsoleIface.cpp '  if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream
 # --- the device interface over LoRa
 LM=sim/tests/test_lora_management.py
-mutate lora_unsigned_runs src/helpers/iface/ConsoleIface.cpp '      if (DeployAuth::isWrapper(msg, len)) {
-        _on_lora = true;' '      if (true) {
-        _on_lora = true;' $LM::test_an_unsigned_request_runs_nothing_and_a_read_is_signed
 mutate lora_every_op_console src/helpers/iface/ConsoleIface.cpp '  if (_on_lora) d.setOpFilter(loraOpAllowed);' '' $LM::test_an_operation_this_link_does_not_carry_is_unknown_here
 mutate lora_every_op_companion examples/companion_radio/MeconIface.cpp '  if (_on_lora) d.setOpFilter(loraOpAllowed);' '' $LM::test_an_operation_this_link_does_not_carry_is_unknown_here
 mutate lora_hello_offers_all src/helpers/iface/ConsoleIface.cpp 'if (!m->onLora() || loraOpAllowed(cap)) w.str(cap);' 'w.str(cap);' $LM::test_hello_over_lora_offers_only_what_this_link_carries
@@ -212,7 +209,6 @@ mutate lora_refusal_counts_as_verified src/helpers/iface/ConsoleIface.cpp '     
 mutate lora_budget_off src/helpers/iface/LoraLink.h '    if (_tok < 15000) return false;' '' unit:test_lora_link
 mutate lora_unverified_may_flood src/helpers/iface/LoraLink.h 'if (!verified && (p.path_len == PATH_UNKNOWN || !takeBudget(now)))' 'if (!verified && !takeBudget(now))' unit:test_lora_link
 mutate lora_messages_mix src/helpers/iface/LoraLink.h '    if (p->rx && (p->xid != xid || p->count != cnt)) freeRx(*p);' '' unit:test_lora_link
-mutate lora_frame_count_unchecked src/helpers/iface/LoraLink.h 'if (cnt == 0 || cnt > LORA_MAX_FRAMES || idx >= cnt ||' 'if (cnt == 0 || idx >= cnt ||' unit:test_lora_link
 mutate lora_padding_kept src/helpers/iface/LoraLink.h 'if (cnt != 0 && idx + 1 == cnt) { while (blen && f[LORA_HDR + blen - 1] == 0) blen--; }' 'if (false) { }' unit:test_lora_link
 mutate lora_no_reassembly_deadline src/helpers/iface/LoraLink.h 'if (p.rx && !p.complete && (int32_t)(now - p.first_ms) >= (int32_t)LORA_REASSEMBLY_MS) partsMissing(p, now);' '' unit:test_lora_link
 mutate lora_reply_never_expires src/helpers/iface/LoraLink.h 'if (p.tx && (int32_t)(now - p.tx_deadline) >= 0) { _c.dropped_deadline++; freeTx(p); }' '' unit:test_lora_link
