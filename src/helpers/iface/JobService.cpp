@@ -45,15 +45,18 @@ void JobService::noticeChanges(bool tell) {
 }
 
 int JobService::writeEvent(char* buf, size_t cap, uint32_t epoch, bool ts_known, int64_t ts, const Job& j) {
-  char data[64 + Job::ID_CAP + Job::OP_CAP + Job::RESULT_CAP];
-  JsonWriter w(data, sizeof(data));
+  const size_t data_cap = 64 + Job::ID_CAP + Job::OP_CAP + Job::RESULT_CAP;
+  char* data = static_cast<char*>(malloc(data_cap));   // as the caller's buffer: a job opens deep in the loop's stack
+  if (!data) return -1;
+  JsonWriter w(data, data_cap);
   w.beginObject();
   writeSummary(w, j);
   w.key("result");
   if (j.result_len) w.raw(j.result, j.result_len); else w.null();
   w.endObject();
-  if (!w.ok()) return -1;
-  return Iface::writeEvent(buf, cap, "job", ++_ev_seq, epoch, ts_known, ts, data);
+  const int n = w.ok() ? Iface::writeEvent(buf, cap, "job", ++_ev_seq, epoch, ts_known, ts, data) : -1;
+  free(data);
+  return n;
 }
 
 JobTable* JobService::table() {
