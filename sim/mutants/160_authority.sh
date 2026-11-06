@@ -29,7 +29,6 @@ mutate deploy_enrolled_rule_takes_the_cables_destructive_class src/helpers/cli/C
 mutate deploy_marker_alone_reads_as_absent src/helpers/deployment/DepMarker.h 'return (ls == LS_ABSENT && m == MK_PRESENT) ? LS_CORRUPT : ls;' 'return ls;' unit:test_dep_state
 mutate deploy_remote_reboot_unsigned_when_enrolled src/helpers/cli/CliPolicy.h ' && !(cls == C_REBOOT && !c.remote && p != P_NETCON_ADMIN) &&' ' && !(cls == C_REBOOT) &&' unit:test_cli_engine
 mutate enrolled_ethernet_console_reboots src/helpers/cli/CliPolicy.h ' && !c.remote && p != P_NETCON_ADMIN) &&' ' && !c.remote) &&' unit:test_cli_engine
-mutate enrolled_ethernet_console_reboots_sim src/helpers/cli/CliPolicy.h ' && !c.remote && p != P_NETCON_ADMIN) &&' ' && !c.remote) &&' sim/tests/test_deployment_authority_server.py::test_unsigned_writes_are_refused_over_the_ethernet_console_once_enrolled
 mutate deploy_frames_not_told_enrolled examples/companion_radio/MyMesh.cpp '    fctx.enrolled = _iface.enrolled();' '    (void)0;' sim/tests/test_deployment_authority.py::test_a_signed_config_apply_runs_and_a_resend_runs_nothing
 
 # ---- the authority layer on the Repeater and Room server console
