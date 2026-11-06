@@ -23,7 +23,7 @@ What a given device supports is never inferred from these pages: `hello` lists e
 
 1. MeshCore 1.18 native behaviour is reused where suitable. The contract marks the boundary rather than inventing duplicates.
 2. The MeshCore CLI and configuration are the management plane for native behaviour. The interface extends them rather than duplicating them.
-3. USB, BLE, MQTT and LoRa are transports for the same operations, never separate products.
+3. USB, BLE, MQTT and LoRa are transports for one operation model, never separate products. An operation means the same on each path that carries it, and each path says what it carries.
 4. Operations are allowlisted and versioned. There is no raw shell, even though CLI semantics are canonical.
 5. The contracts are backend-neutral.
 6. Capabilities and independently versioned profiles describe behaviour.
