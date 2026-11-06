@@ -349,6 +349,7 @@ public:
       if (link == ConnMode::LINK_PIN && DisplayPrivacy::showsPairingPin(the_mesh.getNodePrefs()->posture, the_mesh.getBLEPin(),
                                                                          _task->isBluetoothEnabled(), _task->isBleConnected())) { // BT pin
         display.setColor(UIColor::warning_txt);
+        display.noteSecretDrawn();
         sprintf(tmp, "Pin:%d", the_mesh.getBLEPin());
         #ifdef UI_SHOW_CLOCK
         display.setTextSize(1);

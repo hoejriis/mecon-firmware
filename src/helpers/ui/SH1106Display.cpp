@@ -61,6 +61,7 @@ void SH1106Display::clear()
 
 void SH1106Display::startFrame(ColorVal bkg)
 {
+  frameBegun();
   display.clearDisplay(); // TODO: apply 'bkg'
   _color = SH110X_WHITE;
   display.setTextColor(_color);
@@ -115,4 +116,13 @@ uint16_t SH1106Display::getTextWidth(const char *str)
 void SH1106Display::endFrame()
 {
   display.display();
+  frameFinished(millis());
+}
+
+bool SH1106Display::readFrame(uint8_t* out, size_t cap)
+{
+  uint8_t* b = display.getBuffer();
+  if (!b || cap < frameBytes()) return false;
+  memcpy(out, b, frameBytes());
+  return true;
 }

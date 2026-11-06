@@ -21,3 +21,15 @@ mutate queue_room_check_too_generous src/helpers/iface/IfaceFrames.h '          
 mutate signed_logs_refused examples/companion_radio/MeconIface.cpp '  return cls == Cli::C_POSTURE && m->_ctx.auth == Cli::A_SIGNED && Cli::decide(m->_link_ctx, Cli::C_PRIVATE).allow;' '  return false;' sim/tests/test_private_streams.py::test_a_signed_subscriber_takes_the_logs_over_a_verified_broker
 mutate signed_logs_on_any_link examples/companion_radio/MeconIface.cpp '  return cls == Cli::C_POSTURE && m->_ctx.auth == Cli::A_SIGNED && Cli::decide(m->_link_ctx, Cli::C_PRIVATE).allow;' '  return cls == Cli::C_POSTURE && m->_ctx.auth == Cli::A_SIGNED;' sim/tests/test_private_streams.py::test_a_signed_request_on_an_untrusted_link_gets_no_private_stream_over_it
 mutate signed_logs_on_an_unverified_broker examples/companion_radio/MeconIface.cpp '  return cls == Cli::C_POSTURE && m->_ctx.auth == Cli::A_SIGNED && Cli::decide(m->_link_ctx, Cli::C_PRIVATE).allow;' '  return cls == Cli::C_POSTURE && m->_ctx.auth == Cli::A_SIGNED;' sim/tests/test_private_streams.py::test_a_signed_subscriber_gets_no_logs_over_an_unverified_broker
+# the screen stream
+TS=sim/tests/test_telemetry_streams.py
+mutate screen_pin_frame_sent src/helpers/iface/ScreenFeed.h '    if (_d->secretDrawn()) { _withheld = "pairing-pin"; return; }' '' $TS::test_a_frame_that_shows_the_pairing_pin_is_withheld
+mutate screen_pin_not_noted examples/companion_radio/ui-new/UITask.cpp '        display.noteSecretDrawn();' '' $TS::test_a_frame_that_shows_the_pairing_pin_is_withheld
+mutate screen_pin_mark_never_clears variants/sim/sim_display.cpp 'void SimDisplay::startFrame(ColorVal) { frameBegun(); ' 'void SimDisplay::startFrame(ColorVal) { ' $TS::test_a_frame_that_shows_the_pairing_pin_is_withheld
+mutate screen_one_part_only src/helpers/iface/ScreenFeed.h 'const bool last = _withheld || _off + n >= _bytes;' 'const bool last = true;' $TS::test_a_screen_frame_arrives_in_parts_and_is_what_the_display_shows
+mutate screen_offset_stuck src/helpers/iface/ScreenFeed.h '    _off += n;' '' $TS::test_a_screen_frame_arrives_in_parts_and_is_what_the_display_shows
+mutate screen_frame_not_copied variants/sim/sim_display.cpp 'memcpy(out, _frame.data(), _frame.size() < 1024 ? _frame.size() : 1024);' '' $TS::test_a_screen_frame_arrives_in_parts_and_is_what_the_display_shows
+mutate screen_period_unbounded src/helpers/iface/Streams.cpp '{"screen", 5, 3600, 60, Cli::C_PRIVATE}' '{"screen", 1, 3600, 60, Cli::C_PRIVATE}' $TS::test_a_stream_period_under_five_seconds_is_refused
+mutate screen_console_not_wired src/helpers/iface/ConsoleIface.cpp '  screenTick(now);
+' '' $TS::test_a_repeater_with_a_display_streams_it_over_the_console_and_one_without_has_no_stream
+mutate screen_companion_frame_unsigned examples/companion_radio/MeconIface.cpp '    if (n > 0) n = _prov.sign(STREAMS[SID_SCREEN].name, ev, (size_t)n, ScreenFeed::EVENT_CAP);' '' sim/tests/test_private_streams.py::test_an_enrolled_device_signs_its_screen_frames

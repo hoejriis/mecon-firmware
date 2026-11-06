@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.screen.json",
+  "title": "Data of a screen event (TELEMETRY.md)",
+  "type": "object",
+  "required": [
+    "frame",
+    "part",
+    "last",
+    "width",
+    "height",
+    "format",
+    "on"
+  ],
+  "properties": {
+    "frame": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "part": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "last": {
+      "type": "boolean"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "format": {
+      "enum": [
+        "mono1"
+      ]
+    },
+    "on": {
+      "type": "boolean"
+    },
+    "age_s": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "data": {
+      "type": "string"
+    },
+    "withheld": {
+      "enum": [
+        "pairing-pin",
+        "no-frame",
+        "no-memory"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

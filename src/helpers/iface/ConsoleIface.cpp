@@ -398,6 +398,26 @@ uint32_t ConsoleIface::knownSeconds(bool* known) {
   return *known ? ts : 0;
 }
 
+// One part of the screen frame in hand. Beside the stream pass, not inside it: a signature on top of its frame would
+// overrun the loop stack.
+void ConsoleIface::screenTick(uint32_t now) {
+  if (!_screen.due(now) || (_collecting && !mqttSubscribed())) return;
+  if (!_subs.s[SID_SCREEN].active && !_mqtt_subs.s[SID_SCREEN].active) { _screen.cancel(); return; }
+  char* data = static_cast<char*>(malloc(ScreenFeed::DATA_CAP));
+  char* ev = static_cast<char*>(malloc(ScreenFeed::EVENT_CAP));
+  if (data && ev && _screen.next(now, data, ScreenFeed::DATA_CAP)) {
+    bool known;
+    const uint32_t ts = knownSeconds(&known);
+    int n = writeEvent(ev, ScreenFeed::EVENT_CAP, STREAMS[SID_SCREEN].name, ++_clock.seq[SID_SCREEN], _epoch, known, ts, data);
+    if (n > 0) n = _prov.sign(STREAMS[SID_SCREEN].name, ev, (size_t)n, ScreenFeed::EVENT_CAP);
+    if (n > 0) emit(SID_SCREEN, ev, (size_t)n);
+  } else if (!data || !ev) {
+    _screen.cancel();   // no memory for this part: the frame is lost, and the seq gap or missing part shows it
+  }
+  free(data);
+  free(ev);
+}
+
 void ConsoleIface::emit(int stream, const char* ev, size_t n) {
   if (_out && !_collecting && _subs.s[stream].active) printLine(*_out, ev, n);
   if (_mqtt_subs.s[stream].active && _ev_publish) _ev_publish(STREAMS[stream].name, ev, n);
@@ -779,6 +799,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
       _clock.scheduleNow(SID_CONNECTIVITY, now);
     }
   }
+  screenTick(now);
   if (_collecting && !mqttSubscribed()) return;   // an event never lands in the middle of a request being typed
   SubSet* sets[2] = { &_subs, &_mqtt_subs };
   const uint32_t due = _clock.due(sets, 2, now);
@@ -786,6 +807,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   const uint32_t ts = knownSeconds(&known);
   for (int s = 0; s < STREAM_COUNT; s++) {
     if (!(due & (1u << s))) continue;
+    if (s == SID_SCREEN) { _screen.start(now); continue; }   // in parts: screenTick sends it
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;

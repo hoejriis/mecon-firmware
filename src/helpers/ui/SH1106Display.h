@@ -40,4 +40,6 @@ public:
   void drawXbm(int x, int y, const uint8_t *bits, int w, int h) override;
   uint16_t getTextWidth(const char *str) override;
   void endFrame() override;
+  size_t frameBytes() const override { return 128 * 64 / 8; }
+  bool readFrame(uint8_t* out, size_t cap) override;
 };

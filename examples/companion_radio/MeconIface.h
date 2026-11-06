@@ -19,6 +19,7 @@
 #include <helpers/iface/DeployAuth.h>
 #include <helpers/iface/CableLine.h>
 #include <helpers/iface/Provenance.h>
+#include <helpers/iface/ScreenFeed.h>
 #include <helpers/iface/JobService.h>
 #include <helpers/updates/UpdService.h>
 
@@ -72,8 +73,10 @@ public:
   }
   uint32_t streamsProduced() const {
     return STREAMS_PRODUCED | (_conn_write ? (1u << Iface::SID_CONNECTIVITY) : 0) |
-           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << Iface::SID_LOCATION) : 0);
+           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << Iface::SID_LOCATION) : 0) |
+           (_screen.available() ? (1u << Iface::SID_SCREEN) : 0);
   }
+  void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);
     if (stream == Iface::SID_RUNTIME && !_boot_sent) _boot_pending = true;
@@ -235,6 +238,8 @@ private:
   // then one page per pass, at most INV_PAGES_PER_S a second, so a long contact list never holds the RF loop.
   void startInventory(uint32_t now);
   void inventoryTick(uint32_t now);
+  void screenTick(uint32_t now);
+  Iface::ScreenFeed _screen;
   static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
   static const uint32_t INV_PAGE_MS = 200;
   bool _inv_active = false;
