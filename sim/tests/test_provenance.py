@@ -263,3 +263,27 @@ def test_the_result_of_the_reset_that_removes_the_record_is_still_signed(nodes):
     assert r["op"] == "deployment.reset" and r["job_id"] == 2
     h = d.i.request("hello")
     assert not any(k.startswith("usig") for k in h), "and from then on the device signs nothing again"
+
+
+def test_a_session_with_no_memory_says_busy_and_recovers(nodes, tmp_path, broker):
+    b = broker()
+    d, dev = mqtt_boot(nodes, tmp_path, "pmem", b)
+    assert d.provision()["status"] == "ok"
+    d.n.heap(30000, 1000)                                       # no block for the session's buffers
+    time.sleep(1.5)
+    r = b.iface_request(dev, {"v": 1, "id": "m1", "op": "hello"})
+    assert r == {"v": 1, "id": "", "status": "busy", "error": "no-memory", "unsigned": "no-memory"}, r
+    d.n.heap(200000)
+    time.sleep(1.5)
+    r = b.iface_request(dev, {"v": 1, "id": "m2", "op": "hello"})
+    assert r and r["status"] == "ok" and r["id"] == "m2", r
+
+
+def test_a_signed_request_fits_its_body_buffer(nodes, tmp_path, broker):
+    """The body buffer is sized to the message, not fixed at the 4 KB limit."""
+    b = broker()
+    d, dev = mqtt_boot(nodes, tmp_path, "pbig", b)
+    assert d.provision()["status"] == "ok"
+    nonce = b.iface_request(dev, {"v": 1, "id": "n1", "op": "hello"})["result"]["channel_nonce"]
+    r = b.iface_request(dev, wrap(d.node_key, "config.apply", apply_name("Big" + "x" * 20), job=1, nonce=nonce))
+    assert r and r["status"] == "ok", r

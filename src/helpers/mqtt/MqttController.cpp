@@ -1,5 +1,6 @@
 #include "MqttController.h"
 #include "../iface/Wipe.h"
+#include "../MemStats.h"
 #include "../CryptoRNG.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +18,12 @@ const uint16_t KEEPALIVE_S = 20;
 const uint16_t SOCKET_TIMEOUT_S = 6;           // CONNACK wait
 const uint32_t CLI_SETTLE_MS = 1500;           // after subscribing, requests are ignored: see onMessage()
 const uint16_t PACKET_BUFFER = 512;
+#if defined(SIM_FREE_HEAP)
+// The simulated heap is a number the test sets: a block larger than it cannot be had.
+static void* ifaceAlloc(size_t n) { return memStats().largest < n ? nullptr : malloc(n); }
+#else
+static void* ifaceAlloc(size_t n) { return malloc(n); }
+#endif
 const uint16_t IFACE_PACKET_BUFFER = 1600;     // an interface result page (up to 1,536 bytes) and the topic            // one request or response (docs/CLI.md); PubSubClient's default is 256
 
 void strlcpy_(char* dst, const char* src, size_t cap) {
@@ -302,13 +309,18 @@ Cli::Context MqttController::sessionContext() const {
 // payload sits in PubSubClient's one buffer, and a job's state change publishes its event while the request is still being
 // handled, which writes over that buffer. So the request is handled from a copy of its own.
 void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
-  char* out = static_cast<char*>(malloc(IFACE_PACKET_BUFFER));
-  uint8_t* req = static_cast<uint8_t*>(malloc(len + 1));
+  char* out = static_cast<char*>(ifaceAlloc(IFACE_PACKET_BUFFER));
+  uint8_t* req = static_cast<uint8_t*>(ifaceAlloc(len + 1));
   if (out && req) {
     memcpy(req, payload, len);
     req[len] = 0;
     const size_t n = _iface_fn(_iface_user, sessionContext(), req, len, out, IFACE_PACKET_BUFFER - 64);
     if (n) _psc.publish(_iface_resp, (const uint8_t*)out, (unsigned)n, false);
+  } else {
+    // Said, not silent: a manager waiting on a timeout cannot tell this from a lost session. No id, because the request
+    // could not be read, and no signature, which would want the memory that is missing.
+    static const char BUSY[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"no-memory\",\"unsigned\":\"no-memory\"}";
+    _psc.publish(_iface_resp, (const uint8_t*)BUSY, (unsigned)(sizeof(BUSY) - 1), false);
   }
   if (req) {
     Iface::wipe(req, len + 1);   // a write may have carried a secret
