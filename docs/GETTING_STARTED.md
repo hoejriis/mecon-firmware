@@ -14,8 +14,8 @@ Decide what you would lose before you install. What a backup can do depends on t
 
 | Board | Backup | Restoring it | Installing over existing data |
 |---|---|---|---|
-| Heltec V3, V4 | A full flash dump with `esptool read-flash`, which reads every setting, key and record | Puts back the whole device, but also rolls back its counters. A manager that has seen a later boot rejects its signed messages until the device has booted past that point, and replay marks go back too | Writing the application alone over an earlier build of this firmware kept the identity, name, PIN and contacts, checked on both boards. PlatformIO's upload steps over a stock Companion on a V3 kept the identity and name. BLE bonds do not carry over from a build on the older BLE stack: pair again |
-| T1000-E, Wio Tracker L1 | No full dump: the bootloader's serial DFU cannot read flash. Save what the device will report: contacts and channels through an app, settings with `get`, and the private key if it is not enrolled | Set the saved values again. An enrolment cannot be saved: re-enrol the device | The Wio USB Companion build over stock, then stock again, kept all 27 settings checked. The identity survived too. A T1000-E Companion booted on the private firmware's data with all 350 contacts and 40 channels |
+| Heltec V3, V4 | A full flash dump with `esptool read-flash`, which reads every setting, key and record | Puts back the whole device, but also rolls back its counters. A manager that has seen a later boot rejects its signed messages until the device has booted past that point, and replay marks go back too | Writing the application alone over an earlier build of this firmware kept the identity, name, PIN and contacts, checked on both boards. PlatformIO's upload steps over a stock Companion kept the identity and name on a V3, and also the radio settings, a contact and a channel on a V4. BLE bonds do not carry over from a build on the older BLE stack: pair again |
+| T1000-E, Wio Tracker L1 | No full dump: the bootloader's serial DFU cannot read flash. Save what the device will report: contacts and channels through an app, settings with `get`, and the private key if it is not enrolled | Set the saved values again. An enrolment cannot be saved: re-enrol the device | The Wio USB Companion build over stock, then stock again, kept all 27 settings checked. The identity survived too. A T1000-E Companion booted on the private firmware's data with all 350 contacts and 40 channels, and a later build over an earlier one kept them and its key |
 
 Some things hold on every board:
 
@@ -77,11 +77,11 @@ Before a device is enrolled, the cable can change anything below. Then check, an
 
 The full command list, with who may run each command and from where, is the [CLI reference](CLI_REFERENCE.md).
 
-Then check ordinary MeshCore operation, which needs no manager: send a message to, or get an advert from, a node on the same radio settings. On a Repeater, `discover.neighbors` and, some seconds later, `neighbors` list the nodes that answered. A stock app works on a Companion.
+Then check ordinary MeshCore operation, which needs no manager: send a message to, or get an advert from, a node on the same radio settings. On a Repeater, `discover.neighbors` and, some seconds later, `neighbors` list the nodes that answered. A Room server has neither command: `advert` sends its advert, for another node to hear. A stock app works on a Companion.
 
 ## 5. Choose how to run it, and see one result
 
-**On its own.** Nothing more is needed. The device follows its posture rules, and you manage it over a trusted link. A first useful result is to ask it about its own state in the structured form a manager would use. On a Repeater or Room server, type this on the console:
+**On its own.** Nothing more is needed. The device follows its posture rules, and you manage it over a trusted link. A first useful result is to ask it about its own state in the structured form a manager would use. On a Repeater or Room server, type this on the console, including `mecon>`, which is part of the command and not a prompt:
 
 ```text
 mecon> {"v":1,"id":"r-1","op":"status.get"}
