@@ -8,9 +8,9 @@
 //                          it reads the floor first and raises it back after the erase. A power cut between the two
 //                          leaves the floor at the running image's compiled version from the next boot on.
 //   simulated boards       a file beside the data directory (<dir>.floor), like the provisioned marker
-//   nRF52                  a flash page the env names (MECON_FLOOR_PAGE), in the bootloader's preserved region below
-//                          the provisioned marker's page (UpdFloorPage.h). An env without one (the T1000-E Companion,
-//                          whose ExtraFS covers the region) reads as unreadable, so every install is refused.
+//   nRF52                  a flash page the env names (MECON_FLOOR_PAGE), below the provisioned marker's page, where a
+//                          serial DFU leaves it alone (UpdFloorPage.h). An env without one reads as unreadable, so every
+//                          install is refused.
 //   anything else          not kept: floorRead() is 0 and floorRaise() fails.
 #include <stdint.h>
 
