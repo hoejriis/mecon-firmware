@@ -13,7 +13,7 @@ Which board to choose, which role to run on it, and what each combination can do
 
 ## Boards and roles
 
-The four hardware test targets, with the role builds that carry the managed-device interface. The other environments for these boards (for example the separate `_ble`, `_usb` and `_wifi` Companion builds) stay stock-derived builds without it.
+The four hardware test targets, with the role builds that carry the managed-device interface. The other environments for these boards, such as the Heltec `_usb`, `_ble` and `_wifi` Companion environments, are upstream build targets: unsupported, with no device interface.
 
 | Board | Roles (environment) | Local management | IP and MQTT | LoRa management | Screen | Firmware update |
 |---|---|---|---|---|---|---|
@@ -36,7 +36,6 @@ One management model covers every path: an operation means the same wherever it 
 | A Hardened Companion in Wi-Fi mode | No app transport. Use USB | Owner decision |
 | Firmware updates on nRF52 boards | Over USB only, written by the bootloader, with no previous image to return to | Hardware: one image slot and a bootloader that checks no signature. Owner decision: no BLE update path |
 | The sensor role | No device interface | Owner decision |
-| The Heltec `_usb`, `_ble` and `_wifi` Companion builds | Stock-derived, without the device interface. The `standalone` build carries all of it | Build choice |
 | Local access on each role | Companion: app frames over USB and BLE. Repeater, Room server: a console line over USB | Role: the stock roles differ |
 | Messages, received-message collection, contact operations and `rf.request` | Companion only | Role: a Repeater or Room server has no stock chat client |
 | Channels on a Repeater or Room server | One management slot, with no channel messaging | Role: no native channel table |
