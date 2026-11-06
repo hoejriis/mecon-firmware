@@ -24,7 +24,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 | L5 | An unlock in Normal opens the whole posture class, not only the posture command | Deferred: follow-up "narrow the unlocked cable to `set posture`", with the contract wording |
 | L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Deferred: follow-up "decide the Ethernet console's row in the caller table" |
 | L7 | The highest `job_id` value is the blocked-mark sentinel | Deferred: follow-up "refuse that `job_id` and say so in section 8"; small, status-only effect |
-| L8 | Entropy of the ESP32 RNG on server roles that run no radio | Deferred: follow-up "enable the bootloader random source around boot-time draws, or mix in radio noise" |
+| L8 | Entropy of the ESP32 RNG on server roles that run no radio | Fixed: a seed from the SAR ADC at the start of each boot is mixed into every later draw (section 12). The ADC source was not used per draw, because it cannot run beside the radio or another ADC user |
 | I1 | The duplicate-result cache key uses a truncated instance id | Deferred: follow-up "use the full id or the member index" |
 | I2 | The record is stored in plaintext on flash, like the node key | Accepted: same protection class as the node key; the contract wording "stored as a secret" is to be clarified |
 | I3 | The unlock lockout counter lives in RAM | Accepted: the secret is 256 bits, so a reset of the counter buys nothing |

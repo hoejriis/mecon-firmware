@@ -195,3 +195,9 @@ mutate reserved_mark_every_id_writes src/helpers/deployment/DepReplay.cpp '  if 
 mutate reserved_mark_write_skipped src/helpers/iface/DeployAuth.cpp '    if (Dep::markAccepted(&wm, v.job_id) && !persistMarks()) {' '    if (Dep::markAccepted(&wm, v.job_id) && false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
 mutate reserved_mark_reaches_blocked src/helpers/deployment/DepReplay.cpp '  w->reserved = job_id < MARK_BLOCKED - MARK_RESERVE ? job_id + MARK_RESERVE : MARK_BLOCKED - 1;' '  w->reserved = job_id + MARK_RESERVE;' unit:test_dep_replay
 mutate reserved_mark_new_id_gets_a_bare_duplicate src/helpers/iface/DeployAuth.cpp '      } else if (wm.mark == wm.reserved) {' '      } else if (false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
+mutate entropy_seed_static src/helpers/EntropyPool.h '    mesh::Utils::sha256(_seed, POOL_SIZE, in, sizeof(in));' '' unit:test_entropy_pool
+mutate entropy_no_counter src/helpers/EntropyPool.h '      memcpy(in + POOL_SIZE, &counter, sizeof(counter));' '      memset(in + POOL_SIZE, 0, sizeof(counter));' unit:test_entropy_pool
+mutate entropy_next_seed_is_output src/helpers/EntropyPool.h '    in[POOL_SIZE + sizeof(uint32_t)] = 1;' '    in[POOL_SIZE + sizeof(uint32_t)] = 0;' unit:test_entropy_pool
+mutate entropy_mix_replaces src/helpers/EntropyPool.h 'dest[off + k] ^= block[k];' 'dest[off + k] = block[k];' unit:test_entropy_pool
+mutate entropy_unseeded_mixes src/helpers/EntropyPool.h '    if (!_seeded) return;' '' unit:test_entropy_pool
+mutate entropy_partial_block_dropped src/helpers/EntropyPool.h 'const size_t n = sz - off < POOL_SIZE ? sz - off : POOL_SIZE;' 'const size_t n = sz - off < POOL_SIZE ? 0 : POOL_SIZE;' unit:test_entropy_pool
