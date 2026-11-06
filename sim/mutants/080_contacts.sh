@@ -109,3 +109,5 @@ mutate clear_all_probes_each_bucket src/helpers/ContactStore.cpp '    const bool
     for (int b = 0; b < _nbuckets; b++) {
       const bool have = have_list ?' unit:test_contact_store
 mutate clear_all_keeps_listed_buckets src/helpers/ContactStore.cpp '      if (have && !removeB(b)) ok = false;' '      if (!have && !removeB(b)) ok = false;' unit:test_contact_store
+mutate rotation_drops_no_adverts examples/companion_radio/MyMesh.cpp '    _store->deleteAllBlobs();' '' sim/tests/test_identity_rotate.py::test_a_rotation_removes_every_stored_advert
+mutate adverts_only_one_batch examples/companion_radio/DataStore.cpp '    if (n < 8) return;' '    return;' sim/tests/test_identity_rotate.py::test_a_rotation_removes_every_stored_advert

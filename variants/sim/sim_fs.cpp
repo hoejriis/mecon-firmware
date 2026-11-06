@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <algorithm>
 
@@ -107,6 +108,9 @@ static void fault_before(const char* op, const char* path) {
 bool FS::remove(const char* path) {
   count_call(2);
   fault_before("remove", path);
+  // A bucket that cannot be removed, for as long as this file exists (a test seam).
+  const char* no_bucket_remove = getenv("SIM_FS_NO_BUCKET_REMOVE");
+  if (no_bucket_remove && strncmp(path, "/ct", 3) == 0 && access(no_bucket_remove, F_OK) == 0) return false;
   if (::unlink(hostPath(path).c_str()) == 0) return true;
   count_missing(path);
   return false;
