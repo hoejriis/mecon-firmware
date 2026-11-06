@@ -17,13 +17,15 @@ import threading
 GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
-def _recv_exact(s, n):
+def _recv_exact(s, n, reads=None):
     b = b""
     while len(b) < n:
         c = s.recv(n - len(b))
         if not c:
             raise EOFError
         b += c
+        if reads is not None:
+            reads[0] += 1
     return b
 
 
@@ -34,6 +36,7 @@ class WsFront:
         self.requests = []        # (request line, {header name lower: value})
         self.sni = []             # server names a TLS client presented
         self.unmasked = 0         # client frames without the mask bit
+        self.frame_reads = []     # (data bytes, reads) per client frame
         self.client_frames = 0
         self.pongs = []           # payloads of the pongs the client sent
         self.pings_sent = []
@@ -158,7 +161,9 @@ class WsFront:
                 self.client_frames += 1
                 if not masked:
                     self.unmasked += 1
-                data = bytes(c ^ mask[i & 3] for i, c in enumerate(_recv_exact(s, n)))
+                reads = [0]
+                data = bytes(c ^ mask[i & 3] for i, c in enumerate(_recv_exact(s, n, reads)))
+                self.frame_reads.append((n, reads[0]))   # over TLS, one read per record: the writes a frame took
                 if op in (0x0, 0x2):
                     up.sendall(data)
                 elif op == 0xA:

@@ -25,3 +25,11 @@ mutate ws_path_unchecked src/helpers/mqtt/MqttProfiles.cpp 'static bool pathOk(c
   return true;' unit:test_mqtt_prefs
 mutate ws_on_a_discovery_profile src/helpers/mqtt/MqttProfiles.h '  bool useWs() const { return kind == Static && ws != 0; }' '  bool useWs() const { return ws != 0; }' unit:test_mqtt_prefs
 mutate ws_listing_hides_the_transport src/helpers/mqtt/MqttProfiles.cpp '  const char* ws = q.ws ? " transport=ws" : "";' '  const char* ws = "";' unit:test_mqtt_prefs
+mutate ws_frame_always_in_pieces src/helpers/mqtt/MqttWsClient.cpp '  if (at + n > sizeof(buf)) {' '  if (false) {' sim/tests/test_mqtt_ws.py::test_a_long_reply_is_one_write
+mutate ws_whole_frame_not_masked src/helpers/mqtt/MqttWsClient.cpp 'whole[at + i] = p[i] ^ mask[i & 3];' 'whole[at + i] = p[i];' sim/tests/test_mqtt_ws.py::test_a_long_reply_is_one_write
+mutate ws_no_fallback_to_pieces src/helpers/mqtt/MqttWsClient.cpp '      return ok;
+    }
+  }' '      return ok;
+    }
+    return false;
+  }' sim/tests/test_mqtt_ws.py::test_with_no_block_for_a_frame_it_goes_out_in_pieces
