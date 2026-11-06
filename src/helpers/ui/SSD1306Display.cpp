@@ -56,6 +56,7 @@ void SSD1306Display::clear() {
 }
 
 void SSD1306Display::startFrame(ColorVal bkg) {
+  frameBegun();
   display.clearDisplay();  // TODO: apply 'bkg'
   _color = SSD1306_WHITE;
   display.setTextColor(_color);
@@ -101,4 +102,12 @@ uint16_t SSD1306Display::getTextWidth(const char* str) {
 
 void SSD1306Display::endFrame() {
   display.display();
+  frameFinished(millis());
+}
+
+bool SSD1306Display::readFrame(uint8_t* out, size_t cap) {
+  uint8_t* b = display.getBuffer();
+  if (!b || cap < frameBytes()) return false;
+  memcpy(out, b, frameBytes());
+  return true;
 }

@@ -224,6 +224,9 @@ void setup() {
   DisplayDriver* disp = NULL;
   if (display.begin()) {
     disp = &display;
+  #ifdef ENABLE_MECON_IFACE
+    the_mesh.iface().attachScreen(&display);
+  #endif
     disp->startFrame();
   #ifdef ST7789
     disp->setTextSize(2);

@@ -314,7 +314,7 @@ Rules:
   - before provisioning, over a USB cable;
   - after provisioning, by a signed request answered only to the requester's channel.
   It never leaves in Hardened.
-- **Never in any status, event, log, audit entry or screen telemetry stream:** Wi-Fi and broker passwords, the broker user, private keys, the local unlock secret, channel secrets. The screen stream is private because a frame can show message text and the pairing PIN. It is sent only on a signed `sub.start`, never retained and never redacted (pixels cannot be redacted reliably), so access control is its protection.
+- **Never in any status, event, log, audit entry or screen telemetry stream:** Wi-Fi and broker passwords, the broker user, private keys, the local unlock secret, channel secrets. The screen stream is private because a frame can show message text and the pairing PIN. It reaches only the callers of the `private` class ([TELEMETRY](TELEMETRY.md)), a frame showing the pairing PIN is withheld, and it is never retained. Nothing else on a frame is redacted (pixels cannot be redacted reliably), so access control is its protection.
 
 ## 13. Error codes
 

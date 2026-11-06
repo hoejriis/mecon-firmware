@@ -21,6 +21,7 @@ BIN = {
     "room_server": os.path.join(REPO, ".pio/build/sim_room_server/program"),
     # the same, with the RAK4631 Ethernet TCP console (a loopback stand-in for the W5100S transport)
     "repeater_eth": os.path.join(REPO, ".pio/build/sim_repeater_eth/program"),
+    "repeater_ui": os.path.join(REPO, ".pio/build/sim_repeater_ui/program"),
     "room_server_eth": os.path.join(REPO, ".pio/build/sim_room_server_eth/program"),
     # the same, with Wi-Fi and the broker
     "repeater_wifi": os.path.join(REPO, ".pio/build/sim_repeater_wifi/program"),
@@ -267,7 +268,7 @@ class Node:
         self.mqtt = mqtt
         self.lockstep, self.quantum_us = lockstep, quantum_us   # --lockstep: the ether broker owns the clock
         self.extra = list(extra or [])   # further node command-line options, e.g. ["--heap-budget", "60000"]
-        self.ui = UiProbe(workdir, name) if kind in ("companion_standalone", "companion_standalone_stockcontacts") else None
+        self.ui = UiProbe(workdir, name) if kind in ("companion_standalone", "companion_standalone_stockcontacts", "repeater_ui") else None
         self.heap_path = os.path.join(str(workdir), name + ".heap")   # --heap-file: the heap the node reports at run time
         self.proc = None
         self.port = None

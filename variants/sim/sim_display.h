@@ -32,6 +32,10 @@ public:
   void drawXbm(int, int, const uint8_t*, int, int) override {}
   uint16_t getTextWidth(const char* str) override { return (uint16_t)(strlen(str) * 6 * _size); }
   void endFrame() override;
+  // No pixels here: a read gives the last frame's text, so a test sees what the stream carries. Only with --ui-frames,
+  // as a board without a screen has no stream.
+  size_t frameBytes() const override;
+  bool readFrame(uint8_t* out, size_t cap) override;
 };
 
 class SimButton {

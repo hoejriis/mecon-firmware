@@ -26,6 +26,7 @@ const StreamDef STREAMS[STREAM_COUNT] = {
   {"inventory", 300, 3600, 3600, Cli::C_PRIVATE},   // entries on the Companion; counts only on the server roles
   {"logs", 0, 0, 0, Cli::C_POSTURE},   // the audit ring: the same class as `get audit`
   {"location", 30, 3600, 300, Cli::C_PRIVATE},   // private: the broker, the device's own links, a signed request
+  {"screen", 5, 3600, 60, Cli::C_PRIVATE},   // private: a frame can show message text; parts, sent by ScreenFeed
 };
 
 int streamIndex(const char* name, size_t len) {
