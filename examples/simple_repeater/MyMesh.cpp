@@ -126,6 +126,7 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
       // RAM only (ClientACL never saves it): a reboot clears it. Neither timestamp is logged.
       Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_LOGIN_FAILED, Posture::CALLER_REMOTE_ADMIN,
                            Posture::W_STALE_LOGIN);
+      Posture::staleLogins().note(sender.pub_key);
       MESH_DEBUG_PRINTLN("Possible login replay attack!");
       return 0;  // FATAL: client table is full -OR- replay attack
     }

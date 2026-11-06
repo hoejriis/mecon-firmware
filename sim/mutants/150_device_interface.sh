@@ -47,6 +47,9 @@ mutate dep_weak_dak_pinned src/helpers/deployment/DepProvision.cpp '    if (p.n_
 mutate dep_provision_rotation_applied src/helpers/deployment/DepProvision.cpp '    if (p.n_rotations > 0) return P_UNTRUSTED_AUTHORITY_KEY;' '' unit:test_dep_provision
 mutate dep_duplicate_member_key_ok src/helpers/deployment/DepAuthority.cpp '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0 ||
           memcmp(s->members[j].public_key, mb.public_key, KEY_LEN) == 0)' '      if (memcmp(s->members[j].instance_id, mb.instance_id, ID_LEN) == 0)' unit:test_dep_authority
+mutate dep_member_id_prefix_ok src/helpers/deployment/DepAuthority.cpp '      if (memcmp(s->members[j].instance_id, mb.instance_id, 6) == 0) return BAD_AUTHORITY_SET;' '      ;' unit:test_dep_authority
+mutate dep_member_id_prefix_too_long src/helpers/deployment/DepAuthority.cpp 'mb.instance_id, 6) == 0) return BAD_AUTHORITY_SET;' 'mb.instance_id, 7) == 0) return BAD_AUTHORITY_SET;' unit:test_dep_authority
+mutate dep_member_id_prefix_too_short src/helpers/deployment/DepAuthority.cpp 'mb.instance_id, 6) == 0) return BAD_AUTHORITY_SET;' 'mb.instance_id, 5) == 0) return BAD_AUTHORITY_SET;' unit:test_dep_authority
 mutate dep_weak_member_key_ok src/helpers/deployment/DepAuthority.cpp '    if (weakKey(mb.public_key)) return BAD_AUTHORITY_SET;' '' unit:test_dep_authority
 mutate dep_weak_rotation_key_ok src/helpers/deployment/DepAuthority.cpp ' && to <= MAX_EPOCH && !weakKey(key)) {' ' && to <= MAX_EPOCH) {' unit:test_dep_authority
 mutate dep_weak_key_test_disabled src/helpers/deployment/DepAuthority.cpp '  return !fe_isnonzero(p.X) && !fe_isnonzero(d);   // the identity: X = 0, Y = Z' '  return false;' unit:test_dep_authority
@@ -112,7 +115,7 @@ mutate conn_usb_claims_a_host examples/companion_radio/main.cpp '  return Serial
 mutate conn_usb_change_not_detected examples/companion_radio/main.cpp '  sig |= (uint64_t)(ifaceUsbHostLink() + 1) << 33;' '' sim/tests/test_telemetry_streams.py::test_usb_link_changes_are_events
 mutate conn_signature_truncated examples/companion_radio/MeconIface.cpp '    const uint64_t sig = _conn_sig();' '    const uint32_t sig = _conn_sig();' sim/tests/test_telemetry_streams.py::test_ble_link_changes_are_events
 mutate runtime_heap_low_inverted examples/companion_radio/MeconIface.cpp 'heapFloor().low() ? 1 : 0) : -1);' 'heapFloor().low() ? 0 : 1) : -1);' sim/tests/test_telemetry_streams.py::test_runtime_carries_heap_low_on_the_companion
-mutate runtime_heap_low_on_the_repeater src/helpers/iface/ConsoleIface.cpp 'case SID_RUNTIME: writeRuntime(w, *_host.board, _gap); break;' 'case SID_RUNTIME: writeRuntime(w, *_host.board, _gap, 0); break;' sim/tests/test_telemetry_streams.py::test_runtime_has_no_heap_low_on_the_repeater
+mutate runtime_heap_low_on_the_repeater src/helpers/iface/ConsoleIface.cpp 'case SID_RUNTIME: writeRuntime(w, *_host.board, _gap, -1, &Posture::staleLogins()); break;' 'case SID_RUNTIME: writeRuntime(w, *_host.board, _gap, 0, &Posture::staleLogins()); break;' sim/tests/test_telemetry_streams.py::test_runtime_has_no_heap_low_on_the_repeater
 mutate boot_event_resent_companion examples/companion_radio/MeconIface.cpp '      _boot_sent = true;' '      _boot_sent = false;' sim/tests/test_telemetry_streams.py::test_the_boot_event_comes_once_per_epoch
 mutate boot_event_resent_console src/helpers/iface/ConsoleIface.cpp '      _boot_sent = true;' '      _boot_sent = false;' sim/tests/test_telemetry_streams.py::test_the_boot_event_comes_once_per_epoch
 mutate boot_event_never_sent src/helpers/iface/ConsoleIface.h '    if (stream == SID_RUNTIME && !_boot_sent) _boot_pending = true;' '' sim/tests/test_telemetry_streams.py::test_the_boot_event_comes_once_per_epoch
