@@ -64,7 +64,7 @@ The commands the Companion CLI accepts, reached by the app frame, the rescue con
 | `get prv.key` / `set prv.key` | Registered as `secret`, but the Companion CLI has no such command. | stock | secret | Answers `Unknown command` once allowed. The key moves through the app frames `CMD_EXPORT_PRIVATE_KEY` (23) and `CMD_IMPORT_PRIVATE_KEY`, which carry the `secret` class: refused in Hardened on every transport, and for an untrusted transport (`ERR_CODE_NOT_PERMITTED`). |
 | `get posture` | Show the posture. | MECON | read | `> normal` or `> hardened`; a flagged contact may read it (Normal). |
 | `set posture hardened` | Raise the posture to Hardened. | MECON | posture | Cable, or a paired phone. Remote callers, the TCP port and a default-PIN BLE session are refused and audited. |
-| `set posture normal confirm` | Lower the posture to Normal. | MECON | posture | Cable only (the paired phone is refused too). Without `confirm` nothing changes. |
+| `set posture normal confirm` | Lower the posture to Normal. | MECON | posture | Cable only (the paired phone is refused too). Without `confirm` nothing changes. On an enrolled device the cable is refused too, and lowering takes a signed `posture.set`. |
 | `get audit [start]` | Read the audit log. | MECON | posture | Cable or paired phone. Two entries per reply, newest first. |
 | `get connectivity.mode` | `> ble` or `> wifi`. | MECON | read | Builds with `ENABLE_CONNMODE`. |
 | `set connectivity.mode ble\|wifi` | Switch the Companion between BLE and Wi-Fi; saves and restarts. | MECON | posture | Cable, paired phone, or the device button. Never a remote caller; audited. `OK - connectivity.mode <mode>, restarting`, or `OK - already <mode>`. |
@@ -229,7 +229,7 @@ The posture and audit commands are handled in the Repeater and Room server front
 |---|---|---|---|---|
 | `get posture` | Show the posture. | MECON | read | `> normal` or `> hardened`; a remote reader may ask. |
 | `set posture hardened` | Raise the posture to Hardened. | MECON | posture | Cable. Remote callers are refused and audited (`ERR: not permitted`). Saved atomically with its audit entry. |
-| `set posture normal confirm` | Lower the posture to Normal. | MECON | posture | Cable only. Without `confirm` the reply is `ERR: lowering the posture needs: set posture normal confirm` and nothing changes. An argument other than `hardened` or `normal` gives `ERR: set posture hardened \| set posture normal confirm`. |
+| `set posture normal confirm` | Lower the posture to Normal. | MECON | posture | Cable only. Without `confirm` the reply is `ERR: lowering the posture needs: set posture normal confirm` and nothing changes. An argument other than `hardened` or `normal` gives `ERR: set posture hardened \| set posture normal confirm`. On an enrolled device the cable is refused too, and lowering takes a signed `posture.set`. |
 | `get audit [start]` | Read the audit log: two entries per reply, newest first, `... next:<n>` continues. | MECON | posture | `> <n> entries` then `<time> <event> <caller> <what> x<count>`. `<time>` is 0 for an entry recorded while the clock was not set. Cable only on these roles; every remote caller is refused (`ERR: not permitted`). |
 | `get wifi.pwd` | Always `> wifi.pwd is write-only`. | MECON | read | Answered by the engine. On every other build, a line with no handler. |
 
@@ -344,7 +344,7 @@ get audit
 1760000000 posture cable hardened x1
 ```
 
-Lowering needs the cable and the word `confirm`: `set posture normal confirm`. Allow a broker to manage a Hardened Companion with `set mqtt.profile 0 manage on` (from the cable or a paired phone), then send requests on `mecon/<node id>/cli/req`.
+Lowering needs the cable and the word `confirm`: `set posture normal confirm`. On an enrolled device the cable is refused too, and lowering takes a signed `posture.set`. Allow a broker to manage a Hardened Companion with `set mqtt.profile 0 manage on` (from the cable or a paired phone), then send requests on `mecon/<node id>/cli/req`.
 
 ### Check the duty cycle
 

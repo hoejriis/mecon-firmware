@@ -154,4 +154,8 @@ Builds b6d0a50e, d23437d5, adaf9fed, f0067d70 and a76e33d7 were bench merges of 
 - Wi-Fi failover when the access point itself goes off the air (the verified run breaks the joined profile instead).
 - MQTT broker discovery by mDNS on a real ESP32 (verified only in the simulator).
 - The Sensor role beyond boot, its console and `get dutycycle`.
+- The screen stream on a Heltec V4 or a Wio Tracker L1 (built, not read), and over a broker on any board.
+- Signed `posture.set` (verified only in the simulator).
+- `job.cancel` stopping an nRF52's reset into its bootloader (verified only in the simulator).
+- A local unlock ending when the USB host goes on a Heltec V4 or an nRF52 board. A V4 was seen to notice the host going, in a separate probe, and the unlock itself ran only in the simulator.
 - Any board not listed above.

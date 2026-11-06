@@ -35,6 +35,8 @@ Connectivity-mode switching (BLE or Wi-Fi, [Connectivity mode](CONNECTIVITY_MODE
 | `set posture normal confirm` | the USB / UART console only. A remote caller, a paired phone and an unauthenticated TCP client are refused, and the refusal is audited. Without `confirm` the command explains itself and changes nothing |
 | `get audit [n]` | a trusted local transport only (two entries per reply, newest first, `... next:<n>` continues) |
 
+These are the rules with no Deployment. On an enrolled device, lowering takes a signed `posture.set` ([Management authority contract](contract/AUTHORITY.md) section 9).
+
 The posture is one byte kept with the prefs and saved atomically, so it survives reboots and a power cut during a save: a cut while lowering leaves the device Hardened, a cut while raising leaves the previous complete prefs (Normal). Any stored value other than Normal is treated as Hardened, so a damaged byte can only make the device stricter.
 
 On a Hardened Companion that is Wi-Fi-only (no USB, no BLE), the app has no transport left: recover through the USB console, or factory-reset over USB.
