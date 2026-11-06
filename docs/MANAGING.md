@@ -7,7 +7,7 @@ A device can be managed in two ways, and both are decided by the same privilege 
 
 ## Ways in
 
-| Path | Roles | Trusted? | Notes |
+| Path | Roles | Trusted, on a standalone device? | Notes |
 |---|---|---|---|
 | USB | all | always | The recovery path. Companion: app frames. Repeater and Room server: text console |
 | BLE | Companion | only when paired with a PIN other than 0 or 123456 | A default-PIN link can message, not manage |
@@ -16,7 +16,20 @@ A device can be managed in two ways, and both are decided by the same privilege 
 | LoRa, point to point | all | by authority, not by the link | Authenticated requests from a manager. Repeaters and Room servers also keep stock remote admin login |
 | LoRa, management channel | all | by authority, not by the link | Channel membership grants nothing |
 
-A refusal is an explicit reply (for an app frame, error 7, `ERR_CODE_NOT_PERMITTED`) and an audit entry, never a silent drop.
+Which operations each path carries differs ([what differs, and why](SUPPORTED_HARDWARE.md#what-differs-and-why)), and `hello` lists what this device offers on it.
+
+An operation refused to a caller gets an explicit reply (for an app frame, error 7, `ERR_CODE_NOT_PERMITTED`) and an audit entry. Traffic that fails before its signature is verified over LoRa is different. On the management channel it is dropped without an answer and counted, and on a point-to-point path it gets an answer only within a small shared budget. Otherwise anyone could make the device transmit by sending it junk ([airtime](contract/LORA_MANAGEMENT.md#7-airtime)).
+
+## Standalone and enrolled
+
+| | Standalone (no Deployment) | Enrolled |
+|---|---|---|
+| Who may change settings | A trusted link, by the table above and the [posture](STANDALONE_POSTURES.md) | A manager's signature, on any path |
+| The unsigned USB cable | Anything its posture allows | Reads, reboot and the recovery operations, and no configuration writes. In Hardened it needs a local unlock for reads. A factory reset always stays with the cable |
+| A TLS-verified broker session | Reads, and writes as the posture and profile allow | Reads only |
+| A paired BLE link | Management | Messaging, reads and reboot, with no factory reset |
+
+Being trusted describes a link on a standalone device. On an enrolled device, no link grants a change by itself.
 
 ## Using the device interface
 
@@ -64,4 +77,24 @@ From anything but the cable, each of these steps takes a `confirm` and is revert
 
 ## Over LoRa
 
-A node with no IP link can still be managed over LoRa, point to point or on its management channel. It takes the same operations under the same authorization as any other path. LoRa adds no operation and no permission. Airtime is limited by the duty cycle, so LoRa carries operations and compact telemetry, not bulk transfers ([management over LoRa](contract/LORA_MANAGEMENT.md)).
+A node with no IP link can still be managed over LoRa, point to point or on its management channel. An operation keeps its meaning and authorization there, and LoRa adds no operation and no permission. It carries less than the other paths:
+
+- **Enrolled devices only.** Only a signed request runs, so a device with no Deployment runs nothing on this path. A native remote-admin login to a Repeater or Room server is a separate path, and stays as described in the [CLI reference](CLI_REFERENCE.md).
+- **No secrets.** Key material and sensitive operations never go on the air, on either path.
+- **What the channel may disclose.** Every member of a management channel can read its replies. So the channel carries only status, job state and the results of changes. Anything that lists or reveals state goes point to point, under a pairwise key.
+- **What airtime allows.** The duty cycle limits every frame, so LoRa carries operations and compact telemetry, not subscriptions, full logs, screen snapshots or firmware images.
+
+The [management over LoRa](contract/LORA_MANAGEMENT.md) contract gives the rules for each operation.
+
+## Messages, contacts and channels through a manager
+
+On a Companion, a manager can do what the stock app does, and the two share the device:
+
+- **Send** one native direct or channel message with `message.send`, and follow it with `message.get`. An acknowledgement shows the recipient's node had the message. A timeout does not prove it did not.
+- **Collect** received messages with `inbox.list`. This is a copy beside the native queue: neither reader takes messages from the other.
+- **Hand a missed message to the stock app** with `message.deliver`. It is marked `[via manager]` and never transmitted.
+- **Administer contacts and channels** with `contact.*` and `channel.*`, on the native tables.
+
+The device keeps a few of these in RAM and a reboot loses them, so this is not delivery or history. Bounds and what each field proves are in the [messages contract](contract/OPERATIONS.md#6-messages).
+
+A manager can also ask for an allowlisted report now or every few hours, which the device runs while the manager is away. It has a bounded interval and airtime budget, and does not catch up without limit after a reboot.

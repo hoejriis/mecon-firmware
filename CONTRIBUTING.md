@@ -17,6 +17,21 @@ mecon-firmware is an upstream-derived MeshCore firmware project with a public ba
 - Do not introduce MeshContinuum-specific hosts, credentials, database concepts or private deployment names into firmware.
 - Treat `docs/contract/` as the public device API.
 
+## Build and test
+
+Build and test inside the project container:
+
+```sh
+docker build -t mecon-firmware-dev .
+sim/run.sh bin/idf5_libs.sh Heltec_v3_companion_radio_standalone   # Heltec V3/V4: board libraries, before the first build
+sim/run.sh pio run -e Heltec_v3_companion_radio_standalone         # build a target board
+sim/build.sh                                                       # build the simulated boards
+sim/run.sh python3 -m pytest sim/tests -q                          # simulated-board suite
+sim/run.sh pio test -e native                                      # native unit tests
+```
+
+[Architecture](docs/ARCHITECTURE.md#testing) lists every check. Installing the firmware on a device is in [install and set up a device](docs/GETTING_STARTED.md), and needs none of these tests.
+
 ## Contract changes
 
 A contract change must:
