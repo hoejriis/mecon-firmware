@@ -16,6 +16,7 @@
 #include "IfaceDispatch.h"
 #include "JobService.h"
 #include "helpers/updates/UpdService.h"
+#include "CableLine.h"
 #include "Provenance.h"
 #include "Streams.h"
 #include "MgmtChannel.h"

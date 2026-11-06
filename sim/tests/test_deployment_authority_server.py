@@ -412,7 +412,7 @@ def test_the_console_unlock_opens_the_posture_in_normal_and_nothing_else(nodes, 
     assert r["status"] == "ok" and r["result"] == {"unlock": "set"}, r
     assert d.cli.command("set posture normal confirm") == ENROLLED_REFUSAL, "control: locked"
     r = try_unlock(d.i.request)
-    assert r["status"] == "ok" and r["result"] == {"unlocked": True, "expires_in_s": 600}, r
+    assert r["status"] == "ok" and r["result"] == {"unlocked": True, "expires_in_s": 300}, r
     assert d.cli.command("set posture normal confirm") == "OK - already normal"
     assert d.cli.command("set name Nope") == ENROLLED_REFUSAL
     assert d.cli.command("get prv.key").startswith("ERR")
@@ -512,3 +512,22 @@ def test_a_byte_that_arrives_while_a_line_is_collected_stays_with_that_line(node
         rid = "p%d" % k
         d.i.send_raw(json.dumps({"v": 1, "id": rid, "op": "hello", "args": {"pad": "x" * 800}}))
         assert d.i.wait_result(rid, 5)["status"] == "ok", "line %d" % k
+
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_the_unlock_ends_when_the_usb_host_goes(nodes, kind):
+    n = nodes(kind, "ul" + kind[:2], seed=71, rtc=RTC)
+    line = os.path.join(n.dir, "usb-line")
+    n.extra_env = {"SIM_USB_LINE_FILE": line}
+    n.start()
+    d = Srv(n)
+    assert d.provision()["status"] == "ok"
+    r = d.send(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET}, job=1, nonce=d.nonce()))
+    assert r["status"] == "ok", r
+    assert try_unlock(d.i.request)["status"] == "ok"
+    assert d.cli.command("set posture normal confirm") == "OK - already normal", "control: unlocked"
+    with open(line, "w") as f:
+        f.write("0")
+    time.sleep(1)
+    os.remove(line)
+    assert d.cli.command("set posture normal confirm") == ENROLLED_REFUSAL, "the next person on the cable starts locked"

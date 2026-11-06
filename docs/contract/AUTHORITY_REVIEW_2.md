@@ -20,7 +20,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 
 | Id | Summary | Decision |
 |---|---|---|
-| L4 | A USB unlock outlives a change of cable user until it expires | Deferred: follow-up "clear the unlock on a USB line-state change and shorten the window" |
+| L4 | A USB unlock outlives a change of cable user until it expires | Fixed: the window is 5 minutes, and native USB also clears it when the host's connection drops. A USB-UART bridge shows the board nothing, so on the Heltec V3 only the shorter window helps |
 | L5 | An unlock in Normal opens the whole posture class, not only the posture command | Fixed: a local unlock in Normal opens the posture and the audit reads, and no longer `set connectivity.mode` or the broker-management flag. Section 9 grants reads and the posture; the audit read stays because it is a read |
 | L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Fixed by the owner's decision of 2026-11-06: once enrolled the console only reads, in the caller table of section 9. The finding read the table alone: the console's line also passes the role's own gate as a remote admin, which already refused `reboot`, so the table now matches what the device did |
 | L7 | The highest `job_id` value is the blocked-mark sentinel | Fixed: that `job_id` is refused as malformed, stated in section 8 |

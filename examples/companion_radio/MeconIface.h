@@ -17,6 +17,7 @@
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/AuditLog.h>
 #include <helpers/iface/DeployAuth.h>
+#include <helpers/iface/CableLine.h>
 #include <helpers/iface/Provenance.h>
 #include <helpers/iface/JobService.h>
 #include <helpers/updates/UpdService.h>

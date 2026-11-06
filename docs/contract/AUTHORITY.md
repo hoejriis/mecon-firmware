@@ -271,6 +271,7 @@ A device entering Hardened while it holds a record must first hold a **local unl
 - The secret is set only by an authority: in the `deployment` object of a provisioning (`unlock_secret`, 32 random bytes), or by a signed request (`deployment.set_unlock`, a sensitive operation). It is never set unsigned, so the first person with a cable cannot set it. Either request is accepted only over the USB cable, so the secret never crosses a broker or a radio link.
 - The device stores the secret itself, as a secret: an HMAC challenge needs the key, so a hash would not do. It lives in the record, is never readable over any surface, and is removed by `deployment.reset` and the factory reset.
 - The unlock is an HMAC-SHA-256 challenge over USB only. The device sends a fresh random challenge, and a Reader holding the secret answers it.
+- An unlock lasts 5 minutes (`expires_in_s`). On native USB (Heltec V4, the nRF52 boards) it also ends when the USB host's connection drops, including when the host closes the port. A board behind a USB-UART bridge (Heltec V3) cannot see that, so only the 5 minutes apply there.
 
 The unlock grants the reads and posture unlock shown in section 9. It never grants key export or configuration writes beyond what signed callers have.
 

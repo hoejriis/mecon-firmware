@@ -762,6 +762,7 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
 
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
+  if (!cableLineUp()) _unlock.clear();   // the cable's host went (AUTHORITY.md section 10)
   _gap.tick(now);
   _jobs.tick(now);
   _updates.loop(now);
