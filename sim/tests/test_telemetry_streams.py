@@ -297,7 +297,9 @@ def test_usb_link_changes_are_events(nodes):
 @pytest.mark.timescale(20)
 def test_runtime_carries_heap_low_on_the_companion(nodes):
     n, c, i = companion(nodes, "heaplow")
-    assert check(first_event(i, "runtime"), "runtime")["heap_low"] is False
+    d = check(first_event(i, "runtime"), "runtime")
+    assert d["heap_low"] is False
+    assert "stale_logins" not in d and "stale_login_last" not in d   # the Companion takes no remote login
     n.heap(10000)   # the largest block under the floor (20480): an episode
     end = time.time() + 30
     seen = None

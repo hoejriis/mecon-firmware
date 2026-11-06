@@ -152,7 +152,7 @@ TEST_F(Fx, AFullSetParses) {
   std::string members, revoked;
   for (int i = 0; i < MAX_MEMBERS; i++) {
     char id[33];
-    snprintf(id, sizeof(id), "%032x", i + 1);
+    snprintf(id, sizeof(id), "%02x%030x", (unsigned)(i + 1), 0u);   // ids differ in their first byte (a job names its issuer by the first 6)
     // A distinct real key per member: members may not share one.
     uint8_t seed[32] = {0}, pub[32], prv[64];
     seed[0] = (uint8_t)(i + 1);
@@ -212,6 +212,16 @@ TEST_F(Fx, DuplicateMemberKeysAreRefused) {
   std::string two = "[" + member("0123456789abcdef0123456789abcdef", PUB_INSTANCE_A, 1) + "," +
                     member("fedcba9876543210fedcba9876543210", PUB_INSTANCE_A, 1) + "]";
   EXPECT_EQ(BAD_AUTHORITY_SET, signedSet(setText(two), first(dak1, 1)));
+}
+
+// The job identity carries the first 6 bytes of the id: two members sharing them would answer for each other.
+TEST_F(Fx, MembersMustDifferInTheFirstSixBytesOfTheirId) {
+  std::string same = "[" + member("0123456789abcdef0123456789abcdef", PUB_INSTANCE_A, 1) + "," +
+                     member("0123456789abfedcba9876543210fedc", PUB_INSTANCE_B, 1) + "]";
+  EXPECT_EQ(BAD_AUTHORITY_SET, signedSet(setText(same), first(dak1, 1)));
+  std::string sixth = "[" + member("0123456789abcdef0123456789abcdef", PUB_INSTANCE_A, 1) + "," +
+                      member("0123456789accdef0123456789abcdef", PUB_INSTANCE_B, 1) + "]";
+  EXPECT_EQ(OK, signedSet(setText(sixth), first(dak1, 1))) << "the sixth byte differs, and the rest does not matter";
 }
 
 TEST(WeakKeys, SmallOrderPointsAreRefusedRealKeysPass) {

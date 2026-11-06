@@ -46,7 +46,7 @@ A broker login, a TLS session, a paired BLE link, a USB cable, a LoRa route and 
 
 Carried as a string beside its signature (`authority_set`, `authority_set_sig`).
 
-- **Members:** at most 8. No two members may share an `instance_id` or a public key.
+- **Members:** at most 8. No two members may share an `instance_id`, its first 6 bytes (a job's identity names its issuer by them, [OPERATIONS](OPERATIONS.md) section 3.1) or a public key.
 - **`admitted_revision`:** the revision at which that member was (re)admitted. It is never greater than the set's `authority_revision`.
 - **`revoked`:** at most 16 ids. A revoked id may not also be a member. Revoked ids that no longer matter (the manager can no longer be admitted under that id) may be dropped by a later revision.
 - **`authority_epoch`:** 1 to 2³¹. A device refuses a larger epoch, which could never rotate.
@@ -96,6 +96,7 @@ While the device holds a record (healthy or corrupt), it signs every interface e
 - The answer to `identity.rotate` (section 11) is signed with the key it retires, so that the manager that enrolled that key can verify it and learn the new one from inside it. Every later message is signed with the new key.
 - **A result names what it answers.** Before signing, the device adds `"op":"<operation>"` and, for a signed request, `"job_id":<n>` ahead of the signature members. A bridge that withholds a signed request therefore cannot answer it with an earlier result of the same `id`: the manager checks `op` and `job_id` against what it sent, and a mismatch is not an answer. A result for a request that was not understood far enough to name an operation carries neither.
 - **Freshness is the manager's rule.** Per node key, a manager rejects a message whose `usig_boot` is lower than any it has seen, and within one boot a `usig_seq` that is not higher than the highest seen. The device guarantees the counter; the manager enforces the order.
+- **A session that cannot allocate says so unsigned.** A request over a broker that finds no memory to be read is answered `busy`, `no-memory`, with an empty `id` and `"unsigned":"no-memory"`. A manager treats it as "try again"; it says nothing about the request, and nothing ran.
 - **Refusals are signed within a budget.** A device signs at most 8 refusals a second (a burst of 8), so unauthenticated input cannot keep the signer busy. A refusal beyond it goes out unsigned with `"unsigned":"rate"`, and a manager treats it as no information. Results that are not refusals, and events, are always signed.
 - The native signing command of the Companion (`CMD_SIGN_*`) refuses data that starts with `MECON-`, so no native signature can be a protocol signature, enrolled or not.
 - Signing cost: about 12 µs per signature of a 250-byte message on the simulated board's host (aarch64, gcc -O2, the firmware's own `lib/ed25519`, 20,000 signatures, measured 2026-10-28; see Review 3 in [AUTHORITY_REVIEW_2.md](AUTHORITY_REVIEW_2.md)). It has not been measured on a target MCU.
@@ -233,7 +234,7 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 
 ## 8. Replay
 
-- **One strictly increasing sequence per member.** The device keeps one mark per member: the highest `job_id` it accepted. A request with a `job_id` above the mark runs. One equal to the mark is a duplicate: it never runs again, and it gets the stored result, or `duplicate` with no result when the result was not kept. One below the mark is refused as `replay`. Id 0 is never valid. Every operation that carries a `job_id` shares the one sequence, whatever it does.
+- **One strictly increasing sequence per member.** The device keeps one mark per member: the highest `job_id` it accepted. A request with a `job_id` above the mark runs. One equal to the mark is a duplicate: it never runs again, and it gets the stored result, or `duplicate` with no result when the result was not kept. One below the mark is refused as `replay`. Ids 0 and 4294967295 are never valid, and are refused as a malformed request. Every operation that carries a `job_id` shares the one sequence, whatever it does.
 - **Why strict, and not a window.** With a window, a request that an intermediary (a broker, a bridge) held back could still run after newer ones, out of order. A held `config.apply` released after its successor would put back an old setting, and a held reboot or reset could fire late. With one strict sequence, the moment a newer request runs, every older one the intermediary still holds is dead.
 - **Retry with the same bytes.** A manager that gets no answer resends the **same signed request**, never the same work under a new id. The answer is the stored result, or `duplicate` (it ran, or a power cut lost it after the mark was saved) and the manager reads the state. Signing a new id is how a manager deliberately abandons the older request.
 - **One request at a time per member.** A manager sends its next state-changing request when the previous one has an answer. Managers of one Deployment do not drive one device concurrently. Their sequences are independent, so the device cannot order one manager's held request against another's.

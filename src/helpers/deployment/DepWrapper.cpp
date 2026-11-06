@@ -139,7 +139,8 @@ WrapErr verifyWrapped(const char* wire, size_t len, const Record& rec, const Aut
     if (!hexField(*d, "issuer", bound_issuer, ID_LEN)) goto done;
     if (memcmp(bound_issuer, issuer, ID_LEN) != 0) { e = WR_BAD_SIGNATURE; goto done; }
     out->has_job = jsonFind(*d, 0, "job_id") >= 0;
-    if (out->has_job && (!u32Field(*d, "job_id", &out->job_id) || out->job_id == 0)) goto done;
+    // 0 is never valid, and the highest value is the mark of a blocked member: a request must not be able to write it.
+    if (out->has_job && (!u32Field(*d, "job_id", &out->job_id) || out->job_id == 0 || out->job_id >= MARK_BLOCKED)) goto done;
     // The operation, and a job id on anything that is not a plain read: without one nothing guards it against replay.
     int to = jsonFind(*d, 0, "op");
     if (to < 0 || !jsonGetString(*d, to, out->op, sizeof(out->op), CS_NAME, 1)) goto done;
