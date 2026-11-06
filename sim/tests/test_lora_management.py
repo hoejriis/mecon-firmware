@@ -191,12 +191,16 @@ def test_the_channel_refuses_what_its_members_could_read_and_says_nothing_unveri
     assert "No" != d.name()[2:]
 
 
-def test_a_device_takes_only_its_bound_channel(ether, nodes):
-    d = target(nodes, ether, "repeater", "cu")
+@pytest.mark.parametrize("kind", ["companion_standalone", "repeater"])
+def test_a_device_takes_only_its_bound_channel(ether, nodes, kind):
+    d = target(nodes, ether, kind, "cu" + kind[:2])
+    slot = 1 if kind == "companion_standalone" else 0
+    # it holds the key, as an ordinary channel: without the binding that takes nothing
+    assert d.i.request("channel.put", {"slot": slot, "name": "ops", "secret": KEY.hex()})["status"] == "ok"
     assert d.provision()["status"] == "ok"
-    m = Radio(nodes, ether, "cu")
+    m = Radio(nodes, ether, "cu" + kind[:2])
     assert m.i.request("channel.put", {"slot": CH, "name": "ops", "secret": KEY.hex()})["status"] == "ok"
-    r = m.send(d.node_key, wrap(d.node_key, "config.apply", apply_name("NoBinding"), job=1), slot=CH, timeout=10.0)
+    r = m.send(d.node_key, wrap(d.node_key, "config.apply", apply_name("NoBinding"), job=1), slot=CH, timeout=25.0)
     assert r is None, "no binding: not read at all: %s" % r
     assert "NoBinding" not in d.name()
 
