@@ -51,6 +51,7 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static Iface::PathFsStore mgmt_slot_store("/mgmt_slot");       // the management channel (MANAGEMENT_CHANNEL.md section 6)
   static Iface::PathFsStore mgmt_record_store("/mgmt_channel");
   static Iface::PathFsStore mgmt_snap_store("/mgmt_snap");
+  static Iface::PathFsStore standing_store("/standing");   // the standing instructions (OPERATIONS.md)
   static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
     char cmd[160], out[160];
     snprintf(cmd, sizeof(cmd), "%s", line);
@@ -218,7 +219,11 @@ void setup() {
     mgmt_slot_store.setFs(fs);
     mgmt_record_store.setFs(fs);
     mgmt_snap_store.setFs(fs);
+    standing_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
+    the_iface.setReportSend([](void* u, const uint8_t* to, int slot, const uint8_t* b, size_t n) {
+      return static_cast<MyMesh*>(u)->reportSend(to, slot, b, n);
+    }, &the_mesh, &standing_store);
     the_iface.setLoraSend([](void* u, const Iface::LoraLink::Peer& p, const uint8_t* f, size_t n, bool flood_ok) {
       if (p.channel) return static_cast<MyMesh*>(u)->loraChannelReply(p.key, f, n);
       return static_cast<MyMesh*>(u)->loraReply(p.key, p.secret, p.path, p.path_len, f, n, flood_ok);

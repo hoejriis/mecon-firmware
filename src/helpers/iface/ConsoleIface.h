@@ -18,6 +18,7 @@
 #include "helpers/updates/UpdService.h"
 #include "LoraLink.h"
 #include "Provenance.h"
+#include "StandingOps.h"
 #include "Streams.h"
 #include "MgmtChannel.h"
 #include "MgmtSlot.h"
@@ -99,6 +100,10 @@ public:
     loraChannelSink().key = loraChannelKey; loraChannelSink().frame = onLoraChannelFrame; loraChannelSink().user = this;
   }
   LoraLink::Counts loraCounts() const { return _lora.counts(); }
+  // The role's way to put a report on the air: to a node, or on the bound channel.
+  typedef bool (*ReportSendFn)(void* user, const uint8_t* to, int slot, const uint8_t* bytes, size_t n);
+  void setReportSend(ReportSendFn fn, void* user, SnapStore* store);
+  StandingService& standing() { return _standing; }
   bool onLora() const { return _on_lora; }
   typedef bool (*EventPublishFn)(const char* stream, const char* payload, size_t len);
   typedef bool (*SessionUpFn)();
@@ -203,6 +208,15 @@ private:
   bool _lora_key_ok = false;
   uint32_t _lora_key_at = 0;
   bool _lora_key_read = false;
+  StandingService _standing;
+  ReportSendFn _report_send = nullptr;
+  void* _report_user = nullptr;
+  static bool reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq);
+  static uint8_t reportProduced(void* user);
+  static bool reportMayRead(void* user);
+  static const char* reportIssuer(void* user);
+  static bool reportIssuerValid(void* user, const char* issuer);
+  static uint32_t reportRandom(void* user);
   bool _on_mqtt = false;       // the request being handled came over the broker
   Cli::Context _link_ctx;      // its transport's own context, before any signature replaced it
   char _mqtt_nonce[33] = {0};

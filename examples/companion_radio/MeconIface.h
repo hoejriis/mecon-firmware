@@ -19,6 +19,7 @@
 #include <helpers/iface/DeployAuth.h>
 #include <helpers/iface/LoraLink.h>
 #include <helpers/iface/Provenance.h>
+#include <helpers/iface/StandingOps.h>
 #include <helpers/iface/JobService.h>
 #include <helpers/updates/UpdService.h>
 
@@ -66,6 +67,8 @@ public:
   void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
   bool onLora() const { return _on_lora; }
   void onLoraChannel(int slot, const uint8_t* data, size_t n);
+  void onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n);
+  Iface::StandingService& standing() { return _standing; }
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
   // stream's data; signature changes whenever a link changes state, which sends an event at once.
@@ -246,6 +249,15 @@ private:
   static bool loraSend(void* user, const Iface::LoraLink::Peer& p, const uint8_t* frame, size_t n, bool flood_ok);
   void loraTick(uint32_t now);
   void rfTick(uint32_t now);
+  Iface::StandingService _standing;
+  Iface::SnapStore* standingStore();
+  bool _standing_begun = false;
+  static bool reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq);
+  static uint8_t reportProduced(void* user);
+  static bool reportMayRead(void* user);
+  static const char* reportIssuer(void* user);
+  static bool reportIssuerValid(void* user, const char* issuer);
+  static uint32_t reportRandom(void* user);
   Iface::LoraLink _lora, _rf;
   Link _lora_link;
   bool _on_lora = false, _lora_channel = false;

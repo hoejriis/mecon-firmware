@@ -2,8 +2,8 @@
 
 > **Status.** Both paths are built on the Companion, Repeater and Room server and proven in the simulator. Neither has run on a
 > board. It carries the [device interface](DEVICE_INTERFACE.md) under the [management authority contract](AUTHORITY.md). It defines
-> no new operation on the device: the [managed operations](OPERATIONS.md) are what travels. Compact telemetry and firmware-image
-> bytes over LoRa are not defined here.
+> no new operation on the device: the [managed operations](OPERATIONS.md) are what travels. [Compact reports](TELEMETRY.md) have their own
+> section there. Firmware-image bytes over LoRa are not defined here.
 
 ## 1. LoRa is a transport
 

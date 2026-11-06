@@ -41,7 +41,7 @@ const size_t HELLO_SIGNED_BUDGET = 1350;
 const size_t HELLO_PLAIN_BUDGET = 1500;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "rf.request", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
@@ -68,6 +68,10 @@ Status opSchema(OpContext& c);
 Status opGet(OpContext& c);
 Status opApply(OpContext& c);
 Status opRfRequest(OpContext& c);
+Status opReportNow(OpContext& c);
+Status opStandingPut(OpContext& c);
+Status opStandingList(OpContext& c);
+Status opStandingRemove(OpContext& c);
 Status opSubStart(OpContext& c);
 Status opSubStop(OpContext& c);
 Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
@@ -101,6 +105,10 @@ const OpEntry OPS[] = {
   {"config.get", opGet, PRIV_READ, false},
   {"config.apply", opApply, PRIV_WRITE, true},
   {"rf.request", opRfRequest, PRIV_WRITE, false},
+  {"report.now", opReportNow, PRIV_WRITE, false},
+  {"standing.put", opStandingPut, PRIV_WRITE, true},
+  {"standing.list", opStandingList, PRIV_READ, false},
+  {"standing.remove", opStandingRemove, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
   {"deployment.get", MeconIface::opDeployGet, PRIV_READ, false},
@@ -294,6 +302,10 @@ Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
 Status opRfRequest(OpContext& c) { return self(c)->rfRequest(c); }
+Status opReportNow(OpContext& c) { return self(c)->standing().opNow(c, millis()); }
+Status opStandingPut(OpContext& c) { return self(c)->standing().opPut(c, millis()); }
+Status opStandingList(OpContext& c) { return self(c)->standing().opList(c); }
+Status opStandingRemove(OpContext& c) { return self(c)->standing().opRemove(c); }
 
 Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
   ChannelHost host = self(c)->channelHost();
@@ -1127,10 +1139,16 @@ void MeconIface::loraTick(uint32_t now) {
 // A frame heard on a channel. Taken only on the bound channel while its binding is bound (MANAGEMENT_CHANNEL.md section 2), and
 // only when addressed to this node; a reply to this Companion's own rf.request is taken on whichever slot it sent on.
 void MeconIface::onLoraChannel(int slot, const uint8_t* data, size_t n) {
+  static const uint8_t ALL[LORA_CH_PREFIX] = {0};   // a report may name no one: whoever holds the channel may read it
+  if (n > LORA_CH_ADDR && data[LORA_CH_ADDR] == REPORT_MARKER && memcmp(data, ALL, LORA_CH_PREFIX) == 0) {
+    onRfReport(data + LORA_CH_PREFIX, LORA_CH_PREFIX, data + LORA_CH_ADDR, n - LORA_CH_ADDR);
+    return;
+  }
   if (n <= LORA_CH_ADDR + LORA_HDR || memcmp(data, _mesh->self_id.pub_key, LORA_CH_PREFIX) != 0) return;
   const uint8_t* sender = data + LORA_CH_PREFIX;
   const uint8_t* f = data + LORA_CH_ADDR;
   const size_t len = n - LORA_CH_ADDR;
+  if (f[0] == REPORT_MARKER) { onRfReport(sender, LORA_CH_PREFIX, f, len); return; }
   if (memcmp(f, LORA_REPLY_MAGIC, 4) == 0) {
     uint8_t key[32] = {0};
     memcpy(key, sender, LORA_CH_PREFIX);
@@ -1238,7 +1256,77 @@ void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
   _rf.release(*p);
 }
 
+uint8_t MeconIface::reportProduced(void*) {
+  LocationFix f;
+  return RF_HEALTH | RF_RADIO | (readLocation(sensors.getLocationProvider(), f) ? RF_LOCATION : 0);
+}
+bool MeconIface::reportMayRead(void* user) { return streamAllow(user, Cli::C_PRIVATE); }
+const char* MeconIface::reportIssuer(void* user) { return static_cast<MeconIface*>(user)->_auth.signingIssuer(); }
+bool MeconIface::reportIssuerValid(void* user, const char* issuer) { return static_cast<MeconIface*>(user)->_auth.issuerValid(issuer); }
+uint32_t MeconIface::reportRandom(void*) {
+  CryptoRNG rng;
+  uint32_t v = 0;
+  rng.random(reinterpret_cast<uint8_t*>(&v), sizeof(v));
+  return v;
+}
+
+bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  ReportData d;
+  fillReportCommon(d, board, Uptime::secs(millis()));
+  RadioCounts counts;
+  counts.known = true;
+  counts.rx_total = radio_driver.getPacketsRecv();
+  counts.tx_total = radio_driver.getPacketsSent();
+  counts.rx_errors = radio_driver.getPacketsRecvErrors();
+  fillReportRadio(d, *m->_mesh, radio_driver, counts);
+  if (fields & RF_LOCATION) {
+    LocationFix f;
+    if (!readLocation(sensors.getLocationProvider(), f)) return false;
+    fillReportLocation(d, f);
+  }
+  uint8_t b[REPORT_MAX];
+  const size_t n = m->_prov.makeReport(b, sizeof(b), fields, d, m->_mesh->getRTCClock()->knownTime(), seq);
+  if (!n) return false;
+  static const uint8_t ALL[32] = {0};
+  if (slot >= 0) return m->_mesh->loraChannelSend(slot, to ? to : ALL, b, n);
+  return to && m->_mesh->rfSend(to, b, n);
+}
+
+// A compact report heard: out on the rf stream as it came, for the manager to decode and verify.
+void MeconIface::onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n) {
+  if (n < REPORT_HEADER + REPORT_SIG || bytes[1] != REPORT_VERSION) return;
+  const uint8_t fields = bytes[2];
+  const size_t len = REPORT_HEADER + ((fields & RF_HEALTH) ? 8 : 0) + ((fields & RF_RADIO) ? 12 : 0) + ((fields & RF_LOCATION) ? 14 : 0) + REPORT_SIG;
+  if (len > n) return;   // the datagram pads to whole blocks: the fields say where it ends
+  char* data = static_cast<char*>(malloc(400));
+  char* ev = static_cast<char*>(malloc(700));
+  if (data && ev) {
+    char hex[65];
+    hexOf(hex, key, key_len);
+    char b64[4 * (REPORT_MAX + 2) / 3 + 4];
+    base64Encode(b64, bytes, len);
+    JsonWriter w(data, 400);
+    w.beginObject();
+    w.key("from"); w.str(hex);
+    w.key("report"); w.str(b64);
+    w.endObject();
+    if (w.ok()) {
+      const uint32_t ts = _mesh->getRTCClock()->knownTime();
+      int m = writeEvent(ev, 700, STREAMS[SID_RF].name, ++_clock.seq[SID_RF], _epoch, ts != 0, ts, data);
+      if (m > 0) m = _prov.sign(STREAMS[SID_RF].name, ev, (size_t)m, 700);
+      if (m > 0) sendEvent(SID_RF, ev, (size_t)m);
+    }
+  }
+  free(data);
+  free(ev);
+}
+
 void MeconIface::loop(uint32_t now) {
+  if (!_standing_begun) {
+    _standing_begun = true;
+    _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, standingStore(), this}, now);
+  }
   _gap.tick(now);
   _jobs.tick(now);
   _updates.loop(now);
@@ -1250,6 +1338,7 @@ void MeconIface::loop(uint32_t now) {
   inventoryTick(now);
   loraTick(now);
   rfTick(now);
+  _standing.tick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
     if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it

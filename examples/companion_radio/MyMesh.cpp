@@ -915,6 +915,8 @@ void MyMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const m
                                                   packet->path, back, sizeof(back));
     Iface::loraSink().fn(Iface::loraSink().user, sender.pub_key, secret, back, back_len, data + Iface::LORA_ANON_TAG,
                          len - Iface::LORA_ANON_TAG);
+  } else if (len > Iface::LORA_ANON_TAG && data[Iface::LORA_ANON_TAG] == Iface::REPORT_MARKER) {
+    _iface.onRfReport(sender.pub_key, PUB_KEY_SIZE, data + Iface::LORA_ANON_TAG, len - Iface::LORA_ANON_TAG);
   }
 #else
   (void)packet; (void)secret; (void)sender; (void)data; (void)len;

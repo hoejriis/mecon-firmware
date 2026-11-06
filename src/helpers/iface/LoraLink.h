@@ -259,14 +259,15 @@ private:
 // No secret or sensitive operation is ever named: key material never goes on the air, and there is no nonce handshake.
 inline bool loraOpAllowed(const char* op) {
   static const char* const OPS[] = {"hello", "status.get", "config.schema", "config.get", "config.apply", "deployment.get",
-                                    "job.get", "job.list", "job.ack", "job.cancel", "job.confirm", "posture.set"};
+                                    "job.get", "job.list", "job.ack", "job.cancel", "job.confirm", "posture.set", "report.now",
+                                    "standing.put", "standing.list", "standing.remove"};
   for (const char* o : OPS) if (strcmp(o, op) == 0) return true;
   return false;
 }
 
 // The channel carries only results that say nothing beyond the job (LORA_MANAGEMENT.md section 3.2): every member can read them.
 inline bool loraChannelOpAllowed(const char* op) {
-  static const char* const OPS[] = {"config.apply", "job.get", "job.ack", "job.cancel", "job.confirm", "posture.set"};
+  static const char* const OPS[] = {"config.apply", "job.get", "job.ack", "job.cancel", "job.confirm", "posture.set", "report.now"};
   for (const char* o : OPS) if (strcmp(o, op) == 0) return true;
   return false;
 }

@@ -216,3 +216,17 @@ mutate lora_path_not_reversed src/helpers/iface/LoraLink.h 'path + (size_t)(hops
 mutate lora_channel_reads_go src/helpers/iface/ConsoleIface.cpp 'd.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);' 'd.setOpFilter(loraOpAllowed);' $LM::test_the_channel_refuses_what_its_members_could_read_and_says_nothing_unverified
 mutate lora_channel_without_a_binding src/helpers/iface/ConsoleIface.cpp 's->_lora_key_ok = mgmtState(h, &rec) == MGMT_BOUND && s->_mgmt_slot.read(name, s->_lora_key);' 's->_lora_key_ok = s->_mgmt_slot.read(name, s->_lora_key);' $LM::test_a_device_takes_only_its_bound_channel
 mutate lora_companion_any_slot examples/companion_radio/MeconIface.cpp 'if (mgmtState(h, &rec) != MGMT_BOUND || rec.slot != slot) return;' 'mgmtState(h, &rec);' $LM::test_a_device_takes_only_its_bound_channel
+# --- compact reports and standing instructions
+mutate report_unsigned_bytes src/helpers/iface/Provenance.cpp '  _id->sign(sig, msg, (int)(sizeof(DOMAIN) + sizeof(STREAM) + n));' '  memset(sig, 0, sizeof(sig));' $LM::test_a_report_now_reaches_the_manager_signed_with_what_was_asked
+mutate report_no_rate_limit src/helpers/iface/StandingOps.cpp 'if (_now_sent && (uint32_t)(now - _now_ms) < NOW_GAP_MS) { c.error = "rate-limited"; return ST_BUSY; }' '' $LM::test_a_report_now_reaches_the_manager_signed_with_what_was_asked
+mutate report_location_on_a_channel src/helpers/iface/StandingOps.cpp 'if ((fields & RF_PRIVATE) && (slot >= 0 || !_h.may_read_private(_h.user))) { c.error = "private"; return ST_REFUSED; }' '' $LM::test_location_goes_point_to_point_and_never_on_a_channel
+mutate standing_location_on_a_channel src/helpers/iface/StandingOps.cpp 'if ((n.fields & RF_PRIVATE) && (slot >= 0 || !_h.may_read_private(_h.user))) { c.error = "private"; return ST_REFUSED; }' '' $LM::test_location_goes_point_to_point_and_never_on_a_channel
+mutate report_made_up_field src/helpers/iface/StandingOps.cpp 'if ((fields & _h.produced(_h.user)) != fields) { c.error = "unsupported-field"; return ST_FAILED; }' '' $LM::test_a_field_the_board_lacks_is_an_answer
+mutate standing_under_the_minimum src/helpers/iface/StandingOps.h 'MIN_EVERY_S = 900;' 'MIN_EVERY_S = 800;' $LM::test_standing_bounds
+mutate standing_no_capacity src/helpers/iface/StandingOps.cpp 'if (!place) { c.error = "full"; return ST_BUSY; }' 'if (!place) place = &_s[0];' $LM::test_standing_bounds
+mutate standing_temporary_kept src/helpers/iface/StandingOps.cpp 'if (!s.used || !s.durable) continue;' 'if (!s.used) continue;' $LM::test_standing_bounds
+mutate standing_lost_at_boot src/helpers/iface/StandingOps.cpp '  load(now);' '' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
+mutate standing_revoked_runs_on src/helpers/iface/StandingOps.cpp 'if (s.issuer[0] && !_h.issuer_valid(_h.user, s.issuer)) {' 'if (false) {' $LM::test_a_revoked_members_instruction_stops
+mutate standing_never_fires src/helpers/iface/StandingOps.cpp 'if (!s.used || (int32_t)(now - s.next_ms) < 0) continue;' 'continue;' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
+mutate standing_remove_keeps src/helpers/iface/StandingOps.cpp '      s = Standing();
+      if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' '      if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed

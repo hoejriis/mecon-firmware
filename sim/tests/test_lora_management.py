@@ -51,7 +51,7 @@ class Radio:
         end = time.time() + timeout
         while time.time() < end:
             for e in list(self.i.events):   # a reply may have come while the request above was being answered
-                if e.get("ev") == "rf" and e["data"]["from"] == sender and e["data"]["xid"] == xid:
+                if e.get("ev") == "rf" and e["data"]["from"] == sender and e["data"].get("xid") == xid:
                     self.i.events.remove(e)
                     return Reply(e["data"]["message"])
             m = self.i.read_message(0.5)
@@ -220,3 +220,149 @@ def test_only_the_addressed_node_answers_on_the_channel(ether, nodes):
     # it may repeat what it hears, as any repeater does (a hop in the path), and starts nothing of its own on the channel
     own = [t for t in ether.tx_of("co") if (t.data[0] >> 2) & 15 == 6 and t.data[1] & 63 == 0]
     assert not own, "only the addressed node answers: %d" % len(own)
+
+
+# ------------------------------------------------------------------ compact reports and standing instructions
+
+import base64  # noqa: E402
+
+import mecon_report  # noqa: E402
+from sim import ed25519_ref  # noqa: E402
+
+
+def next_report(m, timeout=30.0):
+    end = time.time() + timeout
+    renew = 0
+    while time.time() < end:
+        if time.time() > renew:   # a scaled clock runs a subscription's lifetime out quickly
+            assert m.i.request("sub.start", {"stream": "rf", "lifetime_s": 600})["status"] == "ok"
+            renew = time.time() + 5
+        for e in list(m.i.events):
+            if e.get("ev") == "rf" and "report" in e["data"]:
+                m.i.events.remove(e)
+                return e["data"]
+        msg = m.i.read_message(0.5)
+        if msg and "ev" in msg:
+            m.i.events.append(msg)
+    return None
+
+
+def checked(report, key):
+    raw = base64.b64decode(report["report"])
+    out, signed, sig = mecon_report.decode(raw)
+    assert ed25519_ref.verify(bytes.fromhex(key), signed, sig), "signed by the device, so any radio or member in between cannot change it"
+    return out
+
+
+def radio_key(m):
+    return m.i.request("hello")["result"]["node_key"]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_report_now_reaches_the_manager_signed_with_what_was_asked(ether, nodes, kind):
+    d, m = enrolled(nodes, ether, kind, "rp" + kind[:2])
+    r = m.send(d.node_key, wrap(d.node_key, "report.now", {"fields": ["health", "radio"], "to": radio_key(m)}, job=1))
+    assert r and r["status"] == "ok", r
+    got = next_report(m)
+    assert got and got["from"] == d.node_key, got
+    out = checked(got, d.node_key)
+    assert out["seq"] == r["result"]["seq"] and out["health"]["uptime_s"] > 0 and out["radio"]["rx"] > 0, out
+    assert "location" not in out
+    r2 = m.send(d.node_key, wrap(d.node_key, "report.now", {"fields": ["health"], "to": radio_key(m)}, job=2))
+    assert r2 and r2["status"] == "busy" and r2["error"] == "rate-limited", r2
+
+
+def test_a_field_the_board_lacks_is_an_answer(ether, nodes):
+    d, m = on_channel(nodes, ether, "repeater", "rq")
+    r = d.send(wrap(d.node_key, "report.now", {"fields": ["location"], "to": radio_key(m)}, job=1))
+    assert r["status"] == "failed" and r["error"] == "unsupported-field", "no receiver here: never a made-up zero: %s" % r
+    r = d.send(wrap(d.node_key, "report.now", {"fields": ["nope"], "to": radio_key(m)}, job=2))
+    assert r["status"] == "invalid", r
+
+
+def test_location_goes_point_to_point_and_never_on_a_channel(ether, nodes):
+    n = nodes("repeater", "rl", seed=31, rtc=RTC, ether_path=ether.path)
+    with open(n.dir + ".gps", "w") as f:
+        f.write("fix 59913900 10752200 23456 9 4\n")
+    n.start()
+    d = Srv(n)
+    assert d.cli.command("set radio " + FAST).startswith("OK")
+    d.reboot()
+    assert d.i.request("channel.put", {"slot": 0, "name": "ops", "secret": KEY.hex()})["status"] == "ok"
+    assert d.i.request("mgmt.channel.bind", {"slot": 0})["status"] == "ok"
+    assert d.provision()["status"] == "ok"
+    m = Radio(nodes, ether, "rl")
+    key = radio_key(m)
+    r = d.send(wrap(d.node_key, "report.now", {"fields": ["location"], "slot": 0, "to": key}, job=1))
+    assert r["status"] == "refused" and r["error"] == "private", r
+    r = d.send(wrap(d.node_key, "report.now", {"fields": ["location"], "to": key}, job=2))
+    assert r["status"] == "ok", r
+    got = next_report(m)
+    assert got and checked(got, d.node_key)["location"] == {"fix": True, "sats": 9, "lat_e6": 59913900, "lon_e6": 10752200, "alt_m": 23, "age_s": 4}, got
+    r = d.send(wrap(d.node_key, "standing.put", {"id": "l", "fields": ["location"], "every_s": 3600, "slot": 0}, job=3))
+    assert r["status"] == "refused" and r["error"] == "private", "nor as a standing instruction: %s" % r
+
+
+def test_a_report_on_the_channel_names_its_sender(ether, nodes):
+    d, m = on_channel(nodes, ether, "repeater", "rc")
+    r = m.send(d.node_key, wrap(d.node_key, "report.now", {"fields": ["health"], "slot": 0, "to": radio_key(m)}, job=1), slot=CH)
+    assert r and r["status"] == "ok", r
+    got = next_report(m)
+    assert got and got["from"] == d.node_key[:16], got
+    assert checked(got, d.node_key)["health"]["uptime_s"] > 0
+
+
+@pytest.mark.timescale(60)
+@pytest.mark.parametrize("kind", ["repeater", "companion_standalone"])
+def test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed(ether, nodes, kind):
+    d, m = enrolled(nodes, ether, kind, "st" + kind[:2])
+    key = radio_key(m)
+    r = d.send(wrap(d.node_key, "standing.put", {"id": "h1", "fields": ["health"], "every_s": 900, "to": key}, job=1))
+    assert r["status"] == "ok", r
+    got = next_report(m, timeout=40)
+    assert got, "the first one, a period from now"
+    assert checked(got, d.node_key)["health"]["uptime_s"] >= 800
+    listed = d.i.request("standing.list")["result"]["instructions"]
+    assert listed[0]["id"] == "h1" and listed[0]["runs"] >= 1 and listed[0]["every_s"] == 900, listed
+    d.reboot()
+    assert d.i.request("standing.list")["result"]["instructions"][0]["id"] == "h1", "kept across a boot"
+    assert next_report(m, timeout=40), "and it runs on"
+    r = d.send(wrap(d.node_key, "standing.remove", {"id": "h1"}, job=d.i.request("deployment.get")["result"]["members"][0]["mark"] + 1))
+    assert r["status"] == "ok", r
+    assert d.i.request("standing.list")["result"]["instructions"] == []
+    m.i.events.clear()
+    assert next_report(m, timeout=25) is None, "removed: no more"
+
+
+def test_standing_bounds(ether, nodes):
+    d = target(nodes, ether, "repeater", "sb")
+    key = "ab" * 32
+    base = {"fields": ["health"], "to": key}
+    assert d.i.request("standing.put", dict(base, id="x", every_s=899))["status"] == "invalid", "not under 15 minutes"
+    for i in range(4):
+        assert d.i.request("standing.put", dict(base, id="i%d" % i, every_s=3600))["status"] == "ok"
+    r = d.i.request("standing.put", dict(base, id="i9", every_s=3600))
+    assert r["status"] == "busy" and r["error"] == "full", r
+    assert d.i.request("standing.put", dict(base, id="i1", every_s=7200))["status"] == "ok", "the same id replaces"
+    assert d.i.request("standing.remove", {"id": "nope"})["status"] == "failed"
+    assert d.i.request("standing.put", dict(base, id="t", every_s=3600, durable=False))["status"] == "busy", "still full"
+    assert d.i.request("standing.remove", {"id": "i0"})["status"] == "ok"
+    assert d.i.request("standing.put", dict(base, id="t", every_s=3600, durable=False))["status"] == "ok"
+    d.reboot()
+    ids = [s["id"] for s in d.i.request("standing.list")["result"]["instructions"]]
+    assert "t" not in ids and "i1" in ids, "a temporary instruction ends with the boot: %s" % ids
+
+
+@pytest.mark.timescale(60)
+def test_a_revoked_members_instruction_stops(ether, nodes):
+    from test_identity_rotate import revoking_set
+    d, m = enrolled(nodes, ether, "repeater", "sr")
+    key = radio_key(m)
+    r = d.send(wrap(d.node_key, "standing.put", {"id": "h1", "fields": ["health"], "every_s": 900, "to": key}, job=1))
+    assert r["status"] == "ok", r
+    r = d.i.request("deployment.authority_update", revoking_set())
+    assert r["status"] == "ok", r
+    assert d.i.request("standing.list")["result"]["instructions"][0]["id"] == "h1", "until it next comes due"
+    m.i.events.clear()
+    assert next_report(m, timeout=25) is None, "it stops, with its member"
+    assert d.i.request("standing.list")["result"]["instructions"] == []

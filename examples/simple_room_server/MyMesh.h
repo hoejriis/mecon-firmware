@@ -199,6 +199,7 @@ public:
   bool loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n,
                  bool flood_ok);
   bool loraChannelReply(const uint8_t* to_key, const uint8_t* frame, size_t n);
+  bool reportSend(const uint8_t* to, int slot, const uint8_t* bytes, size_t n);
 #endif
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
 

@@ -1,4 +1,5 @@
 #include "ConsoleIface.h"
+#include <helpers/CryptoRNG.h>
 #include <helpers/Uptime.h>
 #include "DevIdHello.h"
 #include <new>
@@ -33,7 +34,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 }
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
@@ -125,6 +126,10 @@ Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
 Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
+Status opReportNow(OpContext& c) { return self(c)->standing().opNow(c, millis()); }
+Status opStandingPut(OpContext& c) { return self(c)->standing().opPut(c, millis()); }
+Status opStandingList(OpContext& c) { return self(c)->standing().opList(c); }
+Status opStandingRemove(OpContext& c) { return self(c)->standing().opRemove(c); }
 // The stored set is an open read; the rotation statement in it names device_id, so only a caller the table lets read gets it.
 Status opDeployGet(OpContext& c) {
   const Status st = self(c)->auth().opGet(c);
@@ -185,6 +190,10 @@ const OpEntry OPS[] = {
   {"config.schema", opSchema, PRIV_READ, false},
   {"config.get", opGet, PRIV_READ, false},
   {"config.apply", opApply, PRIV_WRITE, true},
+  {"report.now", opReportNow, PRIV_WRITE, false},
+  {"standing.put", opStandingPut, PRIV_WRITE, true},
+  {"standing.list", opStandingList, PRIV_READ, false},
+  {"standing.remove", opStandingRemove, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
   {"deployment.get", opDeployGet, PRIV_READ, false},
@@ -766,6 +775,52 @@ void ConsoleIface::onLoraFrame(void* user, const uint8_t* key, const uint8_t* se
   static_cast<ConsoleIface*>(user)->_lora.feed(key, secret, path, path_len, frame, n, LORA_REQ_PAYLOAD, millis());
 }
 
+void ConsoleIface::setReportSend(ReportSendFn fn, void* user, SnapStore* store) {
+  _report_send = fn;
+  _report_user = user;
+  _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, store, this},
+                  millis());
+}
+
+uint8_t ConsoleIface::reportProduced(void* user) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  LocationFix f;
+  const bool loc = s->_host.sensors && readLocation(s->_host.sensors->getLocationProvider(), f);
+  return RF_HEALTH | RF_RADIO | (loc ? RF_LOCATION : 0);
+}
+
+bool ConsoleIface::reportMayRead(void* user) { return streamAllow(user, Cli::C_PRIVATE); }
+const char* ConsoleIface::reportIssuer(void* user) { return static_cast<ConsoleIface*>(user)->_auth.signingIssuer(); }
+bool ConsoleIface::reportIssuerValid(void* user, const char* issuer) { return static_cast<ConsoleIface*>(user)->_auth.issuerValid(issuer); }
+
+uint32_t ConsoleIface::reportRandom(void*) {
+  CryptoRNG rng;
+  uint32_t v = 0;
+  rng.random(reinterpret_cast<uint8_t*>(&v), sizeof(v));
+  return v;
+}
+
+bool ConsoleIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (!s->_report_send) return false;
+  ReportData d;
+  fillReportCommon(d, *s->_host.board, Uptime::secs(millis()));
+  if (s->_host.battery_mv) { const uint16_t mv = s->_host.battery_mv(s->_host.user); if (mv) d.battery_mv = mv; }
+  RadioCounts counts;
+  if (s->_host.radio_counts) s->_host.radio_counts(s->_host.user, &counts);
+  fillReportRadio(d, *s->_host.dispatcher, *s->_host.radio, counts);
+  if (fields & RF_LOCATION) {
+    LocationFix f;
+    if (!s->_host.sensors || !readLocation(s->_host.sensors->getLocationProvider(), f)) return false;
+    fillReportLocation(d, f);
+  }
+  bool known;
+  const uint32_t ts = s->knownSeconds(&known);
+  uint8_t b[REPORT_MAX];
+  const size_t n = s->_prov.makeReport(b, sizeof(b), fields, d, known ? ts : 0, seq);
+  return n && s->_report_send(s->_report_user, to, slot, b, n);
+}
+
 // The bound channel's key, or false: a stale or absent binding takes nothing (MANAGEMENT_CHANNEL.md section 2).
 bool ConsoleIface::loraChannelKey(void* user, uint8_t out[16]) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
@@ -819,6 +874,7 @@ void ConsoleIface::loraTick(uint32_t now) {
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
   loraTick(now);
+  _standing.tick(now);
   _gap.tick(now);
   _jobs.tick(now);
   _updates.loop(now);

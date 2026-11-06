@@ -1,4 +1,6 @@
 #include "Streams.h"
+#include "CompactReport.h"
+#include "helpers/MemStats.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -286,6 +288,35 @@ void writeBoot(JsonWriter& w, mesh::MainBoard& b, const char* role, const char* 
   const char* why = b.getResetReasonString(b.getResetReason());
   w.key("reset_reason");
   if (why && strcmp(why, "Not available") != 0) w.str(why); else w.null();
+}
+
+void fillReportCommon(ReportData& d, mesh::MainBoard& b, uint32_t uptime_s) {
+  d.uptime_s = uptime_s;
+  const MemStats ms = memStats();
+  if (ms.known) d.heap_free_kb = (uint16_t)(ms.free / 1024);
+  const uint16_t mv = b.getBattMilliVolts();
+  if (mv) d.battery_mv = mv;
+}
+
+void fillReportRadio(ReportData& d, mesh::Dispatcher& disp, mesh::Radio& r, const RadioCounts& counts) {
+  if (counts.known) { d.rx_total = counts.rx_total; d.tx_total = counts.tx_total; }
+  else { d.rx_total = disp.getNumRecvFlood() + disp.getNumRecvDirect(); d.tx_total = disp.getNumSentFlood() + disp.getNumSentDirect(); }
+  d.err_flags = (uint8_t)disp.getErrFlags();
+  const int nf = r.getNoiseFloor();
+  if (nf != 0) d.noise_dbm = (int8_t)nf;
+  if (d.rx_total > 0) {
+    d.last_rssi = (int8_t)r.getLastRSSI();
+    d.last_snr_q = (int8_t)(r.getLastSNR() * 4);
+  }
+}
+
+void fillReportLocation(ReportData& d, const LocationFix& f) {
+  d.fix = f.fix;
+  d.sats = (uint8_t)f.sats;
+  if (f.fix) {
+    d.lat_e6 = f.lat_e6; d.lon_e6 = f.lon_e6; d.alt_m = (int16_t)f.alt_m;
+    d.age_s = f.age_s > 0xFFFE ? 0xFFFE : (uint16_t)f.age_s;
+  }
 }
 
 }  // namespace Iface

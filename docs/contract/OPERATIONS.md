@@ -195,6 +195,10 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `posture.get`, `posture.set` | posture (controlled reboot) | CLI `get/set posture` | read / posture | `set` | C R S | per table (raising: cable, paired BLE; lowering: cable) |
 | `deployment.*` | provisioning, authority updates, record, local unlock | | per [AUTHORITY](AUTHORITY.md) | | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `update.*` | firmware update lifecycle ([UPDATES.md](UPDATES.md)) | | per [UPDATES](UPDATES.md) | | C R S | per [UPDATES](UPDATES.md) |
+| `report.now` | `{"fields":[...],"to":"<node key>"\|"slot":n}`: one [compact report](TELEMETRY.md) over LoRa. `seq` in the result | | write; `location` needs private | yes | C R S | as the table |
+| `standing.put` | `{"id","fields","to"\|"slot","every_s","runs","durable"}`: send that report every `every_s` (900 s to 30 days) while the manager is away, with a jitter of up to a tenth of the period, at most 5 minutes. `runs`: stop after that many. `durable: false`: it ends at the next boot. At most 4, and the same id replaces | | write | yes | C R S | as the table |
+| `standing.list` | each instruction, with `runs`, `failed` and `skipped` since boot | | read | no | C R S | as the table |
+| `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n}`: this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | yes | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
 **Keys `config.*` reaches.**
@@ -303,6 +307,15 @@ Notes the matrix depends on, as the code stands:
 - The Repeater runs any line that starts with `reboot`, while the registry classes only the exact `reboot` as reboot. A longer form is `write`, which is stricter (refused to a Hardened remote admin), not weaker.
 - The sensor role (`simple_sensor`) is not a MECON target. It has no device interface and no posture front door, and nothing on this page applies to it. This is a recorded exception to the rule that the firmware works the same way in all modes: the owner's decision of 2026-11-04.
 
+### Standing instructions
+
+A standing instruction runs only what it names: a compact report to a named destination. There is no other action, script or rule.
+
+- **Time.** It runs on the device's uptime, so a clock change does nothing to it. A tick missed while the device was off is gone: after a boot the first run comes within the jitter, and there is no catch-up burst. One runs on each pass, so two due together do not go out at once.
+- **Who.** It carries the member who set it. When that member is no longer in the authority set, or the Deployment is gone, it is removed the next time it comes due, unsent. One set by an unsigned caller on a standalone device has no member and stays until removed.
+- **Durable by default.** It lasts across boots in a file. A subscription stays short-lived and never becomes one of these.
+- **Failure.** A report that cannot go counts in `failed`, and the schedule carries on.
+
 ### 5.4 LoRa remote administration (native)
 
 | Facility | Repeater | Room server | Companion | Who |
@@ -317,7 +330,7 @@ Notes the matrix depends on, as the code stands:
 | `REQ_TYPE_GET_OWNER_INFO` 0x07 | yes | no | no | ACL client |
 | CLI text | any text from an admin (plain, CLI data, CLI command) | CLI data or CLI command from an admin; plain text is a post | CLI command from a flagged contact (reads and `reboot`) | admin / flagged contact |
 
-The device-interface operations go over LoRa point to point ([LORA_MANAGEMENT](LORA_MANAGEMENT.md)): `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `deployment.get`, `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm` and `posture.set`. Only a signed request runs. Any other operation answers `unknown-op` there. On the management channel only `config.apply`, `job.get`, `job.ack`, `job.cancel`, `job.confirm` and `posture.set` go: every member can read a reply there.
+The device-interface operations go over LoRa point to point ([LORA_MANAGEMENT](LORA_MANAGEMENT.md)): `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `deployment.get`, `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm`, `posture.set`, `report.now`, `standing.put`, `standing.list` and `standing.remove`. Only a signed request runs. Any other operation answers `unknown-op` there. On the management channel only `config.apply`, `job.get`, `job.ack`, `job.cancel`, `job.confirm`, `posture.set` and `report.now` go: every member can read a reply there.
 
 ### 5.5 Boards and roles
 

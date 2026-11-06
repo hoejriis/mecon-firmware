@@ -27,6 +27,22 @@ void base64Encode(char* out, const uint8_t* in, size_t n) {
 }
 
 
+size_t Provenance::makeReport(uint8_t* out, size_t cap, uint8_t fields, const ReportData& d, uint32_t time_s, uint32_t* seq_out) {
+  if (!_id || !_epoch_saved || _seq == 0xFFFFFFFFu) return 0;
+  const size_t n = encodeReport(out, cap, fields, _boot, _seq + 1, time_s, d);
+  if (!n) return 0;
+  static const char STREAM[] = "report";
+  uint8_t msg[sizeof(DOMAIN) + sizeof(STREAM) + REPORT_MAX];
+  memcpy(msg, DOMAIN, sizeof(DOMAIN));
+  memcpy(msg + sizeof(DOMAIN), STREAM, sizeof(STREAM));
+  memcpy(msg + sizeof(DOMAIN) + sizeof(STREAM), out, n);
+  uint8_t sig[64];
+  _id->sign(sig, msg, (int)(sizeof(DOMAIN) + sizeof(STREAM) + n));
+  memcpy(out + n, sig, sizeof(sig));
+  *seq_out = ++_seq;
+  return n + sizeof(sig);
+}
+
 int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, const mesh::LocalIdentity* signer,
                      const char* extra) {
   if (!_auth || (!_auth->enrolled() && !_force)) return (int)len;   // a standalone device signs nothing

@@ -145,3 +145,21 @@ Integers, never floats: a microdegree is about 0.1 m. The stream is present only
 
 ### `screen`
 - `screen`: diagnostic telemetry from the device to the manager, never a way to write onto the display. A snapshot of the device's own framebuffer, `{"width","height","format":"mono1","on","age_s","data"}`, fragmented to the transport's size. The Heltec boards' SSD1306 (128x64, 1,024 bytes a frame) exposes its buffer; e-ink and TFT drivers are reported per board. The display is never woken or changed by a capture. A frame can show messages and the BLE pairing PIN: the stream will be class `private`, and a frame is withheld while the pairing PIN is on screen.
+
+## Compact reports over LoRa
+
+A small binary subset of the producers above, for the radio, with the same meanings and units. `report.now` sends one, and a [standing instruction](OPERATIONS.md) sends them on a schedule. Nothing else goes over LoRa as telemetry: no subscription, no log, no screen.
+
+**Layout, little-endian:** `0x1E`, version (1), fields, boot u32, seq u32, time u32 (0: the device does not know the time), the fields in bit order, then a 64-byte signature. `tools/mecon_report.py` decodes one.
+
+| Bit | Field | Bytes | Contents |
+|---|---|---|---|
+| 1 | `health` | 8 | uptime_s u32; heap free in KB u16; battery mV u16 |
+| 2 | `radio` | 12 | rx u32; tx u32; error flags u8; noise floor dBm i8; last RSSI dBm i8; last SNR in quarters of a dB i8 |
+| 4 | `location` | 14 | fix u8; lat_e6 i32; lon_e6 i32; alt_m i16; sats u8; age_s u16 |
+
+- **Unknown is not zero.** 0xFFFF (u16) and 0x7F (i8) mean unknown. A board that cannot produce a field answers `unsupported-field` when it is asked for; it never sends a made-up value.
+- **Provenance.** The signature is the node key's, over `MECON-UPLINK-v1` 0x00 `report` 0x00 and the bytes before it, using the same boot and sequence as every event (AUTHORITY section 3.4), so a repeated or reordered report shows. A boot that cannot sign sends none. A full report is at most 113 bytes.
+- **Where it goes.** To a node key as an anonymous datagram by flood, or on the bound management channel. On a channel the frame carries the sender's 8-byte key prefix and, if named, the target's. A Companion that hears one puts it on its `rf` stream as `{"from","report"}` (base64), for the manager to verify.
+- **Private.** `location` needs the right to read it, and never goes on a channel, where every member could read it.
+- **Limits.** `report.now` at most once in 30 s (`busy`, `rate-limited`). Every report goes through the duty window like any other transmission.

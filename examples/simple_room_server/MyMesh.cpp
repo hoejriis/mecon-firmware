@@ -1,6 +1,7 @@
 #include "MyMesh.h"
 #ifdef ENABLE_MECON_IFACE
   #include <helpers/iface/LoraLink.h>
+  #include <helpers/iface/CompactReport.h>
 #endif
 #include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
@@ -361,7 +362,7 @@ bool MyMesh::loraChannelReply(const uint8_t* to_key, const uint8_t* frame, size_
   memset(&ch, 0, sizeof(ch));
   memcpy(ch.secret, key, sizeof(key));
   mesh::Utils::sha256(ch.hash, sizeof(ch.hash), ch.secret, sizeof(key));
-  uint8_t temp[3 + Iface::LORA_CH_ADDR + Iface::LORA_REPLY_HDR + Iface::LORA_CH_REPLY_PAYLOAD];
+  uint8_t temp[3 + Iface::LORA_CH_ADDR + Iface::REPORT_MAX + 16];
   if (n > sizeof(temp) - 3 - Iface::LORA_CH_ADDR) return true;
   temp[0] = (uint8_t)(Iface::LORA_CHANNEL_TYPE & 0xFF);
   temp[1] = (uint8_t)(Iface::LORA_CHANNEL_TYPE >> 8);
@@ -370,6 +371,26 @@ bool MyMesh::loraChannelReply(const uint8_t* to_key, const uint8_t* frame, size_
   memcpy(temp + 3 + Iface::LORA_CH_PREFIX, self_id.pub_key, Iface::LORA_CH_PREFIX);
   memcpy(temp + 3 + Iface::LORA_CH_ADDR, frame, n);
   mesh::Packet* pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, ch, temp, 3 + Iface::LORA_CH_ADDR + n);
+  if (!pkt) return false;
+  sendFlood(pkt, SERVER_RESPONSE_DELAY);
+  return true;
+}
+
+// A compact report: to a node, as an anonymous datagram by flood, since nothing says the way there; or on the bound channel.
+bool MyMesh::reportSend(const uint8_t* to, int slot, const uint8_t* bytes, size_t n) {
+  if (slot >= 0) {
+    static const uint8_t ALL[Iface::LORA_CH_PREFIX] = {0};
+    return loraChannelReply(to ? to : ALL, bytes, n);
+  }
+  mesh::Identity dest(to);
+  uint8_t secret[PUB_KEY_SIZE];
+  self_id.calcSharedSecret(secret, dest);
+  uint8_t temp[Iface::LORA_ANON_TAG + Iface::REPORT_MAX];
+  if (n > Iface::REPORT_MAX) return false;
+  const uint32_t tag = getRTCClock()->getCurrentTimeUnique();
+  memcpy(temp, &tag, 4);
+  memcpy(temp + Iface::LORA_ANON_TAG, bytes, n);
+  mesh::Packet* pkt = createAnonDatagram(PAYLOAD_TYPE_ANON_REQ, self_id, dest, secret, temp, Iface::LORA_ANON_TAG + n);
   if (!pkt) return false;
   sendFlood(pkt, SERVER_RESPONSE_DELAY);
   return true;
