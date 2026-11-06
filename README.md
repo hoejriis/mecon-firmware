@@ -4,12 +4,19 @@
 
 mecon-firmware keeps ordinary MeshCore radio operation and adds secure configuration, diagnostics and firmware updates. You can manage a nearby device over USB or Bluetooth, a connected device through MQTT, or a remote node over direct or private-channel LoRa. Use it on its own, or connect it to any application that implements the public interface.
 
-It is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore), built on the upstream **v1.18.0** release (commit `81dbae5`, tagged `companion-v1.18.0` and `repeater-v1.18.0` upstream). Stock apps and stock nodes interoperate with it.
+It is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore), built on the upstream **v1.18.0** release (commit `81dbae5`, tagged `companion-v1.18.0` and `repeater-v1.18.0` upstream). Stock apps and stock nodes interoperate with it, within the [restrictions listed below](#stock-meshcore-1180-and-mecon-firmware-compared).
+
+## What you can do with it
+
+- **Diagnose a remote repeater without travelling to it.** From a manager, read its health, radio figures, airtime and last reset reason over MQTT, or over LoRa where it has no IP link. LoRa carries compact figures at a low rate. Logs and screen snapshots need a higher-capacity link.
+- **Change connectivity settings with a way back.** A Wi-Fi, broker or radio change sent remotely takes effect on trial. If the manager cannot confirm it in the time it asked for, because the new settings lost contact, the device returns to the old ones. This covers a change that loses contact, not every fault, so keep USB access to a device you depend on.
+- **Use a manager and keep MeshCore.** The device keeps its ordinary radio role, and a Companion keeps working with the stock app, within the documented restrictions. Managed workflows need an application that implements the public contracts. [MeshContinuum](https://github.com/hoejriis/MeshContinuum) is one, and its Reader needs its Backend.
 
 ## Why use it
 
 - **MeshCore keeps working on its own.** Messaging, repeating and the stock phone apps need no Internet, account or management service.
-- **The same everywhere.** Every role, every mode and every way in (USB, Bluetooth, MQTT and LoRa) gets the same operations and the same security rules, decided by one privilege table. A transport never grants a permission by itself. Where a board cannot do something, the docs say it is a hardware limit.
+- **One management model across supported transports, with consistent authorization and explicit capability limits.** An operation means the same thing over USB, Bluetooth, MQTT and LoRa, and one privilege table decides it. A transport never grants a permission by itself. Which operations a path carries does differ: LoRa carries no secrets or subscriptions, for example, and a board has only the links it has. A device lists what it can do, and [what differs, and why](docs/SUPPORTED_HARDWARE.md#what-differs-and-why) says which limits come from hardware, from privacy and airtime rules, and from project decisions.
+- **A manager can send, collect and supply messages.** On a Companion, an authorized manager can send a native direct or channel message and follow what became of it, collect what was received, administer contacts and channels, and hand a missed message to the local stock app without transmitting it. A manager can also leave a device a bounded standing instruction, such as a report every few hours. The device chooses no gateway or route by itself.
 - **You can see what the device is doing.** Battery and power, connectivity, radio health and airtime, logs, observations, inventories and diagnostic screen snapshots are all available. Over LoRa, the device sends compact telemetry at a lower rate.
 - **Changes can be undone, and recovery is explicit.** Signed firmware updates go over IP, USB and Bluetooth. A remote configuration change reverts unless it is confirmed, and each reset says exactly what it clears.
 - **Security is on by default.** Untrusted links cannot manage the device, default passwords and PINs do not open remote administration, and passwords are never read back. An optional Hardened posture tightens this further.
@@ -18,7 +25,7 @@ It is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore), built on t
 
 ## Stock MeshCore 1.18.0 and mecon-firmware compared
 
-The "Stock" column describes upstream MeshCore 1.18.0 as released. The "mecon-firmware" column is the finished product: what this project adds or changes. Not all of it is in a release yet: see [availability](#getting-it). Everything not listed behaves as stock. Each file this project changes upstream is listed in the [upstream delta register](docs/UPSTREAM_DELTA.md).
+The "Stock" column describes upstream MeshCore 1.18.0 as released. The "mecon-firmware" column is the finished product: what this project adds or changes. Not all of it is available yet: see [availability](docs/AVAILABILITY.md). Everything not listed behaves as stock. Each file this project changes upstream is listed in the [upstream delta register](docs/UPSTREAM_DELTA.md).
 
 ### Capabilities
 
@@ -31,6 +38,9 @@ The "Stock" column describes upstream MeshCore 1.18.0 as released. The "mecon-fi
 | MQTT | None | Up to 6 broker profiles, one session at a time, with failover by priority or by the role a manager assigns (local, primary, secondary). Brokers can be static or discovered on the LAN by mDNS. TLS trusts a pinned certificate or a private CA. WebSocket transport is supported ([MQTT](docs/MQTT.md)) | Works with your own broker. A discovered broker is used only if it passes TLS verification. On the Heltec Companion, Repeater and Room server. Not on the nRF52 boards, which have no Wi-Fi |
 | BLE or Wi-Fi | Separate BLE and Wi-Fi builds | The standalone Heltec Companion carries BLE, Wi-Fi, MQTT and USB in one image. It runs BLE or Wi-Fi, switched by command or a two-step button press ([connectivity mode](docs/CONNECTIVITY_MODE.md)) | One image covers both uses. The two radios never run at the same time, a deliberate choice that keeps memory headroom. USB works in both modes |
 | Contacts | A fixed array in RAM (350 on the Heltec V3), saved as one file | A persistent store with a RAM cache sized from free heap. Favourites stay resident. When the store is full, the least useful non-favourite is evicted first. A stock contact file migrates on first boot ([contacts](docs/CONTACTS.md)) | Capacity follows free flash and is never below the stock count while space allows. The T1000-E Companion keeps the stock array |
+| Messages through a manager | Companion frames for the app | A manager sends one native direct or channel message and reads its outcome: queued, held for airtime, transmitted, acknowledged, timed out or failed. It collects received messages beside the native queue, with what each field proves. It can hand a missed message to the stock app, marked and never transmitted ([messages](docs/contract/OPERATIONS.md#6-messages)) | A manager and a stock app share a Companion, and neither takes the other's messages. An acknowledgement shows the recipient's node had the message, and a timeout does not prove it did not. Companion only. The copies are small and in RAM, so a reboot loses them: this is not delivery or history |
+| Contacts and channels through a manager | Companion frames and app | Operations to list, add, change, protect and remove contacts and channels, on the native tables with no second copy. A Repeater or Room server holds one management slot ([operations](docs/contract/OPERATIONS.md#51-device-interface-operations)) | A manager can prepare a device without the app. A shared secret or channel key is never read back. The device keeps no favourites database of a manager's |
+| Standing instructions | None | A manager can ask for an allowlisted report now or every few hours, with a bounded interval, destination and airtime budget. The device runs it while the manager is away | Monitoring continues without a live connection. No scripts or arbitrary commands, no unlimited catch-up after a reboot, no rule engine |
 | Firmware updates | Board bootloader (USB DFU, ESP32 web or serial flashing), unsigned | Signed release manifests, and an install that a Deployment member, or the cable, has authorised. Delivery over IP, USB and BLE, depending on the board. Preflight checks board, layout, role and a security floor. ESP32 boards boot the new image on trial and roll back if it is not confirmed ([updates](docs/contract/UPDATES.md)) | No unsigned image installs through the interface. The board's own bootloader still accepts any image from someone with physical access (see device security below). On nRF52 boards, an update is written by the bootloader over USB. It is checked by its reported version and has no previous image to return to |
 | Version reporting | `v1.18.0` | `v1.18.0-mecon.<tag>`, with the upstream base first ([versioning](docs/VERSIONING_AND_RELEASES.md)) | Apps that read the leading `v1.18.0` still work |
 
@@ -50,7 +60,7 @@ These are firmware controls, not a certification. They cover airtime only, not t
 | Area | Stock MeshCore 1.18.0 | mecon-firmware | Benefit / practical limit |
 |---|---|---|---|
 | Trusted and untrusted links | The Wi-Fi/Ethernet TCP companion port serves every frame to any client, including the CLI, key export and import, PIN change and factory reset | USB is trusted. BLE is trusted only when paired with a PIN other than 0 or the default 123456. The TCP port and a default-PIN BLE link are untrusted: they get messaging and reads, management frames are refused with error 7 (`ERR_CODE_NOT_PERMITTED`), and reads there carry no PIN or channel secret. Anything that does not declare trust is untrusted ([command-line engine](docs/CLI.md)) | The phone app still messages over Wi-Fi. Management over those links needs USB or a BLE link paired with a real PIN |
-| Command authority | Whoever reaches the CLI may use it | A device can join one Deployment, enrolled over the cable. A Deployment authority key signs the list of managers. Each manager signs its requests (Ed25519), and a strictly increasing per-manager sequence, saved before the request runs, refuses replays. Results and events are signed by the device. A broker login, TLS session, BLE pairing, USB cable, LoRa route or channel key is a transport, never authority ([authority](docs/contract/AUTHORITY.md)) | A relay (a broker or a bridge app) cannot forge or replay a command. Standalone devices with no Deployment keep the posture rules below |
+| Command authority | Whoever reaches the CLI may use it | A device can join one Deployment, enrolled over the cable. A Deployment authority key signs the list of managers. Each manager signs its requests (Ed25519), and a strictly increasing per-manager sequence, saved before the request runs, refuses replays. Results and events are signed by the device. A broker login, TLS session, BLE pairing, USB cable, LoRa route or channel key is a transport, never authority ([authority](docs/contract/AUTHORITY.md)) | A relay (a broker or a bridge app) cannot forge or replay a command. Standalone devices with no Deployment keep the posture rules below. Once enrolled, a change needs a signature even on the cable, which keeps reads, reboot and the recovery operations |
 | Default passwords and PINs | Anyone who sends the compiled-in `password` is admin over the air. Debug builds print the attempted password | A Repeater or Room server on the default or an empty admin password refuses remote admin in both postures. Attempted passwords are never logged | Set a password over USB (`password <new>`) before administering over the air |
 | Remote Companion CLI | A flagged contact may run any command, including `set pin`, radio settings and `poweroff` | Reads and `reboot` only, off in Hardened. A remote timestamp of 0 is no longer taken for the local console | A contact flag cannot take over a phone's radio |
 | Secrets | `get wifi.pwd` returns the Wi-Fi password in clear text | Wi-Fi and broker passwords are write-only on every transport. Telemetry and logs carry no secret. A secret is returned only by its own operation to a trusted local caller, such as the private key by an explicit export, which Hardened refuses ([Wi-Fi](docs/WIFI.md)) | A stolen session or log does not leak credentials |
@@ -71,19 +81,9 @@ Four boards are hardware test targets: **Heltec V3, Heltec V4, Seeed Wio Tracker
 
 ## Getting it
 
-> **Availability.** These pages describe the target mecon-firmware product. No signed public release is published yet. [Releases](https://github.com/hoejriis/mecon-firmware/releases) list what is available and what each release supports. The v0.1.x tags predate the features described here.
+> **Availability.** These pages describe the finished product. No signed public release is published yet, and some features are not built. [Availability](docs/AVAILABILITY.md) says what you can get today, and the [release notes](https://github.com/hoejriis/mecon-firmware/releases) say what each release contains.
 
-To build from source, use the project container:
-
-```sh
-docker build -t mecon-firmware-dev .
-sim/run.sh bin/idf5_libs.sh Heltec_v3_companion_radio_standalone   # Heltec V3/V4: board libraries, before the first build
-sim/run.sh pio run -e Heltec_v3_companion_radio_standalone        # build a target board
-sim/run.sh python3 -m pytest sim/tests -q                    # simulated-board suite
-sim/run.sh pio test -e native                                # native unit tests
-```
-
-Flash with PlatformIO (`pio run -e <env> -t upload`) or from the built image. Test on a spare board first, and keep USB access for recovery.
+[Install and set up a device](docs/GETTING_STARTED.md) goes from choosing a board, through keeping what is on it, to a checked device and one useful result. Today that means building from source. Contributors' test commands are in [contributing](CONTRIBUTING.md#build-and-test).
 
 ## Documentation
 
@@ -94,7 +94,9 @@ Flash with PlatformIO (`pio run -e <env> -t upload`) or from the built image. Te
 
 ## Managers and MeshContinuum
 
-Any application that implements the public contracts can manage mecon-firmware devices. [MeshContinuum](https://github.com/hoejriis/MeshContinuum) is one such manager: a Backend with a browser Reader, which needs that Backend and bridges USB and BLE to it. Connected messaging, backfill, outage forwarding and firmware-image delivery over LoRa are later MECON integration work, involving both the firmware and the manager. They are outside the product this documentation describes and are not among its benefits.
+Any application that implements the public contracts can manage mecon-firmware devices. [MeshContinuum](https://github.com/hoejriis/MeshContinuum) is one such manager: a Backend with a browser Reader, which needs that Backend and bridges USB and BLE to it.
+
+The firmware offers generic capabilities that a manager asks for: sending, collecting messages and outcomes, contact and channel administration, local delivery and standing instructions. Choosing a gateway, deciding which history to catch up on and setting a health policy belong to the manager. MECON connected messaging, backfill, RF health monitoring, autonomous outage forwarding and firmware-image delivery over LoRa are later work built on those capabilities, and are outside the product described here. [What the firmware does, and what a manager does](docs/INTEGRATION.md#what-the-firmware-does-and-what-a-manager-does) draws the line.
 
 ## Licence and security
 
