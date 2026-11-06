@@ -1,6 +1,14 @@
 #include "MqttWsClient.h"
 #include <Arduino.h>
 #include <string.h>
+#include <stdlib.h>
+
+#if defined(SIM_FREE_HEAP)
+// The simulated board can be told it has no block for a whole frame.
+static void* wsAlloc(size_t n) { return getenv("SIM_WS_NO_ALLOC") ? nullptr : malloc(n); }
+#else
+static void* wsAlloc(size_t n) { return malloc(n); }
+#endif
 
 bool MqttWsClient::begin(Client& in, const char* host, uint16_t port, bool tls, const char* path, const uint8_t key[16],
                          uint32_t timeout_ms, MqttWs::Answer* why) {
@@ -47,7 +55,19 @@ bool MqttWsClient::sendFrame(uint8_t op, const uint8_t* p, size_t n) {
   nextMask(mask);
   uint8_t buf[14 + 128];
   size_t at = MqttWs::frameHeader(buf, op, n, mask);
-  for (size_t i = 0; i < n; i++) {   // masked in pieces, so a long write needs no buffer of its own
+  // A frame goes out in one write when memory allows. Each write is a TLS record and a TCP segment holding Wi-Fi and lwIP
+  // buffers until it is acknowledged, and the pieces below took a Heltec V3 from about 35 KB free to 3 KB for one reply.
+  if (at + n > sizeof(buf)) {
+    uint8_t* whole = static_cast<uint8_t*>(wsAlloc(at + n));
+    if (whole) {
+      memcpy(whole, buf, at);
+      for (size_t i = 0; i < n; i++) whole[at + i] = p[i] ^ mask[i & 3];
+      const bool ok = _in->write(whole, at + n) == at + n;
+      free(whole);
+      return ok;
+    }
+  }
+  for (size_t i = 0; i < n; i++) {   // no memory for the whole frame: masked in pieces, which need no buffer of their own
     buf[at++] = p[i] ^ mask[i & 3];
     if (at == sizeof(buf) || i + 1 == n) {
       if (_in->write(buf, at) != at) return false;
