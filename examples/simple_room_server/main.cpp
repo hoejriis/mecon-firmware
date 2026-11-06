@@ -195,6 +195,9 @@ void setup() {
     mgmt_record_store.setFs(fs);
     mgmt_snap_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
+    the_iface.setLoraSend([](void* u, const Iface::LoraLink::Peer& p, const uint8_t* f, size_t n, bool flood_ok) {
+      return static_cast<MyMesh*>(u)->loraReply(p.key, p.secret, p.path, p.path_len, f, n, flood_ok);
+    }, &the_mesh);
 #ifdef ENABLE_WIFI_INTERFACE
     net_started = ServerNet::begin(the_mesh, *the_mesh.getNodePrefs(), board, the_iface,
                                    []() -> uint32_t { return the_mesh.getRTCClock()->getCurrentTime(); },

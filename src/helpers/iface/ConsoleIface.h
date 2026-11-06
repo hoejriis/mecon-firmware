@@ -16,6 +16,7 @@
 #include "IfaceDispatch.h"
 #include "JobService.h"
 #include "helpers/updates/UpdService.h"
+#include "LoraLink.h"
 #include "Provenance.h"
 #include "Streams.h"
 #include "MgmtChannel.h"
@@ -90,6 +91,11 @@ public:
   // The device interface over the broker (DEVICE_INTERFACE.md section 7): one request as the session's caller. Returns
   // the result's length (0: nothing to send).
   size_t onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap);
+  // The LoRa link (LORA_MANAGEMENT.md): a complete message runs as the broker's does, as its own caller. The role's main
+  // gives the way to send a reply.
+  void setLoraSend(LoraLink::SendFn fn, void* user) { _lora_send = fn; _lora_send_user = user; loraSink().fn = onLoraFrame; loraSink().user = this; }
+  LoraLink::Counts loraCounts() const { return _lora.counts(); }
+  bool onLora() const { return _on_lora; }
   typedef bool (*EventPublishFn)(const char* stream, const char* payload, size_t len);
   typedef bool (*SessionUpFn)();
   void setMqttEvents(EventPublishFn publish, SessionUpFn up) { _ev_publish = publish; _ev_up = up; }
@@ -180,6 +186,13 @@ private:
   static bool confirmReadSecret(void* self, const KeyDef& k, unsigned idx, char* out, size_t cap);
   static bool authProfileExists(void* self, uint8_t index);
   // The broker session, while the build has one: one more link beside the console.
+  static void onLoraFrame(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len,
+                          const uint8_t* frame, size_t n);
+  void loraTick(uint32_t now);
+  LoraLink _lora;
+  LoraLink::SendFn _lora_send = nullptr;
+  void* _lora_send_user = nullptr;
+  bool _on_lora = false;
   bool _on_mqtt = false;       // the request being handled came over the broker
   Cli::Context _link_ctx;      // its transport's own context, before any signature replaced it
   char _mqtt_nonce[33] = {0};

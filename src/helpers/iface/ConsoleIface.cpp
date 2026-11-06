@@ -63,8 +63,8 @@ Status opHello(OpContext& c) {
   const char* nonce = m->helloNonce();
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
   w.key("capabilities"); w.beginArray();
-  for (const char* cap : CAPABILITIES) w.str(cap);
-  writeStreamCapabilities(w, m->produced());
+  for (const char* cap : CAPABILITIES) if (!m->onLora() || loraOpAllowed(cap)) w.str(cap);
+  if (!m->onLora()) writeStreamCapabilities(w, m->produced());   // no stream goes over LoRa
   w.endArray();
   return ST_OK;
 }
@@ -553,6 +553,7 @@ int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
+  if (_on_lora) d.setOpFilter(loraOpAllowed);
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -760,8 +761,41 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
   return w.ok();
 }
 
+void ConsoleIface::onLoraFrame(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len,
+                               const uint8_t* frame, size_t n) {
+  static_cast<ConsoleIface*>(user)->_lora.feed(key, secret, path, path_len, frame, n, LORA_REQ_PAYLOAD, millis());
+}
+
+// One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).
+void ConsoleIface::loraTick(uint32_t now) {
+  if (!_lora_send) return;
+  if (LoraLink::Peer* p = _lora.nextComplete()) {
+    char* res = static_cast<char*>(malloc(LORA_MSG_MAX + 1));
+    if (res) {
+      const char* msg = LoraLink::message(*p);
+      const size_t len = LoraLink::messageLen(*p);
+      int n;
+      bool verified = false;
+      if (DeployAuth::isWrapper(msg, len)) {
+        _on_lora = true;
+        const Cli::Context ctx(Cli::T_LORA, Cli::A_NONE, _host.posture(_host.user));
+        n = (int)onMqtt(ctx, reinterpret_cast<const uint8_t*>(msg), len, res, LORA_MSG_MAX + 1);
+        _on_lora = false;
+        verified = _auth.lastVerified();
+      } else {
+        n = writeResult(res, LORA_MSG_MAX + 1, "", ST_REFUSED, nullptr, "unauthenticated");
+      }
+      if (n > 0) _lora.queueReply(*p, res, (size_t)n, verified, now);
+      free(res);
+    }
+    _lora.release(*p);
+  }
+  _lora.tick(now, _lora_send, _lora_send_user);
+}
+
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
+  loraTick(now);
   _gap.tick(now);
   _jobs.tick(now);
   _updates.loop(now);

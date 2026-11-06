@@ -41,7 +41,7 @@ const size_t HELLO_SIGNED_BUDGET = 1350;
 const size_t HELLO_PLAIN_BUDGET = 1500;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "rf.request", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
@@ -67,6 +67,7 @@ Status opMsgDeliver(OpContext& c);
 Status opSchema(OpContext& c);
 Status opGet(OpContext& c);
 Status opApply(OpContext& c);
+Status opRfRequest(OpContext& c);
 Status opSubStart(OpContext& c);
 Status opSubStop(OpContext& c);
 Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
@@ -99,6 +100,7 @@ const OpEntry OPS[] = {
   {"config.schema", opSchema, PRIV_READ, false},
   {"config.get", opGet, PRIV_READ, false},
   {"config.apply", opApply, PRIV_WRITE, true},
+  {"rf.request", opRfRequest, PRIV_WRITE, false},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
   {"deployment.get", MeconIface::opDeployGet, PRIV_READ, false},
@@ -191,7 +193,9 @@ Status opHello(OpContext& c) {
   const size_t room = m->enrolled() ? HELLO_SIGNED_BUDGET : HELLO_PLAIN_BUDGET;
   unsigned idx = 0;
   int next = -1;
+  const bool lora = m->onLora();
   auto add = [&](const char* cap) {
+    if (lora && !loraOpAllowed(cap)) return;   // an operation or stream this link does not carry is not offered on it
     if (idx++ < (unsigned)from || next >= 0) return;
     if (w.size() + strlen(cap) + 3 > room) { next = (int)idx - 1; return; }
     w.str(cap);
@@ -289,6 +293,7 @@ Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
 Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
+Status opRfRequest(OpContext& c) { return self(c)->rfRequest(c); }
 
 Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
   ChannelHost host = self(c)->channelHost();
@@ -657,6 +662,7 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
+  if (_on_lora) d.setOpFilter(loraOpAllowed);
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -741,6 +747,8 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _updates.begin(_mesh->hardwareName(), "companion", _mesh->hardwareNames());
   observeSink().fn = onObserve;
   observeSink().user = this;
+  loraSink().fn = onLoraFrame;
+  loraSink().user = this;
 }
 
 // Whether the caller of the request being handled may use a stream of this class: the CLI privilege table with its
@@ -1078,6 +1086,128 @@ void MeconIface::inventoryTick(uint32_t now) {
   free(ev);
 }
 
+void MeconIface::onLoraFrame(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len,
+                             const uint8_t* frame, size_t n) {
+  static_cast<MeconIface*>(user)->_lora.feed(key, secret, path, path_len, frame, n, LORA_REQ_PAYLOAD, millis());
+}
+
+bool MeconIface::loraSend(void* user, const LoraLink::Peer& p, const uint8_t* frame, size_t n, bool flood_ok) {
+  return static_cast<MeconIface*>(user)->_mesh->loraReply(p.key, p.secret, p.path, p.path_len, frame, n, flood_ok);
+}
+
+// One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).
+void MeconIface::loraTick(uint32_t now) {
+  if (LoraLink::Peer* p = _lora.nextComplete()) {
+    char* res = static_cast<char*>(malloc(LORA_MSG_MAX + 1));
+    if (res) {
+      const char* msg = LoraLink::message(*p);
+      const size_t len = LoraLink::messageLen(*p);
+      int n;
+      bool verified = false;
+      if (DeployAuth::isWrapper(msg, len)) {
+        _on_lora = true;
+        const Cli::Context ctx(Cli::T_LORA, Cli::A_NONE, _mesh->postureValue());
+        n = dispatch(ctx, Posture::CALLER_REMOTE_ADMIN, &_lora_link, msg, len, res, LORA_MSG_MAX + 1);
+        _on_lora = false;
+        verified = _auth.lastVerified();
+      } else {
+        n = writeResult(res, LORA_MSG_MAX + 1, "", ST_REFUSED, nullptr, "unauthenticated");
+      }
+      if (n > 0) _lora.queueReply(*p, res, (size_t)n, verified, now);
+      free(res);
+    }
+    _lora.release(*p);
+  }
+  _lora.tick(now, loraSend, this);
+}
+
+// rf.request {"to":"<node key hex>","message":"<the signed request, as text>"}: this Companion is the manager's radio. It adds
+// no authority: the message is carried as it came, and the target verifies it. Replies come back on the rf stream.
+Status MeconIface::rfRequest(OpContext& c) {
+  if (_rf_out) { c.error = "rf-busy"; return ST_BUSY; }
+  const JsonDoc& d = *c.doc;
+  char hex[65];
+  if (c.req->args < 0 || !jsonGetString(d, jsonFind(d, c.req->args, "to"), hex, sizeof(hex), CS_NAME, 64)) return ST_INVALID;
+  uint8_t to[32];
+  for (int i = 0; i < 32; i++) {
+    unsigned v;
+    if (sscanf(hex + 2 * i, "%2x", &v) != 1) return ST_INVALID;
+    to[i] = (uint8_t)v;
+  }
+  char* msg = static_cast<char*>(malloc(LORA_MSG_MAX + 1));
+  if (!msg) { c.error = "no-memory"; return ST_BUSY; }
+  if (!jsonGetString(d, jsonFind(d, c.req->args, "message"), msg, LORA_MSG_MAX + 1, CS_ANY, 1)) {
+    free(msg);
+    c.error = "too-large";
+    return ST_INVALID;
+  }
+  memcpy(_rf_to, to, 32);
+  _rf_out = reinterpret_cast<uint8_t*>(msg);
+  _rf_len = strlen(msg);
+  _rf_off = 0;
+  _rf_idx = 0;
+  _rf_xid++;
+  _rf_count = (uint8_t)((_rf_len + LORA_REQ_PAYLOAD - 1) / LORA_REQ_PAYLOAD);
+  _rf_next = millis();
+  JsonWriter& w = *c.out;
+  w.key("xid"); w.num(_rf_xid);
+  w.key("frames"); w.num(_rf_count);
+  return ST_OK;
+}
+
+void MeconIface::rfTick(uint32_t now) {
+  if (!_rf_out || (int32_t)(now - _rf_next) < 0) return;
+  uint8_t f[LORA_HDR + LORA_REQ_PAYLOAD];
+  const size_t take = _rf_len - _rf_off < LORA_REQ_PAYLOAD ? _rf_len - _rf_off : LORA_REQ_PAYLOAD;
+  f[0] = LORA_MARKER; f[1] = _rf_xid; f[2] = _rf_idx; f[3] = _rf_count;
+  memcpy(f + LORA_HDR, _rf_out + _rf_off, take);
+  if (!_mesh->rfSend(_rf_to, f, LORA_HDR + take)) { _rf_next = now + 200; return; }   // no packet free: the next pass tries
+  _rf_off += take;
+  _rf_idx++;
+  _rf_next = now + LORA_FRAME_GAP_MS;
+  if (_rf_off >= _rf_len) {
+    Iface::wipe(_rf_out, _rf_len);
+    free(_rf_out);
+    _rf_out = nullptr;
+  }
+}
+
+// A reply frame for this Companion's rf.request: when it completes it goes out on the rf stream as it came.
+void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
+  if (n <= LORA_REPLY_HDR) return;
+  uint8_t* f = static_cast<uint8_t*>(malloc(n));
+  if (!f) return;
+  memcpy(f, frame + 3, n - 3);   // the three bytes before the xid become the header's marker
+  f[0] = LORA_MARKER;
+  static const uint8_t NO_SECRET[32] = {0};
+  const LoraLink::Feed r = _rf.feed(key, NO_SECRET, nullptr, LoraLink::PATH_UNKNOWN, f, n - 3, LORA_REPLY_PAYLOAD, millis());
+  free(f);
+  if (r != LoraLink::F_COMPLETE) return;
+  LoraLink::Peer* p = _rf.nextComplete();
+  if (!p) return;
+  char* data = static_cast<char*>(malloc(RESULT_MAX));
+  char* ev = static_cast<char*>(malloc(RESULT_MAX));
+  if (data && ev) {
+    char hex[65];
+    hexOf(hex, key, 32);
+    JsonWriter w(data, RESULT_MAX);
+    w.beginObject();
+    w.key("from"); w.str(hex);
+    w.key("xid"); w.num(p->xid);
+    w.key("message"); w.str(LoraLink::message(*p));
+    w.endObject();
+    if (w.ok()) {
+      const uint32_t ts = _mesh->getRTCClock()->knownTime();
+      int m = writeEvent(ev, RESULT_MAX, STREAMS[SID_RF].name, ++_clock.seq[SID_RF], _epoch, ts != 0, ts, data);
+      if (m > 0) m = _prov.sign(STREAMS[SID_RF].name, ev, (size_t)m, RESULT_MAX);
+      if (m > 0) sendEvent(SID_RF, ev, (size_t)m);
+    }
+  }
+  free(data);
+  free(ev);
+  _rf.release(*p);
+}
+
 void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
   _jobs.tick(now);
@@ -1088,6 +1218,8 @@ void MeconIface::loop(uint32_t now) {
   tellInbox();
   drainLogs();   // beside streamTick, not inside it: a signed log event on top of its frame overran the loop stack (#234)
   inventoryTick(now);
+  loraTick(now);
+  rfTick(now);
   for (Link& l : _links) {
     if (!l.src) continue;
     if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it

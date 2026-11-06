@@ -368,6 +368,7 @@ static void freeBody(char* body, size_t cap) {
 
 int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], const char* msg, size_t len,
                                ResultCache* cache, RunFn run, void* run_user, char* out, size_t cap) {
+  _verified = false;
   if (_dep_ls == Dep::LS_ABSENT) return writeResult(out, cap, "", ST_REFUSED, nullptr, "unauthenticated");
   if (_dep_ls != Dep::LS_OK || !_dep) {
     if (_dep) _dep->auth_rejections++;
@@ -390,6 +391,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     freeBody(body, body_cap);
     return n;
   }
+  _verified = true;
   strncpy(_answering.op, v.op, sizeof(_answering.op) - 1);   // the verified request: its result names it
   _answering.op[sizeof(_answering.op) - 1] = 0;
   _answering.has_job = v.has_job;

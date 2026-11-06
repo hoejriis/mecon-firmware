@@ -1,9 +1,9 @@
 # Management over LoRa
 
-> **Draft contract.** It carries the [device interface](DEVICE_INTERFACE.md) over LoRa, point to point and over the
-> [management channel](MANAGEMENT_CHANNEL.md), under the [management authority contract](AUTHORITY.md).
-> It defines no new operation: the [managed operations](OPERATIONS.md) are what travels. Compact telemetry and
-> firmware-image bytes over LoRa are not defined here. Section 10 lists what is still open for review.
+> **Status.** The point-to-point path is built on the Companion, Repeater and Room server, proven in the simulator. The channel
+> path below is not built yet, and neither has run on a board. It carries the [device interface](DEVICE_INTERFACE.md) under the
+> [management authority contract](AUTHORITY.md). It defines no new operation on the device: the [managed operations](OPERATIONS.md)
+> are what travels. Compact telemetry and firmware-image bytes over LoRa are not defined here.
 
 ## 1. LoRa is a transport
 
@@ -54,12 +54,13 @@ encrypted on both paths. A node is addressed by its node public key, as native M
 
 ### 3.1 Point to point
 
-- The request travels as the native encrypted request datagram to the target node, keyed by the ECDH secret of the
-  two node keys, as a native request to a contact is. The reply travels as the matching response datagram to the
-  sender. A verified result goes on the path the request arrived by, or by flood when that path is not known. An
-  answer to an unverified request never floods (section 7).
-- The datagram carries a one-byte marker that selects this protocol, so a native request type is never read as a
-  management frame and the other way round.
+- The request travels in a native anonymous-request datagram to the target node, encrypted with the ECDH secret of the two node
+  keys. That datagram carries the sender's public key, so the manager need not be a contact or on an access list: being known
+  grants nothing here. The reply travels as a native response datagram to the sender. A verified result goes the way the request
+  came (a flood's hops reversed, or directly for a neighbour), or by flood when that is not known. An answer to an unverified
+  request never floods (section 7).
+- The datagram carries a one-byte marker (0x1D) after its 4-byte tag, which selects this protocol. It is no password and no native
+  request type, so neither can be read as the other. A reply starts with the magic `0x1D "MC1"`.
 - Native addressing (the destination hash, then decryption with the pairwise secret) selects the target. The signed
   body's `target_public_key` then confirms it on the full key: a request whose key is not this node's is refused
   `wrong_device` (AUTHORITY section 7, check 4b) and never runs.
@@ -89,7 +90,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
 ## 4. Frames
 
 - **One message, several frames.** A message (one signed request, or one result) is cut into frames that fit one
-  LoRa packet: up to 150 bytes of message per frame on the point-to-point path, up to 140 on the channel (the
+  LoRa packet: 128 bytes of a request and 150 of a reply per frame on the point-to-point path, up to 140 on the channel (the
   addresses take the rest). Each frame carries a message number per sender (`xid`), its index and the frame count,
   as the Companion's `0x7F` frames do (DEVICE_INTERFACE section 7).
 - **A smaller bound than the other links.** A message over LoRa is at most 1,024 bytes (8 frames at most). A longer
@@ -200,9 +201,8 @@ use (section 10).
 Decided in review: the operations offered over LoRa (section 2), the results the channel may carry (section 3.2), and
 the limit on unverified answers (section 7). Still open:
 
-1. **The frame sizes and the 1,024-byte bound** (section 4) are first estimates against MeshCore's 184-byte payload,
-   the pairwise MAC and the channel datagram's header. They are fixed by measuring a real signed `config.apply` and its
-   result.
+1. **The 1,024-byte bound** (section 4) is 8 frames of 128 bytes. A signed `config.apply` of one key took 5 frames in the simulator.
+   It is to be checked against a real one with several keys.
 2. **The deadlines** of section 8, and the unverified budget's 4 a minute, are to be confirmed against airtime on the
    slowest preset in use, with the duty window's boot seeding taken into account.
 3. **Roles.** The Companion carries both paths once #114's binding and #109's job table are in. The Repeater and Room

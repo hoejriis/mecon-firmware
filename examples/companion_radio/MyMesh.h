@@ -141,6 +141,9 @@ public:
   uint16_t batteryMilliVolts() { return board.getBattMilliVolts(); }
   uint8_t postureValue() const { return _prefs.posture; }
   MeconIface& iface() { return _iface; }
+  bool loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n,
+                 bool flood_ok);
+  bool rfSend(const uint8_t* to, const uint8_t* frame, size_t n);
   bool ifaceWritable(const BaseSerialInterface* src) const { return _serial && !_serial->isWriteBusy() && src; }
   void ifaceWrite(const BaseSerialInterface* src, const uint8_t* frame, size_t len) {
     _serial->bindReply(src);
@@ -230,6 +233,7 @@ protected:
 
   uint8_t onContactRequest(const ContactInfo &contact, uint32_t sender_timestamp, const uint8_t *data,
                            uint8_t len, uint8_t *reply) override;
+  void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
   void onContactResponse(const ContactInfo &contact, const uint8_t *data, uint8_t len) override;
   void onControlDataRecv(mesh::Packet *packet) override;
   void onRawDataRecv(mesh::Packet *packet) override;

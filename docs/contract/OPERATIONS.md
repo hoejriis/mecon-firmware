@@ -195,7 +195,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `posture.get`, `posture.set` | posture (controlled reboot) | CLI `get/set posture` | read / posture | `set` | C R S | per table (raising: cable, paired BLE; lowering: cable) |
 | `deployment.*` | provisioning, authority updates, record, local unlock | | per [AUTHORITY](AUTHORITY.md) | | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `update.*` | firmware update lifecycle ([UPDATES.md](UPDATES.md)) | | per [UPDATES](UPDATES.md) | | C R S | per [UPDATES](UPDATES.md) |
-| `rf.request` | administer another node over LoRa from this one | | per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) | | C | per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
+| `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>"}`: this Companion carries it to another node over LoRa, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | yes | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
 **Keys `config.*` reaches.**
 - Companion: 17 key patterns, 84 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|site|user|pwd|priority`. The 22 password and user keys are write-only.
@@ -317,7 +317,7 @@ Notes the matrix depends on, as the code stands:
 | `REQ_TYPE_GET_OWNER_INFO` 0x07 | yes | no | no | ACL client |
 | CLI text | any text from an admin (plain, CLI data, CLI command) | CLI data or CLI command from an admin; plain text is a post | CLI command from a flagged contact (reads and `reboot`) | admin / flagged contact |
 
-The device-interface operations are not carried over LoRa today. #115 carries them, point-to-point and over the management channel of #114. A channel key, an RF route or a proxy is never authority there: the request carries its own signature. Until then, LoRa management is the native facilities above under the CLI table's remote-admin row.
+The device-interface operations go over LoRa point to point ([LORA_MANAGEMENT](LORA_MANAGEMENT.md)): `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `deployment.get`, `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm` and `posture.set`. Only a signed request runs. Any other operation answers `unknown-op` there. The management channel path is not built yet.
 
 ### 5.5 Boards and roles
 

@@ -900,7 +900,57 @@ uint8_t MyMesh::onContactRequest(const ContactInfo &contact, uint32_t sender_tim
   return 0; // unknown
 }
 
+// A device-interface frame over LoRa (LORA_MANAGEMENT.md). Native anonymous requests keep what they do: only the marker comes here.
+void MyMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) {
+#ifdef ENABLE_MECON_IFACE
+  if (len > Iface::LORA_ANON_TAG + Iface::LORA_HDR && data[Iface::LORA_ANON_TAG] == Iface::LORA_MARKER && Iface::loraSink().fn) {
+    uint8_t back[64];
+    const uint8_t back_len = Iface::loraReplyPath(packet->isRouteFlood(), packet->getPathHashSize(), packet->getPathHashCount(),
+                                                  packet->path, back, sizeof(back));
+    Iface::loraSink().fn(Iface::loraSink().user, sender.pub_key, secret, back, back_len, data + Iface::LORA_ANON_TAG,
+                         len - Iface::LORA_ANON_TAG);
+  }
+#else
+  (void)packet; (void)secret; (void)sender; (void)data; (void)len;
+#endif
+}
+
+#ifdef ENABLE_MECON_IFACE
+bool MyMesh::loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n,
+                       bool flood_ok) {
+  if (path_len == Iface::LoraLink::PATH_UNKNOWN && !flood_ok) return true;   // never a flood for an unverified answer: dropped
+  mesh::Identity to(key);
+  mesh::Packet* reply = createDatagram(PAYLOAD_TYPE_RESPONSE, to, secret, frame, n);
+  if (!reply) return false;
+  if (path_len != Iface::LoraLink::PATH_UNKNOWN) sendDirect(reply, path, path_len, 300);
+  else sendFlood(reply, 300);
+  return true;
+}
+
+bool MyMesh::rfSend(const uint8_t* to, const uint8_t* frame, size_t n) {
+  ContactInfo* recipient = lookupContactByPubKey(to, PUB_KEY_SIZE);
+  ContactInfo anon;
+  if (!recipient) {   // as CMD_SEND_ANON_REQ: a node that is not a contact, tried directly
+    memset(&anon, 0, sizeof(anon));
+    memcpy(anon.id.pub_key, to, PUB_KEY_SIZE);
+    anon.out_path_len = 0;
+    anon.type = ADV_TYPE_NONE;
+    anon.lastmod = getRTCClock()->getCurrentTime();
+    if (!addContact(anon)) return false;
+    recipient = &anon;
+  }
+  uint32_t tag, est;
+  return sendAnonReq(*recipient, frame, (uint8_t)n, tag, est) != MSG_SEND_FAILED;
+}
+#endif
+
 void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, uint8_t len) {
+#ifdef ENABLE_MECON_IFACE
+  if (len > Iface::LORA_REPLY_HDR && memcmp(data, Iface::LORA_REPLY_MAGIC, 4) == 0) {
+    _iface.onRfReply(contact.id.pub_key, data, len);
+    return;
+  }
+#endif
   uint32_t tag;
   memcpy(&tag, data, 4);
 

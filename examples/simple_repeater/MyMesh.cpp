@@ -1,4 +1,7 @@
 #include "MyMesh.h"
+#ifdef ENABLE_MECON_IFACE
+  #include <helpers/iface/LoraLink.h>
+#endif
 #include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
 #include <helpers/iface/Observe.h>
@@ -583,8 +586,32 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
   return Mesh::onRecvPacket(pkt);
 }
 
+#ifdef ENABLE_MECON_IFACE
+bool MyMesh::loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n,
+                       bool flood_ok) {
+  if (path_len == Iface::LoraLink::PATH_UNKNOWN && !flood_ok) return true;   // never a flood for an unverified answer: dropped
+  mesh::Identity to(key);
+  mesh::Packet* reply = createDatagram(PAYLOAD_TYPE_RESPONSE, to, secret, frame, n);
+  if (!reply) return false;
+  if (path_len != Iface::LoraLink::PATH_UNKNOWN) sendDirect(reply, path, path_len, SERVER_RESPONSE_DELAY);
+  else sendFlood(reply, SERVER_RESPONSE_DELAY);
+  return true;
+}
+#endif
+
 void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const mesh::Identity &sender,
                             uint8_t *data, size_t len) {
+#ifdef ENABLE_MECON_IFACE
+  // A device-interface frame over LoRa (LORA_MANAGEMENT.md). Its marker is no password and no native request type.
+  if (len > Iface::LORA_ANON_TAG + Iface::LORA_HDR && data[Iface::LORA_ANON_TAG] == Iface::LORA_MARKER && Iface::loraSink().fn) {
+    uint8_t back[64];
+    const uint8_t back_len = Iface::loraReplyPath(packet->isRouteFlood(), packet->getPathHashSize(), packet->getPathHashCount(),
+                                                  packet->path, back, sizeof(back));
+    Iface::loraSink().fn(Iface::loraSink().user, sender.pub_key, secret, back, back_len, data + Iface::LORA_ANON_TAG,
+                         len - Iface::LORA_ANON_TAG);
+    return;
+  }
+#endif
   if (packet->getPayloadType() == PAYLOAD_TYPE_ANON_REQ) { // received an initial request by a possible admin
                                                            // client (unknown at this stage)
     uint32_t timestamp;

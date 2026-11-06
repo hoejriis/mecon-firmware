@@ -17,6 +17,7 @@
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/AuditLog.h>
 #include <helpers/iface/DeployAuth.h>
+#include <helpers/iface/LoraLink.h>
 #include <helpers/iface/Provenance.h>
 #include <helpers/iface/JobService.h>
 #include <helpers/updates/UpdService.h>
@@ -59,7 +60,11 @@ public:
   static const uint32_t STREAMS_PRODUCED = (1u << Iface::SID_HEALTH) | (1u << Iface::SID_RADIO) |
                                            (1u << Iface::SID_POWER) | (1u << Iface::SID_RUNTIME) |
                                            (1u << Iface::SID_OBSERVATIONS) | (1u << Iface::SID_INVENTORY) |
-                                           (1u << Iface::SID_LOGS);
+                                           (1u << Iface::SID_LOGS) | (1u << Iface::SID_RF);
+public:
+  Iface::Status rfRequest(Iface::OpContext& c);
+  void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
+  bool onLora() const { return _on_lora; }
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
   // stream's data; signature changes whenever a link changes state, which sends an event at once.
@@ -234,6 +239,20 @@ private:
   // then one page per pass, at most INV_PAGES_PER_S a second, so a long contact list never holds the RF loop.
   void startInventory(uint32_t now);
   void inventoryTick(uint32_t now);
+  // The LoRa link (LORA_MANAGEMENT.md): requests to this device, and rf.request's own requests to others with their replies.
+  static void onLoraFrame(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len,
+                          const uint8_t* frame, size_t n);
+  static bool loraSend(void* user, const Iface::LoraLink::Peer& p, const uint8_t* frame, size_t n, bool flood_ok);
+  void loraTick(uint32_t now);
+  void rfTick(uint32_t now);
+  Iface::LoraLink _lora, _rf;
+  Link _lora_link;
+  bool _on_lora = false;
+  uint8_t* _rf_out = nullptr;   // the message rf.request is sending, and where it has got to
+  size_t _rf_len = 0, _rf_off = 0;
+  uint8_t _rf_to[32] = {0};
+  uint8_t _rf_xid = 0, _rf_idx = 0, _rf_count = 0;
+  uint32_t _rf_next = 0;
   static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
   static const uint32_t INV_PAGE_MS = 200;
   bool _inv_active = false;
