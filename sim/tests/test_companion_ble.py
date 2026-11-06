@@ -319,6 +319,29 @@ def test_a_default_pin_ble_frame_is_never_decided_with_the_cables_trust(nodes):
     assert u.cli("get name") != "> pwned"
 
 
+def test_a_channel_read_sends_only_its_own_name(nodes):
+    """out_frame is shared by every link: a reply must set every byte it sends, or it carries the end of the last reply."""
+    n = boot(nodes, "r5", DEFAULT)
+    b = n.connect_ble(DEFAULT)
+    b.app_start()
+    u = usb(n)
+    drain(b, u, secs=0.5)
+    assert u.set_channel(1, "ab", bytes(range(16)))[0] == 0
+    drain(b, u, secs=0.5)
+    for cable in ("set pin 654321", "get name"):
+        for slot, name in ((5, b""), (1, b"ab")):             # an empty slot and a short name
+            reply = u.cli(cable)
+            assert len(reply) > 8, reply
+            drain(b, u, secs=0.3)
+            b._send(bytes([harness.CMD_GET_CHANNEL, slot]))
+            got = drain(b, u, secs=1.0)[0]
+            info = [f for f in got if f[0] == harness.RESP_CHANNEL_INFO]
+            assert len(info) == 1, got
+            field = info[0][2:34]
+            assert field == name.ljust(32, b"\0"), (cable, slot, field)
+            assert info[0][34:50] == bytes(16), "and no secret to this caller"
+
+
 def test_a_contact_list_streams_only_to_the_client_that_asked_for_it(nodes):
     n = boot(nodes, "r3", PIN)
     b = n.connect_ble(PIN)

@@ -2104,7 +2104,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       int i = 0;
       out_frame[i++] = RESP_CODE_CHANNEL_INFO;
       out_frame[i++] = channel_idx;
-      strcpy((char *)&out_frame[i], channel.name);
+      StrHelper::strzcpy((char *)&out_frame[i], channel.name, 32);   // the whole field: nothing of an earlier reply goes with it
       i += 32;
       if (serialTrusted()) memcpy(&out_frame[i], channel.channel.secret, 16);
       else memset(&out_frame[i], 0, 16);   // the name serves messaging; the secret is not an untrusted caller's
