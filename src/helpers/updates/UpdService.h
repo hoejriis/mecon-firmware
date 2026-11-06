@@ -200,6 +200,7 @@ private:
   void dfuReconcile();
   bool _dfu_pending = false;   // an offered bootloader-dfu image: reset into the bootloader at _dfu_at
   uint32_t _dfu_at = 0;
+  char _dfu_job[33] = {};      // the job that offer opened: a job.cancel before the reset stops it
   static const uint32_t DFU_DELAY_MS = 1500;
   void finish(Iface::Job& j, uint8_t state, const char* members);
 };

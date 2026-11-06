@@ -391,6 +391,7 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     _offered_once = true;
     _last_offer_ms = now_ms;
     _dfu_pending = true;
+    snprintf(_dfu_job, sizeof(_dfu_job), "%s", j->id);
     _dfu_at = now_ms + DFU_DELAY_MS;   // counted again from the reply (replyWritten)
     JsonWriter& w = *c.out;
     w.key("job"); w.str(j->id);
@@ -578,7 +579,9 @@ void UpdateService::loop(uint32_t now_ms) {
   // An offer of a bootloader-dfu image resets into the bootloader once its answer has gone out.
   if (_dfu_pending && (int32_t)(now_ms - _dfu_at) >= 0) {
     _dfu_pending = false;
-    slotEnterDfu();
+    JobTable* t = table();
+    Job* j = nullptr;
+    if (t && t->find(_dfu_job, &j) == JobTable::FOUND && !jobTerminal(j->state)) slotEnterDfu();
   }
   // Stage 1 of the rollback: the image has run its start-up for VALID_AFTER_MS (the radio, the mesh and the interface
   // are up and the loop turns), so the bootloader stops reverting it. From here the confirmation deadline decides.
