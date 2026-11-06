@@ -21,15 +21,15 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 | Id | Summary | Decision |
 |---|---|---|
 | L4 | A USB unlock outlives a change of cable user until it expires | Deferred: follow-up "clear the unlock on a USB line-state change and shorten the window" |
-| L5 | An unlock in Normal opens the whole posture class, not only the posture command | Deferred: follow-up "narrow the unlocked cable to `set posture`", with the contract wording |
+| L5 | An unlock in Normal opens the whole posture class, not only the posture command | Fixed: a local unlock in Normal opens the posture and the audit reads, and no longer `set connectivity.mode` or the broker-management flag. Section 9 grants reads and the posture; the audit read stays because it is a read |
 | L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Deferred: follow-up "decide the Ethernet console's row in the caller table" |
-| L7 | The highest `job_id` value is the blocked-mark sentinel | Deferred: follow-up "refuse that `job_id` and say so in section 8"; small, status-only effect |
+| L7 | The highest `job_id` value is the blocked-mark sentinel | Fixed: that `job_id` is refused as malformed, stated in section 8 |
 | L8 | Entropy of the ESP32 RNG on server roles that run no radio | Deferred: follow-up "enable the bootloader random source around boot-time draws, or mix in radio noise" |
 | I1 | The duplicate-result cache key uses a truncated instance id | Deferred: follow-up "use the full id or the member index" |
 | I2 | The record is stored in plaintext on flash, like the node key | Accepted: same protection class as the node key; the contract wording "stored as a secret" is to be clarified |
 | I3 | The unlock lockout counter lives in RAM | Accepted: the secret is 256 bits, so a reset of the counter buys nothing |
 | I4 | The unlock HMAC has no domain prefix | Accepted: challenges are random per link; a prefix is a possible later hardening |
-| I5 | A server `region load` in progress consumes later console lines | Deferred: follow-up "run the front door before a multi-line load consumer" (predates the branch) |
+| I5 | A server `region load` in progress consumes later console lines | Fixed: the front door runs before the load takes a line |
 | I6 | Non-canonical point encodings are not rejected in the weak-key check | Accepted: replay protection keys on `job_id`, not on signature uniqueness |
 | I7 | A corrupt record's salvaged unlock secret is trusted on the frame CRC | Accepted: planting one needs flash write access, which has stronger options already |
 

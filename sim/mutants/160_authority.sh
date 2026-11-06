@@ -195,3 +195,12 @@ mutate reserved_mark_every_id_writes src/helpers/deployment/DepReplay.cpp '  if 
 mutate reserved_mark_write_skipped src/helpers/iface/DeployAuth.cpp '    if (Dep::markAccepted(&wm, v.job_id) && !persistMarks()) {' '    if (Dep::markAccepted(&wm, v.job_id) && false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
 mutate reserved_mark_reaches_blocked src/helpers/deployment/DepReplay.cpp '  w->reserved = job_id < MARK_BLOCKED - MARK_RESERVE ? job_id + MARK_RESERVE : MARK_BLOCKED - 1;' '  w->reserved = job_id + MARK_RESERVE;' unit:test_dep_replay
 mutate reserved_mark_new_id_gets_a_bare_duplicate src/helpers/iface/DeployAuth.cpp '      } else if (wm.mark == wm.reserved) {' '      } else if (false) {' sim/tests/test_deployment_authority.py::test_the_mark_on_flash_is_reserved_ahead_and_a_reboot_lands_on_it
+
+# --- the deferred items of the second authority review
+mutate unlock_opens_connectivity src/helpers/cli/CliRegistry.h 'C_POSTURE,     F_NO_UNLOCK,  Posture::W_CONNMODE,' 'C_POSTURE,     0,            Posture::W_CONNMODE,' unit:test_cli_engine
+mutate unlock_opens_mgmt_flag src/helpers/cli/CliRegistry.h '    r.flags = F_NO_UNLOCK;' '' unit:test_cli_engine
+mutate unlock_flag_ignored src/helpers/cli/CliPolicy.h ' && c.posture == 0 && !(flags & F_NO_UNLOCK);' ' && c.posture == 0;' unit:test_cli_engine
+mutate job_id_may_block src/helpers/deployment/DepWrapper.cpp ' || out->job_id >= MARK_BLOCKED)) goto done;' ')) goto done;' unit:test_dep_wrapper
+mutate job_id_cap_one_low src/helpers/deployment/DepWrapper.cpp 'out->job_id >= MARK_BLOCKED)) goto done;' 'out->job_id >= MARK_BLOCKED - 1)) goto done;' unit:test_dep_wrapper
+mutate load_skips_door_repeater examples/simple_repeater/MyMesh.cpp 'reply, 150, load_changed)) {' 'reply, 150, load_changed) && false) {' sim/tests/test_region_map.py::test_a_load_in_progress_leaves_the_front_door_working
+mutate load_skips_door_room examples/simple_room_server/MyMesh.cpp 'reply, 150, load_changed)) {' 'reply, 150, load_changed) && false) {' sim/tests/test_region_map.py::test_a_load_in_progress_leaves_the_front_door_working
