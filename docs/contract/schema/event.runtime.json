@@ -87,7 +87,20 @@
     "heap_low": {
       "type": "boolean",
       "description": "the low-memory state the Companion's display shows (HeapFloor); absent where the build does not check the heap floor"
+    },
+    "stale_logins": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Repeater and Room server: remote logins refused as stale since boot; absent on the Companion"
+    },
+    "stale_login_last": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{8}$",
+      "description": "Repeater and Room server: the 4-byte key prefix of the last client refused as stale, as hex; null before the first refusal"
     }
   },
-  "description": "Two shapes. A snapshot (periodic, and at once when a subscription starts) has reset_reason, abnormal_reset, boot_ms, loop_gap_ms and, on the Companion, heap_low. The boot event is sent once per epoch right after the first snapshot: boot is true and it carries firmware, upstream, hardware and role as hello does, and reset_reason; it has none of the snapshot-only members."
+  "description": "Two shapes. A snapshot (periodic, and at once when a subscription starts) has reset_reason, abnormal_reset, boot_ms, loop_gap_ms and, on the Companion, heap_low, or on the Repeater and Room server, stale_logins and stale_login_last. The boot event is sent once per epoch right after the first snapshot: boot is true and it carries firmware, upstream, hardware and role as hello does, and reset_reason; it has none of the snapshot-only members."
 }

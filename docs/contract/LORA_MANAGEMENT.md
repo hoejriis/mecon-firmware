@@ -7,6 +7,10 @@
 
 ## 1. LoRa is a transport
 
+Every role carries both paths. A Repeater or Room server holds a single management slot for the channel path
+([management channel](MANAGEMENT_CHANNEL.md) section 6).
+
+
 - **The same envelope, the same table.** A request over LoRa is a device-interface request: the same JSON envelope,
   dispatched through the same operation table, decided by the same CLI privilege cell, deduplicated by the same id
   cache and signed watermark. LoRa adds no operation, no permission and no second command model (OPERATIONS
@@ -20,8 +24,8 @@
 - **Two paths.** *Point to point*: an encrypted native datagram between two nodes (section 3.1). *Channel*: a group
   datagram on the device's bound management channel (section 3.2). The same signed request is valid on both, and on
   MQTT, USB and BLE (AUTHORITY section 3.3: the signed bytes name no transport).
-- **What is not carried.** Subscriptions and event streams are not carried over LoRa (their airtime is #116's
-  concern). `hello` and a result are. Native LoRa remote administration (login, the native request types, CLI text,
+- **What is not carried.** Subscriptions and event streams are not carried over LoRa, because of their airtime.
+  Compact telemetry is a separate, smaller form. `hello` and a result are. Native LoRa remote administration (login, the native request types, CLI text,
   OPERATIONS section 5.4) is unchanged and is not this path.
 
 ## 2. Authority
@@ -157,7 +161,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   re-send then gets the stored result. Every frame of a reply is the same message, so a window that holds frame 3
   holds the rest behind it, and frames of two messages never interleave.
 - **Control is not starved by bulk.** No budget separate from the duty window applies to this path. Later bulk work on
-  LoRa (#123's image bytes) must not be able to spend the airtime that a reply, a `parts-missing` or a revert needs.
+  LoRa, such as image bytes, must not be able to spend the airtime that a reply, a `parts-missing` or a revert needs.
 - **No storms on a group channel.** On the channel only the addressed node ever answers. There is no "who is X"
   broadcast that every member answers, no acknowledgement of frames that are not for this node, no answer to an
   unsigned or wrongly addressed frame, and no `parts-missing`.
@@ -193,7 +197,7 @@ use (section 10).
   channel.
 - A reply the duty window holds is sent later or counted as dropped, never lost silently. Every state of section 8
   returns to idle by its deadline.
-- Software conformance in the simulator for every role that carries it; real-board evidence on the boards of #117.
+- Software conformance in the simulator for every role that carries it, and real-board evidence on the four hardware test boards.
 
 ## 10. Open for review
 
@@ -205,5 +209,3 @@ the limit on unverified answers (section 7). Still open:
    result.
 2. **The deadlines** of section 8, and the unverified budget's 4 a minute, are to be confirmed against airtime on the
    slowest preset in use, with the duty window's boot seeding taken into account.
-3. **Roles.** The Companion carries both paths once #114's binding and #109's job table are in. The Repeater and Room
-   server have no channel table (MANAGEMENT_CHANNEL's status) and would carry the point-to-point path only, until #151.

@@ -1,6 +1,6 @@
 # Connect to Wi-Fi and MQTT
 
-Wi-Fi and MQTT are on every role of the Heltec V3 and V4. The nRF52 boards have no Wi-Fi. Set these over a trusted link: the cable, or BLE paired with your own PIN.
+Wi-Fi and MQTT are on every role of the Heltec V3 and V4. The nRF52 boards have no Wi-Fi. On a standalone device, set these over a trusted link: the cable, or BLE paired with your own PIN. On an enrolled device, a manager sets them with a signed request ([standalone and enrolled](MANAGING.md#standalone-and-enrolled)).
 
 ## Choose BLE or Wi-Fi
 
