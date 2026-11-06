@@ -17,7 +17,7 @@ from sim.ether import Ether  # noqa: F401
 from sim.harness import CompanionClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
-from test_deployment_authority import (Dev, RTC, DEP, INST_A, INST_B, SET1, V, apply_name, boot as boot_companion, wreck_record,  # noqa: E402
+from test_deployment_authority import (update_args, Dev, RTC, DEP, INST_A, INST_B, SET1, V, apply_name, boot as boot_companion, wreck_record,  # noqa: E402
                                        revive, wrap)
 from test_deployment_authority_server import boot as boot_server  # noqa: E402
 from test_provenance import verifies  # noqa: E402
@@ -595,3 +595,25 @@ def test_a_rotation_removes_every_stored_advert(nodes):
         open(os.path.join(bl, "%016x" % i), "wb").write(b"advert")
     assert rotate(d, 2, d.node_key)["status"] == "ok"
     assert os.listdir(bl) == [], "they all belonged to the old key's world"
+
+
+@pytest.mark.parametrize("kind", ALL_KINDS)
+def test_a_two_member_deployment_can_be_read_after_a_rotation(nodes, kind):
+    """A manager reads marks and re-admission from deployment.get. The set's text, its statement of a rotation and two members
+    together passed the result limit, so every read answered too-large-to-sign. The set's text gives way: its length stays."""
+    d = enrolled_any(nodes, kind, "r2m" + kind[:2], 77)
+    args = update_args()
+    assert d.i.request("deployment.authority_update", args)["status"] == "ok"
+    before = d.i.request("deployment.get")
+    assert before["status"] == "ok" and before["result"]["authority_set"] == args["authority_set"], before
+    time.sleep(1.1)
+    assert rotate(d, 3, d.node_key)["status"] == "ok"
+    d.node_key = d.i.request("hello")["result"]["node_key"]
+    g = d.i.request("deployment.get")
+    assert g["status"] == "ok", g
+    assert verifies(g.raw, d.node_key, "result")
+    res = g["result"]
+    assert len(res["members"]) == 2 and "mark" in res["members"][0], res
+    assert res["rotation"]["statement"] and res["rotation"]["sig"]
+    assert res["authority_set_len"] == len(args["authority_set"]) and "authority_set" not in res
+    assert len(g.raw) <= 1536

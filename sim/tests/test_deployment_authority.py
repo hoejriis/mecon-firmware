@@ -401,6 +401,43 @@ def test_a_sensitive_operation_needs_this_links_nonce_once(nodes):
 
 # ------------------------------------------------------------------ authority updates
 
+def _set_of(n_members, revision):
+    """A DAK-signed next set (epoch 1) of n members: instance a, and made-up others with real keys."""
+    members = [{"instance_id": INST_A, "public_key": V["keys"]["instance a"]["public_key"], "admitted_revision": 1}]
+    for i in range(1, n_members):
+        key = ed25519_ref.public_key(hashlib.sha256(b"member %d" % i).digest()).hex()
+        members.append({"instance_id": ("%02x" % (i + 16)) * 16, "public_key": key, "admitted_revision": i + 1})
+    text = json.dumps({"v": 1, "deployment_id": DEP, "authority_epoch": 1, "authority_revision": revision,
+                       "issued_at": 1790002000 + revision, "members": members, "revoked": []}, separators=(",", ":"))
+    sig = ed25519_ref.sign(bytes.fromhex(V["keys"]["dak epoch 1"]["seed_hex"]), b"MECON-AUTHSET-v1\x00" + text.encode())
+    return {"authority_set": text, "authority_set_sig": base64.b64encode(sig).decode()}, text
+
+
+def test_deployment_get_answers_at_every_size_of_set(nodes):
+    """The text of the set goes when it fits, and its length when it does not: the members and marks always come."""
+    from test_provenance import verifies
+    d = boot(nodes, "gs")
+    assert d.provision()["status"] == "ok"
+    seen = set()
+    for n, revision in ((2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7), (8, 8)):
+        args, text = _set_of(n, revision)
+        time.sleep(1.1)   # the update's rate limit
+        r = d.i.request("deployment.authority_update", args)
+        assert r["status"] == "ok", (n, r)
+        g = d.i.request("deployment.get")
+        assert g["status"] == "ok", (n, len(text), g)
+        assert verifies(g.raw, d.node_key, "result"), n
+        res = g["result"]
+        assert res["authority_revision"] == revision and len(res["members"]) == n, res
+        if "authority_set" in res:
+            assert res["authority_set"] == text and "authority_set_sig" in res
+            seen.add("text")
+        else:
+            assert res["authority_set_len"] == len(text)
+            seen.add("len")
+    assert seen == {"text", "len"}, "both forms, or this range no longer crosses the limit: %s" % seen
+
+
 def test_authority_update_rotates_to_rev2_and_the_new_member_signs(nodes):
     d = boot(nodes, "au")
     d.provision()

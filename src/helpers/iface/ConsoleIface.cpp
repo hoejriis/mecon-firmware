@@ -134,8 +134,9 @@ Status opPostureW(OpContext& c) {
 }
 // The stored set is an open read; the rotation statement in it names device_id, so only a caller the table lets read gets it.
 Status opDeployGet(OpContext& c) {
-  const Status st = self(c)->auth().opGet(c);
-  if (st == ST_OK && self(c)->mayRead()) self(c)->writeRotation(*c.out);
+  const bool rotated = self(c)->mayRead() && self(c)->rotationStored();
+  const Status st = self(c)->auth().opGet(c, rotated ? DeployAuth::ROTATION_MEMBER : 0);
+  if (st == ST_OK && rotated) self(c)->writeRotation(*c.out);
   return st;
 }
 Status opIdentityRotate(OpContext& c) { return self(c)->rotateIdentity(c); }
@@ -310,6 +311,11 @@ bool ConsoleIface::mgmtReadSlot(void* user, int slot, char name[CHANNEL_NAME_MAX
 bool ConsoleIface::mayRead() { return Cli::decide(_ctx, Cli::C_READ).allow; }
 
 // The statement the old key signed before the swap (AUTHORITY.md section 11), as a member of the current object.
+bool ConsoleIface::rotationStored() {
+  char text[256], sig[89];
+  return _host.read_rotation && _host.read_rotation(_host.user, text, sizeof(text), sig, sizeof(sig));
+}
+
 bool ConsoleIface::writeRotation(JsonWriter& w) {
   char text[256], sig[89];
   if (!_host.read_rotation || !_host.read_rotation(_host.user, text, sizeof(text), sig, sizeof(sig))) return false;
