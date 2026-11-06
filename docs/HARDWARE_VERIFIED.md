@@ -119,6 +119,8 @@ broker host (throwaway TLS brokers) and USB host. Dates are UTC; builds are the 
 | Management writes with the private firmware's Deployment record | refused `deployment_record_corrupt` (fail closed); the record itself left unchanged | 2026-10-31, bce8ef8c |
 | Device interface (Companion USB, Repeater console) | every request fixture for the role plus the health stream, DTR asserted: Companion 34 of 34, Repeater 24 of 24 with the marker pages clear | 2026-11-06, a0468be6 |
 | Repeater on a store left by a Companion | the Companion's ExtraFS covers the marker page, so `config.apply` is refused `deployment_record_corrupt` (fail closed); 19 of 24 | 2026-11-06, a0468be6 |
+| Room server on cleared marker pages | every request fixture, 24 of 24. Enrolment with the public test keys: first provisioning, signed `config.apply` and signed `deployment.reset`; loop stack free 1,296 B, worker stack free 4,944 B | 2026-11-06, a9308228 |
+| Companion enrolment from `main` | first provisioning, unsigned change refused, signed change, signed reset with the node key kept; public test keys | 2026-11-06, a9308228 |
 | Repeater enrolment with the public test keys (`tools/mecon_worker_hw.py`) | first provisioning, signed `config.apply` and signed `deployment.reset` answered with no reset; loop stack free 1,104 B, worker stack free 5,008 B | 2026-11-06, a0468be6 |
 
 ## More than one board
