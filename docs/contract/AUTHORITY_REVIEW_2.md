@@ -25,7 +25,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 | L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Deferred: follow-up "decide the Ethernet console's row in the caller table" |
 | L7 | The highest `job_id` value is the blocked-mark sentinel | Deferred: follow-up "refuse that `job_id` and say so in section 8"; small, status-only effect |
 | L8 | Entropy of the ESP32 RNG on server roles that run no radio | Deferred: follow-up "enable the bootloader random source around boot-time draws, or mix in radio noise" |
-| I1 | The duplicate-result cache key uses a truncated instance id | Deferred: follow-up "use the full id or the member index" |
+| I1 | The duplicate-result cache key uses a truncated instance id | Fixed: an authority set whose members share those 6 bytes is refused. The id stays short, since it is the job identity managers see |
 | I2 | The record is stored in plaintext on flash, like the node key | Accepted: same protection class as the node key; the contract wording "stored as a secret" is to be clarified |
 | I3 | The unlock lockout counter lives in RAM | Accepted: the secret is 256 bits, so a reset of the counter buys nothing |
 | I4 | The unlock HMAC has no domain prefix | Accepted: challenges are random per link; a prefix is a possible later hardening |
@@ -58,8 +58,8 @@ that the test kills.
 | L1 | `usig_boot` can repeat after `/mecon_dev` is lost while the key and record persist | Fixed for the loss of one file: a second copy of the record keeps the epoch rising and `device_id` the same, with no change to the signed format. Losing both while the key and record survive still restarts the epoch: a manager then rejects the messages as stale, and the device re-enrols |
 | L2 | The reset result, and every message after an unenrolment, was unsigned | Fixed for the reset result: whether to sign is decided when the request begins. Messages after the unenrolment stay unsigned by design (no record). Mutant `prov_reset_result_unsigned` |
 | L3 | Key hygiene: elidable wipes, `fresh` not wiped on the storage path, the old key left in flash | Fixed: a volatile-loop wipe (`Wipe.h`) at every key wipe of the rotation and the retired-key holder, and `fresh` is wiped on every exit. Accepted: the temporary of `LocalIdentity(&r)` is not wiped (a stack temporary the type's constructor owns), and flash remanence (written in section 12) |
-| L4 | The RNG check caught only an all-zero source | Fixed: at least 16 distinct byte values and not equal to the previous draw. The sim's RNG cannot be made to fail, so this refusal is untested there (deferred with I7) |
-| L5 | A result in the last ~146 bytes below the buffer limit fails after the operation ran | Deferred: operations need a cap reduced by the signing overhead (now also `op` and `job_id`, about 30 bytes more); to be done per operation with the result-size work. Today the failure is a signed `busy` `too-large-to-sign` |
+| L4 | The RNG check caught only an all-zero source | Fixed: at least 16 distinct byte values and not equal to the previous draw. Tested in the sim with a source stuck at zero and at 15 values; a draw equal to the previous one is untested |
+| L5 | A result in the last ~146 bytes below the buffer limit fails after the operation ran | Accepted, no per-operation cap: no operation that changes something can reach it. The largest, a 16-key `config.apply`, answers well under the limit (a test holds it under 1,100 B of 1,536 B). A read that reaches it changes nothing, and answers a signed `busy` `too-large-to-sign` |
 | L6 | An event whose signing fails disappeared without trace | Fixed: counted in `dropped`, which the next observation reports |
 | I1 | Reconstruction: strip the trailing member | Fixed in 3.4 (wording) |
 | I2 | Reserve `result` as a stream name | Fixed in 3.4 |
@@ -67,7 +67,7 @@ that the test kills.
 | I4 | A corrupt-record device signing gives nothing | Accepted: nothing to do |
 | I5 | "Signed by the node key" is shown by code, not exercised | Accepted: the node key is never consulted as an issuer; no test can sign as the node key against the layer |
 | I6 | Memory safety of the signing buffers | Accepted: no overflow found. The tail buffer grew to 160 bytes for `op` and `job_id`, still bounded by `snprintf` and a length check |
-| I7 | Untested paths | Partly fixed: a power cut at each rotation step (key save, drop) is tested. Deferred: `r == 2` (contacts not dropped), the `rng` and `storage` refusals, a result near the size limit, the observations stream's signature, `seq_exhausted` |
+| I7 | Untested paths | Fixed: tests now cover a power cut at each rotation step (key save, drop), a random source that fails, a store that cannot save, a drop that fails, the last sequence number of a boot, a result at the signing limit, and the observations stream's signature |
 
 Signing time: 12.4 µs per Ed25519 signature of a 250-byte message (20,000 signatures, `lib/ed25519`, gcc -O2, aarch64
 container on the sim host, 2026-10-28). Not a target figure: the nRF52840 and ESP32 are expected to be in the millisecond

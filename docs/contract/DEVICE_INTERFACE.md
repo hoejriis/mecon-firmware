@@ -72,7 +72,7 @@ UTF-8 JSON objects. Three shapes:
 | `mgmt.channel.get` / `bind` / `rotate` / `unbind` | the management channel: one native slot marked as the channel a manager reaches the device on, its state (none, bound or stale), and its changes, which confirm-or-revert for anyone but the cable ([management channel](MANAGEMENT_CHANNEL.md)). Companion only | read (`get`); write |
 | `cancel` | stop a paged or long operation by its `id`. **Not implemented** in v1.0 on any build; it is not in the capability list | as the operation |
 
-Native operations stay native: messaging, contacts, channels (which `channel.*` also reaches, on the same table), adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. Telemetry families and their streams are specified with [#96](https://github.com/hoejriis/mecon-firmware/issues/96); v1.0 ships the stream mechanism with the `health` stream.
+Native operations stay native: messaging, contacts, channels, adverts, clock, reboot and key import/export keep their Companion commands and CLI lines. The interface operations that reach the same state ([managed operations](OPERATIONS.md)) stand beside them, on the same tables. Telemetry families and their streams are specified in [telemetry](TELEMETRY.md).
 
 ### 5. Settings: one store, the CLI's
 
@@ -96,6 +96,8 @@ Every operation and every key is checked by the CLI privilege engine (`src/helpe
 
 - `xid` numbers messages per direction; `count` is the number of frames in the message (1 to 25, so at most 4,096 bytes), `index` counts from 0.
 - One inbound message is reassembled at a time per transport, in a buffer allocated when it starts and freed when it is taken or dropped. A frame for a new `xid` while one is incomplete discards the incomplete one; a message incomplete after 5 s is discarded. Either answers `invalid`, `incomplete`, at most once a second per link: one lost byte can make many frames read as new messages, and that is still one lost request. Every frame but the last carries exactly 168 bytes, so frames may arrive in any order; a repeated frame is ignored. A board's USB UART can lose bytes under mesh traffic, so a client resends a request answered `invalid` / `incomplete`; on a Heltec V3 that is about one multi-frame request in a thousand.
+- **One request at a time.** A manager sends its next request when the previous one has an answer, or after about 8 s without one, on every transport and for every operation, reads included. An answer with an empty `id` counts as the answer. The device handles one message at a time, and what waits takes memory: on a Heltec V3 with a verified broker session, the same stream renewals took the lowest free heap to 3,984 bytes when sent together and left it at 15,708 when each waited for its answer.
+- **After `invalid`, `incomplete`,** wait for about 800 ms of quiet and send the same request again. Over a UART, mesh traffic can delay the receive interrupt long enough to lose a byte, which loses the request. A resend is safe: nothing ran.
 - Outbound results and events are queued per transport in a bounded queue of 8 messages. Events may fill at most 7 of them and must leave 512 bytes free; past that an event is dropped and counted in its stream. A result that does not fit is replaced by a short `busy` result, which always fits in what events had to leave. Frames of different messages are never interleaved.
 - Interleaving with native pushes is normal: a client must skip native frames while it waits for its result, as it already must for native requests.
 

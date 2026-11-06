@@ -150,7 +150,7 @@ Measured worst cases:
 - **USB, BLE and a broker session on ESP32.** The offer's `source` is `{"push": true}`. Its result carries a **`transfer_token`** (16 random bytes, hex) for that job.
   - **Chunks.** The bytes come as `update.chunk {"job", "token", "offset", "data"}`. `data` is canonical base64 (padded; leftover bits zero) of at most **2,304 bytes** (3,072 characters), so a chunk in a signed wrapper still fits the 4,096-byte request bound. A chunk is never cached: a retry asks again, and gets the offset expected next.
   - **Over a broker,** a chunk is at most **1,024 bytes** (1,368 characters): with any job id, any offset and a request id of up to 31 characters, that is at most 1,549 bytes of request, inside the 1,551 the client buffer leaves. A bigger one never reaches the device, so it gets no answer. No second connection opens, and the session keeps answering other requests. A session that is not TLS-verified may not read, so stage and offer are signed there; the token then crosses an unchecked broker, which can only spoil chunks, and the digest catches that.
-  - **Sending.** One chunk at a time, each at the `next` of the answer before. With no answer in about 8 s, send the same offset again: a resend writes nothing twice. `busy` means nothing was written. After the last chunk, the transfer is over and the token dead, so a resend gets `bad-token`, or no answer once the device has gone down to activate: either tells a manager whose answer was lost that the last chunk landed. A restarted manager sends any chunk with the token and learns the offset from `next`.
+  - **Sending.** One chunk at a time, with no other request in flight beside it ([DEVICE_INTERFACE](DEVICE_INTERFACE.md)), each at the `next` of the answer before. With no answer in about 8 s, send the same offset again: a resend writes nothing twice. `busy` means nothing was written. After the last chunk, the transfer is over and the token dead, so a resend gets `bad-token`, or no answer once the device has gone down to activate: either tells a manager whose answer was lost that the last chunk landed. A restarted manager sends any chunk with the token and learns the offset from `next`.
   - **Chunks are not jobs.** They need no `job_id` and no signature, and never answer `busy job-open`. A chunk without the job's token is refused on every link.
   - **The token is a credential for the job's write path.**
     - It is returned only in the offer's own result (and its owed copy). It never appears in `job` events, `job.get`, `job.list`, `update.status`, the status snapshot or any log.
@@ -230,6 +230,18 @@ A revert therefore always finds data the previous image can read. A forced rever
 | Heltec V3 | 3 | 1.74 MB | 184 to 198 s | 0 of 5,091 chunks | 11,740 to 15,468 | 12,788 to 14,836 |
 | Heltec V4 | 1 | 1.72 MB | 107 s | 0 of 1,684 chunks | 84,824 | 31,732 |
 | Heltec V3, six streams and radio traffic | 2 | 1.74 MB | 186 and 192 s | 0 of 3,395 chunks | 15,604 and 14,716 | 14,324 and 13,300 |
+
+**Other requests during a push, measured 2026-11-06.** Heltec V3, enrolled, all ten streams, the same image and chunks, one run each, 0 retries and confirmed in all of them. The stream renewals came every 60 s, heavier than a manager needs:
+
+| Requests beside the chunks | Lowest free |
+|---|---|
+| Stream renewals, each waiting for its answer | 15,708 |
+| A signed two-page `hello` every 60 s | 13,624 |
+| Stream renewals, all sent at once | 3,984 |
+| Those and the `hello` | 3,272 |
+| `hello` every 5 s, renewals at once every 12 s | 2,472 |
+
+No run reached exhaustion, so how a V3 behaves at zero is not measured.
 | Heltec V3 Repeater, six streams and radio traffic | 1 | 1.51 MB | 158 s | 0 of 1,474 chunks | 129,264 | 69,620 |
 | Heltec V3 Room server, six streams and radio traffic | 1 | 1.50 MB | 161 s | 0 of 1,469 chunks | 125,576 | 65,524 |
 
