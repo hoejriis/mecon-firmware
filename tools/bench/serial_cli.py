@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 """Run CLI commands on a mecon-firmware board over USB serial (or a simulated board over TCP).
 
-Two modes:
+Three modes:
   frames  a Companion build: each command goes as CMD_RUN_CLI_COMMAND (66) in '<'+len16 framing, and the reply is
           RESP_CODE_CLI_REPLY (29). Non-frame bytes on the line (boot text) are skipped.
   text    a Repeater or Room-server console: the line is sent with '\\r', and the reply is whatever arrives until the
           line has been idle for --idle seconds.
+  iface   a Companion build's device interface: each request goes in CMD_MECON (0x7F) frames, and the reply is the
+          reassembled message (docs/contract/DEVICE_INTERFACE.md).
 
 Examples:
   serial_cli.py --port /dev/ttyUSB0 frames "get mecon.mem" "get posture"
   serial_cli.py --port /dev/ttyUSB0 text "ver" "get dutycycle"
+  serial_cli.py --port /dev/ttyUSB0 iface '{"v":1,"id":"r-1","op":"status.get"}'
   serial_cli.py --tcp 127.0.0.1:5000 frames "ver"          # a simulated board
   serial_cli.py --port /dev/ttyUSB0 reset                    # pulse EN through RTS (ESP32 auto-reset wiring)
+  serial_cli.py --port /dev/ttyACM0 --dtr frames "ver"       # an nRF52 board on native USB says nothing without DTR
 
 Exit status: 0 if every command got a reply, 1 otherwise. Nothing is written except the commands given.
 """
 import argparse
+import json
 import socket
 import struct
 import sys
@@ -24,10 +29,12 @@ import time
 CMD_RUN_CLI_COMMAND = 66
 RESP_CODE_CLI_REPLY = 29
 RESP_CODE_ERR = 1
+CMD_MECON = 0x7F
+MECON_FRAME_BYTES = 168   # the message bytes one CMD_MECON frame carries
 
 
 class Link:
-    def __init__(self, port=None, baud=115200, tcp=None):
+    def __init__(self, port=None, baud=115200, tcp=None, dtr=False):
         self.ser = self.sock = None
         if tcp:
             host, p = tcp.rsplit(":", 1)
@@ -36,8 +43,9 @@ class Link:
         else:
             import serial  # pyserial
             self.ser = serial.Serial(port, baud, timeout=0.1)
-            self.ser.dtr = False   # do not hold the board in reset or bootloader
+            # Opening raises both lines. RTS goes first: on ESP32 auto-reset wiring, RTS high with DTR low pulls EN low.
             self.ser.rts = False
+            self.ser.dtr = dtr     # low: leave an ESP32 board out of reset and bootloader; high: native USB nRF52 speaks
 
     def write(self, b):
         (self.sock.sendall if self.sock else self.ser.write)(b)
@@ -82,6 +90,37 @@ def frames_cmd(link, line, timeout):
     return None
 
 
+def iface_cmd(link, request, timeout, xid=1):
+    body = request.encode()
+    req_id = json.dumps(json.loads(request)["id"], separators=(",", ":"))
+    parts = [body[i:i + MECON_FRAME_BYTES] for i in range(0, len(body), MECON_FRAME_BYTES)] or [b""]
+    for index, part in enumerate(parts):
+        f = bytes([CMD_MECON, xid, index, len(parts)]) + part
+        link.write(b"<" + struct.pack("<H", len(f)) + f)
+    buf, got, end = b"", {}, time.time() + timeout
+    while time.time() < end:
+        buf += link.read()
+        while True:
+            i = buf.find(b">")
+            if i < 0 or len(buf) < i + 3:
+                break
+            (n,) = struct.unpack_from("<H", buf, i + 1)
+            if n == 0 or n > 512:          # not a frame header: skip this byte and resync
+                buf = buf[i + 1:]
+                continue
+            if len(buf) < i + 3 + n:
+                break
+            f, buf = buf[i + 3:i + 3 + n], buf[i + 3 + n:]
+            if len(f) >= 4 and f[0] == CMD_MECON:
+                got[f[2]] = f[4:]
+                if len(got) == f[3]:       # a device event may interleave; only a request's answer is wanted here
+                    msg = b"".join(got[k] for k in sorted(got)).decode(errors="replace")
+                    got = {}
+                    if '"ev":' not in msg and ('"id":%s' % req_id) in msg:
+                        return msg
+    return None
+
+
 def text_cmd(link, line, timeout, idle):
     link.read()                                   # drop anything pending
     link.write(line.encode() + b"\r")
@@ -104,22 +143,28 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port")
     ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--dtr", action="store_true", help="assert DTR: an nRF52 board on native USB needs it")
     ap.add_argument("--tcp", help="host:port of a simulated board")
     ap.add_argument("--timeout", type=float, default=5.0)
     ap.add_argument("--idle", type=float, default=0.6, help="text mode: reply ends after this many idle seconds")
-    ap.add_argument("mode", choices=["frames", "text", "reset"])
+    ap.add_argument("mode", choices=["frames", "text", "iface", "reset"])
     ap.add_argument("commands", nargs="*")
     a = ap.parse_args()
     if not a.port and not a.tcp:
         ap.error("--port or --tcp is required")
-    link = Link(a.port, a.baud, a.tcp)
+    link = Link(a.port, a.baud, a.tcp, a.dtr)
     if a.mode == "reset":
         link.reset()
         print("reset pulsed")
         return 0
     ok = True
     for c in a.commands:
-        r = frames_cmd(link, c, a.timeout) if a.mode == "frames" else text_cmd(link, c, a.timeout, a.idle)
+        if a.mode == "frames":
+            r = frames_cmd(link, c, a.timeout)
+        elif a.mode == "iface":
+            r = iface_cmd(link, c, a.timeout)
+        else:
+            r = text_cmd(link, c, a.timeout, a.idle)
         print("%s => %s" % (c, r if r is not None else "(no reply)"))
         ok = ok and r is not None
     return 0 if ok else 1
