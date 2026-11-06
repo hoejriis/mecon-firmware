@@ -231,13 +231,13 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   // Once the device holds a Deployment record, only a member's signature changes it, or someone with the cable for the
   // recovery operations (AUTHORITY.md sections 9 and 11). So an unsigned caller keeps reads, a local one (cable, paired
   // BLE) also reboot, and every other class is refused whatever the table says for this transport; a remote caller (MQTT,
-  // LoRa) keeps reads only. Only the cable keeps the destructive class (erase, factory reset). Fails closed: anything that
+  // LoRa) keeps reads only, and so does the Ethernet console, whose password crosses the LAN in plain text. Only the cable keeps the destructive class (erase, factory reset). Fails closed: anything that
   // is not a read or a local reboot counts, so a new class is refused until decided.
   // A local unlock opens one more thing in Normal: the posture (section 9, "local unlock"). In Hardened it opens the
   // management surface (reads and deployment.reset, decided by that operation), never a configuration write, a key export
   // or a posture change: the posture stays as the signed callers and the factory reset leave it.
   const bool unlock_posture = unlockManagement(c) && cls == C_POSTURE && c.posture == 0 && !(flags & F_NO_UNLOCK);
-  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote) &&
+  if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote && p != P_NETCON_ADMIN) &&
       !(p == P_CABLE && cls == C_DESTRUCTIVE) && !unlock_posture)
     r = R_ENROLLED;
   if (r == R_ALLOW && (flags & F_RAISES) && c.enrolled && !c.has_unlock_secret) r = R_NO_UNLOCK_SECRET;

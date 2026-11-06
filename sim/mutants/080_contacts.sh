@@ -103,3 +103,4 @@ mutate contacts_rebuild_damaged_not_reported $CS '  if (damaged_out) *damaged_ou
 mutate contacts_rebuild_damaged_not_reported_unit $CS '  if (damaged_out) *damaged_out = damaged;
   if (isolated_out)' '  if (isolated_out)' unit:test_contact_store
 mutate contacts_device_query_wraps examples/companion_radio/MyMesh.cpp '      out_frame[i++] = half > 255 ? 255 : half;   // v3+' '      out_frame[i++] = half;   // v3+' $CT_SIM::test_device_query_reports_half_the_capacity_capped_at_one_byte
+mutate channel_read_leaves_the_field_unset examples/companion_radio/MyMesh.cpp '      StrHelper::strzcpy((char *)&out_frame[i], channel.name, 32);' '      strcpy((char *)&out_frame[i], channel.name);' sim/tests/test_companion_ble.py::test_a_channel_read_sends_only_its_own_name
