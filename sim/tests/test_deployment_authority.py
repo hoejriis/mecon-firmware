@@ -1109,13 +1109,29 @@ def test_the_secret_comes_with_the_provisioning_and_without_one_there_is_nothing
     assert d2.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret"
 
 
+def test_the_unlock_ends_when_the_usb_host_goes(nodes):
+    d = boot_with_secret(nodes, "ul")
+    line = os.path.join(d.n.dir, "usb-line")
+    d.n.stop()
+    d.n.extra_env = {"SIM_USB_LINE_FILE": line}
+    revive(d)
+    r = d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, challenge(d.i.request))})
+    assert r["status"] == "ok", r
+    assert d.c.cli("set posture normal confirm") == "OK - already normal", "control: unlocked"
+    with open(line, "w") as f:
+        f.write("0")
+    time.sleep(1)
+    os.remove(line)
+    assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL, "the next person on the cable starts locked"
+
+
 def test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_opens_only_the_posture(nodes):
     d = boot_with_secret(nodes, "us1")
     assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL, "control: enrolled and locked"
     ch = challenge(d.i.request)
     assert len(ch) == 64 and ch != "00" * 32
     r = d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch)})
-    assert r["status"] == "ok" and r["result"] == {"unlocked": True, "expires_in_s": 600}, r
+    assert r["status"] == "ok" and r["result"] == {"unlocked": True, "expires_in_s": 300}, r
     assert d.c.cli("set posture normal confirm") == "OK - already normal", "the posture is open to the unlocked cable"
     assert d.c.cli("set name Nope") == NOT_ENROLLED_REFUSAL, "never a configuration write"
     assert d.c.cli("get prv.key").startswith("ERR"), "never key export"
@@ -1284,11 +1300,13 @@ def test_an_expired_challenge_is_refused(nodes):
 
 
 @pytest.mark.timescale(50)
-def test_an_unlock_lapses_after_ten_minutes(nodes):
+def test_an_unlock_lapses_after_five_minutes(nodes):
     d = boot_with_secret(nodes, "us8")
     assert try_unlock(d.i.request)["status"] == "ok"
     assert d.c.cli("set posture normal confirm") == "OK - already normal"
-    time.sleep(13.0)   # 650 s of device time
+    time.sleep(4.8)   # 240 s of device time: still open
+    assert d.c.cli("set posture normal confirm") == "OK - already normal"
+    time.sleep(2.0)   # 340 s of device time
     assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL
 
 

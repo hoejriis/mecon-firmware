@@ -38,9 +38,9 @@ struct LinkUnlock {
 
 class DeployAuth {
 public:
-  // The challenge lives 60 s; an unlock 10 minutes; five wrong answers lock the handshake for 60 s.
+  // The challenge lives 60 s; an unlock 5 minutes; five wrong answers lock the handshake for 60 s.
   static const uint32_t CHALLENGE_MS = 60000;
-  static const uint32_t UNLOCK_MS = 10 * 60 * 1000;
+  static const uint32_t UNLOCK_MS = 5 * 60 * 1000;
   static const uint32_t LOCKOUT_MS = 60000;
   static const uint8_t MAX_FAILURES = 5;
 

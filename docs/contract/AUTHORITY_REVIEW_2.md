@@ -20,7 +20,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 
 | Id | Summary | Decision |
 |---|---|---|
-| L4 | A USB unlock outlives a change of cable user until it expires | Deferred: follow-up "clear the unlock on a USB line-state change and shorten the window" |
+| L4 | A USB unlock outlives a change of cable user until it expires | Fixed: the window is 5 minutes, and native USB also clears it when the host's connection drops. A USB-UART bridge shows the board nothing, so on the Heltec V3 only the shorter window helps |
 | L5 | An unlock in Normal opens the whole posture class, not only the posture command | Deferred: follow-up "narrow the unlocked cable to `set posture`", with the contract wording |
 | L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Deferred: follow-up "decide the Ethernet console's row in the caller table" |
 | L7 | The highest `job_id` value is the blocked-mark sentinel | Deferred: follow-up "refuse that `job_id` and say so in section 8"; small, status-only effect |

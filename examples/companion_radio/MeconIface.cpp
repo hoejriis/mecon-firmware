@@ -1088,8 +1088,10 @@ void MeconIface::loop(uint32_t now) {
   tellInbox();
   drainLogs();   // beside streamTick, not inside it: a signed log event on top of its frame overran the loop stack (#234)
   inventoryTick(now);
+  const bool cable_up = cableLineUp();
   for (Link& l : _links) {
     if (!l.src) continue;
+    if (!cable_up) l.unlock.clear();   // the cable's host went: only the cable holds an unlock (AUTHORITY.md section 10)
     if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it
       l.nonce[0] = 0;
       l.unlock.clear();
