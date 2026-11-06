@@ -5,7 +5,9 @@ watermark (ClientInfo::last_timestamp) is kept in RAM only, so a reboot clears i
 with a controlled clock, check that the refusal is audited as `stale-login` (it used to be silent), that a caller
 without a session cannot clear it, and that a reboot restores a fresh login without touching the password.
 """
+import os
 import struct
+import sys
 import time
 
 import pytest
@@ -13,6 +15,10 @@ import pytest
 from sim import harness
 from sim.harness import CompanionClient
 import test_postures_admin as pa
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
+import mecon_iface  # noqa: E402
+import test_telemetry_streams as ts  # noqa: E402
 
 PW = pa.PW
 AHEAD = 24 * 3600   # the client's clock runs a day fast
@@ -57,6 +63,29 @@ def test_a_stale_login_is_refused_and_audited(ether, nodes, kind):
     log = pa._audit(cli)
     assert any(ln.endswith("login-fail remote-admin stale-login x1") for ln in log), log
     assert not any("bad-password" in ln for ln in log), log       # not mistaken for a wrong password
+
+
+def _runtime(i):
+    """One runtime snapshot from the server's console, checked against the schema."""
+    d = ts.check(ts.first_event(i, "runtime"), "runtime")
+    assert i.request("sub.stop", {"stream": "runtime"})["status"] == "ok"
+    return d
+
+
+@pytest.mark.lockstep()
+@pytest.mark.parametrize("kind", pa.KINDS)
+def test_the_runtime_stream_counts_stale_logins_and_names_the_client(ether, nodes, kind):
+    rep, cli, c, pub = _lock_out(ether, nodes, kind)
+    i = mecon_iface.ConsoleClient(cli.sock.sendall, mecon_iface.socket_lines(cli.sock))
+    d = _runtime(i)
+    assert d["stale_logins"] == 0 and d["stale_login_last"] is None, d     # the accepted login was not stale
+    assert pa._login_refused(ether, c, pub, "Wr0ngPw-QQ7zK")               # a wrong password is not a stale login
+    assert _runtime(i)["stale_logins"] == 0
+    assert pa._login_refused(ether, c, pub, PW)
+    assert pa._login_refused(ether, c, pub, PW)
+    d = _runtime(i)
+    assert d["stale_logins"] == 2, d
+    assert d["stale_login_last"] == c.pub_key[:4].hex(), d
 
 
 @pytest.mark.lockstep()

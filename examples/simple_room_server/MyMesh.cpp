@@ -374,6 +374,7 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
         // Issue #112: audited as on the repeater; the watermark is RAM only, so a reboot clears it.
         Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_LOGIN_FAILED, Posture::CALLER_REMOTE_ADMIN,
                              Posture::W_STALE_LOGIN);
+        Posture::staleLogins().note(sender.pub_key);
         MESH_DEBUG_PRINTLN("possible replay attack!");
         return;
       }
@@ -948,6 +949,13 @@ void MyMesh::formatPacketStatsReply(char *reply) {
 
 void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply) {
   if (region_load_active) {
+    // The front door comes first: a load in progress does not take a line past its rules, or hide the answer to one.
+    bool load_changed = false;
+    if (Posture::adminFrontDoor(command, sender_timestamp != 0, _prefs.posture, _prefs.password, ADMIN_PASSWORD,
+                                getRTCClock()->getCurrentTime(), reply, 150, load_changed)) {
+      if (load_changed) { savePrefs(); auditStore().flush(millis()); }
+      return;
+    }
     if (StrHelper::isBlank(command)) {  // empty/blank line, signal to terminate 'load' operation
       region_map = temp_map;  // copy over the temp instance as new current map
       region_load_active = false;

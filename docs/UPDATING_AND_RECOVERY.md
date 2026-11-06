@@ -52,7 +52,7 @@ To enter the rescue console on a Companion, long-press the user button within 8 
 
 ## Locked out
 
-- **Over BLE or Wi-Fi.** Use USB. It is trusted in every posture, and a factory reset there always works.
+- **Over BLE or Wi-Fi.** Use USB. On a standalone device it is trusted in every posture. On an enrolled device it keeps reads, reboot and the recovery operations ([standalone and enrolled](MANAGING.md#standalone-and-enrolled)). A factory reset over USB always works, and it erases everything.
 - **A Hardened Companion in Wi-Fi mode** has no app transport, by owner decision. Use USB.
 - **A Repeater or Room server refusing a correct password.** The client's clock once ran ahead and left a watermark in the future. A restart of the device clears it and changes no setting ([postures](STANDALONE_POSTURES.md#recovery)).
 - **A Companion whose own clock ran ahead.** `clock back <epoch seconds>` over USB sets it right, and its messages carry the right time at once. Peers that hold the contact ignore its adverts for as long as the clock went back, because they refuse an advert no newer than the last they heard. Removing and adding the contact on a peer ends that sooner. A clock left ahead costs the same wait, with the wrong time throughout.
