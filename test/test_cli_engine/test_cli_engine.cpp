@@ -641,7 +641,7 @@ TEST(Enrolled, AnUnsignedCallerKeepsReadsALocalOneRebootAndLosesEveryOtherClass)
     for (uint8_t cls = 0; cls < C_COUNT; cls++) {
       SCOPED_TRACE(std::string(k.name) + " class " + std::to_string(cls));
       const Verdict before = decide(k.plain, cls), after = decide(e, cls);
-      if (cls == C_READ || (cls == C_REBOOT && !e.remote)) {
+      if (cls == C_READ || (cls == C_REBOOT && !e.remote && principalOf(e) != P_NETCON_ADMIN)) {
         EXPECT_EQ(after.reason, before.reason) << "reads, and a local reboot, are the table's, enrolled or not";
       } else if (cls == C_DESTRUCTIVE && principalOf(e) == P_CABLE) {
         EXPECT_EQ(after.reason, before.reason) << "the cable keeps erase and factory reset";
