@@ -65,7 +65,7 @@ inline const Entry* entries(size_t& count) {
     {"get posture",            M_EXACT,   ROLE_COMPANION | ROLE_REPEATER, C_READ,        0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     {"get audit",              M_WORD,    ROLE_COMPANION | ROLE_REPEATER, C_POSTURE,     0,            Posture::W_AUDIT,     nullptr,                      nullptr,                                            nullptr},
     {"get connectivity.mode",  M_EXACT,   ROLE_COMPANION,                 C_READ,        0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
-    {"set connectivity.mode",  M_WORD,    ROLE_COMPANION,                 C_POSTURE,     0,            Posture::W_CONNMODE,  nullptr,                      nullptr,                                            nullptr},
+    {"set connectivity.mode",  M_WORD,    ROLE_COMPANION,                 C_POSTURE,     F_NO_UNLOCK,  Posture::W_CONNMODE,  nullptr,                      nullptr,                                            nullptr},
     {"get prv.key",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_SECRET,      0,            Posture::W_KEY_EXPORT, nullptr,                     "ERR: key export is refused in hardened posture",   nullptr},
     {"set prv.key",            M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_SECRET,      F_QUIET,      Posture::W_KEY_IMPORT, nullptr,                     "ERR: key import is refused in hardened posture",   "ERR: prv.key can only be set from the local console"},
     {"get wifi.pwd",           M_EXACT,   ROLE_COMPANION | ROLE_REPEATER, C_READ,        0,            Posture::W_NONE,      "> wifi.pwd is write-only",   nullptr,                                            nullptr},
@@ -128,6 +128,7 @@ inline Resolved resolve(const char* cmd, uint8_t role) {
   if (isMgmtFlag(cmd)) {
     r.cls = C_POSTURE;
     r.what = Posture::W_MGMT_FLAG;
+    r.flags = F_NO_UNLOCK;
     return r;
   }
   size_t n;

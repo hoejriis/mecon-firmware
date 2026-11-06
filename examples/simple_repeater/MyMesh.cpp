@@ -1244,6 +1244,13 @@ void MyMesh::clearStats() {
 
 void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply) {
   if (region_load_active) {
+    // The front door comes first: a load in progress does not take a line past its rules, or hide the answer to one.
+    bool load_changed = false;
+    if (Posture::adminFrontDoor(command, sender_timestamp != 0, _prefs.posture, _prefs.password, ADMIN_PASSWORD,
+                                getRTCClock()->getCurrentTime(), reply, 150, load_changed)) {
+      if (load_changed) { savePrefs(); auditStore().flush(millis()); }
+      return;
+    }
     if (StrHelper::isBlank(command)) {  // empty/blank line, signal to terminate 'load' operation
       region_map = temp_map;  // copy over the temp instance as new current map
       region_load_active = false;

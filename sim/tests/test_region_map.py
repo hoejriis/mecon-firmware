@@ -119,3 +119,19 @@ def test_duplicated_ids_that_branch_at_every_level_are_listed_at_once(nodes):
     assert tree.splitlines()[:2] == ["*^ F", " Top F"]
     assert took < 1.0, "the listing took %.1f s" % took
     assert alive
+
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_a_load_in_progress_leaves_the_front_door_working(nodes, kind):
+    rep = nodes(kind, "load" + kind, seed=5).start()
+    cli = CliClient(rep)
+
+    def say(line):
+        return cli.command_all(line, quiet=0.4, timeout=3)
+
+    assert say("get posture") == "> normal", "control"
+    assert say("region load") == ""
+    assert say("get posture") == "> normal", "the line was taken as a region name"
+    assert say(" Alpha") == ""
+    assert say("").startswith("OK - loaded"), "the load still ends on a blank line"
+    assert "Alpha" in say("region")
