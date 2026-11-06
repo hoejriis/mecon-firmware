@@ -377,7 +377,8 @@ def test_bench_serial_cli_tool_talks_to_a_simulated_board(nodes):
                          capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stdout + out.stderr
     assert "ver => v1.18.0" in out.stdout and "get mecon.mem => > heap free=" in out.stdout, out.stdout
-    out = subprocess.run([sys.executable, tool, "--tcp", "127.0.0.1:%d" % c.port, "iface",
+    s = nodes("companion_standalone", "tools").start()   # the plain sim Companion has no device interface
+    out = subprocess.run([sys.executable, tool, "--tcp", "127.0.0.1:%d" % s.port, "iface",
                           '{"v":1,"id":"r-1","op":"status.get"}'], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0 and '"id":"r-1","status":"ok"' in out.stdout, out.stdout + out.stderr
     r = nodes("repeater", "toolr").start()
