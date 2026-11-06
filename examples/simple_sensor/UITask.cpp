@@ -27,6 +27,9 @@ static const uint8_t meshcore_logo [] PROGMEM = {
 };
 
 void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* firmware_version) {
+#ifdef PIN_USER_BTN
+  pinMode(PIN_USER_BTN, USER_BTN_PRESSED == LOW ? INPUT_PULLUP : INPUT);   // unset, each read logs an error on the console
+#endif
   _prevBtnState = HIGH;
   _auto_off = millis() + AUTO_OFF_MILLIS;
   _node_prefs = node_prefs;
