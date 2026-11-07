@@ -64,7 +64,7 @@ mutate upd_download_host_without_port $U '  if (_url.port != (_url.tls ? 443 : 8
 mutate upd_url_userinfo_accepted src/helpers/updates/UpdUrl.h '  if (*p != '"'"'/'"'"') return false;   // user info ("@"), an IPv6 literal, anything else between host and path' '  if (*p != '"'"'/'"'"') { strcpy(out->path, "/"); return true; }' unit:test_updates
 # slice 4: the nRF52 path through the bootloader's serial DFU (UPDATES.md section 6, kind bootloader-dfu)
 UF=sim/tests/test_update_dfu.py
-mutate upd_dfu_never_enters_the_bootloader $U '    slotEnterDfu();' '' "$UF::test_a_dfu_offer_resets_into_the_bootloader_and_the_new_image_attests"
+mutate upd_dfu_never_enters_the_bootloader $U '!jobTerminal(j->state)) slotEnterDfu();' '!jobTerminal(j->state)) {}' "$UF::test_a_dfu_offer_resets_into_the_bootloader_and_the_new_image_attests"
 mutate upd_dfu_attests_any_version $U '  if (!want[0] || strcmp(want, runningVersion()) != 0) {' '  if (!want[0]) {' "$UF::test_a_dfu_that_did_not_happen_ends_not_installed"
 mutate upd_dfu_deadline_says_not_installed $U '    const bool installed = want[0] && strcmp(want, runningVersion()) == 0;' '    const bool installed = false;' "$UF::test_an_unconfirmed_dfu_image_stays_and_the_job_says_so"
 mutate upd_dfu_takes_a_url $U '    if (by_url) { free(m); c.error = "unsupported-source"; return ST_REFUSED; }   // the bootloader takes it over USB only' '' "$UF::test_a_dfu_board_takes_no_ip_source_and_no_app_image"

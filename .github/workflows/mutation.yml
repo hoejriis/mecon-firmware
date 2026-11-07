@@ -46,6 +46,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # the spot set diffs the change against its base
+      - name: Every mutant's target still exists
+        # A spot run sees only the mutants a change selects, so a change that moved another's target stayed silent until the nightly.
+        run: sh sim/mutate.sh --dry
       - id: list
         # Mutants run in batches: GitHub allows at most 256 jobs per matrix, and the suite has more mutants than that
         # (a matrix that is too large makes the whole run fail before any mutant job starts).
