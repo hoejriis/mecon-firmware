@@ -38,6 +38,8 @@ public:
     : _t(table), _n(n), _auth(auth), _auth_user(auth_user), _handler_user(handler_user) {}
 
   void setDenyReason(DenyFn f) { _deny = f; }
+  // Operations this link does not carry answer unknown-op, as an operation absent from its hello does.
+  void setOpFilter(bool (*f)(const char* op)) { _filter = f; }
   // Receives the operation name of each request that parses, for the result to name (Provenance).
   void setAnswering(Answering* a) { _ans = a; }
 
@@ -49,6 +51,7 @@ public:
   int handle(const char* msg, size_t len, char* out, size_t cap, ResultCache* cache);
 
 private:
+  bool (*_filter)(const char* op) = nullptr;
   int handleWith(JsonDoc& doc, const char* msg, size_t len, char* out, size_t cap, ResultCache* cache);
   const OpEntry* find(const char* name) const;
   const OpEntry* _t; size_t _n; AuthFn _auth; void* _auth_user; void* _handler_user; DenyFn _deny = nullptr; Answering* _ans = nullptr;

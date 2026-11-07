@@ -1,5 +1,6 @@
 #include "ConsoleIface.h"
 #include <helpers/esp32/NativeUsbTx.h>
+#include <helpers/CryptoRNG.h>
 #include <helpers/Uptime.h>
 #include "DevIdHello.h"
 #include <new>
@@ -34,7 +35,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 }
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "posture.set", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
@@ -64,8 +65,8 @@ Status opHello(OpContext& c) {
   const char* nonce = m->helloNonce();
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
   w.key("capabilities"); w.beginArray();
-  for (const char* cap : CAPABILITIES) w.str(cap);
-  writeStreamCapabilities(w, m->produced());
+  for (const char* cap : CAPABILITIES) if (!m->onLora() || loraOpAllowed(cap)) w.str(cap);
+  if (!m->onLora()) writeStreamCapabilities(w, m->produced());   // no stream goes over LoRa
   w.endArray();
   return ST_OK;
 }
@@ -98,6 +99,7 @@ Status opStatus(OpContext& c) {
   writeHealth(w, m);
   const bool hardened = Posture::isHardened(m->host().posture(m->host().user));
   w.key("posture"); w.str(hardened ? "hardened" : "normal");
+  m->lora().writeCounts(w);
   m->auth().writeStatus(w, hardened);
   m->jobs().writeStatus(w);
   m->updates().writeAttestation(w);
@@ -126,6 +128,10 @@ Status withConfig(OpContext& c, Status (*op)(OpContext&)) {
 Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
+Status opReportNow(OpContext& c) { return self(c)->standing().opNow(c, millis()); }
+Status opStandingPut(OpContext& c) { return self(c)->standing().opPut(c, millis()); }
+Status opStandingList(OpContext& c) { return self(c)->standing().opList(c); }
+Status opStandingRemove(OpContext& c) { return self(c)->standing().opRemove(c); }
 Status opPostureW(OpContext& c) {
   ConsoleIface* s = self(c);
   const uint8_t before = s->postureNow();
@@ -194,6 +200,10 @@ const OpEntry OPS[] = {
   {"config.schema", opSchema, PRIV_READ, false},
   {"config.get", opGet, PRIV_READ, false},
   {"config.apply", opApply, PRIV_WRITE, true},
+  {"report.now", opReportNow, PRIV_WRITE, false},
+  {"standing.put", opStandingPut, PRIV_WRITE, true},
+  {"standing.list", opStandingList, PRIV_READ, false},
+  {"standing.remove", opStandingRemove, PRIV_WRITE, true},
   {"posture.set", opPostureW, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
@@ -588,6 +598,8 @@ int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
+  if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);
+  _lora_key_dirty = true;   // cheaper than asking which operations touch the binding: requests are rare beside packets
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -795,9 +807,119 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
   return w.ok();
 }
 
+void ConsoleIface::onLoraFrame(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len,
+                               const uint8_t* frame, size_t n) {
+  static_cast<ConsoleIface*>(user)->_lora.feed(key, secret, path, path_len, frame, n, LORA_REQ_PAYLOAD, millis());
+}
+
+void ConsoleIface::setReportSend(ReportSendFn fn, void* user, SnapStore* store) {
+  _report_send = fn;
+  _report_user = user;
+  _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, store, this},
+                  millis());
+}
+
+uint8_t ConsoleIface::reportProduced(void* user) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  LocationFix f;
+  const bool loc = s->_host.sensors && readLocation(s->_host.sensors->getLocationProvider(), f);
+  return RF_HEALTH | RF_RADIO | (loc ? RF_LOCATION : 0);
+}
+
+bool ConsoleIface::reportMayRead(void* user) { return streamAllow(user, Cli::C_PRIVATE); }
+const char* ConsoleIface::reportIssuer(void* user) { return static_cast<ConsoleIface*>(user)->_auth.signingIssuer(); }
+bool ConsoleIface::reportIssuerValid(void* user, const char* issuer) { return static_cast<ConsoleIface*>(user)->_auth.issuerValid(issuer); }
+
+uint32_t ConsoleIface::reportRandom(void*) {
+  CryptoRNG rng;
+  uint32_t v = 0;
+  rng.random(reinterpret_cast<uint8_t*>(&v), sizeof(v));
+  return v;
+}
+
+bool ConsoleIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (!s->_report_send) return false;
+  ReportData d;
+  fillReportCommon(d, *s->_host.board, Uptime::secs(millis()));
+  if (s->_host.battery_mv) { const uint16_t mv = s->_host.battery_mv(s->_host.user); if (mv) d.battery_mv = mv; }
+  RadioCounts counts;
+  if (s->_host.radio_counts) s->_host.radio_counts(s->_host.user, &counts);
+  fillReportRadio(d, *s->_host.dispatcher, *s->_host.radio, counts);
+  if (fields & RF_LOCATION) {
+    LocationFix f;
+    if (!s->_host.sensors || !readLocation(s->_host.sensors->getLocationProvider(), f)) return false;
+    fillReportLocation(d, f);
+  }
+  bool known;
+  const uint32_t ts = s->knownSeconds(&known);
+  uint8_t b[REPORT_MAX];
+  const size_t n = s->_prov.makeReport(b, sizeof(b), fields, d, known ? ts : 0, seq);
+  return n && s->_report_send(s->_report_user, to, slot, b, n);
+}
+
+// The bound channel's key, or false: a stale or absent binding takes nothing (MANAGEMENT_CHANNEL.md section 2). The mesh asks on
+// every group packet it hears, and a file read here holds the radio's next packet, so it answers from what loraKeyRefresh read.
+bool ConsoleIface::loraChannelKey(void* user, uint8_t out[16]) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (s->_lora_key_ok) memcpy(out, s->_lora_key, 16);
+  return s->_lora_key_ok;
+}
+
+// On the main pass, never on a received packet: after a request that may have changed the binding, and once a minute for a
+// change no request made (a confirmation that lapsed and reverted).
+void ConsoleIface::loraKeyRefresh(uint32_t now) {
+  if (_lora_key_read && !_lora_key_dirty && now - _lora_key_at < 60000) return;
+  _lora_key_read = true;
+  _lora_key_dirty = false;
+  _lora_key_at = now;
+  MgmtHost h = mgmtHost();
+  MgmtRecord rec;
+  char name[CHANNEL_NAME_MAX + 1];
+  _lora_key_ok = mgmtState(h, &rec) == MGMT_BOUND && _mgmt_slot.read(name, _lora_key);
+}
+
+bool ConsoleIface::onLoraChannelFrame(void* user, const uint8_t* data, size_t n) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (n <= LORA_CH_ADDR + LORA_HDR || !s->_host.node_key || memcmp(data, s->_host.node_key, LORA_CH_PREFIX) != 0) return false;
+  s->_lora.feedChannel(data + LORA_CH_PREFIX, data + LORA_CH_ADDR, n - LORA_CH_ADDR, millis());
+  return true;
+}
+
+// One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).
+void ConsoleIface::loraTick(uint32_t now) {
+  if (!_lora_send) return;
+  loraKeyRefresh(now);
+  if (LoraLink::Peer* p = _lora.nextComplete()) {
+    char* res = static_cast<char*>(malloc(LORA_MSG_MAX + 1));
+    if (res) {
+      const char* msg = LoraLink::message(*p);
+      const size_t len = LoraLink::messageLen(*p);
+      int n;
+      bool verified = false;
+      if (DeployAuth::isWrapper(msg, len)) {
+        _on_lora = true;
+        _lora_channel = p->channel;
+        const Cli::Context ctx(Cli::T_LORA, Cli::A_NONE, _host.posture(_host.user));
+        n = (int)onMqtt(ctx, reinterpret_cast<const uint8_t*>(msg), len, res, LORA_MSG_MAX + 1);
+        _on_lora = false;
+        verified = _auth.lastVerified();
+      } else {
+        n = writeResult(res, LORA_MSG_MAX + 1, "", ST_REFUSED, nullptr, "unauthenticated");
+      }
+      if (n > 0) _lora.queueReply(*p, res, (size_t)n, verified, now);
+      free(res);
+    }
+    _lora.release(*p);
+  }
+  _lora.tick(now, _lora_send, _lora_send_user);
+}
+
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
   nativeUsbTxNudge(now);
+  loraTick(now);
+  _standing.tick(now);
   if (!cableLineUp()) _unlock.clear();   // the cable's host went (AUTHORITY.md section 10)
   _gap.tick(now);
   _jobs.tick(now);

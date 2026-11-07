@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <Identity.h>
 #include "DeployAuth.h"
+#include "CompactReport.h"
 
 namespace Iface {
 
@@ -49,6 +50,10 @@ public:
   static const uint32_t RATE_PER_S = 8, RATE_BURST = 8;
 
   uint32_t seq() const { return _seq; }
+
+  // A compact report, encoded and signed over the same domain and sequence as every event, with the stream name "report". Its
+  // length, or 0: nothing goes out unsigned over the air, so a boot that cannot sign sends none.
+  size_t makeReport(uint8_t* out, size_t cap, uint8_t fields, const ReportData& d, uint32_t time_s, uint32_t* seq_out);
 
 private:
   const mesh::LocalIdentity* _id = nullptr;

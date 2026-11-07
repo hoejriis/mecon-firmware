@@ -18,7 +18,7 @@ class LocationProvider;
 
 namespace Iface {
 
-enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, SID_CONNECTIVITY, SID_ENVIRONMENT, SID_INVENTORY, SID_LOGS, SID_LOCATION, SID_SCREEN, STREAM_COUNT };
+enum StreamId : uint8_t { SID_HEALTH = 0, SID_RADIO, SID_POWER, SID_RUNTIME, SID_OBSERVATIONS, SID_CONNECTIVITY, SID_ENVIRONMENT, SID_INVENTORY, SID_LOGS, SID_LOCATION, SID_RF, SID_SCREEN, STREAM_COUNT };
 
 struct StreamDef {
   const char* name;
@@ -194,6 +194,12 @@ inline void writeLocation(JsonWriter& w, const LocationFix& f) {
 }
 // The fix of a location provider (sensors.getLocationProvider()); false when there is none.
 bool readLocation(LocationProvider* p, LocationFix& out);
+
+// The compact report's fields, from the same producers as the streams above.
+struct ReportData;
+void fillReportCommon(ReportData& d, mesh::MainBoard& b, uint32_t uptime_s);
+void fillReportRadio(ReportData& d, mesh::Dispatcher& disp, mesh::Radio& r, const RadioCounts& counts);
+void fillReportLocation(ReportData& d, const LocationFix& f);
 
 // Inventory entries (TELEMETRY.md, class private): a snapshot of the Companion's contacts and channels in pages, each
 // page one event under the transport limit. Never a secret: no channel key, no shared secret, no path bytes.

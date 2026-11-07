@@ -217,6 +217,40 @@ mutate session_oom_silent src/helpers/mqtt/MqttController.cpp '    _psc.publish(
 mutate signed_body_too_small src/helpers/iface/DeployAuth.cpp 'const size_t body_cap = (len < Dep::MAX_WRAPPED ? len : Dep::MAX_WRAPPED) + 1;' 'const size_t body_cap = (len < Dep::MAX_WRAPPED ? len : Dep::MAX_WRAPPED) / 4;' sim/tests/test_provenance.py::test_a_signed_request_fits_its_body_buffer
 mutate observation_unsigned_companion examples/companion_radio/MeconIface.cpp '  if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream
 mutate observation_unsigned_console src/helpers/iface/ConsoleIface.cpp '  if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);' '  ' sim/tests/test_provenance.py::test_an_observation_is_signed_as_its_own_stream
+# --- the device interface over LoRa
+LM=sim/tests/test_lora_management.py
+mutate lora_every_op_console src/helpers/iface/ConsoleIface.cpp '  if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);' '' $LM::test_an_operation_this_link_does_not_carry_is_unknown_here
+mutate lora_every_op_companion examples/companion_radio/MeconIface.cpp '  if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);' '' $LM::test_an_operation_this_link_does_not_carry_is_unknown_here
+mutate lora_hello_offers_all src/helpers/iface/ConsoleIface.cpp 'if (!m->onLora() || loraOpAllowed(cap)) w.str(cap);' 'w.str(cap);' $LM::test_hello_over_lora_offers_only_what_this_link_carries
+mutate lora_hello_lists_streams src/helpers/iface/ConsoleIface.cpp 'if (!m->onLora()) writeStreamCapabilities(w, m->produced());' 'writeStreamCapabilities(w, m->produced());' $LM::test_hello_over_lora_offers_only_what_this_link_carries
+mutate lora_refusal_counts_as_verified src/helpers/iface/ConsoleIface.cpp '      if (n > 0) _lora.queueReply(*p, res, (size_t)n, verified, now);' '      if (n > 0) _lora.queueReply(*p, res, (size_t)n, true, now);' $LM::test_unverified_answers_stay_within_their_budget
+mutate lora_budget_off src/helpers/iface/LoraLink.h '    if (_tok < 15000) return false;' '' unit:test_lora_link
+mutate lora_unverified_may_flood src/helpers/iface/LoraLink.h 'if (!verified && (p.channel || p.path_len == PATH_UNKNOWN || !takeBudget(now)))' 'if (!verified && (p.channel || !takeBudget(now)))' unit:test_lora_link
+mutate lora_messages_mix src/helpers/iface/LoraLink.h '    if (p->rx && (p->xid != xid || p->count != cnt)) freeRx(*p);' '' unit:test_lora_link
+mutate lora_padding_kept src/helpers/iface/LoraLink.h 'if (cnt != 0 && idx + 1 == cnt) { while (blen && f[LORA_HDR + blen - 1] == 0) blen--; }' 'if (false) { }' unit:test_lora_link
+mutate lora_no_reassembly_deadline src/helpers/iface/LoraLink.h 'if (p.rx && !p.complete && (int32_t)(now - p.first_ms) >= (int32_t)LORA_REASSEMBLY_MS) partsMissing(p, now);' '' unit:test_lora_link
+mutate lora_reply_never_expires src/helpers/iface/LoraLink.h 'if (p.tx && (int32_t)(now - p.tx_deadline) >= 0) { _c.dropped_deadline++; freeTx(p); }' '' unit:test_lora_link
+mutate lora_path_not_reversed src/helpers/iface/LoraLink.h 'path + (size_t)(hops - 1 - i) * hash_size' 'path + (size_t)i * hash_size' unit:test_lora_link
+mutate lora_channel_reads_go src/helpers/iface/ConsoleIface.cpp 'd.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);' 'd.setOpFilter(loraOpAllowed);' $LM::test_the_channel_refuses_what_its_members_could_read_and_says_nothing_unverified
+mutate lora_channel_without_a_binding src/helpers/iface/ConsoleIface.cpp '_lora_key_ok = mgmtState(h, &rec) == MGMT_BOUND && _mgmt_slot.read(name, _lora_key);' '_lora_key_ok = _mgmt_slot.read(name, _lora_key);' $LM::test_a_device_takes_only_its_bound_channel
+mutate lora_companion_any_slot examples/companion_radio/MeconIface.cpp '  if (_lora_bound_slot != slot) return false;' '' $LM::test_a_device_takes_only_its_bound_channel
+# --- compact reports and standing instructions
+mutate report_unsigned_bytes src/helpers/iface/Provenance.cpp '  _id->sign(sig, msg, (int)(sizeof(DOMAIN) + sizeof(STREAM) + n));' '  memset(sig, 0, sizeof(sig));' $LM::test_a_report_now_reaches_the_manager_signed_with_what_was_asked
+mutate report_no_rate_limit src/helpers/iface/StandingOps.cpp 'if (_now_sent && (uint32_t)(now - _now_ms) < NOW_GAP_MS) { c.error = "rate-limited"; return ST_BUSY; }' '' $LM::test_a_report_now_reaches_the_manager_signed_with_what_was_asked
+mutate report_location_on_a_channel src/helpers/iface/StandingOps.cpp 'if ((fields & RF_PRIVATE) && (slot >= 0 || !_h.may_read_private(_h.user))) { c.error = "private"; return ST_REFUSED; }' '' $LM::test_location_goes_point_to_point_and_never_on_a_channel
+mutate standing_location_on_a_channel src/helpers/iface/StandingOps.cpp 'if ((n.fields & RF_PRIVATE) && (slot >= 0 || !_h.may_read_private(_h.user))) { c.error = "private"; return ST_REFUSED; }' '' $LM::test_location_goes_point_to_point_and_never_on_a_channel
+mutate report_made_up_field src/helpers/iface/StandingOps.cpp 'if ((fields & _h.produced(_h.user)) != fields) { c.error = "unsupported-field"; return ST_FAILED; }' '' $LM::test_a_field_the_board_lacks_is_an_answer
+mutate standing_under_the_minimum src/helpers/iface/StandingOps.h 'MIN_EVERY_S = 900;' 'MIN_EVERY_S = 800;' $LM::test_standing_bounds
+mutate standing_no_capacity src/helpers/iface/StandingOps.cpp 'if (!place) { c.error = "full"; return ST_BUSY; }' 'if (!place) place = &_s[0];' $LM::test_standing_bounds
+mutate standing_temporary_kept src/helpers/iface/StandingOps.cpp 'if (!s.used || !s.durable) continue;' 'if (!s.used) continue;' $LM::test_standing_bounds
+mutate standing_lost_at_boot src/helpers/iface/StandingOps.cpp '  load(now);' '' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
+mutate standing_revoked_runs_on src/helpers/iface/StandingOps.cpp 'if (s.issuer[0] && !_h.issuer_valid(_h.user, s.issuer)) {' 'if (false) {' $LM::test_a_revoked_members_instruction_stops
+mutate standing_never_fires src/helpers/iface/StandingOps.cpp 'if (!s.used || (int32_t)(now - s.next_ms) < 0) continue;' 'continue;' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
+mutate standing_remove_keeps src/helpers/iface/StandingOps.cpp '      s = Standing();
+      if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' '      if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
+mutate lora_retry_new_number examples/companion_radio/MeconIface.cpp 'if (xt >= 0 && jsonGetInt(d, xt, 0, 255, &xv)) _rf_xid = (uint8_t)xv;
+  else _rf_xid++;' '_rf_xid++;' $LM::test_a_retry_under_the_same_number_fills_a_gap_on_the_channel
+mutate lora_binding_not_reread src/helpers/iface/ConsoleIface.cpp '  _lora_key_dirty = true;   // cheaper than asking which operations touch the binding: requests are rare beside packets' '' $LM::test_an_unbind_takes_effect_at_once
 mutate unlock_window_stays_ten_minutes src/helpers/iface/DeployAuth.h 'UNLOCK_MS = 5 * 60 * 1000;' 'UNLOCK_MS = 10 * 60 * 1000;' $DA::test_an_unlock_lapses_after_five_minutes
 mutate unlock_outlives_the_host_companion examples/companion_radio/MeconIface.cpp '    if (!cable_up) l.unlock.clear();' '' $DA::test_the_unlock_ends_when_the_usb_host_goes
 mutate unlock_outlives_the_host_console src/helpers/iface/ConsoleIface.cpp '  if (!cableLineUp()) _unlock.clear();' '' sim/tests/test_deployment_authority_server.py::test_the_unlock_ends_when_the_usb_host_goes
@@ -240,7 +274,7 @@ mutate rotation_failed_drop_clears_pending src/helpers/iface/IdentityRotation.cp
 mutate rotation_console_hides_a_failed_drop src/helpers/iface/ConsoleIface.cpp 'if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }' '' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
 mutate rotation_companion_hides_a_failed_drop examples/companion_radio/MeconDeploy.cpp 'if (r == 2) { c.error = "contacts_not_dropped"; return ST_FAILED; }' '' $IR::test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it
 mutate sign_sequence_wraps src/helpers/iface/Provenance.cpp 'if (!_epoch_saved || _seq == 0xFFFFFFFFu) {' 'if (!_epoch_saved) {' sim/tests/test_provenance.py::test_the_last_sequence_number_signs_and_the_next_message_says_exhausted
-mutate sign_sequence_stops_one_early src/helpers/iface/Provenance.cpp '_seq == 0xFFFFFFFFu' '_seq == 0xFFFFFFFEu' sim/tests/test_provenance.py::test_the_last_sequence_number_signs_and_the_next_message_says_exhausted
+mutate sign_sequence_stops_one_early src/helpers/iface/Provenance.cpp 'if (!_epoch_saved || _seq == 0xFFFFFFFFu) {' 'if (!_epoch_saved || _seq == 0xFFFFFFFEu) {' sim/tests/test_provenance.py::test_the_last_sequence_number_signs_and_the_next_message_says_exhausted
 mutate sign_limit_one_byte_short src/helpers/iface/Provenance.cpp 'if (text_len + SIG_MEMBER >= cap) return -1;' 'if (text_len + SIG_MEMBER + 1 >= cap) return -1;' sim/tests/test_provenance.py::test_a_result_that_just_fits_is_signed_and_one_byte_more_is_a_signed_busy
 mutate sign_too_large_goes_unsigned src/helpers/iface/Provenance.cpp '  return sign("result", buf, (size_t)n, cap, signer, extra);' '  return n;' sim/tests/test_provenance.py::test_a_result_that_just_fits_is_signed_and_one_byte_more_is_a_signed_busy
 mutate deployment_get_judges_the_set_alone src/helpers/iface/DeployAuth.cpp '    if (w.size() + 20 + esc + after + reserve <= DEP_GET_ROOM) {' '    if (esc <= 900) {' sim/tests/test_deployment_authority.py::test_deployment_get_answers_at_every_size_of_set

@@ -143,6 +143,16 @@ bool DeployAuth::persistMarks() {
   return true;
 }
 
+bool DeployAuth::issuerValid(const char* hex) const {
+  if (_dep_ls != Dep::LS_OK || !_dep) return false;
+  for (int m = 0; m < _dep->set.n_members; m++) {
+    char h[17];
+    for (int i = 0; i < 8; i++) snprintf(h + 2 * i, 3, "%02x", _dep->set.members[m].instance_id[i]);
+    if (strcmp(h, hex) == 0) return true;
+  }
+  return false;
+}
+
 // The marks for a newly committed set, written after the record (AUTHORITY.md section 4): a member still present at its
 // admission keeps its mark and a re-admitted one restarts at 0. With the marks lost, the load has already blocked everyone
 // at the set's admissions, so "keeps its mark" stays blocked and a re-admission is what clears it.
@@ -369,6 +379,7 @@ static void freeBody(char* body, size_t cap) {
 
 int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], const char* msg, size_t len,
                                ResultCache* cache, RunFn run, void* run_user, char* out, size_t cap) {
+  _verified = false;
   if (_dep_ls == Dep::LS_ABSENT) return writeResult(out, cap, "", ST_REFUSED, nullptr, "unauthenticated");
   if (_dep_ls != Dep::LS_OK || !_dep) {
     if (_dep) _dep->auth_rejections++;
@@ -391,6 +402,8 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
     freeBody(body, body_cap);
     return n;
   }
+  _verified = true;
+  for (int i = 0; i < 8; i++) snprintf(_signing_issuer + 2 * i, 3, "%02x", _dep->set.members[v.member].instance_id[i]);
   strncpy(_answering.op, v.op, sizeof(_answering.op) - 1);   // the verified request: its result names it
   _answering.op[sizeof(_answering.op) - 1] = 0;
   _answering.has_job = v.has_job;
@@ -464,6 +477,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   n = run(run_user, sctx, v.body, v.body_len, out, cap);   // job ids guard replay; no id cache
   if (_env.publish_caller) Cli::serverCaller().signed_line = false;
   _signed = false;
+  _signing_issuer[0] = 0;
   if (n > 0 && key[0] && cache) cache->store(key, SIGNED_OP, out, (size_t)n);
   if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once
   freeBody(body, body_cap);

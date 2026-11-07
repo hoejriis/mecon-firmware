@@ -26,6 +26,7 @@ int Dispatcher::handleWith(JsonDoc& doc, const char* msg, size_t len, char* out,
   if (_ans && st == ST_OK) { strncpy(_ans->op, req.op, sizeof(_ans->op) - 1); _ans->op[sizeof(_ans->op) - 1] = 0; }
   const char* err = nullptr;
   int n = -1;
+  if (st == ST_OK && _filter && !_filter(req.op)) return writeResult(out, cap, id, ST_UNKNOWN_OP, nullptr, nullptr);
 
   if (st == ST_OK && cache) {
     const char* data; size_t dl;
