@@ -203,9 +203,15 @@ TEST(UpdPreflight, TheInstallChecksInOrder) {
   EXPECT_STREQ("low-memory", v.error);
 }
 
-TEST(UpdAnchors, OnlyTheTestKeyHereAndNoProductionKeyYet) {
-  EXPECT_EQ(0u, PRODUCTION_ANCHORS_COUNT);
+TEST(UpdAnchors, ThreeProductionKeysAndTheTestKeyHere) {
+  EXPECT_EQ(3u, PRODUCTION_ANCHORS_COUNT);
   EXPECT_EQ(1u, TEST_ANCHORS_COUNT);
+  const uint8_t key_1[8] = {0xe1, 0x71, 0x6b, 0x2d, 0x48, 0x8a, 0x1c, 0x09};
+  const uint8_t key_2[8] = {0x32, 0x25, 0x36, 0x4d, 0x72, 0x72, 0x54, 0x9d};
+  const uint8_t key_3[8] = {0x9c, 0x49, 0x6a, 0x19, 0x7e, 0x74, 0x68, 0xfd};
+  EXPECT_NE(nullptr, findAnchor(key_1));
+  EXPECT_NE(nullptr, findAnchor(key_2));
+  EXPECT_NE(nullptr, findAnchor(key_3));
   uint8_t unknown[8] = {0};
   EXPECT_EQ(nullptr, findAnchor(unknown));
 }

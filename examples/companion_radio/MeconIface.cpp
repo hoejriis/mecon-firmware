@@ -665,7 +665,9 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
                                                : Cli::C_POSTURE;
   // A refusal says why, in the CLI's words (broker-not-verified, untrusted-transport, enrolled-unsigned, ...): a bare
   // "refused" cannot be told from any other.
-  const Cli::Verdict v = Cli::decide(self->_ctx, cls);
+  Cli::Context ctx = self->_ctx;
+  ctx.enrolled = cls == Cli::C_READ && self->_auth.enrolled();   // beyond reads, preAuthorize and the handlers have decided
+  const Cli::Verdict v = Cli::decide(ctx, cls, strcmp(op.name, "hello") == 0 ? Cli::F_IDENTIFY : 0);
   if (!v.allow) self->_deny = Cli::reasonName(v.reason);
   return v.allow;
 }
@@ -1299,6 +1301,7 @@ uint32_t MeconIface::reportRandom(void*) {
 
 bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq) {
   MeconIface* m = static_cast<MeconIface*>(user);
+  if (slot >= 0 && slot != m->_lora_bound_slot) return false;   // as a Repeater: a report goes on the management channel, never a public one
   ReportData d;
   fillReportCommon(d, board, Uptime::secs(millis()));
   RadioCounts counts;
@@ -1371,6 +1374,14 @@ void MeconIface::screenTick(uint32_t now) {
 }
 
 uint8_t MeconIface::postureNow() const { return _mesh->postureValue(); }
+
+bool MeconIface::cableLocked(const BaseSerialInterface* src, const Cli::Context& c) {
+  if (!_auth.enrolled() || c.posture == 0 || c.transport != Cli::T_USB || c.auth != Cli::A_CABLE) return false;
+  const Link* l = linkFor(src, false);
+  Cli::Context x = c;
+  _auth.stampContext(x, l ? &l->unlock : nullptr);
+  return !x.unlocked;
+}
 
 void MeconIface::loop(uint32_t now) {
   if (!_standing_begun) {

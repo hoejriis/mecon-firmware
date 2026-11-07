@@ -238,3 +238,10 @@ mutate eth_console_login_in_hardened src/helpers/cli/NetConsole.h "    if (postu
 mutate eth_console_login_with_default_password src/helpers/cli/NetConsole.h "if (is_default || !match) {" "if (!match) {" sim/tests/test_ethernet_console.py
 mutate eth_console_session_survives_reconnect variants/sim/SimEthernetCLI.h "    ethernet_console.endSession();
     sim_eth_send(ETHERNET_CLI_BANNER" "    sim_eth_send(ETHERNET_CLI_BANNER" sim/tests/test_ethernet_console.py
+mutate cli_locked_cable_reads src/helpers/cli/CliPolicy.h 'c.enrolled && c.posture != 0 && p == P_CABLE && !c.unlocked && cls == C_READ' 'false && c.enrolled && c.posture != 0 && p == P_CABLE && !c.unlocked && cls == C_READ' unit:test_cli_engine
+mutate cli_locked_ignores_the_unlock src/helpers/cli/CliPolicy.h 'c.enrolled && c.posture != 0 && p == P_CABLE && !c.unlocked && cls' 'c.enrolled && c.posture != 0 && p == P_CABLE && cls' unit:test_cli_engine
+mutate iface_locked_hello_refused_companion examples/companion_radio/MeconIface.cpp 'Cli::decide(ctx, cls, strcmp(op.name, "hello") == 0 ? Cli::F_IDENTIFY : 0);' 'Cli::decide(ctx, cls, 0);' sim/tests/test_posture_set.py::test_a_locked_cable_in_hardened_reads_only_what_identifies_the_device
+mutate iface_locked_not_enrolled_companion examples/companion_radio/MeconIface.cpp '  ctx.enrolled = cls == Cli::C_READ && self->_auth.enrolled();' '' sim/tests/test_posture_set.py::test_a_locked_cable_in_hardened_reads_only_what_identifies_the_device
+mutate iface_locked_not_enrolled_console src/helpers/iface/ConsoleIface.cpp '  ctx.enrolled = cls == Cli::C_READ && s->_auth.enrolled();' '' sim/tests/test_posture_set.py::test_a_locked_cable_in_hardened_reads_only_what_identifies_the_device
+mutate frame_locked_native_reads_open examples/companion_radio/MyMesh.cpp '        _iface.cableLocked(_cmd_src, fctx)) {' '        false) {' sim/tests/test_posture_set.py::test_a_locked_cable_gets_no_native_reads_on_a_companion
+mutate frame_locked_ignores_the_unlock examples/companion_radio/MeconIface.cpp '  return !x.unlocked;' '  return true;' sim/tests/test_posture_set.py::test_a_locked_cable_gets_no_native_reads_on_a_companion

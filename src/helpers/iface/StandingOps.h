@@ -33,7 +33,8 @@ struct Standing {
   uint8_t to[32] = {0};
   int16_t slot = -1;
   // in RAM only
-  uint32_t next_ms = 0, runs = 0, failed = 0, skipped = 0;
+  uint32_t from_ms = 0, wait_ms = 0;   // since when, and for how long: a period can be longer than a signed difference holds
+  uint32_t runs = 0, failed = 0, skipped = 0;
 };
 
 class StandingService {

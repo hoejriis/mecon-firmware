@@ -100,4 +100,4 @@ The firmware offers generic capabilities that a manager asks for: sending, colle
 
 ## Licence and security
 
-MIT, with the upstream MeshCore notice kept. See [licensing and provenance](NOTICE.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+MIT, with the upstream MeshCore notice kept. See [licensing and provenance](NOTICE.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md). [Published advisories](https://github.com/hoejriis/mecon-firmware/security/advisories) list the vulnerabilities found so far, their severity and the versions affected. A fixed one also says what carries the fix: a release, or a commit on `main` when the fix came before a release.
