@@ -188,6 +188,7 @@ Status opHello(OpContext& c) {
   w.key("role"); w.str("companion");
   w.key("hardware"); w.str(mesh->hardwareName());
   w.key("firmware"); w.str(mecon::versionFull());
+  w.key("variant"); w.str(MECON_VARIANT);
   w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
   w.key("epoch"); w.unum(m->epoch());
   m->updates().writeAttestation(w);   // the image of an update job, while it awaits confirmation (UPDATES.md section 7)
@@ -1299,6 +1300,11 @@ uint32_t MeconIface::reportRandom(void*) {
   return v;
 }
 
+// Room for the largest report, as an anonymous datagram with its packet's headers.
+bool MeconIface::reportAirtimeOk(void* user) {
+  return static_cast<MeconIface*>(user)->_mesh->getRemainingTxBudget() >= radio_driver.getEstAirtimeFor((int)REPORT_MAX + 40);
+}
+
 bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq) {
   MeconIface* m = static_cast<MeconIface*>(user);
   if (slot >= 0 && slot != m->_lora_bound_slot) return false;   // as a Repeater: a report goes on the management channel, never a public one
@@ -1386,7 +1392,7 @@ bool MeconIface::cableLocked(const BaseSerialInterface* src, const Cli::Context&
 void MeconIface::loop(uint32_t now) {
   if (!_standing_begun) {
     _standing_begun = true;
-    _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, standingStore(), this}, now);
+    _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, reportAirtimeOk, standingStore(), this}, now);
   }
   _gap.tick(now);
   _jobs.tick(now);

@@ -268,6 +268,7 @@ private:
   static const char* reportIssuer(void* user);
   static bool reportIssuerValid(void* user, const char* issuer);
   static uint32_t reportRandom(void* user);
+  static bool reportAirtimeOk(void* user);
   Iface::LoraLink _lora, _rf;
   Link _lora_link;
   bool _on_lora = false, _lora_channel = false;

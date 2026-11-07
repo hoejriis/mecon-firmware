@@ -26,6 +26,10 @@
 #define MECON_VERSION "unknown"
 #endif
 
+#ifndef MECON_VARIANT
+#define MECON_VARIANT "unknown"  // the build environment; bin/mecon_version.py passes it
+#endif
+
 #define MECON_VERSION_SHORT_MAX 19
 
 namespace mecon {

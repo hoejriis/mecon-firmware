@@ -370,6 +370,37 @@ def test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed(et
     assert next_report(m, timeout=25) is None, "removed: no more"
 
 
+@pytest.mark.timescale(60)
+@pytest.mark.parametrize("kind", ["repeater", "companion_standalone"])
+def test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing(ether, nodes, kind):
+    # 869.55 MHz at 250 kHz: a 0.1 % band, 3.6 s an hour, and a boot starts with the hour full. At SF11 a report needs about
+    # 2 s, so the first period ends with too little room, and the second or third with enough.
+    name = "skp" + kind[:2]
+    n = nodes(kind, name, seed=31, rtc=RTC, ether_path=ether.path).start()
+    d = Dev(n) if kind == "companion_standalone" else Srv(n)
+    line = d.c.cli if kind == "companion_standalone" else d.cli.command
+    assert line("set radio 869.55,250,11,5").startswith("OK")
+    d.reboot()
+    r = d.i.request("standing.put", {"id": "h", "fields": ["health"], "every_s": 900, "to": "ab" * 32})
+    assert r["status"] == "ok", r
+    end = time.time() + 30   # 30 minutes at this scale: a period, and the five minutes it waits
+    s = None
+    while time.time() < end:
+        s = d.i.request("standing.list")["result"]["instructions"][0]
+        if s["skipped"]:
+            break
+        time.sleep(0.5)
+    assert s["skipped"] == 1 and s["runs"] == 0 and s["failed"] == 0, s
+    reports = lambda: [t for t in ether.tx_of(name) if (t.data[0] >> 2) & 15 == 7]   # an anonymous datagram: a boot's advert is not one
+    assert not reports(), "skipped: nothing went on the air"
+    end = time.time() + 60
+    while time.time() < end and not s["runs"]:
+        s = d.i.request("standing.list")["result"]["instructions"][0]
+        time.sleep(0.5)
+    assert s["runs"] >= 1 and s["failed"] == 0, "room came back, and it runs: %s" % s
+    assert reports(), "and that one did go"
+
+
 def test_standing_bounds(ether, nodes):
     d = target(nodes, ether, "repeater", "sb")
     key = "ab" * 32

@@ -35,9 +35,6 @@
 #ifndef MECON_HARDWARE_REV
 #define MECON_HARDWARE_REV "1"   // this board's revision, as a manifest's hardware_rev lists it
 #endif
-#ifndef MECON_VARIANT
-#define MECON_VARIANT "unknown"  // the build environment; bin/mecon_version.py passes it
-#endif
 
 namespace Upd {
 

@@ -257,6 +257,11 @@ mutate binding_revert_not_read_console src/helpers/iface/ConsoleIface.cpp '    s
 mutate binding_revert_not_read_companion examples/companion_radio/MeconDeploy.cpp '    m->_lora_bound_dirty = true;
 ' '' sim/tests/test_mgmt_channel.py::test_a_paired_phone_must_confirm_and_an_unconfirmed_bind_reverts_at_its_deadline
 mutate binding_native_write_not_read examples/companion_radio/MeconIface.h 'void channelsChanged() { _lora_bound_dirty = true; }' 'void channelsChanged() { }' $LM::test_a_native_channel_write_makes_the_companion_read_the_binding
+mutate standing_ignores_airtime src/helpers/iface/StandingOps.cpp 'if (!_h.airtime_ok(_h.user)) {' 'if (false) {' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
+mutate standing_skip_not_counted src/helpers/iface/StandingOps.cpp '        s.skipped++;
+' '' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
+mutate standing_no_room_needed src/helpers/iface/ConsoleIface.cpp 'return s->_host.dispatcher->getRemainingTxBudget() >= s->_host.radio->getEstAirtimeFor((int)REPORT_MAX + 40);' 'return true;' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
+mutate standing_no_room_needed_companion examples/companion_radio/MeconIface.cpp 'return static_cast<MeconIface*>(user)->_mesh->getRemainingTxBudget() >= radio_driver.getEstAirtimeFor((int)REPORT_MAX + 40);' 'return true;' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
 mutate standing_remove_keeps src/helpers/iface/StandingOps.cpp '      s = Standing();
       if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' '      if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
 mutate lora_retry_new_number examples/companion_radio/MeconIface.cpp 'if (xt >= 0 && jsonGetInt(d, xt, 0, 255, &xv)) _rf_xid = (uint8_t)xv;

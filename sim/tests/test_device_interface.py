@@ -62,6 +62,7 @@ def test_hello_reports_identity_versions_and_capabilities(nodes):
     assert h["node_key"] == c.pub_key.hex(), "the native key is reported beside device_id"
     assert h["role"] == "companion"
     assert h["firmware"].startswith("v1.18.0-mecon"), h
+    assert h["variant"] == "sim_companion_standalone", "the build, so a manager can offer the matching image: %s" % h
     assert h["upstream"] == "v1.18.0"
     assert h["epoch"] >= 1
     assert set(h["capabilities"]) >= {"hello", "status.get"}
