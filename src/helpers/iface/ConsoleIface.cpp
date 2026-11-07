@@ -1,4 +1,5 @@
 #include "ConsoleIface.h"
+#include <helpers/esp32/NativeUsbTx.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/Uptime.h>
 #include "DevIdHello.h"
@@ -916,6 +917,7 @@ void ConsoleIface::loraTick(uint32_t now) {
 
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
+  nativeUsbTxNudge(now);
   loraTick(now);
   _standing.tick(now);
   if (!cableLineUp()) _unlock.clear();   // the cable's host went (AUTHORITY.md section 10)

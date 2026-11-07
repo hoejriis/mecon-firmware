@@ -37,4 +37,4 @@ A screen snapshot is a diagnostic copy of what the device shows, sent to the man
 
 ## Over LoRa
 
-A node with no IP link sends compact telemetry over LoRa at a low rate, point to point or on its management channel. It is a small, versioned subset of the streams above. Logs and screen snapshots are too large for LoRa and are not part of it.
+A node with no IP link sends compact telemetry over LoRa at a low rate, point to point or on its management channel. It is a small, versioned subset of the streams above: health, radio figures and, point to point only, location. A manager asks for one report at a time, or leaves a [standing instruction](contract/OPERATIONS.md#standing-instructions) that sends them on a schedule while it is away. Logs and screen snapshots are too large for LoRa and are not part of it.
