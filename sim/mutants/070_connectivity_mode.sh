@@ -37,4 +37,4 @@ mutate connmode_restart_counts_from_the_line examples/companion_radio/MeconIface
 mutate connmode_every_reply_postpones_the_restart examples/companion_radio/MyMesh.h '    if (_connmode_restart_at != 0 && _connmode_reply_owed) {' '    if (_connmode_restart_at != 0) {' sim/tests/test_connmode_reply.py::test_a_host_polling_faster_than_the_delay_does_not_postpone_the_restart
 CM_AUTH=sim/tests/test_deployment_authority.py
 mutate connmode_signature_ignored $CM_H "return is_signed || Cli::decide(" "return Cli::decide(" $CM_AUTH
-mutate connmode_signature_not_passed examples/companion_radio/MyMesh.cpp "_cli_ctx.auth == Cli::A_SIGNED)) {" "false)) {" $CM_AUTH
+mutate connmode_signature_not_passed examples/companion_radio/MyMesh.cpp "                                _cli_ctx.auth == Cli::A_SIGNED)) {" "                                false)) {" $CM_AUTH
