@@ -1,4 +1,5 @@
 #include "ArduinoSerialInterface.h"
+#include "esp32/NativeUsbTx.h"
 
 #define RECV_STATE_IDLE        0
 #define RECV_STATE_HDR_FOUND   1
@@ -18,6 +19,11 @@ bool ArduinoSerialInterface::isConnected() const {
 }
 
 bool ArduinoSerialInterface::isWriteBusy() const {
+#ifdef MECON_NATIVE_USB_TX
+  // A frame waits with its sender rather than overrun the ring, which discards when it overruns (NativeUsbTx.h). With no host
+  // nothing drains, so nothing waits either.
+  if (_serial == &Serial && Serial) return Serial.availableForWrite() < (int)(MAX_FRAME_SIZE + 3);
+#endif
   return false;
 }
 
@@ -37,6 +43,7 @@ size_t ArduinoSerialInterface::writeFrame(const uint8_t src[], size_t len) {
 }
 
 size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
+  nativeUsbTxNudge(millis());
   while (_serial->available()) {
     int c = _serial->read();
     if (c < 0) break;

@@ -1,4 +1,5 @@
 #include "ConsoleIface.h"
+#include <helpers/esp32/NativeUsbTx.h>
 #include <helpers/Uptime.h>
 #include "DevIdHello.h"
 #include <new>
@@ -796,6 +797,7 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
 
 void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
+  nativeUsbTxNudge(now);
   if (!cableLineUp()) _unlock.clear();   // the cable's host went (AUTHORITY.md section 10)
   _gap.tick(now);
   _jobs.tick(now);
