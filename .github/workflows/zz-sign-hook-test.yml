@@ -1,0 +1,10 @@
+name: Signing runner hook test (temporary)
+on:
+  push:
+    branches: [test/sign-runner-refuses]
+  pull_request:
+jobs:
+  sign:
+    runs-on: [f1-mecon-sign]
+    steps:
+      - run: echo STEP-RAN-ON-SIGNING-RUNNER
