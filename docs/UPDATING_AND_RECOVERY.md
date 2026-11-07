@@ -9,6 +9,8 @@ An update through the device interface needs two signatures:
 
 No other caller may install firmware, a BLE link paired with the device's own PIN included.
 
+From [v0.2.0](https://github.com/hoejriis/mecon-firmware/releases/tag/v0.2.0), a release attaches its images and manifests, signed with a production key ([release keys](RELEASE_KEYS.md)). v0.1.3 and earlier carry no production keys, so the first step onto them is a flash over a cable, not an update.
+
 ### The steps
 
 1. `update.manifest` sends the signed manifest. The device answers what its preflight would decide: the right board, layout and role, a version allowed from the running one, and not below the device's security floor. A downgrade must be signed as one.
