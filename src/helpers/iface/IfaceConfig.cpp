@@ -559,6 +559,9 @@ Status opConfigApply(OpContext& c) {
     const char* why = nullptr;
     if (!k) { c.error = keyError("unknown-key", key); return ST_INVALID; }
     if (!(k->flags & KF_WRITABLE)) { c.error = keyError("read-only", key); return ST_INVALID; }
+    // A signed body is in clear to every member of a channel, and a secret never goes on the air on either path (LORA_MANAGEMENT.md
+    // section 2). Too late for this one, which has already been sent: refusing it is what keeps a manager from relying on it.
+    if ((k->flags & KF_WRITE_ONLY) && h->on_air && h->on_air(h->user)) { c.error = keyError("not-over-lora", key); return ST_REFUSED; }
     if (!cliValue(d, t + 1, *k, val, sizeof(val), &why)) { c.error = keyError(why, key); return ST_INVALID; }
     lineFor(line, sizeof(line), k->set_line, idx, val);
     const bool allowed = h->allow(h->user, line);

@@ -454,7 +454,8 @@ bool ConsoleIface::mqttSubscribed() const {
 }
 
 ConfigHost ConsoleIface::configHost() {
-  return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS, &_confirm};
+  return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS, &_confirm,
+                    [](void* u) { return static_cast<ConsoleIface*>(u)->onLora(); }};
 }
 
 // ---- commit-or-revert (OPERATIONS.md 3.4). The console is the cable: a signed request on it is a signed caller.
