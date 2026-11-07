@@ -754,7 +754,9 @@ TEST(Unlocked, TheFlagCountsForTheCablePrincipalAndNoOther) {
             EXPECT_EQ(v1.reason, v0.reason) << (int)t << "/" << (int)a << "/" << (int)cls;
             EXPECT_FALSE(unlockManagement(open));
           }
-          if (!v0.allow && !(principalOf(locked) == P_CABLE && cls == C_POSTURE && posture == 0)) EXPECT_FALSE(v1.allow);
+          // What an unlock opens on the cable: the posture in Normal, and in Hardened the reads (AUTHORITY.md section 9).
+          const bool opens = principalOf(locked) == P_CABLE && ((cls == C_POSTURE && posture == 0) || (cls == C_READ && posture != 0));
+          if (!v0.allow && !opens) EXPECT_FALSE(v1.allow);
         }
   Context bad(T_USB, A_CABLE, 0);   // a remote flag that does not match the transport is the untrusted row
   bad.remote = true;
@@ -909,4 +911,21 @@ TEST(Posture2, EnteringHardenedWhileEnrolledNeedsALocalUnlockSecretInTheRecord) 
   EXPECT_TRUE(withServerCaller(Context(T_USB, A_CABLE, 0)).has_unlock_secret);
   sc.has_secret = nullptr;
   sc.enrolled = false;
+}
+
+// AUTHORITY.md section 9: in Hardened the enrolled, unsigned cable identifies the device and offers the unlock, and reads nothing else.
+TEST(LockedCable, ReadsNeedTheUnlockOnlyInHardenedAndOnlyEnrolled) {
+  EXPECT_EQ(decide(enrolledCtx(T_USB, A_CABLE, 1), C_READ).reason, R_LOCKED);
+  EXPECT_TRUE(decide(unlockedCtx(T_USB, A_CABLE, 1), C_READ).allow);
+  EXPECT_TRUE(decide(enrolledCtx(T_USB, A_CABLE, 0), C_READ).allow) << "Normal keeps its reads";
+  Context standalone(T_USB, A_CABLE, 1);
+  EXPECT_TRUE(decide(standalone, C_READ).allow) << "no record: today's table";
+  EXPECT_FALSE(decide(enrolledCtx(T_USB, A_CABLE, 1), C_PRIVATE).allow) << "refused enrolled, as before";
+  EXPECT_TRUE(decide(enrolledCtx(T_USB, A_CABLE, 1), C_READ, F_IDENTIFY).allow);
+  EXPECT_TRUE(decide(enrolledCtx(T_USB, A_CABLE, 1), C_REBOOT).allow) << "beyond reads it keeps what it had";
+  EXPECT_TRUE(decide(enrolledCtx(T_USB, A_CABLE, 1), C_DESTRUCTIVE).allow) << "the factory reset of someone physically present";
+}
+
+TEST(LockedCable, NamesItsReason) {
+  EXPECT_STREQ(reasonName(R_LOCKED), "locked");
 }

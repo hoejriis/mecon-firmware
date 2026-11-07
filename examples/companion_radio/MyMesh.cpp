@@ -1436,12 +1436,23 @@ void MyMesh::handleCmdFrame(size_t len) {
     // Once enrolled, an unsigned app changes no settings and only the cable factory-resets (AUTHORITY.md section 9): the
     // privilege table decides every gated frame with the enrolled flag. Messaging frames are not gated.
     fctx.enrolled = _iface.enrolled();
+    // A command line has its own gate, with the unlock and a reason in words: a locked cable is decided there, not here.
+    if (frame == Cli::FR_CLI) fctx.unlocked = true;
 #endif
     if (frame != Cli::FR_NONE && !Cli::allowFrame(fctx, frame, now)) {
       MESH_DEBUG_PRINTLN("command %d refused for this caller", (int)cmd_frame[0]);
       writeErrFrame(ERR_CODE_NOT_PERMITTED);
       return;
     }
+#ifdef ENABLE_MECON_IFACE
+    // A locked cable reads nothing natively either (AUTHORITY.md section 9). It keeps the two frames that say what the device
+    // is, the interface that offers the unlock, and the frames it had beyond reads, which the gate above has decided.
+    if (frame == Cli::FR_NONE && cmd_frame[0] != CMD_APP_START && cmd_frame[0] != CMD_DEVICE_QUERY && cmd_frame[0] != CMD_MECON &&
+        _iface.cableLocked(_cmd_src, fctx)) {
+      writeErrFrame(ERR_CODE_NOT_PERMITTED);
+      return;
+    }
+#endif
   }
   if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2) { // sent when app establishes connection
     app_target_ver = cmd_frame[1];                    // which version of protocol does app understand

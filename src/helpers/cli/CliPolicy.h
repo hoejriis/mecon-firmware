@@ -67,7 +67,8 @@ enum Flags : uint8_t {
   F_CABLE_ONLY = 1,   // lowers protection: only the cable may, whatever the class cell says for the other local callers
   F_QUIET = 2,        // registry only: a "local console only" refusal is explained but not audited
   F_RAISES = 4,       // raises protection to Hardened: with a record, only once the record holds a local unlock secret
-  F_NO_UNLOCK = 8     // a write in the posture class that is not the posture: a local unlock does not open it
+  F_NO_UNLOCK = 8,    // a write in the posture class that is not the posture: a local unlock does not open it
+  F_IDENTIFY = 16,    // says what the device is, nothing about what it holds: open to a locked cable (AUTHORITY.md section 9)
 };
 
 enum Reason : uint8_t {
@@ -85,7 +86,8 @@ enum Reason : uint8_t {
   R_NEEDS_FLAG,         // table-internal: allowed when the broker profile is flagged for management
   R_NETCON_OFF,         // the Ethernet console is off in Hardened
   R_ENROLLED,           // the device holds a Deployment record: an unsigned caller may not change it (AUTHORITY.md section 9)
-  R_NO_UNLOCK_SECRET    // entering Hardened with a record needs a local unlock secret in it first (AUTHORITY.md section 10)
+  R_NO_UNLOCK_SECRET,   // entering Hardened with a record needs a local unlock secret in it first (AUTHORITY.md section 10)
+  R_LOCKED              // a cable on an enrolled device in Hardened reads nothing before its local unlock (AUTHORITY.md section 9)
 };
 
 // Who the context resolves to: one row of the table.
@@ -240,6 +242,10 @@ inline Verdict decide(const Context& c, uint8_t cls, uint8_t flags = 0) {
   if (r == R_ALLOW && c.enrolled && p != P_SIGNED && cls != C_READ && !(cls == C_REBOOT && !c.remote && p != P_NETCON_ADMIN) &&
       !(p == P_CABLE && cls == C_DESTRUCTIVE) && !unlock_posture)
     r = R_ENROLLED;
+  // In Hardened the unsigned cable identifies the device and offers the unlock, and that is all it reads until it holds one. It
+  // keeps what it had beyond reads: a reboot, and the factory reset of someone physically present (section 11).
+  if (r == R_ALLOW && c.enrolled && c.posture != 0 && p == P_CABLE && !c.unlocked && cls == C_READ && !(flags & F_IDENTIFY))
+    r = R_LOCKED;
   if (r == R_ALLOW && (flags & F_RAISES) && c.enrolled && !c.has_unlock_secret) r = R_NO_UNLOCK_SECRET;
   Verdict v;
   v.allow = r == R_ALLOW;
