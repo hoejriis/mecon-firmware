@@ -2702,7 +2702,8 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   {
     bool changed = false;
     const uint8_t caller = _cli_caller;
-    if (Posture::handleCommand(command, caller, _prefs.posture, getRTCClock()->getCurrentTime(), reply, 150, changed)) {
+    if (Posture::handleCommand(command, caller, _prefs.posture, getRTCClock()->getCurrentTime(), reply, 150, changed,
+                               _cli_ctx.auth == Cli::A_SIGNED)) {
       if (changed) { savePrefs(); auditStore().flush(millis()); }   // the posture and its audit entry reach flash together
       return true;
     }

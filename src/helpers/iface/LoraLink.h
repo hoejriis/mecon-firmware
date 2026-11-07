@@ -16,6 +16,7 @@ namespace Iface {
 // marker is a control character that no native anonymous request uses (a password starts at 0x20 or is empty, and the
 // typed requests are 1 to 3), so neither can be read as the other.
 const uint8_t LORA_MARKER = 0x1D;
+const uint32_t LORA_REBOOT_MS = 60000;   // a change that reboots waits for its answer: the first send after a boot waits for the duty window
 const size_t LORA_HDR = 4;
 const size_t LORA_ANON_TAG = 4;
 const size_t LORA_REQ_PAYLOAD = 128;     // what an anonymous datagram takes (136), less the tag and the header

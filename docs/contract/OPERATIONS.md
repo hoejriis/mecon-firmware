@@ -192,7 +192,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `ble.bonds` | bond count | | read | no | C (BLE builds) | all |
 | `ble.pin.get` | the BLE PIN | device info, CLI | secret | no | C (BLE builds) | USB, MQTT (SECURITY_AND_AUTHORITY) |
-| `posture.set` | `{"posture":"normal"}` or `{"posture":"hardened"}`; the device reboots about 1.5 s after a change. `status.get` reports the posture | CLI `set posture` | posture | yes | C R S | standalone: raising a cable or paired BLE, lowering a cable. Enrolled: a signature, with a job id |
+| `posture.set` | `{"posture":"normal"}` or `{"posture":"hardened"}`; the device reboots about 1.5 s after a change, or 60 s over LoRa so that the answer goes out first. `status.get` reports the posture | CLI `set posture` | posture | yes | C R S | standalone: raising a cable or paired BLE, lowering a cable. Enrolled: a signature, with a job id |
 | `deployment.*` | provisioning, authority updates, record, local unlock | | per [AUTHORITY](AUTHORITY.md) | | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `update.*` | firmware update lifecycle ([UPDATES.md](UPDATES.md)) | | per [UPDATES](UPDATES.md) | | C R S | per [UPDATES](UPDATES.md) |
 | `report.now` | `{"fields":[...],"to":"<node key>"}` or `{"fields":[...],"slot":n}`: one [compact report](TELEMETRY.md) over LoRa. `seq` in the result | | write; `location` needs private | no | C R S | as the table |

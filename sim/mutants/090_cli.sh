@@ -96,9 +96,9 @@ mutate contact_context_is_a_cable examples/companion_radio/MyMesh.cpp "setCliCal
 mutate facade_key_transfer_ignores_the_table src/helpers/Posture.h "return Cli::decide(Cli::contextForCaller(CALLER_CABLE, posture), Cli::C_SECRET).allow;" "return true;" unit:test_posture
 mutate facade_factory_reset_ignores_the_table src/helpers/Posture.h "return Cli::decide(Cli::contextForCaller(caller, posture), Cli::C_DESTRUCTIVE).allow;" "return true;" unit:test_posture
 mutate facade_remote_read_only_list_has_writes src/helpers/Posture.h "return cls == Cli::C_READ || cls == Cli::C_REBOOT;" "return cls == Cli::C_READ || cls == Cli::C_REBOOT || cls == Cli::C_WRITE;" unit:test_posture
-mutate facade_ble_can_lower src/helpers/Posture.h "bool allowed = Cli::decide(ctx, Cli::C_POSTURE, to_hardened ? 0 : Cli::F_CABLE_ONLY).allow;" "bool allowed = Cli::decide(ctx, Cli::C_POSTURE, 0).allow;" unit:test_posture
-mutate facade_remote_can_change_the_posture src/helpers/Posture.h "bool allowed = Cli::decide(ctx, Cli::C_POSTURE, to_hardened ? 0 : Cli::F_CABLE_ONLY).allow;" "bool allowed = true;" unit:test_posture
-mutate facade_audit_readable_remotely src/helpers/Posture.h "if (!Cli::decide(ctx, Cli::C_POSTURE).allow) {
+mutate facade_ble_can_lower src/helpers/Posture.h "bool allowed = is_signed || Cli::decide(ctx, Cli::C_POSTURE, to_hardened ? 0 : Cli::F_CABLE_ONLY).allow;" "bool allowed = is_signed || Cli::decide(ctx, Cli::C_POSTURE, 0).allow;" unit:test_posture
+mutate facade_remote_can_change_the_posture src/helpers/Posture.h "bool allowed = is_signed || Cli::decide(ctx, Cli::C_POSTURE, to_hardened ? 0 : Cli::F_CABLE_ONLY).allow;" "bool allowed = true;" unit:test_posture
+mutate facade_audit_readable_remotely src/helpers/Posture.h "if (!is_signed && !Cli::decide(ctx, Cli::C_POSTURE).allow) {
       recordRefusal(now, caller, W_AUDIT);" "if (false) {
       recordRefusal(now, caller, W_AUDIT);" unit:test_posture
 mutate facade_posture_refusal_not_audited src/helpers/AuditLog.h "inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { audit().add(ts, EV_REFUSED, caller, what); }" "inline void recordRefusal(uint32_t ts, uint8_t caller, uint8_t what) { }" sim/tests/test_postures_admin.py::test_remote_admin_cannot_change_the_posture_and_it_is_audited sim/tests/test_postures_companion.py::test_untrusted_transport_refusals_are_audited
@@ -245,3 +245,9 @@ mutate iface_locked_not_enrolled_companion examples/companion_radio/MeconIface.c
 mutate iface_locked_not_enrolled_console src/helpers/iface/ConsoleIface.cpp '  ctx.enrolled = cls == Cli::C_READ && s->_auth.enrolled();' '' sim/tests/test_posture_set.py::test_a_locked_cable_in_hardened_reads_only_what_identifies_the_device
 mutate frame_locked_native_reads_open examples/companion_radio/MyMesh.cpp '        _iface.cableLocked(_cmd_src, fctx)) {' '        false) {' sim/tests/test_posture_set.py::test_a_locked_cable_gets_no_native_reads_on_a_companion
 mutate frame_locked_ignores_the_unlock examples/companion_radio/MeconIface.cpp '  return !x.unlocked;' '  return true;' sim/tests/test_posture_set.py::test_a_locked_cable_gets_no_native_reads_on_a_companion
+mutate posture_signature_ignored src/helpers/Posture.h 'bool allowed = is_signed || Cli::decide(ctx, Cli::C_POSTURE, to_hardened' 'bool allowed = Cli::decide(ctx, Cli::C_POSTURE, to_hardened' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
+mutate posture_signature_not_passed_companion examples/companion_radio/MyMesh.cpp 'reply, 150, changed,
+                               _cli_ctx.auth == Cli::A_SIGNED)) {' 'reply, 150, changed,
+                               false)) {' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
+mutate posture_signature_not_passed_server src/helpers/Posture.h 'changed, Cli::serverCaller().signed_line)) return true;' 'changed, false)) return true;' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
+mutate posture_lora_reboots_before_its_answer examples/companion_radio/MeconIface.h '(_on_lora ? Iface::LORA_REBOOT_MS : 1500)' '1500' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora

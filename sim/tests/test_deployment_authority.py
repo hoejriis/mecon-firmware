@@ -1539,6 +1539,23 @@ def signed_switch_over_the_broker(nodes, tmp_path, broker, name, within_s):
 
 
 @pytest.mark.timescale(10)
+def test_a_signed_posture_change_over_a_broker_lowers_and_raises(nodes, tmp_path, broker):
+    b = broker()
+    d, dev = mqtt_boot(nodes, tmp_path, "brp", b)
+    assert d.i.request("deployment.provision", with_secret(provision_args(d.node_key)))["status"] == "ok"
+    r = b.iface_request(dev, {"v": 1, "id": "u1", "op": "posture.set", "args": {"posture": "hardened"}})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    job = 1
+    for want in ("hardened", "normal"):
+        r = b.iface_request(dev, wrap(d.node_key, "posture.set", {"posture": want}, job=job))
+        assert r["status"] == "ok" and r["result"] == {"posture": want}, (want, r)
+        assert d.n.wait_exit(10) == 75, "a change reboots the device"
+        d.n.start()
+        d.attach()
+        assert d.send(wrap(d.node_key, "status.get", job=None, rid="brp-%s" % want))["result"]["posture"] == want
+        job = d.i.request("deployment.get")["result"]["members"][0]["mark"] + 1
+
+
 def test_a_signed_mode_switch_over_a_broker_is_confirmed_over_the_cable(nodes, tmp_path, broker):
     b, d, job = signed_switch_over_the_broker(nodes, tmp_path, broker, "ms1", 300)
     g = d.i.request("job.get", {"job": job})["result"]
