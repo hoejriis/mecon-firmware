@@ -12,7 +12,7 @@ from sim.harness import CompanionClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
-from test_deployment_authority import Dev, RTC, apply_name, wrap  # noqa: E402
+from test_deployment_authority import SECRET, Dev, RTC, apply_name, wrap  # noqa: E402
 from test_deployment_authority_server import Srv  # noqa: E402
 from test_provenance import verifies  # noqa: E402
 
@@ -431,3 +431,20 @@ def test_a_companion_reports_only_on_its_bound_channel(ether, nodes):
     assert (r["status"], r.get("error")) == ("busy", "not-sent"), "slot 0 is Public: %s" % r
     r = d.send(wrap(d.node_key, "report.now", {"fields": ["health"], "slot": 1}, job=2))
     assert r["status"] == "ok", "slot 1 is the bound one: %s" % r
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_signature_changes_the_posture_over_lora(ether, nodes, kind):
+    d, m = enrolled(nodes, ether, kind, "ps" + kind[:2])
+    r = d.send(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET}, job=1, nonce=d.nonce()))
+    assert r["status"] == "ok", r
+    job = 2
+    for want in ("hardened", "normal"):
+        r = m.send(d.node_key, wrap(d.node_key, "posture.set", {"posture": want}, job=job), timeout=100)   # the first answer after a boot is slow
+        assert r and r["status"] == "ok" and r["result"] == {"posture": want}, (want, r)
+        assert d.n.wait_exit(90) == 75, "a change reboots the device, once the answer has gone out"
+        d.n.start()
+        d.attach()
+        got = d.send(wrap(d.node_key, "status.get", job=None, rid="post-%s" % want))
+        assert got["result"]["posture"] == want, got
+        job = d.i.request("deployment.get")["result"]["members"][0]["mark"] + 1

@@ -81,15 +81,17 @@ inline bool isRemoteReadOnly(const char* c) {
 // Handles "get posture", "get audit [n]" and "set posture ...". Returns false when `cmd` is none of them.
 // `caller` is who is asking; trusted local callers are CALLER_CABLE and CALLER_BLE, the rest are remote or
 // unauthenticated. `changed` is set when the stored posture changed and the prefs must be saved.
+// `is_signed`: a Deployment member signed this request, and the wire it came over adds nothing to that and takes nothing from it
+// (AUTHORITY.md section 9). The gate before this has already decided the class for that principal.
 inline bool handleCommand(const char* cmd, uint8_t caller, uint8_t& posture, uint32_t now, char* reply, size_t max,
-                          bool& changed) {
+                          bool& changed, bool is_signed = false) {
   const Cli::Context ctx = Cli::contextForCaller(caller, posture);
   if (strcmp(cmd, "get posture") == 0) {
     snprintf(reply, max, "> %s", isHardened(posture) ? "hardened" : "normal");
     return true;
   }
   if (strcmp(cmd, "get audit") == 0 || memcmp(cmd, "get audit ", 10) == 0) {
-    if (!Cli::decide(ctx, Cli::C_POSTURE).allow) {
+    if (!is_signed && !Cli::decide(ctx, Cli::C_POSTURE).allow) {
       recordRefusal(now, caller, W_AUDIT);
       snprintf(reply, max, "ERR: not permitted");
       return true;
@@ -111,8 +113,8 @@ inline bool handleCommand(const char* cmd, uint8_t caller, uint8_t& posture, uin
       snprintf(reply, max, "ERR: set posture hardened | set posture normal confirm");
       return true;
     }
-    // raising: any trusted local transport; lowering: a cable only. Remote callers can do neither.
-    bool allowed = Cli::decide(ctx, Cli::C_POSTURE, to_hardened ? 0 : Cli::F_CABLE_ONLY).allow;
+    // raising: any trusted local transport; lowering: a cable only. Other remote callers can do neither; a signature can do both.
+    bool allowed = is_signed || Cli::decide(ctx, Cli::C_POSTURE, to_hardened ? 0 : Cli::F_CABLE_ONLY).allow;
     if (!allowed) {
       recordRefusal(now, caller, W_POSTURE);
       snprintf(reply, max, "ERR: not permitted");
@@ -150,7 +152,7 @@ inline bool adminFrontDoor(const char* command, bool remote, uint8_t& posture, c
       remote ? Cli::Context(Cli::T_LORA, isDefaultAdminPassword(admin_pw, build_default) ? Cli::A_ADMIN_DEFAULT_PW : Cli::A_ADMIN, posture)
              : Cli::Context(Cli::T_USB, Cli::A_CABLE, posture));
   if (Cli::gate(command, ctx, Cli::ROLE_REPEATER, now, reply, max)) return true;
-  if (handleCommand(command, caller, posture, now, reply, max, changed)) return true;
+  if (handleCommand(command, caller, posture, now, reply, max, changed, Cli::serverCaller().signed_line)) return true;
   return false;
 }
 

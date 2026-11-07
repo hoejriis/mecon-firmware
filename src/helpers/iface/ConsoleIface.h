@@ -138,7 +138,7 @@ public:
   uint32_t produced() const { return streamsProduced(); }
   void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read
   uint8_t postureNow() const { return _host.posture(_host.user); }
-  void rebootSoon() { _reboot_at = millis() + 1500; }
+  void rebootSoon() { _reboot_at = millis() + (_on_lora ? LORA_REBOOT_MS : 1500); }
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);
     if (stream == SID_RUNTIME && !_boot_sent) _boot_pending = true;
