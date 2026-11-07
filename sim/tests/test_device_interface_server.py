@@ -199,7 +199,7 @@ def test_an_apply_saves_the_prefs_once_on_a_server(nodes, tmp_path):
     n = nodes("repeater", "one_save_rep", extra=["--fs-calls", calls]).start()
     cli, i = client(n)
     def renames():   # the file appears at the first counted call
-        return int(dict(kv.split("=") for kv in open(calls).read().split())["rename"]) if os.path.exists(calls) else 0
+        return int(dict(kv.split("=") for kv in open(calls).read().split()).get("rename", 0)) if os.path.exists(calls) else 0
     assert i.request("config.apply", {"set": {"name": "First"}})["result"]["complete"]   # the first also writes its files
     before = renames()
     assert i.request("config.apply", {"set": {"name": "One"}})["result"]["complete"]
