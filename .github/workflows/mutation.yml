@@ -55,6 +55,7 @@ jobs:
         env:
           FULL: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))) }}
           BEFORE: ${{ github.event.before }}
+          SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           if [ "$FULL" = true ]; then
             echo "mode: full"; python3 sim/mutate_select.py full > mutants.txt
@@ -78,12 +79,19 @@ jobs:
           echo "$n batches of up to $size"
           # fail loudly here (a visible check) rather than let an oversized matrix fail the run with no check at all
           if [ "$n" -gt 256 ]; then echo "::error::$n mutant batches exceed the 256-job matrix limit"; exit 1; fi
+          # One batch in eleven goes to F1's two runners, about their share beside 20 hosted slots. A job's runner is fixed before it
+          # queues, so this cannot follow how full the hosted slots are. A fork's PR stays on hosted. The f1 label matters: the
+          # laptop's runners also carry mecon-public.
+          if [ "$SAME_REPO" = true ]; then every=11; else every=0; fi
+          batches=$(echo "$batches" | jq -c --argjson every "$every" 'to_entries | map({mutant: .value,
+            runner: (if $every > 0 and .key % $every == 0 then "[\"self-hosted\",\"f1\",\"mecon-public\"]" else "\"ubuntu-latest\"" end)})')
           echo "mutants=$batches" >> "$GITHUB_OUTPUT"
 
   mutant:
     needs: list
     if: needs.list.outputs.mutants != '[]'   # a change that touches no mutant: nothing to run (the check shows skipped)
-    runs-on: ubuntu-latest
+    name: mutant (${{ matrix.mutant }})
+    runs-on: ${{ fromJson(matrix.runner) }}
     # A batch takes 4.5 min typically and 9.7 min at the most (198 batches on main, 2026-10-30). A job that runs
     # three times that long is stuck or has lost its runner: it fails, and on main the alarm says so, rather than
     # sitting with no result.
@@ -91,7 +99,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mutant: ${{ fromJson(needs.list.outputs.mutants) }}
+        include: ${{ fromJson(needs.list.outputs.mutants) }}
     env:
       SIM_NO_DOCKER: '1'
     steps:
