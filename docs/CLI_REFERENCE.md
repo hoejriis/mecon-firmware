@@ -67,7 +67,7 @@ The commands the Companion CLI accepts, reached by the app frame, the rescue con
 | `set posture normal confirm` | Lower the posture to Normal. | MECON | posture | Cable only (the paired phone is refused too). Without `confirm` nothing changes. On an enrolled device the cable is refused too, and lowering takes a signed `posture.set`. |
 | `get audit [start]` | Read the audit log. | MECON | posture | Cable or paired phone. Two entries per reply, newest first. |
 | `get connectivity.mode` | `> ble` or `> wifi`. | MECON | read | Builds with `ENABLE_CONNMODE`. |
-| `set connectivity.mode ble\|wifi` | Switch the Companion between BLE and Wi-Fi; saves and restarts. | MECON | posture | Cable, paired phone, or the device button. Never a remote caller; audited. `OK - connectivity.mode <mode>, restarting`, or `OK - already <mode>`. |
+| `set connectivity.mode ble\|wifi` | Switch the Companion between BLE and Wi-Fi; saves and restarts. | MECON | posture | Cable, paired phone, the device button, or a request a Deployment member signed, on any transport. Never an unsigned remote caller; audited. `OK - connectivity.mode <mode>, restarting`, or `OK - already <mode>`. |
 | `get wifi.profile <n>` | One Wi-Fi profile: `<n>: <ssid> prio=<p> pwd=set\|unset last=<reason>`. | MECON | read | `n` is 0 to 9. Wi-Fi builds (`ENABLE_WIFI_INTERFACE`). |
 | `get wifi.profiles [from]` | Every configured profile, paged with `... next:<n>`. | MECON | read |  |
 | `set wifi.profile <n> ssid <name>` | SSID of a profile (1-32 characters, spaces allowed). | MECON | write | Applies at once; the profile in use is rejoined. |

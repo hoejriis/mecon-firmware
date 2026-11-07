@@ -2,12 +2,12 @@
 
 The other pages describe the finished product. This page and the release notes say what you can actually get. [Hardware evidence](HARDWARE_VERIFIED.md) says what has run on which board.
 
-**Reviewed 6 November 2026, against `main`.** Anything newer is in the [Issues](https://github.com/hoejriis/mecon-firmware/issues) and the [releases](https://github.com/hoejriis/mecon-firmware/releases).
+**Reviewed 7 November 2026, against `main`, the same commit as v0.1.3.** Anything newer is in the [Issues](https://github.com/hoejriis/mecon-firmware/issues) and the [releases](https://github.com/hoejriis/mecon-firmware/releases).
 
 ## What you can get
 
 - **Source, under MIT.** You can build it yourself ([install and set up a device](GETTING_STARTED.md)).
-- **Source-only pre-releases**, [v0.1.0 to v0.1.2](https://github.com/hoejriis/mecon-firmware/releases). They predate most of the features described here.
+- **Source-only pre-releases**, [v0.1.0 to v0.1.3](https://github.com/hoejriis/mecon-firmware/releases). v0.1.3 carries the features described here, except those in the table below. The earlier three predate most of them.
 - **No supported release and no downloadable images.** No release has been signed with production keys. No date is announced.
 
 ## Not available yet
