@@ -96,7 +96,7 @@ public:
 
   static bool streamAllow(void* self, uint8_t cls);   // may the caller of the request being handled use a stream of this class
   MyMesh* mesh() const { return _mesh; }
-  Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this, nullptr, 0, &_confirm}; }
+  Iface::ConfigHost configHost() { return Iface::ConfigHost{cliRun, cliAllow, this, nullptr, 0, &_confirm, [](void* u) { return static_cast<MeconIface*>(u)->onLora(); }}; }
   Iface::ChannelHost channelHost();   // the native channel table (channel.* operations)
   Iface::ContactHost contactHost();   // the native contact table (contact.* operations)
   Iface::MessageHost messageHost(bool create);   // message.* operations; create: make the outcome table if there is none

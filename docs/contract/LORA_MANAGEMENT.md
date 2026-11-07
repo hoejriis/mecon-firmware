@@ -44,7 +44,7 @@ Every role carries both paths. A Repeater or Room server holds a single manageme
 - **Opt in, per operation.** Each entry of the operation table carries a LoRa flag: `none`, `p2p` or `p2p+channel`. The
   default is `none`, so a new operation stays off LoRa until someone decides otherwise. An operation without the flag
   for a path answers `unknown-op` there (an operation absent from `hello` on that link).
-- **Never over LoRa:** every `secret`-class operation, on either path, since key material never goes on the air,
+- **Never over LoRa:** a write-only setting such as a password, refused by key (`not-over-lora`), and every `secret`-class operation, on either path, since key material never goes on the air,
   whatever the encryption. Also every sensitive operation of AUTHORITY section 7.1, and so no link-nonce handshake in
   this version: it would add a round trip and per-peer state on the slowest link, and can be added later without
   changing anything else.

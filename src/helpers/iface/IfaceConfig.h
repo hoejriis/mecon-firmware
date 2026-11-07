@@ -95,6 +95,7 @@ struct ConfigHost {
   const KeyDef* keys;   // this role's table; nullptr means the Companion's (KEYS)
   size_t nkeys;
   const ConfirmHost* confirm;
+  bool (*on_air)(void* user);   // this request came over LoRa; null: never
 };
 
 // The key definition for a concrete key ("wifi.profile.3.ssid") in a table, with its index; nullptr when there is
