@@ -1301,6 +1301,7 @@ uint32_t MeconIface::reportRandom(void*) {
 
 bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq) {
   MeconIface* m = static_cast<MeconIface*>(user);
+  if (slot >= 0 && slot != m->_lora_bound_slot) return false;   // as a Repeater: a report goes on the management channel, never a public one
   ReportData d;
   fillReportCommon(d, board, Uptime::secs(millis()));
   RadioCounts counts;

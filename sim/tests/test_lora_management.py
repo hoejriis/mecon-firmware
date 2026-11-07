@@ -402,3 +402,32 @@ def test_a_revoked_members_instruction_stops(ether, nodes):
     m.i.events.clear()
     assert next_report(m, timeout=25) is None, "it stops, with its member"
     assert d.i.request("standing.list")["result"]["instructions"] == []
+
+
+@pytest.mark.timescale(100000)
+@pytest.mark.parametrize("every_s", [2592000, 2200000])
+def test_a_period_past_a_signed_difference_runs_once_a_period(nodes, every_s):
+    """Above about 24.8 days a signed difference of milliseconds reads as already due, so it ran on every pass. Here a period
+    takes 26 s and 22 s, and nothing runs until it is over."""
+    n = nodes("repeater", "lp%d" % (every_s // 100000), seed=31, rtc=RTC).start()
+    d = Srv(n)
+    assert d.provision()["status"] == "ok"
+    r = d.send(wrap(d.node_key, "standing.put", {"id": "long", "fields": ["health"], "every_s": every_s, "to": "ab" * 32}, job=1))
+    assert r["status"] == "ok", r
+
+    def count():
+        s = d.i.request("standing.list")["result"]["instructions"][0]
+        return s["runs"] + s["failed"]
+
+    time.sleep(every_s / 100000.0 * 0.7)
+    assert count() == 0, "nothing within the period: %d" % count()
+    time.sleep(every_s / 100000.0 * 0.6)
+    assert count() == 1, "once, when it is over: %d" % count()
+
+
+def test_a_companion_reports_only_on_its_bound_channel(ether, nodes):
+    d, m = on_channel(nodes, ether, "companion_standalone", "cbc")
+    r = d.send(wrap(d.node_key, "report.now", {"fields": ["health"], "slot": 0}, job=1))
+    assert (r["status"], r.get("error")) == ("busy", "not-sent"), "slot 0 is Public: %s" % r
+    r = d.send(wrap(d.node_key, "report.now", {"fields": ["health"], "slot": 1}, job=2))
+    assert r["status"] == "ok", "slot 1 is the bound one: %s" % r
