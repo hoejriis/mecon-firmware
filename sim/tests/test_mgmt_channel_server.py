@@ -138,8 +138,11 @@ def test_a_signed_change_must_confirm_and_reverts_unconfirmed(nodes, kind):
     r = d.send(wrap(key, "mgmt.channel.rotate", {"secret": NEW.hex(), "confirm": {"within_s": 30}}, job=2))
     assert r["status"] == "ok" and r["result"]["job_state"] == "awaiting-confirm", r
     assert NEW in open(os.path.join(d.n.dir, "mgmt_slot"), "rb").read(), "in effect at once, tentatively"
+    reads = d.i.request("status.get")["result"]["lora"]["binding_reads"]
     assert wait_job(d, r["result"]["job"]) == "reverted"
     assert KEY in open(os.path.join(d.n.dir, "mgmt_slot"), "rb").read(), "the old key is back"
+    time.sleep(0.2)
+    assert d.i.request("status.get")["result"]["lora"]["binding_reads"] > reads, "no request made this change, and the link must still see it"
     s = state(d)
     assert s["state"] == "bound" and s["generation"] == 1, s
 

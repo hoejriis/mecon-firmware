@@ -503,6 +503,7 @@ bool ConsoleIface::jobRevert(void* user, Job& j) {
   if (Upd::UpdateService::owns(j)) return s->_updates.jobRevert(j);
   if (mgmtOwnsJob(j)) {   // the management channel's ops, by exact name
     if (!mgmtRevert(s->mgmtHost(), j)) return false;
+    s->_lora_key_dirty = true;
     s->_jobs.table()->setState(&j, JOB_REVERTED);
     return true;
   }
@@ -603,7 +604,7 @@ int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
   if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);
-  _lora_key_dirty = true;   // cheaper than asking which operations touch the binding: requests are rare beside packets
+  if (mgmtMayChangeBinding(msg, len)) _lora_key_dirty = true;
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -877,13 +878,13 @@ bool ConsoleIface::loraChannelKey(void* user, uint8_t out[16]) {
   return s->_lora_key_ok;
 }
 
-// On the main pass, never on a received packet: after a request that may have changed the binding, and once a minute for a
-// change no request made (a confirmation that lapsed and reverted).
-void ConsoleIface::loraKeyRefresh(uint32_t now) {
-  if (_lora_key_read && !_lora_key_dirty && now - _lora_key_at < 60000) return;
+// On the main pass, never on a received packet: at boot, after a request that may have changed the binding, and when a lapsed
+// confirmation reverts it. Never on a timer: a read holds the loop for about 0.9 s on an ESP32.
+void ConsoleIface::loraKeyRefresh() {
+  if (_lora_key_read && !_lora_key_dirty) return;
   _lora_key_read = true;
   _lora_key_dirty = false;
-  _lora_key_at = now;
+  _lora.noteBindingRead();
   MgmtHost h = mgmtHost();
   MgmtRecord rec;
   char name[CHANNEL_NAME_MAX + 1];
@@ -900,7 +901,7 @@ bool ConsoleIface::onLoraChannelFrame(void* user, const uint8_t* data, size_t n)
 // One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).
 void ConsoleIface::loraTick(uint32_t now) {
   if (!_lora_send) return;
-  loraKeyRefresh(now);
+  loraKeyRefresh();
   if (LoraLink::Peer* p = _lora.nextComplete()) {
     char* res = static_cast<char*>(malloc(LORA_MSG_MAX + 1));
     if (res) {

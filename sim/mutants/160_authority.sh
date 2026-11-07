@@ -246,6 +246,17 @@ mutate standing_temporary_kept src/helpers/iface/StandingOps.cpp 'if (!s.used ||
 mutate standing_lost_at_boot src/helpers/iface/StandingOps.cpp '  load(now);' '' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
 mutate standing_revoked_runs_on src/helpers/iface/StandingOps.cpp 'if (s.issuer[0] && !_h.issuer_valid(_h.user, s.issuer)) {' 'if (false) {' $LM::test_a_revoked_members_instruction_stops
 mutate standing_never_fires src/helpers/iface/StandingOps.cpp 'if (!s.used || (uint32_t)(now - s.from_ms) < s.wait_ms) continue;' 'continue;' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
+mutate binding_read_every_request_console src/helpers/iface/ConsoleIface.cpp 'if (mgmtMayChangeBinding(msg, len)) _lora_key_dirty = true;' '_lora_key_dirty = true;' $LM::test_only_a_request_that_can_change_the_binding_reads_it_from_flash
+mutate binding_read_every_request_companion examples/companion_radio/MeconIface.cpp 'if (mgmtMayChangeBinding(msg, len)) _lora_bound_dirty = true;' '_lora_bound_dirty = true;' $LM::test_only_a_request_that_can_change_the_binding_reads_it_from_flash
+mutate binding_bind_not_read src/helpers/iface/MgmtChannel.cpp '{"mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "channel.put", "channel.remove",' '{"mgmt.channel.rotate", "mgmt.channel.unbind", "channel.put", "channel.remove",' $LM::test_only_a_request_that_can_change_the_binding_reads_it_from_flash
+mutate binding_put_not_read src/helpers/iface/MgmtChannel.cpp '{"mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "channel.put", "channel.remove",' '{"mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "channel.remove",' $LM::test_only_a_request_that_can_change_the_binding_reads_it_from_flash
+mutate binding_read_on_a_timer_console src/helpers/iface/ConsoleIface.cpp 'if (_lora_key_read && !_lora_key_dirty) return;' 'static uint32_t last = 0; if (_lora_key_read && !_lora_key_dirty && millis() - last < 60000) return; last = millis();' $LM::test_the_binding_is_not_read_from_flash_on_a_timer
+mutate binding_read_on_a_timer_companion examples/companion_radio/MeconIface.cpp 'if (!_lora_bound_read || _lora_bound_dirty) {' 'static uint32_t last = 0; if (!_lora_bound_read || _lora_bound_dirty || now - last >= 60000) { last = now;' $LM::test_the_binding_is_not_read_from_flash_on_a_timer
+mutate binding_revert_not_read_console src/helpers/iface/ConsoleIface.cpp '    s->_lora_key_dirty = true;
+' '' sim/tests/test_mgmt_channel_server.py::test_a_signed_change_must_confirm_and_reverts_unconfirmed
+mutate binding_revert_not_read_companion examples/companion_radio/MeconDeploy.cpp '    m->_lora_bound_dirty = true;
+' '' sim/tests/test_mgmt_channel.py::test_a_paired_phone_must_confirm_and_an_unconfirmed_bind_reverts_at_its_deadline
+mutate binding_native_write_not_read examples/companion_radio/MeconIface.h 'void channelsChanged() { _lora_bound_dirty = true; }' 'void channelsChanged() { }' $LM::test_a_native_channel_write_makes_the_companion_read_the_binding
 mutate standing_ignores_airtime src/helpers/iface/StandingOps.cpp 'if (!_h.airtime_ok(_h.user)) {' 'if (false) {' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
 mutate standing_skip_not_counted src/helpers/iface/StandingOps.cpp '        s.skipped++;
 ' '' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
@@ -255,7 +266,7 @@ mutate standing_remove_keeps src/helpers/iface/StandingOps.cpp '      s = Standi
       if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' '      if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
 mutate lora_retry_new_number examples/companion_radio/MeconIface.cpp 'if (xt >= 0 && jsonGetInt(d, xt, 0, 255, &xv)) _rf_xid = (uint8_t)xv;
   else _rf_xid++;' '_rf_xid++;' $LM::test_a_retry_under_the_same_number_fills_a_gap_on_the_channel
-mutate lora_binding_not_reread src/helpers/iface/ConsoleIface.cpp '  _lora_key_dirty = true;   // cheaper than asking which operations touch the binding: requests are rare beside packets' '' $LM::test_an_unbind_takes_effect_at_once
+mutate lora_binding_not_reread src/helpers/iface/ConsoleIface.cpp '  if (mgmtMayChangeBinding(msg, len)) _lora_key_dirty = true;' '' $LM::test_an_unbind_takes_effect_at_once
 mutate unlock_window_stays_ten_minutes src/helpers/iface/DeployAuth.h 'UNLOCK_MS = 5 * 60 * 1000;' 'UNLOCK_MS = 10 * 60 * 1000;' $DA::test_an_unlock_lapses_after_five_minutes
 mutate unlock_outlives_the_host_companion examples/companion_radio/MeconIface.cpp '    if (!cable_up) l.unlock.clear();' '' $DA::test_the_unlock_ends_when_the_usb_host_goes
 mutate unlock_outlives_the_host_console src/helpers/iface/ConsoleIface.cpp '  if (!cableLineUp()) _unlock.clear();' '' sim/tests/test_deployment_authority_server.py::test_the_unlock_ends_when_the_usb_host_goes

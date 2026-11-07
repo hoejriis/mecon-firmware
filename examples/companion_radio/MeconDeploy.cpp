@@ -110,6 +110,7 @@ bool MeconIface::jobRevert(void* user, Iface::Job& j) {
   if (Upd::UpdateService::owns(j)) return m->_updates.jobRevert(j);   // reboots itself when an image changes
   if (Iface::mgmtOwnsJob(j)) {   // the management channel's ops, by exact name (MgmtChannel.cpp)
     if (!Iface::mgmtRevert(m->mgmtHost(), j)) return false;
+    m->_lora_bound_dirty = true;
     m->_jobs.table()->setState(&j, Iface::JOB_REVERTED);
     return true;
   }

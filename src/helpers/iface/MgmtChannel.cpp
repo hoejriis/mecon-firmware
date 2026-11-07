@@ -245,6 +245,16 @@ void MgmtSnap::clear() {
 
 // ---- state
 
+bool mgmtMayChangeBinding(const char* msg, size_t len) {
+  static const char* const OPS[] = {"mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "channel.put", "channel.remove",
+                                    "deployment.provision", "deployment.reset", "job.confirm", "job.cancel"};
+  for (const char* op : OPS) {
+    const size_t n = strlen(op);
+    for (size_t i = 0; i + n <= len; i++) if (memcmp(msg + i, op, n) == 0) return true;
+  }
+  return false;
+}
+
 MgmtState mgmtState(const MgmtHost& h, MgmtRecord* rec) {
   const int r = loadRecord(h, rec);
   if (r == 0) { *rec = MgmtRecord(); return MGMT_NONE; }
