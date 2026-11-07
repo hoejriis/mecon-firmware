@@ -220,6 +220,7 @@ private:
   void* _report_user = nullptr;
   static bool reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq);
   static uint8_t reportProduced(void* user);
+  static bool reportAirtimeOk(void* user);
   static bool reportMayRead(void* user);
   static const char* reportIssuer(void* user);
   static bool reportIssuerValid(void* user, const char* issuer);
