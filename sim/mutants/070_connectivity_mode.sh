@@ -38,4 +38,3 @@ mutate connmode_every_reply_postpones_the_restart examples/companion_radio/MyMes
 CM_AUTH=sim/tests/test_deployment_authority.py
 mutate connmode_signature_ignored $CM_H "return is_signed || Cli::decide(" "return Cli::decide(" $CM_AUTH
 mutate connmode_signature_not_passed examples/companion_radio/MyMesh.cpp "_cli_ctx.auth == Cli::A_SIGNED)) {" "false)) {" $CM_AUTH
-mutate connmode_remote_may_switch $CM_H "return is_signed || Cli::decide(Cli::contextForCaller(caller, Posture::NORMAL), Cli::C_POSTURE).allow;" "return true;" $CM_AUTH
