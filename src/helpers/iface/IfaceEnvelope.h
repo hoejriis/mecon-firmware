@@ -43,6 +43,8 @@ Status parseRequest(JsonDoc& doc, const char* msg, size_t len, Request& req);
 // Writers return the byte count, or -1 when buf is too small (never a truncated message).
 // result_json / data_json are complete JSON objects produced by the caller, or null for {}.
 int writeResult(char* buf, size_t cap, const char* id, Status st, const char* result_json, const char* error);
+// The id a written result answers (`id` holds ID_MAX + 1); empty if msg does not start as writeResult starts one.
+void resultIdOf(const char* msg, size_t len, char* id);
 // The one refusal with a result: the mark is what the caller needs to continue, and deployment.get shows it to anyone.
 // writeResult never writes a result beside a status other than ok, so a handler's data cannot leak with a refusal.
 int writeReplayRefusal(char* buf, size_t cap, const char* id, uint32_t mark);

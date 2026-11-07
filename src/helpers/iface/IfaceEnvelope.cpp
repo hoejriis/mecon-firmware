@@ -1,4 +1,5 @@
 #include "IfaceEnvelope.h"
+#include <string.h>
 
 namespace Iface {
 
@@ -43,6 +44,20 @@ int writeResult(char* buf, size_t cap, const char* id, Status st, const char* re
   if (st == ST_OK) { w.key("result"); w.raw(result_json ? result_json : "{}"); }
   w.endObject();
   return finish(w);
+}
+
+void resultIdOf(const char* msg, size_t len, char* id) {
+  static const char KEY[] = ",\"id\":\"";   // after "v", as writeResult orders them; an id has no character to escape
+  id[0] = 0;
+  for (size_t i = 0; i + sizeof(KEY) - 1 <= len && i < 16; i++) {
+    if (memcmp(msg + i, KEY, sizeof(KEY) - 1) != 0) continue;
+    const char* from = msg + i + sizeof(KEY) - 1;
+    const size_t left = len - i - (sizeof(KEY) - 1);
+    size_t n = 0;
+    while (n < left && n <= ID_MAX && from[n] != '"') n++;
+    if (n < left && n <= ID_MAX && from[n] == '"') { memcpy(id, from, n); id[n] = 0; }
+    return;
+  }
 }
 
 int writeReplayRefusal(char* buf, size_t cap, const char* id, uint32_t mark) {
