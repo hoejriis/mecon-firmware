@@ -699,3 +699,30 @@ def test_a_job_event_raised_inside_a_broker_request_leaves_the_request_whole(nod
     assert r is not None, "no answer"
     assert r["id"] == "tentative-job-1" and r["status"] == "ok" and r["result"]["state"] == "awaiting-confirm", r
     assert r["result"]["job"] == "tentative-job-1", r
+
+
+def test_a_result_that_does_not_fit_is_refused_under_its_own_id(nodes):
+    """Requests a client gave up on, answered together: first boot takes long enough for a client to send many hellos. A
+    refusal with an empty id read as the answer to whatever the client was waiting for by then (v4test, every first boot)."""
+    n, (c, i) = start(nodes, "qfull", 23)
+    for k in range(8):
+        i.send_raw(b'{"v":1,"id":"h%d","op":"hello"}' % k)
+    i.send_raw(b'{"v":1,"id":"ap","op":"config.apply","args":{"set":{"tx":10}}}')
+    got = []
+    end = time.time() + 4
+    while time.time() < end:
+        m = i.read_message(0.3)
+        if m is not None and "ev" not in m:
+            got.append(m)
+    refused = [m for m in got if m["status"] == "busy" and m.get("error") == "queue-full"]
+    assert refused, "nothing was refused, so this proves nothing: %s" % [m["status"] for m in got]
+    assert all(m["id"] for m in refused), refused
+    assert sorted(m["id"] for m in got) == sorted(["h%d" % k for k in range(8)] + ["ap"]), "one answer each: %s" % got
+    r = i.request("hello", rid=refused[0]["id"], timeout=5)
+    assert r["status"] == "ok" and r["result"]["node_key"], "the same id gets the result: %s" % r
+    # The device caches a result before queueing it, whichever way the push goes, so this holds for a refused apply too.
+    assert i.request("config.get", {"keys": ["tx"]})["result"]["values"]["tx"] in (10, "10"), "it ran"
+    assert i.request("config.apply", {"set": {"tx": 11}})["status"] == "ok"
+    ap = i.request("config.apply", {"set": {"tx": 10}}, rid="ap", timeout=5)
+    assert ap["status"] == "ok", "the same id gets its result: %s" % ap
+    assert i.request("config.get", {"keys": ["tx"]})["result"]["values"]["tx"] in (11, "11"), "and it does not run twice"

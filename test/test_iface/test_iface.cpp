@@ -779,6 +779,25 @@ TEST(IfaceQueue, EventsLeaveRoomForAResult) {
   EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::RESULT, busy.data(), busy.size()));
 }
 
+TEST(IfaceEnvelopeId, AResultGivesBackTheIdItAnswers) {
+  char buf[128], id[ID_MAX + 1];
+  const int n = writeResult(buf, sizeof buf, "r-17", ST_OK, "{}", nullptr);
+  ASSERT_GT(n, 0);
+  resultIdOf(buf, (size_t)n, id);
+  EXPECT_STREQ("r-17", id);
+  const std::string longest(ID_MAX, 'x');
+  const int m = writeResult(buf, sizeof buf, longest.c_str(), ST_OK, "{}", nullptr);
+  resultIdOf(buf, (size_t)m, id);
+  EXPECT_STREQ(longest.c_str(), id);
+  resultIdOf(buf, 12, id);             // cut before the id ends
+  EXPECT_STREQ("", id);
+  resultIdOf("{\"v\":1,\"status\":\"ok\"}", 21, id);
+  EXPECT_STREQ("", id);
+  const std::string over = "{\"v\":1,\"id\":\"" + std::string(ID_MAX + 1, 'x') + "\",";
+  resultIdOf(over.c_str(), over.size(), id);
+  EXPECT_STREQ("", id);
+}
+
 TEST(IfaceQueue, ByteStorageCountsAsFull) {
   uint8_t store[300];
   OutQueue q(store, sizeof store);

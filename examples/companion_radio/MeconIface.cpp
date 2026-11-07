@@ -812,7 +812,10 @@ bool MeconIface::queueResult(Link& l, const char* msg, size_t len) {
   if (!ensureQueue(l)) return false;
   if (l.q->push(OutQueue::RESULT, reinterpret_cast<const uint8_t*>(msg), len) == OutQueue::PUSH_OK) return true;
   char busy[320];   // signed, still well inside what events must leave free (RESULT_RESERVE)
-  int n = writeResult(busy, sizeof(busy), "", ST_BUSY, nullptr, "queue-full");
+  // Under this result's own id: with an empty one, a client takes it as the answer to whatever it is waiting for now.
+  char id[ID_MAX + 1];
+  resultIdOf(msg, len, id);
+  int n = writeResult(busy, sizeof(busy), id, ST_BUSY, nullptr, "queue-full");
   if (n > 0) n = _prov.signResult(busy, (size_t)n, sizeof(busy));
   return n > 0 && l.q->push(OutQueue::RESULT, reinterpret_cast<const uint8_t*>(busy), (size_t)n) == OutQueue::PUSH_OK;
 }
