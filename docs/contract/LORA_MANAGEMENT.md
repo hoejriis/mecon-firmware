@@ -160,6 +160,8 @@ encrypted on both paths. A node is addressed by its node public key, as native M
     duty window. Beyond it they are dropped and counted. A per-peer budget would not hold, since keys are free.
   - **A verified result** may use the known path or flood.
 - **Counted where a manager can read it.** `status.get` reports `lora`: `frames`, `incomplete`, `dropped_bad`, `dropped_budget`, `dropped_deadline`, `dropped_memory` and `evicted`, since boot.
+- **The first answer after a boot is slow.** The window is seeded at its limit after a boot, so that answer waits: about
+  27 s in the simulator, not measured at real radio settings. A manager allows for it.
 - **Deferred is a state, never a silent drop.** A reply the duty window holds is queued with its deadline. It is sent
   when the window allows, or dropped at its deadline and counted. It is never lost without a trace. The manager's
   re-send then gets the stored result. Every frame of a reply is the same message, so a window that holds frame 3
