@@ -2,7 +2,7 @@
 
 From choosing a board to one useful result. This page is for operators. Contributor checks, such as the simulator and unit tests, are in [contributing](../CONTRIBUTING.md#build-and-test), and you do not need them to use the firmware.
 
-> **Availability.** [v0.2.0](https://github.com/hoejriis/mecon-firmware/releases/tag/v0.2.0) is a pre-release with signed images attached, for the [signed update path](UPDATING_AND_RECOVERY.md). This guide builds from source and has not been walked with those images. Some features on these pages are not built yet: see [availability](AVAILABILITY.md).
+> **Availability.** [v0.2.0](https://github.com/hoejriis/mecon-firmware/releases/tag/v0.2.0) is a pre-release with signed images attached, for the [signed update path](UPDATING_AND_RECOVERY.md). This guide builds from source and has not been walked with those images. Some features on these pages have run on few boards: see [availability](AVAILABILITY.md).
 
 ## 1. Choose a board and role
 
