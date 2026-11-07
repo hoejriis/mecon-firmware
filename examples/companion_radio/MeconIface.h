@@ -73,6 +73,8 @@ public:
   Iface::StandingService& standing() { return _standing; }
   const Iface::LoraLink& lora() const { return _lora; }
   uint8_t postureNow() const;
+  // A cable on an enrolled device in Hardened with no local unlock on this link (AUTHORITY.md section 9).
+  bool cableLocked(const BaseSerialInterface* src, const Cli::Context& c);
   void rebootSoon() { _reboot_at = millis() + 1500; }
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the

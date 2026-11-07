@@ -578,7 +578,9 @@ bool ConsoleIface::authorize(void* user, const OpEntry& op, const Request&) {
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
                                                : Cli::C_POSTURE;
-  const Cli::Verdict v = Cli::decide(s->_ctx, cls);   // a refusal says why, as on the Companion
+  Cli::Context ctx = s->_ctx;
+  ctx.enrolled = cls == Cli::C_READ && s->_auth.enrolled();   // beyond reads, preAuthorize and the handlers have decided
+  const Cli::Verdict v = Cli::decide(ctx, cls, strcmp(op.name, "hello") == 0 ? Cli::F_IDENTIFY : 0);   // a refusal says why, as on the Companion
   if (!v.allow) s->_deny = Cli::reasonName(v.reason);
   return v.allow;
 }
