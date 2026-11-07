@@ -110,6 +110,7 @@ def test_companion_hello_and_cli_sign_the_device_id(nodes):
 def test_console_hello_and_cli_sign_the_device_id(nodes, kind):
     d = boot_server(nodes, kind, "dv" + kind, 43)
     dev = check_hello(d.i, d.node_key)
+    assert d.i.request("hello")["result"]["variant"] == "sim_" + kind, "the build, so a manager can offer the matching image"
     check_cli(d.cli.command, dev, d.node_key)
     assert d.provision()["status"] == "ok"
     assert check_hello(d.i, d.node_key) == dev

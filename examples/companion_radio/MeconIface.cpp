@@ -188,6 +188,7 @@ Status opHello(OpContext& c) {
   w.key("role"); w.str("companion");
   w.key("hardware"); w.str(mesh->hardwareName());
   w.key("firmware"); w.str(mecon::versionFull());
+  w.key("variant"); w.str(MECON_VARIANT);
   w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
   w.key("epoch"); w.unum(m->epoch());
   m->updates().writeAttestation(w);   // the image of an update job, while it awaits confirmation (UPDATES.md section 7)

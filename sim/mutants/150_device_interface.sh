@@ -22,6 +22,8 @@ mutate iface_reply_not_bound_to_its_transport examples/companion_radio/MyMesh.h 
     _serial->writeFrame(frame, len);' '    _serial->bindReply(nullptr);
     _serial->writeFrame(frame, len);' sim/tests/test_device_interface.py::test_a_result_goes_only_to_the_transport_that_asked
 mutate iface_epoch_not_counted src/helpers/iface/DeviceMeta.h '  e++;' '' sim/tests/test_device_interface.py::test_device_id_is_kept_and_epoch_counts_boots
+mutate iface_hello_without_variant examples/companion_radio/MeconIface.cpp '  w.key("variant"); w.str(MECON_VARIANT);' '' sim/tests/test_device_interface.py::test_hello_reports_identity_versions_and_capabilities
+mutate iface_hello_without_variant_console src/helpers/iface/ConsoleIface.cpp '  w.key("variant"); w.str(MECON_VARIANT);' '' sim/tests/test_device_id_binding.py::test_console_hello_and_cli_sign_the_device_id
 mutate iface_hello_without_node_key examples/companion_radio/MeconIface.cpp '  w.key("node_key"); w.str(key);' '' sim/tests/test_device_interface.py::test_every_request_fixture_against_the_device
 mutate iface_config_line_check_ignores_the_caller examples/companion_radio/MeconIface.cpp '  return Cli::decide(static_cast<MeconIface*>(user)->_ctx, r.cls, r.flags).allow;' '  return true;' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
 mutate iface_cli_line_never_remote examples/companion_radio/MeconIface.cpp '  const bool known = mesh->handleCommand(line, self->_ctx.remote ? 1 : 0, buf);' '  const bool known = mesh->handleCommand(line, 0, buf);' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
