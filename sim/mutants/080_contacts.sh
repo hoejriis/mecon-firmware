@@ -76,8 +76,12 @@ mutate contacts_message_received_not_noted src/helpers/BaseChatMesh.cpp '      n
 mutate contacts_message_time_not_kept $CS '  _idx[rec].last_msg = now;' '' unit:test_contact_store
 mutate contacts_secrets_not_invalidated $CS '  for (int i = 0; i < _nslots; i++) if (_slots && _slots[i].rec >= 0) _slots[i].ci.shared_secret_valid = false;' '' unit:test_contact_store
 mutate contacts_bulk_import_writes_each_record src/helpers/ContactStore.cpp '  if (b != _import_bucket) {' '  if (true) {' unit:test_contact_store
-mutate contacts_rebuild_probes_each_bucket src/helpers/ContactStore.cpp '  const bool have_list = listed && _be->listBuckets((uint16_t)_nbuckets, listed);' '  const bool have_list = false;' unit:test_contact_store
-mutate contacts_rebuild_probes_each_bucket_sim src/helpers/ContactStore.cpp '  const bool have_list = listed && _be->listBuckets((uint16_t)_nbuckets, listed);' '  const bool have_list = false;' sim/tests/test_contacts.py::test_rebuild_looks_up_no_bucket_that_is_not_there
+mutate contacts_rebuild_probes_each_bucket src/helpers/ContactStore.cpp '1, 1);
+  const bool have_list = listed && _be->listBuckets((uint16_t)_nbuckets, listed);' '1, 1);
+  const bool have_list = false;' unit:test_contact_store
+mutate contacts_rebuild_probes_each_bucket_sim src/helpers/ContactStore.cpp '1, 1);
+  const bool have_list = listed && _be->listBuckets((uint16_t)_nbuckets, listed);' '1, 1);
+  const bool have_list = false;' sim/tests/test_contacts.py::test_rebuild_looks_up_no_bucket_that_is_not_there
 # rescue "rebuild" works from the store (docs/CONTACTS.md)
 CT_KEEP=$CT_SIM::test_rebuild_keeps_every_stored_contact_beyond_the_cache
 CT_ISO=$CT_SIM::test_rebuild_isolates_a_damaged_record_and_keeps_all_the_others
@@ -103,3 +107,12 @@ mutate contacts_rebuild_damaged_not_reported $CS '  if (damaged_out) *damaged_ou
 mutate contacts_rebuild_damaged_not_reported_unit $CS '  if (damaged_out) *damaged_out = damaged;
   if (isolated_out)' '  if (isolated_out)' unit:test_contact_store
 mutate contacts_device_query_wraps examples/companion_radio/MyMesh.cpp '      out_frame[i++] = half > 255 ? 255 : half;   // v3+' '      out_frame[i++] = half;   // v3+' $CT_SIM::test_device_query_reports_half_the_capacity_capped_at_one_byte
+mutate clear_all_probes_each_bucket src/helpers/ContactStore.cpp '    const bool have_list = listed && _be->listBuckets((uint16_t)_nbuckets, listed);
+    for (int b = 0; b < _nbuckets; b++) {
+      const bool have = have_list ?' '    const bool have_list = false;
+    for (int b = 0; b < _nbuckets; b++) {
+      const bool have = have_list ?' unit:test_contact_store
+mutate clear_all_keeps_listed_buckets src/helpers/ContactStore.cpp '      if (have && !removeB(b)) ok = false;' '      if (!have && !removeB(b)) ok = false;' unit:test_contact_store
+mutate rotation_drops_no_adverts examples/companion_radio/MyMesh.cpp '    _store->deleteAllBlobs();' '' sim/tests/test_identity_rotate.py::test_a_rotation_removes_every_stored_advert
+mutate adverts_only_one_batch examples/companion_radio/DataStore.cpp '    if (n < 8) return;' '    return;' sim/tests/test_identity_rotate.py::test_a_rotation_removes_every_stored_advert
+mutate channel_read_leaves_the_field_unset examples/companion_radio/MyMesh.cpp '      StrHelper::strzcpy((char *)&out_frame[i], channel.name, 32);' '      strcpy((char *)&out_frame[i], channel.name);' sim/tests/test_companion_ble.py::test_a_channel_read_sends_only_its_own_name

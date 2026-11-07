@@ -14,7 +14,6 @@ The other pages describe the finished product. This page and the release notes s
 
 | Capability | Where it stands | Issue |
 |---|---|---|
-| The `screen` telemetry stream | Being built. The other streams are on `main` | [#96](https://github.com/hoejriis/mecon-firmware/issues/96) |
 | Signed updates with production release keys | The update path is built and proven with test keys. The keys themselves do not exist yet | [#110](https://github.com/hoejriis/mecon-firmware/issues/110) |
 | Every feature checked on all four boards | In progress. [Hardware evidence](HARDWARE_VERIFIED.md) lists what has been checked. A feature not listed there for a board is not verified on it | [#117](https://github.com/hoejriis/mecon-firmware/issues/117) |
 

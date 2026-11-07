@@ -308,6 +308,7 @@ void UITask::renderCurrScreen() {
       _display->setColor(UIColor::warning_txt);
       _display->setTextSize(2);
       _display->setCursor(0, 43);
+      _display->noteSecretDrawn();
       sprintf(tmp, "Pin:%d", the_mesh.getBLEPin());
       _display->print(tmp);
       _display->setColor(UIColor::primary_txt);

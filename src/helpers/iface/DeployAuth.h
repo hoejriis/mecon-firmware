@@ -38,9 +38,9 @@ struct LinkUnlock {
 
 class DeployAuth {
 public:
-  // The challenge lives 60 s; an unlock 10 minutes; five wrong answers lock the handshake for 60 s.
+  // The challenge lives 60 s; an unlock 5 minutes; five wrong answers lock the handshake for 60 s.
   static const uint32_t CHALLENGE_MS = 60000;
-  static const uint32_t UNLOCK_MS = 10 * 60 * 1000;
+  static const uint32_t UNLOCK_MS = 5 * 60 * 1000;
   static const uint32_t LOCKOUT_MS = 60000;
   static const uint8_t MAX_FAILURES = 5;
 
@@ -102,7 +102,9 @@ public:
                      RunFn run, void* run_user, char* out, size_t cap);
 
   // ---- the operations (OpContext.user is the host; the host forwards to these)
-  Status opGet(OpContext& c);
+  // reserve: what the caller adds to the result after this. ROTATION_MEMBER is the rotation statement with its key.
+  static const size_t ROTATION_MEMBER = 330;
+  Status opGet(OpContext& c, size_t reserve = 0);
   Status opProvision(OpContext& c);
   Status opUpdate(OpContext& c);
   Status opReset(OpContext& c);

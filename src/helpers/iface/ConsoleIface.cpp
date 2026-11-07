@@ -34,7 +34,7 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 }
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
@@ -131,10 +131,18 @@ Status opReportNow(OpContext& c) { return self(c)->standing().opNow(c, millis())
 Status opStandingPut(OpContext& c) { return self(c)->standing().opPut(c, millis()); }
 Status opStandingList(OpContext& c) { return self(c)->standing().opList(c); }
 Status opStandingRemove(OpContext& c) { return self(c)->standing().opRemove(c); }
+Status opPostureW(OpContext& c) {
+  ConsoleIface* s = self(c);
+  const uint8_t before = s->postureNow();
+  const Status st = withConfig(c, opPostureSet);
+  if (st == ST_OK && s->postureNow() != before) s->rebootSoon();   // what starts in each posture is decided at boot
+  return st;
+}
 // The stored set is an open read; the rotation statement in it names device_id, so only a caller the table lets read gets it.
 Status opDeployGet(OpContext& c) {
-  const Status st = self(c)->auth().opGet(c);
-  if (st == ST_OK && self(c)->mayRead()) self(c)->writeRotation(*c.out);
+  const bool rotated = self(c)->mayRead() && self(c)->rotationStored();
+  const Status st = self(c)->auth().opGet(c, rotated ? DeployAuth::ROTATION_MEMBER : 0);
+  if (st == ST_OK && rotated) self(c)->writeRotation(*c.out);
   return st;
 }
 Status opIdentityRotate(OpContext& c) { return self(c)->rotateIdentity(c); }
@@ -195,6 +203,7 @@ const OpEntry OPS[] = {
   {"standing.put", opStandingPut, PRIV_WRITE, true},
   {"standing.list", opStandingList, PRIV_READ, false},
   {"standing.remove", opStandingRemove, PRIV_WRITE, true},
+  {"posture.set", opPostureW, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
   {"deployment.get", opDeployGet, PRIV_READ, false},
@@ -312,6 +321,11 @@ bool ConsoleIface::mgmtReadSlot(void* user, int slot, char name[CHANNEL_NAME_MAX
 bool ConsoleIface::mayRead() { return Cli::decide(_ctx, Cli::C_READ).allow; }
 
 // The statement the old key signed before the swap (AUTHORITY.md section 11), as a member of the current object.
+bool ConsoleIface::rotationStored() {
+  char text[256], sig[89];
+  return _host.read_rotation && _host.read_rotation(_host.user, text, sizeof(text), sig, sizeof(sig));
+}
+
 bool ConsoleIface::writeRotation(JsonWriter& w) {
   char text[256], sig[89];
   if (!_host.read_rotation || !_host.read_rotation(_host.user, text, sizeof(text), sig, sizeof(sig))) return false;
@@ -406,6 +420,26 @@ uint32_t ConsoleIface::knownSeconds(bool* known) {
   const uint32_t ts = _host.clock_s ? _host.clock_s(_host.user) : 0;
   *known = ts >= 1704067200;   // 2024-01-01: a clock that has never been set reads earlier
   return *known ? ts : 0;
+}
+
+// One part of the screen frame in hand. Beside the stream pass, not inside it: a signature on top of its frame would
+// overrun the loop stack.
+void ConsoleIface::screenTick(uint32_t now) {
+  if (!_screen.due(now) || (_collecting && !mqttSubscribed())) return;
+  if (!_subs.s[SID_SCREEN].active && !_mqtt_subs.s[SID_SCREEN].active) { _screen.cancel(); return; }
+  char* data = static_cast<char*>(malloc(ScreenFeed::DATA_CAP));
+  char* ev = static_cast<char*>(malloc(ScreenFeed::EVENT_CAP));
+  if (data && ev && _screen.next(now, data, ScreenFeed::DATA_CAP)) {
+    bool known;
+    const uint32_t ts = knownSeconds(&known);
+    int n = writeEvent(ev, ScreenFeed::EVENT_CAP, STREAMS[SID_SCREEN].name, ++_clock.seq[SID_SCREEN], _epoch, known, ts, data);
+    if (n > 0) n = _prov.sign(STREAMS[SID_SCREEN].name, ev, (size_t)n, ScreenFeed::EVENT_CAP);
+    if (n > 0) emit(SID_SCREEN, ev, (size_t)n);
+  } else if (!data || !ev) {
+    _screen.cancel();   // no memory for this part: the frame is lost, and the seq gap or missing part shows it
+  }
+  free(data);
+  free(ev);
 }
 
 void ConsoleIface::emit(int stream, const char* ev, size_t n) {
@@ -884,6 +918,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   _out = &out;
   loraTick(now);
   _standing.tick(now);
+  if (!cableLineUp()) _unlock.clear();   // the cable's host went (AUTHORITY.md section 10)
   _gap.tick(now);
   _jobs.tick(now);
   _updates.loop(now);
@@ -900,6 +935,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
       _clock.scheduleNow(SID_CONNECTIVITY, now);
     }
   }
+  screenTick(now);
   if (_collecting && !mqttSubscribed()) return;   // an event never lands in the middle of a request being typed
   SubSet* sets[2] = { &_subs, &_mqtt_subs };
   const uint32_t due = _clock.due(sets, 2, now);
@@ -907,6 +943,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   const uint32_t ts = knownSeconds(&known);
   for (int s = 0; s < STREAM_COUNT; s++) {
     if (!(due & (1u << s))) continue;
+    if (s == SID_SCREEN) { _screen.start(now); continue; }   // in parts: screenTick sends it
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;

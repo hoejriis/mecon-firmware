@@ -30,6 +30,7 @@ const StreamDef STREAMS[STREAM_COUNT] = {
   {"logs", 0, 0, 0, Cli::C_POSTURE},   // the audit ring: the same class as `get audit`
   {"location", 30, 3600, 300, Cli::C_PRIVATE},   // private: the broker, the device's own links, a signed request
   {"rf", 0, 0, 0, Cli::C_PRIVATE},   // the replies to this Companion's rf.request: the managed devices' own results
+  {"screen", 5, 3600, 60, Cli::C_PRIVATE},   // private: a frame can show message text; parts, sent by ScreenFeed
 };
 
 int streamIndex(const char* name, size_t len) {

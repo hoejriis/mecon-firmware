@@ -17,7 +17,7 @@ from sim.ether import Ether  # noqa: F401
 from sim.harness import CompanionClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
-from test_deployment_authority import (DEP, INST_A, INST_B, SET1, V, apply_name, boot as boot_companion, wreck_record,  # noqa: E402
+from test_deployment_authority import (update_args, Dev, RTC, DEP, INST_A, INST_B, SET1, V, apply_name, boot as boot_companion, wreck_record,  # noqa: E402
                                        revive, wrap)
 from test_deployment_authority_server import boot as boot_server  # noqa: E402
 from test_provenance import verifies  # noqa: E402
@@ -206,6 +206,10 @@ def test_a_lost_rotate_result_is_recovered_from_the_stored_statement(nodes):
     assert r2["status"] == "ok", r2
     rot2 = d.i.request("identity.rotation")["result"]["rotation"]
     statement_checks(rot2, new_key, r2["result"]["new_public_key"], h["result"]["device_id"], job)
+
+
+def contacts_on_flash_now(d):
+    return [f for f in os.listdir(d.n.dir) if re.fullmatch(r"ct\d+", f)]
 
 
 def contacts_on_flash(d):
@@ -533,8 +537,15 @@ def test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it(nodes, kind):
     d = enrolled_any(nodes, kind, "rd" + kind[:2], 75)
     old_key = d.node_key
     device_id = d.i.request("hello")["result"]["device_id"]
-    held = contacts_on_flash(d)[0] if kind == "companion_standalone" else "s_contacts"
-    full = block(d, held)
+    if kind == "companion_standalone":   # the store lists its buckets, so a directory in the way would not be seen as one
+        contacts_on_flash(d)
+        flag = os.path.join(d.n.dir, "no_remove.flag")
+        d.n.extra_env["SIM_FS_NO_BUCKET_REMOVE"] = flag
+        d.reboot()
+        old_key = d.node_key
+        open(flag, "w").close()
+    else:
+        full = block(d, "s_contacts")
     r = rotate(d, 2, old_key)
     assert r["status"] == "failed" and r["error"] == "contacts_not_dropped", r
     assert verifies(r.raw, old_key, "result"), "signed by the retired key, the one its manager knows"
@@ -543,7 +554,10 @@ def test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it(nodes, kind):
     rot = d.i.request("identity.rotation")["result"]["rotation"]
     statement_checks(rot, old_key, new_key, device_id, 2)
     assert open(rotation_file(d), "rb").read().endswith(b"\nP"), "the statement still says the drop is pending"
-    unblock(full)
+    if kind == "companion_standalone":
+        os.remove(flag)
+    else:
+        unblock(full)
     d.reboot()
     assert d.node_key == new_key
     assert open(rotation_file(d), "rb").read().endswith(b"\n"), "the boot finished the drop"
@@ -552,3 +566,54 @@ def test_a_drop_that_fails_says_so_and_the_next_boot_finishes_it(nodes, kind):
         assert d.c.get_contacts()[0] == 0
     else:
         assert not os.path.exists(acl_file(d))
+
+
+def test_a_rotation_looks_up_no_missing_contact_bucket(nodes, tmp_path):
+    """On SPIFFS a lookup that finds nothing scans the whole file table: per-bucket lookups held the loop for 52 s on a
+    Heltec V3 and about 2 minutes on a V4, with no contacts, and the broker session and the signed result went with them."""
+    calls = str(tmp_path / "rot.calls")
+    n = nodes("companion_standalone", "rlook", seed=23, rtc=RTC, extra=["--fs-calls", calls]).start()
+    d = Dev(n)
+    d.c.add_contact(CONTACT, "Alice")
+    assert d.provision()["status"] == "ok"
+    contacts_on_flash(d)
+
+    def missing():
+        return int(re.search(r"missing=(\d+)", open(calls).read()).group(1))
+    before = missing()
+    r = rotate(d, 2, d.node_key)
+    assert r["status"] == "ok", r
+    assert missing() - before < 12, "a handful for the statement's and the key's own saves, none per possible bucket"
+    assert d.c.get_contacts()[0] == 0 and not contacts_on_flash_now(d)
+
+
+def test_a_rotation_removes_every_stored_advert(nodes):
+    d = enrolled_companion(nodes, "rblob", 24)
+    bl = os.path.join(d.n.dir, "bl")
+    os.makedirs(bl, exist_ok=True)
+    for i in range(20):   # more than one batch of the directory walk, keyed by contacts the store never held
+        open(os.path.join(bl, "%016x" % i), "wb").write(b"advert")
+    assert rotate(d, 2, d.node_key)["status"] == "ok"
+    assert os.listdir(bl) == [], "they all belonged to the old key's world"
+
+
+@pytest.mark.parametrize("kind", ALL_KINDS)
+def test_a_two_member_deployment_can_be_read_after_a_rotation(nodes, kind):
+    """A manager reads marks and re-admission from deployment.get. The set's text, its statement of a rotation and two members
+    together passed the result limit, so every read answered too-large-to-sign. The set's text gives way: its length stays."""
+    d = enrolled_any(nodes, kind, "r2m" + kind[:2], 77)
+    args = update_args()
+    assert d.i.request("deployment.authority_update", args)["status"] == "ok"
+    before = d.i.request("deployment.get")
+    assert before["status"] == "ok" and before["result"]["authority_set"] == args["authority_set"], before
+    time.sleep(1.1)
+    assert rotate(d, 3, d.node_key)["status"] == "ok"
+    d.node_key = d.i.request("hello")["result"]["node_key"]
+    g = d.i.request("deployment.get")
+    assert g["status"] == "ok", g
+    assert verifies(g.raw, d.node_key, "result")
+    res = g["result"]
+    assert len(res["members"]) == 2 and "mark" in res["members"][0], res
+    assert res["rotation"]["statement"] and res["rotation"]["sig"]
+    assert res["authority_set_len"] == len(args["authority_set"]) and "authority_set" not in res
+    assert len(g.raw) <= 1536

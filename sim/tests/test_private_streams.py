@@ -19,6 +19,7 @@ import mecon_schema  # noqa: E402
 from test_telemetry_streams import RTC, check, first_event
 from test_device_interface import broker, client, mqtt_boot  # noqa: F401  (broker is a fixture)
 from test_deployment_authority import Dev, wrap  # noqa: E402
+from test_provenance import verifies  # noqa: E402
 
 FIX = "fix 59913900 10752200 23456 9 4\n"   # Oslo, 23.456 m, 9 satellites, fix 4 s old
 FIX_DATA = {"fix": True, "lat_e6": 59913900, "lon_e6": 10752200, "alt_m": 23, "sats": 9, "age_s": 4}
@@ -99,6 +100,39 @@ def test_location_reaches_a_verified_broker_session(nodes, tmp_path, broker):
     got = b.next_message("mecon/%s/ev/location" % dev, timeout=30, count=1)   # the next periodic event
     assert got and got[0]["data"] == FIX_DATA, got
     assert not mecon_schema.check(got[0]["data"], mecon_schema.load("event.location.json"))
+
+
+# ------------------------------------------------------------------ screen frames
+
+def test_screen_is_refused_on_default_pin_ble(nodes):
+    n = nodes("companion_standalone", "scb", seed=65, rtc=RTC).start()
+    u = CompanionClient(n)
+    u.app_start()
+    assert u.cli("set pin 123456").startswith("> pin is now")
+    u.close()
+    n.restart()
+    b = CompanionClient(n, sock=n.connect_ble(123456).sock)
+    b.device_query()
+    b.app_start()
+    bi = mecon_iface.IfaceClient(b._send, b._read_frame)
+    r = bi.request("sub.start", {"stream": "screen", "lifetime_s": 60})
+    assert r["status"] == "refused", r
+
+
+def test_an_enrolled_device_signs_its_screen_frames(nodes):
+    d = Dev(nodes("companion_standalone", "sce", seed=67, rtc=RTC).start())
+    assert d.provision()["status"] == "ok"
+    r = d.send(wrap(d.node_key, "sub.start", {"stream": "screen", "lifetime_s": 60}, job=None))
+    assert r["status"] == "refused", "a private stream asks for the link's nonce too: %s" % r
+    r = d.send(wrap(d.node_key, "sub.start", {"stream": "screen", "lifetime_s": 60}, nonce=d.nonce(), job=None))
+    assert r["status"] == "ok", r
+    end = time.time() + 15
+    while time.time() < end:
+        m = d.i.read_message(0.5)
+        if m and m.get("ev") == "screen":
+            assert verifies(m.raw, d.node_key, "screen"), "a frame is signed like every event"
+            return
+    raise AssertionError("no screen event")
 
 
 # ------------------------------------------------------------------ inventory entries (Companion)

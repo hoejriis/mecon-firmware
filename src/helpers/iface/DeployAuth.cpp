@@ -496,8 +496,12 @@ void hexOfId(char* out, const uint8_t id[Dep::ID_LEN]) { hexTo(out, id, Dep::ID_
 // provisioning. Nothing secret: the unlock secret and the DAK-signed set's private side never exist here.
 // bind_key: for a provisioning's read-back, this device's node key; the read-back then carries device_id and node_key,
 // so the manager records the pair at the trusted moment of enrolment (AUTHORITY.md section 3.5). Null elsewhere.
+// How far a deployment.get may run before its signature: the result limit (1,536 bytes), less the signature (99), the op and
+// counters it adds (about 60) and the closing. The figure hello pages by.
+static const size_t DEP_GET_ROOM = 1350;
+
 static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record& rec, const char* set_text, bool full,
-                        const uint8_t* bind_key = nullptr) {
+                        const uint8_t* bind_key = nullptr, size_t reserve = 0) {
   char id[2 * Dep::ID_LEN + 1];
   hexOfId(id, rec.deployment_id);
   w.key("state"); w.str("provisioned");
@@ -517,10 +521,15 @@ static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record
   w.key("fallback"); w.boolean(s.other_damaged);
   w.key("marks_fallback"); w.boolean(s.marks_fallback);
   if (full) {
-    // A set can be longer than one result carries (the pages come later): then only its length is reported.
+    // A set can be longer than one result carries (the pages come later): then only its length is reported. What decides
+    // is the room left, once the members, the roles and the signature are counted: a two-member set of real length,
+    // judged alone, with a rotation statement behind it, made every read answer too-large-to-sign, marks included.
     size_t esc = rec.set_len;
     for (size_t i = 0; i < rec.set_len; i++) esc += (set_text[i] == '"' || set_text[i] == '\\') ? 1 : 0;
-    if (esc <= 900) {
+    const size_t after = 120                                   // authority_set_sig, with its key
+                         + 20 + (size_t)s.set.n_members * 100  // {"instance_id":"<32>","admitted_revision":n,"mark":n}
+                         + 20 + (size_t)rec.n_roles * 36;
+    if (w.size() + 20 + esc + after + reserve <= DEP_GET_ROOM) {
       char sig[89];
       base64Of(sig, rec.set_sig, Dep::SIG_LEN);
       w.key("authority_set"); w.str(set_text, rec.set_len);
@@ -553,14 +562,14 @@ static void writeFields(JsonWriter& w, const Dep::DepState& s, const Dep::Record
   w.endArray();
 }
 
-Status DeployAuth::opGet(OpContext& c) {
+Status DeployAuth::opGet(OpContext& c, size_t reserve) {
   JsonWriter& w = *c.out;
   if (_dep_ls == Dep::LS_ABSENT) { w.key("state"); w.str("none"); return ST_OK; }
   if (_dep_ls != Dep::LS_OK || !_dep) { w.key("state"); w.str("corrupt"); return ST_OK; }
   DepWork* k = new (std::nothrow) DepWork();
   if (!k) { c.error = "no-memory"; return ST_BUSY; }
   Status st = ST_OK;
-  if (readCurrent(k)) writeFields(w, *_dep, k->cur.rec, k->cur.set_text, true);
+  if (readCurrent(k)) writeFields(w, *_dep, k->cur.rec, k->cur.set_text, true, nullptr, reserve);
   else { c.error = "storage"; st = ST_FAILED; }
   delete k;
   return st;

@@ -24,7 +24,7 @@ static FILE* frames_file() {
   return f;
 }
 
-void SimDisplay::startFrame(ColorVal) { _frame.clear(); _size = 1; _x = _y = 0; }
+void SimDisplay::startFrame(ColorVal) { frameBegun(); _frame.clear(); _size = 1; _x = _y = 0; }
 
 void SimDisplay::print(const char* str) {
   char head[48];
@@ -46,7 +46,17 @@ void SimDisplay::turnOff() {
   _on = false;
 }
 
+size_t SimDisplay::frameBytes() const { return frames_file() ? 1024 : 0; }
+
+bool SimDisplay::readFrame(uint8_t* out, size_t cap) {
+  if (cap < 1024) return false;
+  memset(out, 0, 1024);
+  memcpy(out, _frame.data(), _frame.size() < 1024 ? _frame.size() : 1024);
+  return true;
+}
+
 void SimDisplay::endFrame() {
+  frameFinished(millis());
   FILE* f = frames_file();
   if (!f || _frame == _last) return;
   _last = _frame;

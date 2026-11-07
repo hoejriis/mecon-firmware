@@ -110,6 +110,7 @@ bool parseField(uint8_t field, const char* reply, char* out, size_t cap, bool* i
 Status opConfigSchema(OpContext& ctx);
 Status opConfigGet(OpContext& ctx);
 Status opConfigApply(OpContext& ctx);
+Status opPostureSet(OpContext& ctx);   // {"posture":"normal"|"hardened"}: the caller's own `set posture` line
 
 // The revert of a config.apply job: replays its snapshot as the caller who applied it and removes the snapshot. True
 // when every line ran; *reboot says whether a restored key needs a reboot to take effect.

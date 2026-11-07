@@ -131,7 +131,7 @@ A Backend records a device's `device_id` from `hello` or from `get device.id`, a
 - **Corrupt is never absent.** If something exists and nothing is intact, the record is **corrupt**. A corrupt record is never treated as absent, because absent means "no Deployment" and would reopen an unsigned first provisioning. Failing to allocate memory while loading is corrupt too.
 - **Provisioned marker.** A one-byte marker is written at the first provisioning. If both copies are missing but the marker is present, the record is corrupt, not absent; without the marker, losing both files would reopen first use.
   - The marker lives **outside the file system that holds the record**, because a file system that fails to mount may be formatted by the platform: in NVS on ESP32, and in a reserved flash page on nRF52.
-  - **nRF52:** one 4 KB page, 0xEC000, named per build. It lies in the 40 KB the bootloader preserves across a DFU (0xEA000-0xF4000) and in no file system of that build. Those builds are the T1000-E and Wio Tracker L1 Repeater and Room server, and the Wio Tracker L1 Companion, whose ExtraFS is on its QSPI chip. The T1000-E Companion keeps ExtraFS over that page, so its marker is at 0xD3000, just below ExtraFS and above the end of its image. That page is outside the 40 KB, and a serial DFU leaves it alone because the bootloader erases only the new image's length; the linker script keeps the image below it. An nRF52 build with no marker page refuses every first provisioning.
+  - **nRF52:** one 4 KB page, 0xEC000, named per build. It lies in the 40 KB the bootloader preserves across a DFU (0xEA000-0xF4000) and in no file system of that build. Those builds are the Wio Tracker L1 Repeater, Room server and Companion, whose ExtraFS is on its QSPI chip. The T1000-E Companion keeps ExtraFS over that page, so on the T1000-E the marker is at 0xD3000 in every role, just below ExtraFS and above the end of the image, and a change of role keeps the marker and the security floor. That page is outside the 40 KB, and a serial DFU leaves it alone because the bootloader erases only the new image's length; the linker script keeps the image below it. An nRF52 build with no marker page refuses every first provisioning.
     - The page is a log of 16-byte slots, `{magic, state, ~state, CRC-32}`, read fail-closed. An erased page is absent. Valid slots followed only by erased ones give the last slot's state. Anything else is present: a torn write, or another firmware's data written over the page after a downgrade.
     - A write appends a slot. A full or unclean page is erased first, so there is one erase per 256 changes. Every write is read back.
     - A build whose image has grown into the page has no marker store at all.
@@ -198,6 +198,8 @@ A newer authority set, with any rotations before it, for a device that holds a r
 
 An open read: the stored set and its signature, `deployment_id`, the epoch and revisions, the fallback flag, each member's current sequence mark, and the `broker_roles` the provisioning set (an empty list when it set none). A manager that lost track of its sequence (a restore from backup) reads its mark and continues above it. It reveals nothing secret. The same set is published retained at `mecon/<device_id>/authority` over MQTT.
 
+The members, their marks and any rotation statement always come. The set's text and signature come only if the whole result fits its limit. Otherwise `authority_set_len` gives the length of the text. A manager that needs the text and gets the length holds its own copy from when it issued the set.
+
 ## 7. Checking a signed request
 
 In this order; a failure refuses the request (`status:"refused"`, `error` the code) and nothing runs:
@@ -261,7 +263,7 @@ Its point is that a transport never becomes authority: once a device belongs to 
 
 - "Reads" here means operations of the read class that change nothing. `job.ack` is of the read class but releases an owed result, so an unsigned caller is refused it (`unauthenticated`) once a record exists; otherwise any link could discard a result before its manager collects it. Signed, it carries a `job_id` (section 7.1).
 - A firmware update (`update.offer`, and `job.confirm` and `job.cancel` of an update job) is the `update` class ([UPDATES](UPDATES.md) section 5): a signed request on any transport, or the unsigned cable while the device holds no record. Once it holds one, the unsigned cable is refused like any other unsigned change, a local unlock included. No other caller has it, BLE with the device's own PIN included.
-- Entering Hardened while a record exists is refused unless the record holds a local unlock secret. A signed request may lower the posture, as the cable may.
+- Entering Hardened while a record exists is refused unless the record holds a local unlock secret. A signed `posture.set` lowers the posture. On a device with a record that takes a signature: neither the cable nor a local unlock can lower it from Hardened.
 - BLE loses the native factory reset once a record exists. Otherwise a BLE factory reset followed by a BLE first provisioning would let a paired phone take a device over without touching it.
 - Every path that formats or rebuilds storage keeps the record, or is gated as `deployment.reset` is. That includes the rescue console's `rebuild`, which reformats and saves back identity, settings, contacts and channels: it saves the record back too. A recovery path is never a silent unenrollment.
 
@@ -271,6 +273,7 @@ A device entering Hardened while it holds a record must first hold a **local unl
 - The secret is set only by an authority: in the `deployment` object of a provisioning (`unlock_secret`, 32 random bytes), or by a signed request (`deployment.set_unlock`, a sensitive operation). It is never set unsigned, so the first person with a cable cannot set it. Either request is accepted only over the USB cable, so the secret never crosses a broker or a radio link.
 - The device stores the secret itself, as a secret: an HMAC challenge needs the key, so a hash would not do. It lives in the record, is never readable over any surface, and is removed by `deployment.reset` and the factory reset.
 - The unlock is an HMAC-SHA-256 challenge over USB only. The device sends a fresh random challenge, and a Reader holding the secret answers it.
+- An unlock lasts 5 minutes (`expires_in_s`). On native USB (Heltec V4, the nRF52 boards) it also ends when the USB host's connection drops, including when the host closes the port. A board behind a USB-UART bridge (Heltec V3) cannot see that, so only the 5 minutes apply there.
 
 The unlock grants the reads and posture unlock shown in section 9. It never grants key export or configuration writes beyond what signed callers have.
 
@@ -283,7 +286,7 @@ The unlock grants the reads and posture unlock shown in section 9. It never gran
 | re-enrollment into the same Deployment | nothing | everything; the set and revision move forward | signed `deployment.provision` |
 | `deployment.reset` (unenroll), healthy record | the record, watermarks, local unlock secret, provisioned marker | node key, `device_id`, configuration, contacts, channels | signed, over USB only, in Normal |
 | `deployment.reset`, corrupt record | the same | the same | USB cable in Normal; local unlock in Hardened |
-| posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed, or the cable |
+| posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed (`posture.set`); the cable only with no record |
 | `identity.rotate` (new owner) | node key, and what was made with it. Companion: contacts, message queue. Repeater: the client ACL. Room server: the client ACL and its posts | configuration, record, posture, `device_id`, and a Companion's channels | signed and sensitive; refused without a readable record. Every role |
 | rescue `rebuild` | nothing: it reformats and saves everything back, the record included | everything | the cable |
 | factory reset | everything, the record, the provisioned marker and `device_id` included | nothing | the cable only; never remote, never BLE once enrolled |
@@ -317,7 +320,7 @@ Rules:
   - before provisioning, over a USB cable;
   - after provisioning, by a signed request answered only to the requester's channel.
   It never leaves in Hardened.
-- **Never in any status, event, log, audit entry or screen telemetry stream:** Wi-Fi and broker passwords, the broker user, private keys, the local unlock secret, channel secrets. The screen stream is private because a frame can show message text and the pairing PIN. It is sent only on a signed `sub.start`, never retained and never redacted (pixels cannot be redacted reliably), so access control is its protection.
+- **Never in any status, event, log, audit entry or screen telemetry stream:** Wi-Fi and broker passwords, the broker user, private keys, the local unlock secret, channel secrets. The screen stream is private because a frame can show message text and the pairing PIN. It reaches only the callers of the `private` class ([TELEMETRY](TELEMETRY.md)), a frame showing the pairing PIN is withheld, and it is never retained. Nothing else on a frame is redacted (pixels cannot be redacted reliably), so access control is its protection.
 
 ## 13. Error codes
 

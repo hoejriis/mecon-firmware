@@ -17,8 +17,10 @@
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/AuditLog.h>
 #include <helpers/iface/DeployAuth.h>
+#include <helpers/iface/CableLine.h>
 #include <helpers/iface/LoraLink.h>
 #include <helpers/iface/Provenance.h>
+#include <helpers/iface/ScreenFeed.h>
 #include <helpers/iface/StandingOps.h>
 #include <helpers/iface/JobService.h>
 #include <helpers/updates/UpdService.h>
@@ -70,6 +72,8 @@ public:
   void onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n);
   Iface::StandingService& standing() { return _standing; }
   const Iface::LoraLink& lora() const { return _lora; }
+  uint8_t postureNow() const;
+  void rebootSoon() { _reboot_at = millis() + 1500; }
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
   // stream's data; signature changes whenever a link changes state, which sends an event at once.
@@ -81,8 +85,10 @@ public:
   }
   uint32_t streamsProduced() const {
     return STREAMS_PRODUCED | (_conn_write ? (1u << Iface::SID_CONNECTIVITY) : 0) |
-           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << Iface::SID_LOCATION) : 0);
+           (_env_ok ? (1u << Iface::SID_ENVIRONMENT) : 0) | (_loc_ok ? (1u << Iface::SID_LOCATION) : 0) |
+           (_screen.available() ? (1u << Iface::SID_SCREEN) : 0);
   }
+  void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);
     if (stream == Iface::SID_RUNTIME && !_boot_sent) _boot_pending = true;
@@ -272,6 +278,8 @@ private:
   bool _lora_bound_read = false, _lora_bound_dirty = false;
   uint32_t _lora_bound_at = 0;
   uint32_t _rf_next = 0;
+  void screenTick(uint32_t now);
+  Iface::ScreenFeed _screen;
   static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
   static const uint32_t INV_PAGE_MS = 200;
   bool _inv_active = false;

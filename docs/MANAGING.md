@@ -27,7 +27,7 @@ An operation refused to a caller gets an explicit reply (for an app frame, error
 | | Standalone (no Deployment) | Enrolled |
 |---|---|---|
 | Who may change settings | A trusted link, by the table above and the [posture](STANDALONE_POSTURES.md) | A manager's signature, on any path |
-| The unsigned USB cable | Anything its posture allows | Reads, reboot and the recovery operations, and no configuration writes. In Hardened it needs a local unlock for reads. A factory reset always stays with the cable |
+| The unsigned USB cable | Anything its posture allows | Reads, reboot and the recovery operations, and no configuration writes. In Hardened it needs a local unlock for reads, and lowering the posture takes a signed `posture.set`. A factory reset always stays with the cable |
 | A TLS-verified broker session | Reads, and writes as the posture and profile allow | Reads only |
 | A paired BLE link | Management | Messaging, reads and reboot, with no factory reset |
 

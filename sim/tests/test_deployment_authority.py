@@ -401,6 +401,43 @@ def test_a_sensitive_operation_needs_this_links_nonce_once(nodes):
 
 # ------------------------------------------------------------------ authority updates
 
+def _set_of(n_members, revision):
+    """A DAK-signed next set (epoch 1) of n members: instance a, and made-up others with real keys."""
+    members = [{"instance_id": INST_A, "public_key": V["keys"]["instance a"]["public_key"], "admitted_revision": 1}]
+    for i in range(1, n_members):
+        key = ed25519_ref.public_key(hashlib.sha256(b"member %d" % i).digest()).hex()
+        members.append({"instance_id": ("%02x" % (i + 16)) * 16, "public_key": key, "admitted_revision": i + 1})
+    text = json.dumps({"v": 1, "deployment_id": DEP, "authority_epoch": 1, "authority_revision": revision,
+                       "issued_at": 1790002000 + revision, "members": members, "revoked": []}, separators=(",", ":"))
+    sig = ed25519_ref.sign(bytes.fromhex(V["keys"]["dak epoch 1"]["seed_hex"]), b"MECON-AUTHSET-v1\x00" + text.encode())
+    return {"authority_set": text, "authority_set_sig": base64.b64encode(sig).decode()}, text
+
+
+def test_deployment_get_answers_at_every_size_of_set(nodes):
+    """The text of the set goes when it fits, and its length when it does not: the members and marks always come."""
+    from test_provenance import verifies
+    d = boot(nodes, "gs")
+    assert d.provision()["status"] == "ok"
+    seen = set()
+    for n, revision in ((2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7), (8, 8)):
+        args, text = _set_of(n, revision)
+        time.sleep(1.1)   # the update's rate limit
+        r = d.i.request("deployment.authority_update", args)
+        assert r["status"] == "ok", (n, r)
+        g = d.i.request("deployment.get")
+        assert g["status"] == "ok", (n, len(text), g)
+        assert verifies(g.raw, d.node_key, "result"), n
+        res = g["result"]
+        assert res["authority_revision"] == revision and len(res["members"]) == n, res
+        if "authority_set" in res:
+            assert res["authority_set"] == text and "authority_set_sig" in res
+            seen.add("text")
+        else:
+            assert res["authority_set_len"] == len(text)
+            seen.add("len")
+    assert seen == {"text", "len"}, "both forms, or this range no longer crosses the limit: %s" % seen
+
+
 def test_authority_update_rotates_to_rev2_and_the_new_member_signs(nodes):
     d = boot(nodes, "au")
     d.provision()
@@ -1148,13 +1185,29 @@ def test_the_secret_comes_with_the_provisioning_and_without_one_there_is_nothing
     assert d2.i.request("deployment.unlock_challenge")["error"] == "no_unlock_secret"
 
 
+def test_the_unlock_ends_when_the_usb_host_goes(nodes):
+    d = boot_with_secret(nodes, "ul")
+    line = os.path.join(d.n.dir, "usb-line")
+    d.n.stop()
+    d.n.extra_env = {"SIM_USB_LINE_FILE": line}
+    revive(d)
+    r = d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, challenge(d.i.request))})
+    assert r["status"] == "ok", r
+    assert d.c.cli("set posture normal confirm") == "OK - already normal", "control: unlocked"
+    with open(line, "w") as f:
+        f.write("0")
+    time.sleep(1)
+    os.remove(line)
+    assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL, "the next person on the cable starts locked"
+
+
 def test_a_challenge_and_the_right_answer_unlock_the_cable_in_normal_and_it_opens_only_the_posture(nodes):
     d = boot_with_secret(nodes, "us1")
     assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL, "control: enrolled and locked"
     ch = challenge(d.i.request)
     assert len(ch) == 64 and ch != "00" * 32
     r = d.i.request("deployment.unlock", {"response": unlock_answer(SECRET, ch)})
-    assert r["status"] == "ok" and r["result"] == {"unlocked": True, "expires_in_s": 600}, r
+    assert r["status"] == "ok" and r["result"] == {"unlocked": True, "expires_in_s": 300}, r
     assert d.c.cli("set posture normal confirm") == "OK - already normal", "the posture is open to the unlocked cable"
     assert d.c.cli("set name Nope") == NOT_ENROLLED_REFUSAL, "never a configuration write"
     assert d.c.cli("set connectivity.mode ble") == NOT_ENROLLED_REFUSAL, "the posture, not the rest of its class"
@@ -1324,11 +1377,13 @@ def test_an_expired_challenge_is_refused(nodes):
 
 
 @pytest.mark.timescale(50)
-def test_an_unlock_lapses_after_ten_minutes(nodes):
+def test_an_unlock_lapses_after_five_minutes(nodes):
     d = boot_with_secret(nodes, "us8")
     assert try_unlock(d.i.request)["status"] == "ok"
     assert d.c.cli("set posture normal confirm") == "OK - already normal"
-    time.sleep(13.0)   # 650 s of device time
+    time.sleep(4.8)   # 240 s of device time: still open
+    assert d.c.cli("set posture normal confirm") == "OK - already normal"
+    time.sleep(2.0)   # 340 s of device time
     assert d.c.cli("set posture normal confirm") == NOT_ENROLLED_REFUSAL
 
 
@@ -1461,3 +1516,51 @@ def test_the_secret_appears_in_no_reply_status_log_or_file_as_text(nodes):
     for secret in (SECRET, SECRET2):
         assert harness.files_containing(d.n, secret) == [], harness.files_containing(d.n, secret)
         assert harness.files_containing(d.n, secret.upper()) == []
+
+
+def signed_switch_over_the_broker(nodes, tmp_path, broker, name, within_s):
+    """Enrolled and on Wi-Fi: unsigned, then signed, over a verified broker. Returns once the board restarted into BLE."""
+    b = broker()
+    d, dev = mqtt_boot(nodes, tmp_path, name, b)
+    r = b.cli_request(d.c.pub_key[:4].hex(), "set connectivity.mode ble")
+    assert r is not None and r["status"] != "ok" and "not permitted" in str(r), "standalone, unsigned: %s" % r
+    assert d.provision()["status"] == "ok"
+    args = {"set": {"connectivity.mode": "ble"}, "confirm": {"within_s": within_s}}
+    r = b.iface_request(dev, {"v": 1, "id": "u1", "op": "config.apply", "args": args})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    assert d.c.cli("get connectivity.mode") == "> wifi", "unsigned: nothing moved"
+    r = b.iface_request(dev, wrap(d.node_key, "config.apply", args, job=1))
+    assert r["status"] == "ok" and r["result"]["state"] == "awaiting-confirm", r
+    assert d.n.wait_exit(10) == 75, "the switch restarts the board"
+    d.n.start()
+    d.attach()
+    assert d.c.cli("get connectivity.mode") == "> ble"
+    return b, d, r["result"]["job"]
+
+
+@pytest.mark.timescale(10)
+def test_a_signed_mode_switch_over_a_broker_is_confirmed_over_the_cable(nodes, tmp_path, broker):
+    b, d, job = signed_switch_over_the_broker(nodes, tmp_path, broker, "ms1", 300)
+    g = d.i.request("job.get", {"job": job})["result"]
+    assert g["state"] == "awaiting-confirm", g
+    r = d.send(wrap(d.node_key, "job.confirm", {"job": job}, job=2))
+    assert r["error"] == "replay", "the restart moved the mark past the window: %s" % r
+    r = d.send(wrap(d.node_key, "job.confirm", {"job": job}, job=r["result"]["mark"] + 1))
+    assert r["status"] == "ok" and r["result"]["state"] == "confirmed", r
+    d.reboot()
+    assert d.c.cli("get connectivity.mode") == "> ble", "a confirmed change stays"
+
+
+@pytest.mark.timescale(10)
+def test_a_signed_mode_switch_over_a_broker_reverts_when_nobody_confirms(nodes, tmp_path, broker):
+    b, d, job = signed_switch_over_the_broker(nodes, tmp_path, broker, "ms2", 30)
+    assert d.n.wait_exit(30) == 75, "the revert restarts the board"
+    d.n.start()
+    d.attach()
+    assert d.c.cli("get connectivity.mode") == "> wifi"
+    g = d.i.request("job.get", {"job": job})["result"]
+    assert g["state"] == "reverted", g
+    end = time.time() + 40
+    while time.time() < end and not d.c.cli("get mqtt.status").startswith("> connected"):
+        time.sleep(0.3)
+    assert d.c.cli("get mqtt.status").startswith("> connected"), "back on the broker"

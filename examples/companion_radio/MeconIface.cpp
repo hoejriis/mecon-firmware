@@ -41,7 +41,7 @@ const size_t HELLO_SIGNED_BUDGET = 1350;
 const size_t HELLO_PLAIN_BUDGET = 1500;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "posture.set", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
@@ -72,6 +72,7 @@ Status opReportNow(OpContext& c);
 Status opStandingPut(OpContext& c);
 Status opStandingList(OpContext& c);
 Status opStandingRemove(OpContext& c);
+Status opPostureW(OpContext& c);
 Status opSubStart(OpContext& c);
 Status opSubStop(OpContext& c);
 Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
@@ -109,6 +110,7 @@ const OpEntry OPS[] = {
   {"standing.put", opStandingPut, PRIV_WRITE, true},
   {"standing.list", opStandingList, PRIV_READ, false},
   {"standing.remove", opStandingRemove, PRIV_WRITE, true},
+  {"posture.set", opPostureW, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
   {"deployment.get", MeconIface::opDeployGet, PRIV_READ, false},
@@ -307,6 +309,13 @@ Status opReportNow(OpContext& c) { return self(c)->standing().opNow(c, millis())
 Status opStandingPut(OpContext& c) { return self(c)->standing().opPut(c, millis()); }
 Status opStandingList(OpContext& c) { return self(c)->standing().opList(c); }
 Status opStandingRemove(OpContext& c) { return self(c)->standing().opRemove(c); }
+Status opPostureW(OpContext& c) {
+  MeconIface* m = self(c);
+  const uint8_t before = m->postureNow();
+  const Status st = withConfig(c, opPostureSet);
+  if (st == ST_OK && m->postureNow() != before) m->rebootSoon();   // what starts in each posture is decided at boot
+  return st;
+}
 
 Status withChannels(OpContext& c, Status (*op)(OpContext&)) {
   ChannelHost host = self(c)->channelHost();
@@ -911,6 +920,7 @@ bool MeconIface::writeStream(int s, JsonWriter& w) {
       break;
     }
     case SID_INVENTORY: return false;   // paged: streamTick hands it to startInventory, and inventoryTick builds the pages
+    case SID_SCREEN: return false;      // in parts: streamTick hands it to the feed, and screenTick sends them
     case SID_CONNECTIVITY:
       if (!_conn_write) return false;
       _conn_write(w);
@@ -946,6 +956,7 @@ void MeconIface::streamTick(uint32_t now) {
   for (int s = 0; s < STREAM_COUNT; s++) {
     if (!(due & (1u << s))) continue;
     if (s == SID_INVENTORY) { startInventory(now); continue; }   // paged: inventoryTick sends it
+    if (s == SID_SCREEN) { _screen.start(now); continue; }       // in parts: screenTick sends it
     char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;
@@ -1335,6 +1346,29 @@ void MeconIface::onRfReport(const uint8_t* key, size_t key_len, const uint8_t* b
   free(ev);
 }
 
+// One part of the screen frame in hand. Beside streamTick for the same reason as drainLogs: a signature on top of its
+// frame would overrun the loop stack.
+void MeconIface::screenTick(uint32_t now) {
+  if (!_screen.due(now)) return;
+  bool any = _mqtt_subs.s[SID_SCREEN].active;
+  for (Link& l : _links) any = any || l.subs.s[SID_SCREEN].active;
+  if (!any) { _screen.cancel(); return; }
+  char* data = static_cast<char*>(malloc(ScreenFeed::DATA_CAP));
+  char* ev = static_cast<char*>(malloc(ScreenFeed::EVENT_CAP));
+  if (data && ev && _screen.next(now, data, ScreenFeed::DATA_CAP)) {
+    const uint32_t ts = _mesh->getRTCClock()->knownTime();
+    int n = writeEvent(ev, ScreenFeed::EVENT_CAP, STREAMS[SID_SCREEN].name, ++_clock.seq[SID_SCREEN], _epoch, ts != 0, ts, data);
+    if (n > 0) n = _prov.sign(STREAMS[SID_SCREEN].name, ev, (size_t)n, ScreenFeed::EVENT_CAP);
+    if (n > 0) sendEvent(SID_SCREEN, ev, (size_t)n);
+  } else if (!data || !ev) {
+    _screen.cancel();   // no memory for this part: the frame is lost, and the seq gap or missing part shows it
+  }
+  free(data);
+  free(ev);
+}
+
+uint8_t MeconIface::postureNow() const { return _mesh->postureValue(); }
+
 void MeconIface::loop(uint32_t now) {
   if (!_standing_begun) {
     _standing_begun = true;
@@ -1352,8 +1386,11 @@ void MeconIface::loop(uint32_t now) {
   loraTick(now);
   rfTick(now);
   _standing.tick(now);
+  screenTick(now);
+  const bool cable_up = cableLineUp();
   for (Link& l : _links) {
     if (!l.src) continue;
+    if (!cable_up) l.unlock.clear();   // the cable's host went: only the cable holds an unlock (AUTHORITY.md section 10)
     if (!l.src->isConnected()) {   // the link dropped: its nonce, its challenge and its unlock go with it
       l.nonce[0] = 0;
       l.unlock.clear();

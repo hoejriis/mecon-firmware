@@ -28,7 +28,7 @@ struct ServerCaller {
   void (*on_format)(void* user) = nullptr;
   void* on_format_user = nullptr;
   // Whether the console link holds a valid local unlock right now (AUTHORITY.md section 10). Asked each time a context is
-  // built, so the 10 minutes lapse on their own; null: never.
+  // built, so the 5 minutes lapse on their own; null: never.
   bool (*unlocked)(void* user) = nullptr;
   void* unlocked_user = nullptr;
   // Whether the record holds a local unlock secret, asked each time a context is built (it changes with a signed request).

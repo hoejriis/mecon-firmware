@@ -13,13 +13,29 @@ public:
 
 class DisplayDriver {
   int _w, _h;
+  bool _secret_drawn = false, _frame_drawn = false;
+  uint32_t _frame_ms = 0;
 protected:
   DisplayDriver(int w, int h) { _w = w; _h = h; }
+  // For a driver that can be read: a frame begins, and a frame was drawn (now in milliseconds).
+  void frameBegun() { _secret_drawn = false; }
+  void frameFinished(uint32_t now_ms) { _frame_drawn = true; _frame_ms = now_ms; }
 public:
   //enum Color { DARK=0, LIGHT, RED, GREEN, BLUE, YELLOW, ORANGE }; // on b/w screen, colors will be !=0 synonym of light
 
   int width() const { return _w; }
   int height() const { return _h; }
+
+  // The screen stream (TELEMETRY.md). frameBytes: the size of a readable frame buffer, 0 when this driver has none.
+  // readFrame copies the last frame and never touches the panel.
+  virtual size_t frameBytes() const { return 0; }
+  virtual bool readFrame(uint8_t* out, size_t cap) { (void)out; (void)cap; return false; }
+  bool frameDrawn() const { return _frame_drawn; }
+  uint32_t frameDrawnMs() const { return _frame_ms; }
+  // A UI calls this when it draws the pairing PIN. It holds until the next frame begins, so a buffer still showing the
+  // PIN is never sent, even after the display goes off.
+  void noteSecretDrawn() { _secret_drawn = true; }
+  bool secretDrawn() const { return _secret_drawn; }
 
   virtual bool isOn() = 0;
   virtual bool isEink() { return false; } // default to non-eink, override in eink drivers

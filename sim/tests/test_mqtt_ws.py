@@ -162,3 +162,43 @@ def test_an_unsigned_and_a_signed_request_over_wss(nodes, tmp_path, stack):
     assert r["status"] == "ok", r
     assert d.name() == "> ViaWss"
     assert f.upgrades >= 1 and f.unmasked == 0
+
+
+def _long_reply_over_wss(nodes, tmp_path, stack, name, env=None):
+    """A WSS session and one reply longer than the client's 142-byte pieces; returns the frames of that reply."""
+    cert, key, fp = make_cert(str(tmp_path), "front", "127.0.0.3")
+    b, f = stack(port=WSS, tls=(cert, key))
+    wenv = WifiEnv(str(tmp_path / (name + ".wifi")))
+    wenv.set("sim")
+    n = nodes("companion_standalone", name, seed=19, rtc=DEP_RTC, wifi=wenv, mqtt=MqttEnv(str(tmp_path / (name + ".mqtt"))))
+    n.extra_env.update(env or {})
+    n.start()
+    d = Dev(n)
+    dev = d.i.request("hello")["result"]["device_id"]
+    for cmd in ["set wifi.profile 0 ssid sim"] + static(0, "127.0.0.3", WSS, 90, tls=True, anchor=fp) + ws(0):
+        assert d.c.cli(cmd).startswith(">"), cmd
+    assert d.c.cli("set connectivity.mode wifi").startswith("OK")
+    assert n.wait_exit(10) == 75
+    n.start()
+    d.attach()
+    wait_until(lambda: d.c.cli("get mqtt.status").startswith("> connected"), "the WSS session", timeout=40)
+    time.sleep(2.0)
+    del f.frame_reads[:]
+    r = b.iface_request(dev, {"v": 1, "id": "h1", "op": "hello"})
+    assert r is not None and r["status"] == "ok" and r["result"]["device_id"] == dev, r
+    time.sleep(0.5)
+    return [x for x in f.frame_reads if x[0] > 142]
+
+
+def test_a_long_reply_is_one_write(nodes, tmp_path, stack):
+    """Each write is a TLS record and a TCP segment that holds buffers until acknowledged: replies in small pieces took a
+    Heltec V3 down to about 3 KB free. So a frame goes out in one write, read here as one record."""
+    frames = _long_reply_over_wss(nodes, tmp_path, stack, "ws1")
+    assert frames, "a reply longer than a piece"
+    assert all(reads == 1 for _, reads in frames), frames
+
+
+def test_with_no_block_for_a_frame_it_goes_out_in_pieces(nodes, tmp_path, stack):
+    frames = _long_reply_over_wss(nodes, tmp_path, stack, "ws2", env={"SIM_WS_NO_ALLOC": "1"})
+    assert frames, "the reply is still answered"
+    assert all(reads > 1 for _, reads in frames), frames

@@ -146,7 +146,12 @@ Names, never codes. The audit ring holds no secret, password or command argument
 Integers, never floats: a microdegree is about 0.1 m. The stream is present only on a build whose board has a location provider (the receiver is detected at boot and rechecked once a minute); a board without one omits `stream.location` from `hello`. Class `private` (see **Access** above). No other stream or log entry carries a position. On the T1000-E and other NMEA receivers, `age_s` needs the provider's fix age; a provider that cannot tell reports `null`.
 
 ### `screen`
-- `screen`: diagnostic telemetry from the device to the manager, never a way to write onto the display. A snapshot of the device's own framebuffer, `{"width","height","format":"mono1","on","age_s","data"}`, fragmented to the transport's size. The Heltec boards' SSD1306 (128x64, 1,024 bytes a frame) exposes its buffer; e-ink and TFT drivers are reported per board. The display is never woken or changed by a capture. A frame can show messages and the BLE pairing PIN: the stream will be class `private`, and a frame is withheld while the pairing PIN is on screen.
+- `screen`: diagnostic telemetry from the device to the manager, never a way to write onto the display. The stream exists on a board whose display can be read: today the SSD1306 of the Heltec V3 and V4 and the SH1106 of the Wio Tracker L1 (both 128x64). A board with another display, or none, does not list `stream.screen`. A copy of the last drawn frame is taken once when the stream is due and sent in parts, one every 200 ms or so. Taking it does not wake or change the display.
+- Every part: `{"frame","part","last","width","height","format":"mono1","on"}`. `frame` numbers frames within a boot, `part` counts from 1, `last` marks the final part, and `on` says whether the panel is lit.
+- A part with pixels adds `age_s` (seconds since this frame was drawn), `offset` (its first byte in the frame) and `data` (base64, at most 512 bytes before encoding). A frame of 1,024 bytes is two parts. A manager joins them by `offset`. A frame missing a part is discarded, and the next period is the retry: a part is never sent again.
+- `mono1`: `width * height / 8` bytes. Each byte is one column of 8 pixels, lowest bit on top. Bytes run left to right, in rows of 8 pixels from the top, and a set bit is a lit pixel.
+- A part with no pixels has `last: true` and `withheld`, and no `age_s`, `offset` or `data`: `pairing-pin` when the frame shows the BLE pairing PIN, `no-frame` when nothing has been drawn since boot, `no-memory` when the copy could not be made.
+- A frame can show message text. In Hardened the device draws no message text or names ([UI](../UI.md)), and the frame shows what the panel shows.
 
 ## Compact reports over LoRa
 

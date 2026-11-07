@@ -4,6 +4,7 @@ the bootloader's serial DFU, which the simulated board shows by exiting with sta
 bootloader: it installs the image by declaring the new version, and starts the node. The image that boots attests by
 version, since the device cannot hash the package the manifest names; there is no slot to revert to."""
 import hashlib
+import subprocess
 import time
 
 import pytest
@@ -139,3 +140,14 @@ def test_the_reset_into_the_bootloader_waits_for_the_answer(nodes, kind, variant
     t_exit = time.time()
     print("answer after %.2f s, reset %.2f s after the answer" % (t_reply - t0, t_exit - t_reply))
     assert t_exit - t_reply >= 1.2, "the reset's 1.5 s count from the answer"
+
+
+def test_a_cancel_before_the_reset_keeps_the_device_in_its_image(nodes):
+    n, d = dfu_board(nodes, "nf9", 99)
+    r = offer(d, stage_dfu(d), rid="nf-9")
+    assert r["status"] == "ok", r
+    c = d.i.request("job.cancel", {"job": "nf-9"})   # inside the 1.5 s before the reset
+    assert c["status"] == "ok", c
+    with pytest.raises(subprocess.TimeoutExpired):
+        n.wait_exit(4)
+    assert d.i.request("hello")["status"] == "ok", "still the running image, still answering"

@@ -2181,7 +2181,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       int i = 0;
       out_frame[i++] = RESP_CODE_CHANNEL_INFO;
       out_frame[i++] = channel_idx;
-      strcpy((char *)&out_frame[i], channel.name);
+      StrHelper::strzcpy((char *)&out_frame[i], channel.name, 32);   // the whole field: nothing of an earlier reply goes with it
       i += 32;
       if (serialTrusted()) memcpy(&out_frame[i], channel.channel.secret, 16);
       else memset(&out_frame[i], 0, 16);   // the name serves messaging; the secret is not an untrusted caller's
@@ -2589,9 +2589,7 @@ bool MyMesh::dropOldKeyState() {
   bool dropped = true;
   {
     ContactStore& cs = contactStore();
-    int cursor = 0;
-    ContactInfo ci;
-    while (cs.next(cursor, ci)) _store->deleteBlobByKey(ci.id.pub_key, PUB_KEY_SIZE);
+    _store->deleteAllBlobs();
     dropped = cs.clearAll();
     resetContacts();   // the transient anon slots
 #ifdef CONTACTS_STOCK_ARRAY
@@ -2703,7 +2701,8 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   {
     bool changed = false;
     const uint8_t caller = _cli_caller;
-    if (ConnMode::handleCommand(command, caller, _prefs.connectivity_mode, getRTCClock()->getCurrentTime(), reply, 150, changed)) {
+    if (ConnMode::handleCommand(command, caller, _prefs.connectivity_mode, getRTCClock()->getCurrentTime(), reply, 150, changed,
+                                _cli_ctx.auth == Cli::A_SIGNED)) {
       if (changed) {
         savePrefs();
         auditStore().flush(millis());   // the new mode and its audit entry reach flash together

@@ -24,7 +24,7 @@ Every row of the two tables above is a cell of one privilege table, shared by al
 
 An attempted password is never logged or stored: stock's debug print of it is removed.
 
-Connectivity-mode switching (BLE or Wi-Fi, [Connectivity mode](CONNECTIVITY_MODE.md)) is allowed from trusted local transports and the device button in both postures, refused for remote callers, and audited.
+Connectivity-mode switching (BLE or Wi-Fi, [Connectivity mode](CONNECTIVITY_MODE.md)) is allowed from trusted local transports and the device button in both postures, refused for unsigned remote callers, and audited. On a device with a Deployment record, a signed request may switch on any transport ([Authority](contract/AUTHORITY.md) section 9).
 
 ## Commands
 
@@ -34,6 +34,8 @@ Connectivity-mode switching (BLE or Wi-Fi, [Connectivity mode](CONNECTIVITY_MODE
 | `set posture hardened` | a trusted local transport: the USB / UART console, or BLE paired with a non-default PIN. Never a remote caller |
 | `set posture normal confirm` | the USB / UART console only. A remote caller, a paired phone and an unauthenticated TCP client are refused, and the refusal is audited. Without `confirm` the command explains itself and changes nothing |
 | `get audit [n]` | a trusted local transport only (two entries per reply, newest first, `... next:<n>` continues) |
+
+These are the rules with no Deployment. On an enrolled device, lowering takes a signed `posture.set` ([Management authority contract](contract/AUTHORITY.md) section 9).
 
 The posture is one byte kept with the prefs and saved atomically, so it survives reboots and a power cut during a save: a cut while lowering leaves the device Hardened, a cut while raising leaves the previous complete prefs (Normal). Any stored value other than Normal is treated as Hardened, so a damaged byte can only make the device stricter.
 

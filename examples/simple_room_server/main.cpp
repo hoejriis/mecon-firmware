@@ -205,6 +205,9 @@ void setup() {
       if (p.channel) return static_cast<MyMesh*>(u)->loraChannelReply(p.key, f, n);
       return static_cast<MyMesh*>(u)->loraReply(p.key, p.secret, p.path, p.path_len, f, n, flood_ok);
     }, &the_mesh);
+#ifdef DISPLAY_CLASS
+    if (display.frameDrawn()) the_iface.attachScreen(&display);   // began at the top of setup: it drew "Please wait..."
+#endif
 #ifdef ENABLE_WIFI_INTERFACE
     net_started = ServerNet::begin(the_mesh, *the_mesh.getNodePrefs(), board, the_iface,
                                    []() -> uint32_t { return the_mesh.getRTCClock()->getCurrentTime(); },

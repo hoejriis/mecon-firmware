@@ -64,7 +64,7 @@ mutate upd_download_host_without_port $U '  if (_url.port != (_url.tls ? 443 : 8
 mutate upd_url_userinfo_accepted src/helpers/updates/UpdUrl.h '  if (*p != '"'"'/'"'"') return false;   // user info ("@"), an IPv6 literal, anything else between host and path' '  if (*p != '"'"'/'"'"') { strcpy(out->path, "/"); return true; }' unit:test_updates
 # slice 4: the nRF52 path through the bootloader's serial DFU (UPDATES.md section 6, kind bootloader-dfu)
 UF=sim/tests/test_update_dfu.py
-mutate upd_dfu_never_enters_the_bootloader $U '    slotEnterDfu();' '' "$UF::test_a_dfu_offer_resets_into_the_bootloader_and_the_new_image_attests"
+mutate upd_dfu_never_enters_the_bootloader $U '!jobTerminal(j->state)) slotEnterDfu();' '!jobTerminal(j->state)) {}' "$UF::test_a_dfu_offer_resets_into_the_bootloader_and_the_new_image_attests"
 mutate upd_dfu_attests_any_version $U '  if (!want[0] || strcmp(want, runningVersion()) != 0) {' '  if (!want[0]) {' "$UF::test_a_dfu_that_did_not_happen_ends_not_installed"
 mutate upd_dfu_deadline_says_not_installed $U '    const bool installed = want[0] && strcmp(want, runningVersion()) == 0;' '    const bool installed = false;' "$UF::test_an_unconfirmed_dfu_image_stays_and_the_job_says_so"
 mutate upd_dfu_takes_a_url $U '    if (by_url) { free(m); c.error = "unsupported-source"; return ST_REFUSED; }   // the bootloader takes it over USB only' '' "$UF::test_a_dfu_board_takes_no_ip_source_and_no_app_image"
@@ -87,3 +87,4 @@ mutate upd_push_budget_too_low src/helpers/updates/UpdService.h '  static const 
 mutate upd_push_budget_too_high src/helpers/updates/UpdService.h '  static const uint32_t HEAP_NEEDED = 20 * 1024;' '  static const uint32_t HEAP_NEEDED = 48 * 1024;' $UB::test_the_heap_a_push_asks_for
 mutate upd_http_budget_too_low src/helpers/updates/UpdService.h '  static const uint32_t HEAP_NEEDED_HTTP = 64 * 1024;' '  static const uint32_t HEAP_NEEDED_HTTP = 48 * 1024;' sim/tests/test_update_download.py::test_an_https_download_needs_more_heap_than_http
 mutate upd_download_no_timeout src/helpers/updates/UpdService.cpp 'literal ? nullptr : _url.host, HEAD_TIMEOUT_MS};' 'literal ? nullptr : _url.host, 0};' sim/tests/test_update_download.py::test_a_download_gives_a_slow_server_its_time
+mutate dfu_reset_ignores_a_cancel src/helpers/updates/UpdService.cpp 'if (t && t->find(_dfu_job, &j) == JobTable::FOUND && !jobTerminal(j->state)) slotEnterDfu();' 'slotEnterDfu();' sim/tests/test_update_dfu.py::test_a_cancel_before_the_reset_keeps_the_device_in_its_image
