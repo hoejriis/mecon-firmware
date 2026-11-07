@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import time
 
 import pytest
 
@@ -199,16 +200,23 @@ def test_an_apply_saves_the_prefs_once_on_a_server(nodes, tmp_path):
     n = nodes("repeater", "one_save_rep", extra=["--fs-calls", calls]).start()
     cli, i = client(n)
     def renames():   # the file appears at the first counted call
-        return int(dict(kv.split("=") for kv in open(calls).read().split())["rename"]) if os.path.exists(calls) else 0
+        return int(dict(kv.split("=") for kv in open(calls).read().split()).get("rename", 0)) if os.path.exists(calls) else 0
+    def settled():   # the reply can come before its save has finished
+        last, since = renames(), time.time()
+        while time.time() - since < 0.5:
+            time.sleep(0.05)
+            if renames() != last:
+                last, since = renames(), time.time()
+        return last
     assert i.request("config.apply", {"set": {"name": "First"}})["result"]["complete"]   # the first also writes its files
-    before = renames()
+    before = settled()
     assert i.request("config.apply", {"set": {"name": "One"}})["result"]["complete"]
-    one_key = renames() - before
+    one_key = settled() - before
     assert one_key >= 1
-    before = renames()
+    before = settled()
     r = i.request("config.apply", {"set": {"name": "Rep", "advert.interval": 240, "lat": "55.0"}})
     assert r["status"] == "ok" and r["result"]["complete"], r
-    assert renames() - before == one_key
+    assert settled() - before == one_key
     n.stop()
     n.start()
     cli, i = client(n)
