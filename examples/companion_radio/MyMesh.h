@@ -339,7 +339,12 @@ private:
   bool isValidClientRepeatFreq(uint32_t f) const;
 
   // helpers, short-cuts
-  bool saveChannels() { return _store->saveChannels(this); }
+  bool saveChannels() {
+#ifdef ENABLE_MECON_IFACE
+    _iface.channelsChanged();
+#endif
+    return _store->saveChannels(this);
+  }
   // A contact changed in place or was added or removed outside a native frame (contact.* operations): the lazy save,
   // with the delay the native frames use.
   void markContactsDirty();

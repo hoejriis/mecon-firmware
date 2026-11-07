@@ -97,8 +97,11 @@ def test_a_paired_phone_must_confirm_and_an_unconfirmed_bind_reverts_at_its_dead
     r = i.request("mgmt.channel.bind", {"slot": 2, "confirm": {"within_s": 30}})
     assert r["status"] == "ok" and r["result"]["job_state"] == "awaiting-confirm", r
     assert state(i)["state"] == "bound", "in effect at once, tentatively"
+    reads = i.request("status.get")["result"]["lora"]["binding_reads"]
     assert wait_job(i, r["result"]["job"]) == "reverted"
     assert state(i) == {"state": "none"}, "the previous binding (none) is back"
+    time.sleep(0.2)
+    assert i.request("status.get")["result"]["lora"]["binding_reads"] > reads, "no request made this change, and the link must still see it"
 
 
 @pytest.mark.timescale(10)

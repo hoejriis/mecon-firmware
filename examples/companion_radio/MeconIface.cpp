@@ -687,7 +687,7 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
   if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);
-  _lora_bound_dirty = true;   // cheaper than asking which operations touch the binding: requests are rare beside packets
+  if (mgmtMayChangeBinding(msg, len)) _lora_bound_dirty = true;
   return d.handle(msg, len, out, cap, cache);
 }
 
@@ -1129,10 +1129,10 @@ bool MeconIface::loraSend(void* user, const LoraLink::Peer& p, const uint8_t* fr
 
 // One complete message on this pass, then its reply a frame at a time. Over LoRa only a signed request runs (section 2).
 void MeconIface::loraTick(uint32_t now) {
-  if (!_lora_bound_read || _lora_bound_dirty || now - _lora_bound_at >= 60000) {   // as ConsoleIface::loraKeyRefresh
+  if (!_lora_bound_read || _lora_bound_dirty) {   // as ConsoleIface::loraKeyRefresh
     _lora_bound_read = true;
     _lora_bound_dirty = false;
-    _lora_bound_at = now;
+    _lora.noteBindingRead();
     MgmtHost h = mgmtHost();
     MgmtRecord rec;
     _lora_bound_slot = mgmtState(h, &rec) == MGMT_BOUND ? rec.slot : -1;

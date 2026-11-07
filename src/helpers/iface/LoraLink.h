@@ -67,7 +67,7 @@ public:
     uint32_t tx_deadline;
   };
   struct Counts {
-    uint32_t frames, incomplete, dropped_bad, dropped_budget, dropped_deadline, dropped_memory, evicted;
+    uint32_t frames, incomplete, dropped_bad, dropped_budget, dropped_deadline, dropped_memory, evicted, binding_reads;
   };
   enum Feed { F_IGNORED, F_PARTIAL, F_COMPLETE, F_NOMEM };
   typedef bool (*SendFn)(void* user, const Peer& p, const uint8_t* frame, size_t n, bool flood_ok);
@@ -78,6 +78,7 @@ public:
   LoraLink& operator=(const LoraLink&) = delete;
 
   const Counts& counts() const { return _c; }
+  void noteBindingRead() { _c.binding_reads++; }   // each costs about 0.9 s on an ESP32, so a request that changes nothing must not cause one
   // status.get's "lora" (LORA_MANAGEMENT.md section 7): what was dropped, so a manager can see why nothing came back.
   template <class W> void writeCounts(W& w) const {
     w.key("lora"); w.beginObject();
@@ -88,6 +89,7 @@ public:
     w.key("dropped_deadline"); w.unum(_c.dropped_deadline);
     w.key("dropped_memory"); w.unum(_c.dropped_memory);
     w.key("evicted"); w.unum(_c.evicted);
+    w.key("binding_reads"); w.unum(_c.binding_reads);
     w.endObject();
   }
 

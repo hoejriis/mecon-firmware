@@ -175,6 +175,19 @@ std::string hexOf(uint8_t first) {
 
 }  // namespace
 
+TEST(MgmtChannel, OnlyARequestThatCanChangeTheBindingAsksForARead) {
+  auto may = [](const char* m) { return mgmtMayChangeBinding(m, strlen(m)); };
+  for (const char* op : {"mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "channel.put", "channel.remove",
+                         "deployment.provision", "deployment.reset", "job.confirm", "job.cancel"}) {
+    EXPECT_TRUE(may((std::string("{\"v\":1,\"id\":\"a\",\"op\":\"") + op + "\"}").c_str())) << op;
+  }
+  for (const char* op : {"status.get", "hello", "config.schema", "channel.list", "channel.get", "mgmt.channel.get", "deployment.get",
+                         "job.get", "job.list", "update.chunk", "update.manifest"}) {
+    EXPECT_FALSE(may((std::string("{\"v\":1,\"id\":\"a\",\"op\":\"") + op + "\"}").c_str())) << op;
+  }
+  EXPECT_FALSE(mgmtMayChangeBinding("job.confirm", 10)) << "looks only within the length it was given";
+}
+
 TEST(MgmtChannel, NothingIsBoundAtFirst) {
   Rig r;
   EXPECT_TRUE(has(r.call("mgmt.channel.get", "{}"), "\"result\":{\"state\":\"none\"}"));

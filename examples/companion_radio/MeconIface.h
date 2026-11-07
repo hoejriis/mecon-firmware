@@ -106,6 +106,7 @@ public:
   Iface::Inbox& inbox() { return _inbox; }   // inbox.* operations: the manager's copy of what the Companion receives
   Iface::InboxHost inboxHost();
   Iface::MgmtHost mgmtHost();         // the management channel binding (mgmt.channel.*; MeconMgmt.cpp)
+  void channelsChanged() { _lora_bound_dirty = true; }   // a native frame wrote the channels: a binding can have gone stale
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }
 
@@ -278,7 +279,6 @@ private:
   int _lora_slot = -1;          // the bound slot a channel reply goes out on
   int _lora_bound_slot = -1;    // the binding, read on the main pass
   bool _lora_bound_read = false, _lora_bound_dirty = false;
-  uint32_t _lora_bound_at = 0;
   uint32_t _rf_next = 0;
   void screenTick(uint32_t now);
   Iface::ScreenFeed _screen;

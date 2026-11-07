@@ -464,3 +464,45 @@ def test_a_signature_changes_the_posture_over_lora(ether, nodes, kind):
         got = d.send(wrap(d.node_key, "status.get", job=None, rid="post-%s" % want))
         assert got["result"]["posture"] == want, got
         job = d.i.request("deployment.get")["result"]["members"][0]["mark"] + 1
+
+
+@pytest.mark.parametrize("kind", ["repeater", "companion_standalone"])
+def test_only_a_request_that_can_change_the_binding_reads_it_from_flash(ether, nodes, kind):
+    # About 0.9 s on an ESP32, before the answer goes: v0.2.0 did this after every request, and each took a second.
+    d = target(nodes, ether, kind, "br" + kind[:2])
+    reads = lambda: d.i.request("status.get")["result"]["lora"]["binding_reads"]
+    time.sleep(0.5)   # the first read, on the first pass
+    before = reads()
+    for op in ("status.get", "hello", "config.schema", "channel.list", "deployment.get", "job.list") * 2:
+        assert d.i.request(op)["status"] == "ok", op
+    assert reads() == before, "not one per request"
+    time.sleep(0.2)
+    before = reads()
+    assert d.i.request("channel.put", {"slot": 0 if kind == "repeater" else 1, "name": "ops", "secret": KEY.hex()})["status"] == "ok"
+    time.sleep(0.2)
+    assert reads() > before, "a channel written can change the binding"
+    before = reads()
+    assert d.i.request("mgmt.channel.bind", {"slot": 0 if kind == "repeater" else 1})["status"] == "ok"
+    time.sleep(0.2)
+    assert reads() > before, "and a bind does: the link must take the new key at once"
+
+
+@pytest.mark.timescale(60)
+@pytest.mark.parametrize("kind", ["repeater", "companion_standalone"])
+def test_the_binding_is_not_read_from_flash_on_a_timer(ether, nodes, kind):
+    d = target(nodes, ether, kind, "bt" + kind[:2])
+    reads = lambda: d.i.request("status.get")["result"]["lora"]["binding_reads"]
+    time.sleep(0.5)
+    before = reads()
+    time.sleep(8)   # eight minutes at this scale
+    assert reads() == before, "each would hold the loop for about 0.9 s on an ESP32"
+
+
+def test_a_native_channel_write_makes_the_companion_read_the_binding(ether, nodes):
+    d = target(nodes, ether, "companion_standalone", "bn")
+    reads = lambda: d.i.request("status.get")["result"]["lora"]["binding_reads"]
+    time.sleep(0.5)
+    before = reads()
+    d.c.set_channel(1, "ops", KEY)
+    time.sleep(0.2)
+    assert reads() > before, "a slot written by a frame can leave the binding stale, and no request said so"

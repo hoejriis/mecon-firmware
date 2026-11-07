@@ -86,6 +86,10 @@ const uint8_t MGMT_NO_SLOT = 0xFF;   // a record that cannot be read names no sl
 // The current binding and its state. A record that cannot be read is stale with no slot (MGMT_NO_SLOT), never absent,
 // so nothing guards or erases a slot it may not have named.
 MgmtState mgmtState(const MgmtHost& h, MgmtRecord* rec);
+// Whether a request's text names an operation that can change the binding. A host rereads it from flash after one, and that read
+// takes about 0.9 s on an ESP32, so a read must not cause it. It looks at the text only: a value that happens to name one costs
+// one read, no more. A change no request made (a lapsed confirmation reverting, a Companion's native channel frame) marks it directly.
+bool mgmtMayChangeBinding(const char* msg, size_t len);
 
 // OpContext.user is a MgmtHost.
 Status opMgmtGet(OpContext& c);
