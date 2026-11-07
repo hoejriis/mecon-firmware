@@ -433,6 +433,7 @@ def test_a_companion_reports_only_on_its_bound_channel(ether, nodes):
     assert r["status"] == "ok", "slot 1 is the bound one: %s" % r
 
 
+@pytest.mark.timescale(10)   # the first answer after a boot waits for the duty window (docs/SIMULATION.md)
 @pytest.mark.parametrize("kind", KINDS)
 def test_a_signature_changes_the_posture_over_lora(ether, nodes, kind):
     d, m = enrolled(nodes, ether, kind, "ps" + kind[:2])
