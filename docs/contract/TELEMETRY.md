@@ -27,6 +27,7 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 | `observations` | each received packet: raw bytes, RSSI, SNR | read | event per packet, at most 10/s (no period) |
 | `logs` | each new audit-ring entry: posture changes, refusals, failed logins, resets, mode changes, low memory | posture | event per entry, at most 5/s (no period) |
 | `inventory` | contacts, channels, neighbours, clients: counts; on the Companion a paged snapshot of the entries | private | 3600 s / 300 s |
+| `rf` | the replies to this Companion's `rf.request`: `{"from","xid","message"}`, as they came. Companion only | private | event |
 | `screen` | framebuffer snapshots of the device's own display | private | on request, at most 1 per 5 s |
 
 ## 3. Fields
@@ -151,3 +152,21 @@ Integers, never floats: a microdegree is about 0.1 m. The stream is present only
 - `mono1`: `width * height / 8` bytes. Each byte is one column of 8 pixels, lowest bit on top. Bytes run left to right, in rows of 8 pixels from the top, and a set bit is a lit pixel.
 - A part with no pixels has `last: true` and `withheld`, and no `age_s`, `offset` or `data`: `pairing-pin` when the frame shows the BLE pairing PIN, `no-frame` when nothing has been drawn since boot, `no-memory` when the copy could not be made.
 - A frame can show message text. In Hardened the device draws no message text or names ([UI](../UI.md)), and the frame shows what the panel shows.
+
+## Compact reports over LoRa
+
+A small binary subset of the producers above, for the radio, with the same meanings and units. `report.now` sends one, and a [standing instruction](OPERATIONS.md) sends them on a schedule. Nothing else goes over LoRa as telemetry: no subscription, no log, no screen.
+
+**Layout, little-endian:** `0x1E`, version (1), fields, boot u32, seq u32, time u32 (0: the device does not know the time), the fields in bit order, then a 64-byte signature. `tools/mecon_report.py` decodes one.
+
+| Bit | Field | Bytes | Contents |
+|---|---|---|---|
+| 1 | `health` | 8 | uptime_s u32; heap free in KB u16; battery mV u16 |
+| 2 | `radio` | 12 | rx u32; tx u32; error flags u8; noise floor dBm i8; last RSSI dBm i8; last SNR in quarters of a dB i8 |
+| 4 | `location` | 14 | fix u8; lat_e6 i32; lon_e6 i32; alt_m i16; sats u8; age_s u16 |
+
+- **Unknown is not zero.** 0xFFFF (u16) and 0x7F (i8) mean unknown. A board that cannot produce a field answers `unsupported-field` when it is asked for; it never sends a made-up value.
+- **Provenance.** The signature is the node key's, over `MECON-UPLINK-v1` 0x00 `report` 0x00 and the bytes before it, using the same boot and sequence as every event (AUTHORITY section 3.4), so a repeated or reordered report shows. A boot that cannot sign sends none. A full report is at most 113 bytes.
+- **Where it goes.** To a node key as an anonymous datagram by flood, or on the bound management channel. On a channel the frame carries the sender's 8-byte key prefix and, if named, the target's. A Companion that hears one puts it on its `rf` stream as `{"from","report"}` (base64), for the manager to verify.
+- **Private.** `location` needs the right to read it, and never goes on a channel, where every member could read it.
+- **Limits.** `report.now` at most once in 30 s (`busy`, `rate-limited`). Every report goes through the duty window like any other transmission.

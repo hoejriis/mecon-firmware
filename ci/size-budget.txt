@@ -4,23 +4,23 @@
 # to a whole KB. The Heltec V3 and V4 rows were set 2026-10-31 for the rebuilt IDF libraries (docs/PLATFORM.md), same rule.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1453056     122880
-Heltec_v3_companion_radio_standalone    1740800     136192
+Heltec_v3_companion_radio_standalone    1765376     136192
 Heltec_v3_companion_radio_usb            712704      41984
 Heltec_v3_companion_radio_wifi          1433600     118784
-Heltec_v3_repeater                      1512448      82944
-Heltec_v3_room_server                   1507328      87040
+Heltec_v3_repeater                      1532928      82944
+Heltec_v3_room_server                   1527808      87040
 heltec_v4_companion_radio_ble           1439744     122880
-heltec_v4_companion_radio_standalone    1727488     136192
+heltec_v4_companion_radio_standalone    1753088     136192
 heltec_v4_companion_radio_usb            698368      41984
 heltec_v4_companion_radio_wifi          1420288     118784
-heltec_v4_repeater                      1500160      82944
-heltec_v4_room_server                   1495040      87040
-t1000e_companion_radio_ble               515072     163840
-t1000e_companion_radio_usb               508928     159744
-t1000e_repeater                           464896      43008
-WioTrackerL1_companion_radio_ble         615424      94208
-WioTrackerL1_companion_radio_usb         606208      90112
-WioTrackerL1_repeater                     548864      46080
+heltec_v4_repeater                      1520640      82944
+heltec_v4_room_server                   1515520      87040
+t1000e_companion_radio_ble               538624     163840
+t1000e_companion_radio_usb               531456     159744
+t1000e_repeater                           486400      43008
+WioTrackerL1_companion_radio_ble         632832      94208
+WioTrackerL1_companion_radio_usb         623616      90112
+WioTrackerL1_repeater                     567296      46080
 # NimBLE twins (Issue #68, docs/NIMBLE_EVALUATION.md) and the LilyGo T-LoRa Bluedroid build they are compared with.
 LilyGo_TLora_V2_1_1_6_companion_radio_ble           1512448      82944
 # The STM32WLE5 Companion: 229376 B is the board's whole app area (board_upload.maximum_size), so its budget is the

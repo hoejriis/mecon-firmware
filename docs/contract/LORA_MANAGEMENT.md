@@ -1,9 +1,9 @@
 # Management over LoRa
 
-> **Draft contract.** It carries the [device interface](DEVICE_INTERFACE.md) over LoRa, point to point and over the
-> [management channel](MANAGEMENT_CHANNEL.md), under the [management authority contract](AUTHORITY.md).
-> It defines no new operation: the [managed operations](OPERATIONS.md) are what travels. Compact telemetry and
-> firmware-image bytes over LoRa are not defined here. Section 10 lists what is still open for review.
+> **Status.** Both paths are built on the Companion, Repeater and Room server and proven in the simulator. Neither has run on a
+> board. It carries the [device interface](DEVICE_INTERFACE.md) under the [management authority contract](AUTHORITY.md). It defines
+> no new operation on the device: the [managed operations](OPERATIONS.md) are what travels. [Compact reports](TELEMETRY.md) have their own
+> section there. Firmware-image bytes over LoRa are not defined here.
 
 ## 1. LoRa is a transport
 
@@ -58,12 +58,13 @@ encrypted on both paths. A node is addressed by its node public key, as native M
 
 ### 3.1 Point to point
 
-- The request travels as the native encrypted request datagram to the target node, keyed by the ECDH secret of the
-  two node keys, as a native request to a contact is. The reply travels as the matching response datagram to the
-  sender. A verified result goes on the path the request arrived by, or by flood when that path is not known. An
-  answer to an unverified request never floods (section 7).
-- The datagram carries a one-byte marker that selects this protocol, so a native request type is never read as a
-  management frame and the other way round.
+- The request travels in a native anonymous-request datagram to the target node, encrypted with the ECDH secret of the two node
+  keys. That datagram carries the sender's public key, so the manager need not be a contact or on an access list: being known
+  grants nothing here. The reply travels as a native response datagram to the sender. A verified result goes the way the request
+  came (a flood's hops reversed, or directly for a neighbour), or by flood when that is not known. An answer to an unverified
+  request never floods (section 7).
+- The datagram carries a one-byte marker (0x1D) after its 4-byte tag, which selects this protocol. It is no password and no native
+  request type, so neither can be read as the other. A reply starts with the magic `0x1D "MC1"`.
 - Native addressing (the destination hash, then decryption with the pairwise secret) selects the target. The signed
   body's `target_public_key` then confirms it on the full key: a request whose key is not this node's is refused
   `wrong_device` (AUTHORITY section 7, check 4b) and never runs.
@@ -76,7 +77,8 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   only on its bound channel, and only while the binding is `bound` (MANAGEMENT_CHANNEL section 2): a `stale` or
   absent binding takes nothing. The device consumes its own frames; they are not passed to the app as channel data.
 - A group datagram names no sender and no recipient, so each frame header carries both, as 8-byte prefixes of the node
-  public keys: the target's, and the sender's (for the reply). Every member of the channel can read them; they reveal
+  public keys: the target's, and the sender's (for the reply), then one byte that changes on each send, so a repeater that
+  heard a frame the first time still carries its retry. Every member of the channel can read them; they reveal
   which keys talk, never a `device_id`.
 - Only the node whose key matches the target prefix reads further. The signed body's `target_public_key` then
   confirms the full key, as on the point-to-point path. Every other node drops the frame without answering.
@@ -93,7 +95,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
 ## 4. Frames
 
 - **One message, several frames.** A message (one signed request, or one result) is cut into frames that fit one
-  LoRa packet: up to 150 bytes of message per frame on the point-to-point path, up to 140 on the channel (the
+  LoRa packet: 128 bytes of a request and 150 of a reply per frame on the point-to-point path; 128 and 139 on the channel (the
   addresses take the rest). Each frame carries a message number per sender (`xid`), its index and the frame count,
   as the Companion's `0x7F` frames do (DEVICE_INTERFACE section 7).
 - **A smaller bound than the other links.** A message over LoRa is at most 1,024 bytes (8 frames at most). A longer
@@ -108,9 +110,10 @@ encrypted on both paths. A node is addressed by its node public key, as native M
 - **A gap is reported on point to point only.** A message incomplete when its deadline passes (section 8) is
   discarded. On the point-to-point path the device answers `parts-missing`, with the `xid` and a mask of the frames
   it holds, so the sender re-sends only those. The answer is subject to the budget for unverified answers
-  (section 7). On the channel nothing is answered: only the manager can know that its message is incomplete, and it
-  re-sends the whole message after its deadline.
+  (section 7). On the channel nothing is answered: only the manager can know that its message is incomplete. It
+  re-sends the whole message under the same `xid`, and the frames the device already holds count.
 - **A repeated frame is ignored**, so a frame heard twice (a flood, a retry) costs nothing.
+- **A frame addressed to this node stops here.** It is not repeated further, so the target's radio stays listening for the rest of the message.
 
 ## 5. Results and correlation
 
@@ -156,6 +159,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
     a known direct path. Such answers share one budget across all peers: a token bucket of 4 per minute, under the
     duty window. Beyond it they are dropped and counted. A per-peer budget would not hold, since keys are free.
   - **A verified result** may use the known path or flood.
+- **Counted where a manager can read it.** `status.get` reports `lora`: `frames`, `incomplete`, `dropped_bad`, `dropped_budget`, `dropped_deadline`, `dropped_memory` and `evicted`, since boot.
 - **Deferred is a state, never a silent drop.** A reply the duty window holds is queued with its deadline. It is sent
   when the window allows, or dropped at its deadline and counted. It is never lost without a trace. The manager's
   re-send then gets the stored result. Every frame of a reply is the same message, so a window that holds frame 3
@@ -204,8 +208,8 @@ use (section 10).
 Decided in review: the operations offered over LoRa (section 2), the results the channel may carry (section 3.2), and
 the limit on unverified answers (section 7). Still open:
 
-1. **The frame sizes and the 1,024-byte bound** (section 4) are first estimates against MeshCore's 184-byte payload,
-   the pairwise MAC and the channel datagram's header. They are fixed by measuring a real signed `config.apply` and its
-   result.
+1. **The 1,024-byte bound** (section 4) is 8 frames of 128 bytes. A signed `config.apply` of one key took 5 frames in the simulator.
+   It is to be checked against a real one with several keys.
 2. **The deadlines** of section 8, and the unverified budget's 4 a minute, are to be confirmed against airtime on the
    slowest preset in use, with the duty window's boot seeding taken into account.
+3. **Roles.** All three carry both paths. A Repeater or Room server reads no group but its bound management channel.

@@ -70,6 +70,12 @@ public:
   void setContext(const Cli::Context& c) { _ctx = c; }
   // The unlock state of the link the request arrived on; null for a transport that has no cable link (the broker).
   void setLink(LinkUnlock* l) { _link = l; }
+  // Whether the last signed request got past its signature and target checks (AUTHORITY.md section 7, check 3).
+  bool lastVerified() const { return _verified; }
+  // The member signing the request in hand, as 16 hex digits of its id, "" for an unsigned one; and whether an id so named is
+  // still a member. A standing instruction lasts only as long as the member who set it.
+  const char* signingIssuer() const { return _signing_issuer; }
+  bool issuerValid(const char* hex) const;
   // Whether that link holds a valid local unlock now: unexpired, and issued against the secret the record holds today.
   bool unlocked(const LinkUnlock* l) const;
   // Sets c.unlocked for a request from the cable on link l; false for every other caller (CliPolicy unlockManagement).
@@ -136,6 +142,8 @@ public:
   void setRolesListener(RolesListener f, void* user) { _roles_cb = f; _roles_user = user; notifyRoles(); }
 
 private:
+  char _signing_issuer[17] = {0};
+  bool _verified = false;
   struct DepWork;
   void load();
   void loadInner();

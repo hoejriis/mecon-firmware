@@ -18,8 +18,10 @@
 #include <helpers/AuditLog.h>
 #include <helpers/iface/DeployAuth.h>
 #include <helpers/iface/CableLine.h>
+#include <helpers/iface/LoraLink.h>
 #include <helpers/iface/Provenance.h>
 #include <helpers/iface/ScreenFeed.h>
+#include <helpers/iface/StandingOps.h>
 #include <helpers/iface/JobService.h>
 #include <helpers/updates/UpdService.h>
 
@@ -61,7 +63,15 @@ public:
   static const uint32_t STREAMS_PRODUCED = (1u << Iface::SID_HEALTH) | (1u << Iface::SID_RADIO) |
                                            (1u << Iface::SID_POWER) | (1u << Iface::SID_RUNTIME) |
                                            (1u << Iface::SID_OBSERVATIONS) | (1u << Iface::SID_INVENTORY) |
-                                           (1u << Iface::SID_LOGS);
+                                           (1u << Iface::SID_LOGS) | (1u << Iface::SID_RF);
+public:
+  Iface::Status rfRequest(Iface::OpContext& c);
+  void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
+  bool onLora() const { return _on_lora; }
+  bool onLoraChannel(int slot, const uint8_t* data, size_t n);
+  void onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n);
+  Iface::StandingService& standing() { return _standing; }
+  const Iface::LoraLink& lora() const { return _lora; }
   uint8_t postureNow() const;
   void rebootSoon() { _reboot_at = millis() + 1500; }
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
@@ -240,6 +250,34 @@ private:
   // then one page per pass, at most INV_PAGES_PER_S a second, so a long contact list never holds the RF loop.
   void startInventory(uint32_t now);
   void inventoryTick(uint32_t now);
+  // The LoRa link (LORA_MANAGEMENT.md): requests to this device, and rf.request's own requests to others with their replies.
+  static void onLoraFrame(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len,
+                          const uint8_t* frame, size_t n);
+  static bool loraSend(void* user, const Iface::LoraLink::Peer& p, const uint8_t* frame, size_t n, bool flood_ok);
+  void loraTick(uint32_t now);
+  void rfTick(uint32_t now);
+  Iface::StandingService _standing;
+  Iface::SnapStore* standingStore();
+  bool _standing_begun = false;
+  static bool reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq);
+  static uint8_t reportProduced(void* user);
+  static bool reportMayRead(void* user);
+  static const char* reportIssuer(void* user);
+  static bool reportIssuerValid(void* user, const char* issuer);
+  static uint32_t reportRandom(void* user);
+  Iface::LoraLink _lora, _rf;
+  Link _lora_link;
+  bool _on_lora = false, _lora_channel = false;
+  uint8_t* _rf_out = nullptr;   // the message rf.request is sending, and where it has got to
+  size_t _rf_len = 0, _rf_off = 0;
+  uint8_t _rf_to[32] = {0};
+  uint8_t _rf_xid = 0, _rf_idx = 0, _rf_count = 0;
+  int _rf_slot = -1;            // rf.request on this channel slot, or -1: point to point
+  int _lora_slot = -1;          // the bound slot a channel reply goes out on
+  int _lora_bound_slot = -1;    // the binding, read on the main pass
+  bool _lora_bound_read = false, _lora_bound_dirty = false;
+  uint32_t _lora_bound_at = 0;
+  uint32_t _rf_next = 0;
   void screenTick(uint32_t now);
   Iface::ScreenFeed _screen;
   static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits

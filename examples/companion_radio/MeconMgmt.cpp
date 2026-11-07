@@ -12,6 +12,7 @@
 namespace {
 Iface::PathFsStore g_mgmt_record("/mgmt_channel");
 Iface::PathFsStore g_mgmt_snap("/mgmt_snap");
+Iface::PathFsStore g_standing("/standing");
 
 void fpOf(const uint8_t* key, size_t len, uint8_t out[Iface::MGMT_FP_BYTES]) {
   mesh::Utils::sha256(out, Iface::MGMT_FP_BYTES, key, (int)len);
@@ -26,8 +27,11 @@ size_t keyLen(const ChannelDetails& ch) {
 void MeconIface::mgmtLoad() {
   g_mgmt_record.setFs(_mesh->_store->getPrimaryFS());
   g_mgmt_snap.setFs(_mesh->_store->getPrimaryFS());
+  g_standing.setFs(_mesh->_store->getPrimaryFS());
   fpOf(Iface::MGMT_PUBLIC_KEY, sizeof(Iface::MGMT_PUBLIC_KEY), _public_fp);
 }
+
+Iface::SnapStore* MeconIface::standingStore() { return &g_standing; }
 
 Iface::MgmtHost MeconIface::mgmtHost() {
   _chan_host = channelHost();
