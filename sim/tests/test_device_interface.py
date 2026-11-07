@@ -717,7 +717,9 @@ def test_a_result_that_does_not_fit_is_refused_under_its_own_id(nodes):
     refused = [m for m in got if m["status"] == "busy" and m.get("error") == "queue-full"]
     assert refused, "nothing was refused, so this proves nothing: %s" % [m["status"] for m in got]
     assert all(m["id"] for m in refused), refused
-    assert sorted(m["id"] for m in got) == sorted(["h%d" % k for k in range(8)] + ["ap"]), "one answer each: %s" % got
+    ids = [m["id"] for m in got]
+    assert len(ids) == len(set(ids)) and set(ids) <= {"h%d" % k for k in range(8)} | {"ap"}, "at most one answer each: %s" % ids
+    # With the 8 slots full even the refusal has no room, so a request can go unanswered (DEVICE_INTERFACE.md section 2).
     r = i.request("hello", rid=refused[0]["id"], timeout=5)
     assert r["status"] == "ok" and r["result"]["node_key"], "the same id gets the result: %s" % r
     # The device caches a result before queueing it, whichever way the push goes, so this holds for a refused apply too.
