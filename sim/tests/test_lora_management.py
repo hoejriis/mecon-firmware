@@ -404,6 +404,21 @@ def test_a_revoked_members_instruction_stops(ether, nodes):
     assert d.i.request("standing.list")["result"]["instructions"] == []
 
 
+@pytest.mark.parametrize("kind", ["companion_standalone", "repeater_wifi"])
+@pytest.mark.parametrize("key", ["wifi.profile.0.pwd", "mqtt.profile.0.pwd"])
+def test_a_password_is_refused_over_lora_on_both_paths_and_nothing_is_written(ether, nodes, kind, key):
+    d, m = on_channel(nodes, ether, kind, "wo" + kind[:2] + key[:2])
+    args = {"set": {key: "not-on-the-air", "name": "NotThisEither"}}
+    for job, slot in ((1, None), (2, CH)):
+        kw = {"slot": slot} if slot is not None else {}
+        r = m.send(d.node_key, wrap(d.node_key, "config.apply", args, job=job), **kw)
+        assert r and r["status"] == "refused" and r["error"] == "not-over-lora:" + key, (slot, r)
+        assert "NotThisEither" not in d.name(), "nothing in the set is written"
+    r = m.send(d.node_key, wrap(d.node_key, "config.apply", apply_name("StillWorks"), job=3), slot=CH)
+    assert r and r["status"] == "ok", "a plain key still goes: %s" % r
+    assert "StillWorks" in d.name()
+
+
 @pytest.mark.timescale(100000)
 @pytest.mark.parametrize("every_s", [2592000, 2200000])
 def test_a_period_past_a_signed_difference_runs_once_a_period(nodes, every_s):
