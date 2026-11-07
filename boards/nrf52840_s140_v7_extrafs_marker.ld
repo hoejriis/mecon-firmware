@@ -5,7 +5,7 @@ GROUP(-lgcc -lc -lnosys)
 
 MEMORY
 {
-  /* The T1000-E Companion: the image ends below 0xD2000. 0xD2000 is the security floor's page and 0xD3000 the provisioned
+  /* The T1000-E builds with a marker: the image ends below 0xD2000. 0xD2000 is the security floor's page and 0xD3000 the provisioned
      marker's, both outside every file system. ExtraFS starts at 0xD4000. */
   FLASH (rx)     : ORIGIN = 0x27000, LENGTH = 0xD2000 - 0x27000
 
