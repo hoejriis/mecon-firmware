@@ -36,8 +36,8 @@ Neither signature stands in for the other. A URL, a paired link or a broker sess
 - **Anchors are generated, not copied.** A build's anchors are generated from that file, so the two cannot drift:
   - a firmware environment compiles in `production` keys only, and the build fails if a `test` key would reach it;
   - the simulated boards and the native tests carry the `test` key.
-  Today the file holds the test key alone, which is derived from a public label like the authority vectors. No signed public release exists yet, so a firmware build has **no anchors** and refuses every update, with `no-release-anchor`.
-- **No private release key is ever in the repository or a build.** Production keys are held by the release owner, at least two with separate custody, so the loss or compromise of one is recoverable (below).
+  The file holds three production keys and the test key, which is derived from a public label like the authority vectors. A firmware build carries the three, and refuses a manifest signed by any other key.
+- **No private release key is ever in the repository or a build.** Production keys are held by the release owner, at least two with separate custody, so the loss or compromise of one is recoverable (below). Where each is kept, and the drill: [release keys](../RELEASE_KEYS.md).
 - **No remote command adds an anchor.** A Deployment may only narrow the accepted keys: `allowed_release_keys`, a list of `key_id`s, set by a DAK-signed authority update. Empty means every compiled-in anchor. A Deployment that suspects a key drops it there, and the device refuses manifests signed by it at once. *Planned:* the field will be specified in AUTHORITY.md's authority set with the implementation, together with its size budget and acceptance checks. Until then every compiled-in anchor is accepted.
 - **Compromise and loss.**
   - **A compromised key** can sign a high `version` (version squatting). Once that key is narrowed out, the genuine fix is a downgrade by version number. It installs with `downgrade:true` and a Deployment-signed offer. It cannot inflate the security floor: the floor follows the version compiled into the running image, never the manifest's claim (section 4).
@@ -52,7 +52,7 @@ A public release on GitHub carries its update set as release assets, so any mana
   - the image: `<variant>-<version>.bin` for an ESP32 app image, or `<variant>-<version>.zip` for an nRF52 serial-DFU package, as the manifest's `kind` says.
 - **The index is not trusted.** It only finds the assets. A manager checks `manifest_sig` against `release-keys.json`, then the image's SHA-256 against the manifest's, before offering anything. A wrong or stale index can make a manager offer nothing, never something unsigned.
 - **The device never sees a GitHub URL.** A manager serves the image from its own `source.url` (at most 256 bytes, section 6).
-- No release carries an update set yet. Publishing one needs the production release keys of section 3, and the update code of this page.
+- A version tag builds, signs and attaches the set (`.github/workflows/signed-release.yml`). No release carries one yet.
 
 ## 4. The release manifest, and preflight
 

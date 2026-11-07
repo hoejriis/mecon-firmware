@@ -14,7 +14,7 @@ The other pages describe the finished product. This page and the release notes s
 
 | Capability | Where it stands | Issue |
 |---|---|---|
-| Signed updates with production release keys | The update path is built and proven with test keys. The keys themselves do not exist yet | [#110](https://github.com/hoejriis/mecon-firmware/issues/110) |
+| Signed updates with production release keys | The keys exist and builds trust them. No signed release is published yet | [#110](https://github.com/hoejriis/mecon-firmware/issues/110) |
 | Every feature checked on all four boards | In progress. [Hardware evidence](HARDWARE_VERIFIED.md) lists what has been checked. A feature not listed there for a board is not verified on it | [#117](https://github.com/hoejriis/mecon-firmware/issues/117) |
 
 Work on the management authority is still open too ([#95](https://github.com/hoejriis/mecon-firmware/issues/95)), so its contract can still gain detail.
