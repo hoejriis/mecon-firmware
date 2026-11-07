@@ -52,7 +52,7 @@ A public release on GitHub carries its update set as release assets, so any mana
   - the image: `<variant>-<version>.bin` for an ESP32 app image, or `<variant>-<version>.zip` for an nRF52 serial-DFU package, as the manifest's `kind` says.
 - **The index is not trusted.** It only finds the assets. A manager checks `manifest_sig` against `release-keys.json`, then the image's SHA-256 against the manifest's, before offering anything. A wrong or stale index can make a manager offer nothing, never something unsigned.
 - **The device never sees a GitHub URL.** A manager serves the image from its own `source.url` (at most 256 bytes, section 6).
-- A version tag builds, signs and attaches the set (`.github/workflows/signed-release.yml`). No release carries one yet.
+- A version tag builds, signs and attaches the set (`.github/workflows/signed-release.yml`). v0.2.0 is the first release that carries one.
 
 ## 4. The release manifest, and preflight
 
@@ -138,6 +138,7 @@ Measured worst cases:
 
 - **ESP32 rollback, in two stages.**
   1. **Until the new image's start-up checks pass** (radio, mesh, the interface, within 60 s of boot), it is left pending-verify. The firmware takes them as passed once its loop has run for 20 s after boot, with the radio, the mesh and the interface set up before it; a `job.confirm` also ends the window, so a reset cannot take a confirmed image back. With the bootloader's app rollback (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`), any reset in that window returns to the previous slot. That catches an image that crashes or hangs before it can run.
+     On a Heltec V3, a host opening the USB port is such a reset: it resets the board through the USB bridge, and setting DTR and RTS low before opening did not prevent it on Linux. So a host that pushed over USB keeps the port open, or leaves it closed until the window has passed.
   2. **Once the checks pass,** the image marks itself valid, so the bootloader stops reverting it, and the confirmation deadline (section 7) takes over. The previous slot is kept untouched until the job is `confirmed`. An app-level revert, on the deadline or an abnormal reset, boots it again.
   - **What stage 2 gives up:** if the image later fails so badly that it cannot run its own revert (a crash loop that begins after the checks), the bootloader no longer rolls it back. Recovery is then physical.
   - **Prerequisite:** the bootloader enables rollback. The pinned Arduino-ESP32 core (2.0.17) builds the ESP32-S3 bootloader with `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`, and the firmware overrides the core's `verifyRollbackLater()` so that the core does not mark an image valid at boot. A board whose bootloader was flashed without rollback has no stage 1, and an image that fails before its checks needs physical recovery there.
