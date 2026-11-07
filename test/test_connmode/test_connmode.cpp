@@ -52,6 +52,8 @@ TEST_F(ConnModeTest, OnlyTransportsThatAuthenticateByPossessionMaySwitch) {
   EXPECT_FALSE(callerMaySwitch(Posture::CALLER_REMOTE_CLI));
   EXPECT_FALSE(callerMaySwitch(0));     // an unset caller fails closed
   EXPECT_FALSE(callerMaySwitch(200));
+  EXPECT_TRUE(callerMaySwitch(Posture::CALLER_MQTT, true));    // a signature, on any wire
+  EXPECT_FALSE(callerMaySwitch(Posture::CALLER_MQTT, false));
 }
 
 TEST_F(ConnModeTest, ALocalSwitchChangesTheModeAndIsAudited) {

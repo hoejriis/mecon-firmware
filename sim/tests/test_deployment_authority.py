@@ -1516,3 +1516,51 @@ def test_the_secret_appears_in_no_reply_status_log_or_file_as_text(nodes):
     for secret in (SECRET, SECRET2):
         assert harness.files_containing(d.n, secret) == [], harness.files_containing(d.n, secret)
         assert harness.files_containing(d.n, secret.upper()) == []
+
+
+def signed_switch_over_the_broker(nodes, tmp_path, broker, name, within_s):
+    """Enrolled and on Wi-Fi: unsigned, then signed, over a verified broker. Returns once the board restarted into BLE."""
+    b = broker()
+    d, dev = mqtt_boot(nodes, tmp_path, name, b)
+    r = b.cli_request(d.c.pub_key[:4].hex(), "set connectivity.mode ble")
+    assert r is not None and r["status"] != "ok" and "not permitted" in str(r), "standalone, unsigned: %s" % r
+    assert d.provision()["status"] == "ok"
+    args = {"set": {"connectivity.mode": "ble"}, "confirm": {"within_s": within_s}}
+    r = b.iface_request(dev, {"v": 1, "id": "u1", "op": "config.apply", "args": args})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    assert d.c.cli("get connectivity.mode") == "> wifi", "unsigned: nothing moved"
+    r = b.iface_request(dev, wrap(d.node_key, "config.apply", args, job=1))
+    assert r["status"] == "ok" and r["result"]["state"] == "awaiting-confirm", r
+    assert d.n.wait_exit(10) == 75, "the switch restarts the board"
+    d.n.start()
+    d.attach()
+    assert d.c.cli("get connectivity.mode") == "> ble"
+    return b, d, r["result"]["job"]
+
+
+@pytest.mark.timescale(10)
+def test_a_signed_mode_switch_over_a_broker_is_confirmed_over_the_cable(nodes, tmp_path, broker):
+    b, d, job = signed_switch_over_the_broker(nodes, tmp_path, broker, "ms1", 300)
+    g = d.i.request("job.get", {"job": job})["result"]
+    assert g["state"] == "awaiting-confirm", g
+    r = d.send(wrap(d.node_key, "job.confirm", {"job": job}, job=2))
+    assert r["error"] == "replay", "the restart moved the mark past the window: %s" % r
+    r = d.send(wrap(d.node_key, "job.confirm", {"job": job}, job=r["result"]["mark"] + 1))
+    assert r["status"] == "ok" and r["result"]["state"] == "confirmed", r
+    d.reboot()
+    assert d.c.cli("get connectivity.mode") == "> ble", "a confirmed change stays"
+
+
+@pytest.mark.timescale(10)
+def test_a_signed_mode_switch_over_a_broker_reverts_when_nobody_confirms(nodes, tmp_path, broker):
+    b, d, job = signed_switch_over_the_broker(nodes, tmp_path, broker, "ms2", 30)
+    assert d.n.wait_exit(30) == 75, "the revert restarts the board"
+    d.n.start()
+    d.attach()
+    assert d.c.cli("get connectivity.mode") == "> wifi"
+    g = d.i.request("job.get", {"job": job})["result"]
+    assert g["state"] == "reverted", g
+    end = time.time() + 40
+    while time.time() < end and not d.c.cli("get mqtt.status").startswith("> connected"):
+        time.sleep(0.3)
+    assert d.c.cli("get mqtt.status").startswith("> connected"), "back on the broker"

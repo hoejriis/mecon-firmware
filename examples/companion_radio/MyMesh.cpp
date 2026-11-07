@@ -2624,7 +2624,8 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   {
     bool changed = false;
     const uint8_t caller = _cli_caller;
-    if (ConnMode::handleCommand(command, caller, _prefs.connectivity_mode, getRTCClock()->getCurrentTime(), reply, 150, changed)) {
+    if (ConnMode::handleCommand(command, caller, _prefs.connectivity_mode, getRTCClock()->getCurrentTime(), reply, 150, changed,
+                                _cli_ctx.auth == Cli::A_SIGNED)) {
       if (changed) {
         savePrefs();
         auditStore().flush(millis());   // the new mode and its audit entry reach flash together
