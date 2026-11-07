@@ -2,7 +2,9 @@ name: Signing runner hook test (temporary)
 on:
   push:
     branches: [test/sign-runner-refuses]
+    tags: ['v0.0.0-hooktest']
   pull_request:
+  workflow_dispatch:
 jobs:
   sign:
     runs-on: [f1-mecon-sign]
