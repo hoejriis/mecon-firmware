@@ -166,4 +166,5 @@ Builds b6d0a50e, d23437d5, adaf9fed, f0067d70 and a76e33d7 were bench merges of 
 - Signed `posture.set` (verified only in the simulator).
 - `job.cancel` stopping an nRF52's reset into its bootloader (verified only in the simulator).
 - A local unlock ending when the USB host goes on a Heltec V4 or an nRF52 board. A V4 was seen to notice the host going, in a separate probe, and the unlock itself ran only in the simulator.
+- The device interface over LoRa, compact reports and standing instructions on a merged build. A branch build from before the merge ran on a Heltec V4 Repeater with a Heltec V3 Companion, on a private radio setting: a signed `config.apply` and `report.now` point to point and on the channel, and adding and removing a standing instruction. Not run on any build: a Room server or Companion as the target, a Wio Tracker L1 or SenseCAP T1000-E, a flood across a hop, a retry under the same `xid`, a scheduled report.
 - Any board not listed above.

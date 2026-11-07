@@ -1,6 +1,6 @@
 # Manage a device
 
-This page describes the finished product. Management over LoRa and standing instructions are among the parts not built yet: see [availability](AVAILABILITY.md).
+This page describes the finished product. Management over LoRa and standing instructions are built, but are in no release yet and have run on few boards: see [availability](AVAILABILITY.md).
 
 A device can be managed in two ways, and both are decided by the same privilege table ([command-line engine](CLI.md)):
 

@@ -12,7 +12,7 @@ The contracts a manager implements to manage mecon-firmware devices. They need n
 | [Telemetry](TELEMETRY.md) | The stream model, every stream and its fields, access and limits |
 | [Signed updates](UPDATES.md) | Release anchors and manifests, preflight, who may offer, delivery per target, the update lifecycle |
 | [Management channel](MANAGEMENT_CHANNEL.md) | Binding one native channel as the management channel, with commit-or-revert |
-| [Management over LoRa](LORA_MANAGEMENT.md) | The device interface over point-to-point and channel LoRa (draft) |
+| [Management over LoRa](LORA_MANAGEMENT.md) | The device interface over point-to-point and channel LoRa |
 | [Security and authority](SECURITY_AND_AUTHORITY.md) | Security rules that the pages above cite, such as continuity material and BLE bonds |
 
 The [schemas](schema) and [fixtures](fixtures) belong to the device interface. `release-keys.json` lists the release keys that builds trust ([signed updates](UPDATES.md)).

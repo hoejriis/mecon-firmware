@@ -1,7 +1,7 @@
 # Management over LoRa
 
-> **Status.** Both paths are built on the Companion, Repeater and Room server and proven in the simulator. Neither has run on a
-> board. It carries the [device interface](DEVICE_INTERFACE.md) under the [management authority contract](AUTHORITY.md). It defines
+> **Status.** Both paths are built on the Companion, Repeater and Room server and pass in the simulator. On real radios, on a build
+> from before the merge, a Heltec V4 Repeater answered a Heltec V3 Companion on both ([availability](../AVAILABILITY.md) says what has not run). It carries the [device interface](DEVICE_INTERFACE.md) under the [management authority contract](AUTHORITY.md). It defines
 > no new operation on the device: the [managed operations](OPERATIONS.md) are what travels. [Compact reports](TELEMETRY.md) have their own
 > section there. Firmware-image bytes over LoRa are not defined here.
 
@@ -33,7 +33,7 @@ Every role carries both paths. A Repeater or Room server holds a single manageme
 - **Only a signed request runs.** Over LoRa the device accepts only a signed wrapper (`mecon_auth`, AUTHORITY
   section 3.3), checked by section 7 of that contract before anything else. An unsigned envelope is not run on either
   path. On the point-to-point path it is answered `refused`, `unauthenticated`; on the channel it is not answered
-  (section 6). A device without a Deployment record therefore runs nothing over this path: there is nothing to verify
+  (section 7). A device without a Deployment record therefore runs nothing over this path: there is nothing to verify
   against (AUTHORITY section 9).
 - **A channel key, an RF route or a proxy is never authority.** Knowing the management channel's key, being a contact,
   being logged in as a native admin, being one hop away, or relaying for someone grants nothing here. The caller is
@@ -41,15 +41,16 @@ Every role carries both paths. A Repeater or Room server holds a single manageme
 - **Equivalent authorization.** Because the principal is the same, an operation over LoRa is allowed exactly when the
   same signed request would be allowed over MQTT, USB or BLE, with the same class, the same per-line check for an
   operation that maps to a CLI line, and the same audit of a refusal.
-- **Opt in, per operation.** Each entry of the operation table carries a LoRa flag: `none`, `p2p` or `p2p+channel`. The
-  default is `none`, so a new operation stays off LoRa until someone decides otherwise. An operation without the flag
-  for a path answers `unknown-op` there (an operation absent from `hello` on that link).
+- **Opt in, per operation.** One list names what goes point to point and a shorter one what goes on the channel
+  ([managed operations](OPERATIONS.md) section 5.4). A new operation stays off LoRa until someone adds it. An operation
+  not listed for a path answers `unknown-op` there, and `hello` on that link leaves it out.
 - **Never over LoRa:** every `secret`-class operation, on either path, since key material never goes on the air,
   whatever the encryption. Also every sensitive operation of AUTHORITY section 7.1, and so no link-nonce handshake in
   this version: it would add a round trip and per-peer state on the slowest link, and can be added later without
   changing anything else.
-- **Point to point only:** `deployment.reset` and an identity rotation, and every operation whose result lists or
-  reveals state (section 3.2). A first provisioning cannot happen over LoRa anyway: without a record nothing runs.
+- **Point to point only:** every listed operation whose result lists or reveals state (section 3.2). `deployment.reset`
+  and an identity rotation are not offered over LoRa. A first provisioning cannot happen there anyway: without a record
+  nothing runs.
 
 ## 3. Paths and addressing
 
@@ -89,8 +90,8 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   - `job.get` and `job.ack`;
   - the result of a state-changing operation;
   - errors.
-  An operation whose result lists or reveals state is `p2p` only: `contact.list`, the `channel.*` reads, config
-  values, `status.get`'s inventory and logs.
+  An operation whose result lists or reveals state is point to point only: `hello`, `status.get`, `config.schema`,
+  `config.get`, `deployment.get` and `job.list`. `contact.list` and the `channel.*` reads are not offered over LoRa at all.
 
 ## 4. Frames
 
@@ -99,7 +100,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   addresses take the rest). Each frame carries a message number per sender (`xid`), its index and the frame count,
   as the Companion's `0x7F` frames do (DEVICE_INTERFACE section 7).
 - **A smaller bound than the other links.** A message over LoRa is at most 1,024 bytes (8 frames at most). A longer
-  one is not sent; a request that would need more is answered `busy`, `too-large`, where an answer is possible. A
+  one is not sent: `rf.request` refuses it (`invalid`, `too-large`), and a frame that claims more is dropped and counted. A
   result that would be larger is paged by the operation, as on every link. The bound keeps one message's airtime
   within what a duty-limited band allows (section 7).
 - **Checked at the first frame.** A frame count above 8, or an index at or above the count, is dropped at once,
@@ -124,8 +125,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   wrong device, replay, busy, a class the caller lacks) carries the job's identity, read from the verified body,
   never by scanning the wrapper's text. A request refused before that (too large, not a wrapper, an unknown issuer, a
   bad signature) has no verified body. Its answer, where one is allowed (section 7: point to point only, within the
-  budget), carries the frames' `xid` and the wrapper's `issuer` only, so the manager can match it to the message it
-  sent.
+  budget), carries the frames' `xid` only, so the manager can match it to the message it sent.
 - **A retry is a retry, on any path.** A manager that gets no answer re-sends the same signed request, unchanged, on
   the same path or another (AUTHORITY section 8). It gets the stored result, or `duplicate`, or the job's current
   state. A stored id belongs to the operation that produced it (DEVICE_INTERFACE section 3), so a retry under another
@@ -197,7 +197,7 @@ use (section 10).
 - On the channel, only the addressed node transmits in answer to a request, in every test.
 - N forged frames, with fresh keys and fresh `xid`s on point to point and forged prefixes on the channel, produce at
   most the unverified budget's worth of transmissions, none of them a flood and none on the channel.
-- An operation without its LoRa flag answers `unknown-op` on that path, and a `p2p`-only operation is not run over the
+- An operation not listed for a path answers `unknown-op` there, so a point-to-point-only operation is not run over the
   channel.
 - A reply the duty window holds is sent later or counted as dropped, never lost silently. Every state of section 8
   returns to idle by its deadline.
