@@ -1,5 +1,5 @@
 {
-  "about": "Release public keys (docs/contract/UPDATES.md section 3). A build's anchors are generated from this file: firmware environments take the production keys only, the simulated boards and native tests the test key. The test key is derived from a public label (SHA-256 of the label is its seed) and is valid nowhere. No production key exists yet, so firmware builds have no anchors and refuse every update.",
+  "about": "Release public keys (docs/contract/UPDATES.md section 3). A build's anchors are generated from this file: firmware environments take the production keys only, the simulated boards and native tests the test key. The test key is derived from a public label (SHA-256 of the label is its seed) and is valid nowhere. Custody and recovery of the production keys: docs/RELEASE_KEYS.md.",
   "keys": [
     {
       "line": "public",
@@ -7,6 +7,24 @@
       "public_key": "ca8ab08ab490701113e32c24e5990a8ea6558fe89a585ab08e2744a69041d6d5",
       "use": "test",
       "label": "mecon-firmware public test key: release test"
+    },
+    {
+      "line": "public",
+      "key_id": "e1716b2d488a1c09",
+      "public_key": "554a67423eaed4d8e966055545807f0437f126aa41032ed630d52fe886dc3eef",
+      "use": "production"
+    },
+    {
+      "line": "public",
+      "key_id": "3225364d7272549d",
+      "public_key": "d86a940e45f9b0ac76312447269ae11c53eec1cc9129ecfa63741c57fe2ddc31",
+      "use": "production"
+    },
+    {
+      "line": "public",
+      "key_id": "9c496a197e7468fd",
+      "public_key": "2363152af17c03b27b2f471228ede2e4c9bd39f52316b7e2e180308b6b6de254",
+      "use": "production"
     }
   ]
 }

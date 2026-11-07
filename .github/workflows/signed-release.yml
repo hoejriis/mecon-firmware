@@ -1,0 +1,101 @@
+# A signed release (docs/contract/UPDATES.md section 3.1, docs/RELEASE_KEYS.md). A version tag builds every variant on GitHub's
+# runners, signs on the F1 runner that holds release key 1, and leaves a draft pre-release with the update set attached.
+name: Signed release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.list.outputs.envs }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: echo "envs=$(jq -c '[.variants[].variant]' ci/release-variants.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: list
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        env: ${{ fromJson(needs.list.outputs.envs) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # bin/mecon_version.py names the build from the tag
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: pip install "platformio==6.2.0" PyYAML
+      - run: python3 tools/lib_lock.py install ${{ matrix.env }}
+      - run: python3 tools/pio_fetch.py ${{ matrix.env }}
+      - run: bin/idf5_libs.sh ${{ matrix.env }}
+      - run: pio run -e ${{ matrix.env }}
+      - name: The image, under its variant's name
+        run: |
+          mkdir image
+          B=.pio/build/${{ matrix.env }}
+          if [ -f "$B/firmware.zip" ]; then cp "$B/firmware.zip" image/${{ matrix.env }}.zip; else cp "$B/firmware.bin" image/${{ matrix.env }}.bin; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.env }}
+          path: image
+          if-no-files-found: error
+
+  sign:
+    needs: build
+    # Holds release key 1. Its runner's job-started hook (ci/signing-runner-hook.sh) refuses anything but this job on a version tag.
+    runs-on: [f1-mecon-sign]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: image-*
+          merge-multiple: true
+          path: images
+      - name: Manifests, signed with key 1
+        run: |
+          SEED="$HOME/.mecon-release/key-1.seed"
+          KEY_ID=$(python3 tools/mecon_release_key.py public "$SEED" | awk '/^key_id/{print $2}')
+          python3 tools/mecon_release_set.py manifests images "$GITHUB_REF_NAME" "$GITHUB_SHA" "$KEY_ID" "$(git show -s --format=%ct)" manifests
+          mkdir signed
+          for m in manifests/*.manifest.txt; do
+            python3 tools/mecon_release_key.py sign "$SEED" "$m" "signed/$(basename "$m" .txt).json"
+          done
+          python3 tools/mecon_release_set.py index images "$GITHUB_REF_NAME" signed
+      - uses: actions/upload-artifact@v4
+        with:
+          name: update-set
+          path: signed
+          if-no-files-found: error
+
+  publish:
+    needs: sign
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: update-set
+          path: signed
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: pip install cryptography
+      - name: Every signature checks against the published keys
+        run: python3 tools/mecon_release_set.py verify signed
+      - name: A draft pre-release; its notes are written by hand
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" signed/* --draft --prerelease --verify-tag --title "mecon-firmware ${GITHUB_REF_NAME#v}" --notes "Notes to follow."
