@@ -19,7 +19,7 @@ mecon-firmware is MeshCore 1.18.0 with secure management, diagnostics and signed
 - [Wi-Fi profiles](WIFI.md), [MQTT broker profiles](MQTT.md), [connectivity mode](CONNECTIVITY_MODE.md)
 - [Contact memory](CONTACTS.md)
 - [Screens and buttons](UI.md)
-- [Availability](AVAILABILITY.md): what you can get today, and what is not built yet
+- [Availability](AVAILABILITY.md): what you can get today, and what is not yet proven
 - [Hardware evidence](HARDWARE_VERIFIED.md): what has been checked on real boards
 
 ## Integrating a manager

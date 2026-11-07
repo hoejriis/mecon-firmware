@@ -1,6 +1,6 @@
 # Supported hardware and roles
 
-Which board to choose, which role to run on it, and what each combination can do when finished. Some of it is in no release yet or has not run on every board, management over LoRa included: see [availability](AVAILABILITY.md). A device also reports its own capabilities (`hello` lists every operation and telemetry stream the build and board support), so a manager should read those rather than infer them from the board name.
+Which board to choose, which role to run on it, and what each combination can do when finished. Some of it has not run on every board, management over LoRa included: see [availability](AVAILABILITY.md). A device also reports its own capabilities (`hello` lists every operation and telemetry stream the build and board support), so a manager should read those rather than infer them from the board name.
 
 ## Choosing a board
 

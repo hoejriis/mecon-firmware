@@ -10,6 +10,6 @@ A private report should identify the affected build, component or board/role, re
 
 ## Published advisories
 
-[Published security advisories](https://github.com/hoejriis/mecon-firmware/security/advisories) list the vulnerabilities found in this firmware, with their severity and the versions affected. A fixed one also says what carries the fix: a release, or a commit on `main` when the fix came before a release.
+[Published security advisories](https://github.com/hoejriis/mecon-firmware/security/advisories) list the vulnerabilities found in this firmware, with their severity, the versions affected and the release that carries each fix.
 
 See [security postures](docs/STANDALONE_POSTURES.md), the [security model](docs/SECURITY_MODEL.md) and [management authority](docs/contract/AUTHORITY.md) for the device's security boundaries.

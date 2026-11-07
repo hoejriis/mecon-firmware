@@ -2,7 +2,7 @@
 
 From choosing a board to one useful result. This page is for operators. Contributor checks, such as the simulator and unit tests, are in [contributing](../CONTRIBUTING.md#build-and-test), and you do not need them to use the firmware.
 
-> **Availability.** There are no downloadable images yet, so installing means building from source. Some features on these pages are not built yet: see [availability](AVAILABILITY.md).
+> **Availability.** [v0.2.0](https://github.com/hoejriis/mecon-firmware/releases/tag/v0.2.0) is a pre-release with signed images attached, for the [signed update path](UPDATING_AND_RECOVERY.md). This guide builds from source and has not been walked with those images. Some features on these pages have run on few boards: see [availability](AVAILABILITY.md).
 
 ## 1. Choose a board and role
 
@@ -100,7 +100,7 @@ Add `--dtr` on the nRF52 boards. To reach the device over the network, [connect 
 1. `hello` reports the `device_id` and node key you recorded.
 2. A read such as `status.get`, or a stream such as `health`, arrives with the device's signature.
 
-After enrolment, a change needs a manager's signature, so the unsigned cable keeps reads and the recovery operations only ([manage a device](MANAGING.md#standalone-and-enrolled)).
+After enrolment, a change needs a manager's signature, so the unsigned cable keeps reads and the recovery operations only, and in Hardened it needs a local unlock for most reads ([manage a device](MANAGING.md#standalone-and-enrolled)).
 
 ## Next
 
