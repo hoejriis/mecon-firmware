@@ -35,14 +35,16 @@ inline bool wifiMayStart(uint8_t mode) { return sanitize(mode) == WIFI; }
 inline bool pinIsDefault(uint32_t pin) { return pin == 0 || pin == 123456; }
 
 // ---- who may change the mode: the transports that authenticate the peer by possession
-inline bool callerMaySwitch(uint8_t caller) {
-  return Cli::decide(Cli::contextForCaller(caller, Posture::NORMAL), Cli::C_POSTURE).allow;   // cli/CliPolicy.h
+// A request a Deployment member signed may switch on any transport (AUTHORITY.md section 9): the wire it came over adds
+// nothing to a signature and takes nothing from it.
+inline bool callerMaySwitch(uint8_t caller, bool is_signed = false) {
+  return is_signed || Cli::decide(Cli::contextForCaller(caller, Posture::NORMAL), Cli::C_POSTURE).allow;   // cli/CliPolicy.h
 }
 
 // Switch to `want` on behalf of `caller`. Returns true when the stored mode changed (the prefs must be saved and the
 // device restarted). A refusal is audited; so is a change.
-inline bool requestSwitch(uint8_t& mode, uint8_t want, uint8_t caller, uint32_t now) {
-  if (!callerMaySwitch(caller)) {
+inline bool requestSwitch(uint8_t& mode, uint8_t want, uint8_t caller, uint32_t now, bool is_signed = false) {
+  if (!callerMaySwitch(caller, is_signed)) {
     Posture::recordRefusal(now, caller, Posture::W_CONNMODE);
     return false;
   }
@@ -56,14 +58,14 @@ inline bool requestSwitch(uint8_t& mode, uint8_t want, uint8_t caller, uint32_t 
 // "get connectivity.mode" and "set connectivity.mode ble|wifi". Returns false when `cmd` is neither.
 // `changed` is set when the stored mode changed: the caller saves the prefs and restarts after the reply went out.
 inline bool handleCommand(const char* cmd, uint8_t caller, uint8_t& mode, uint32_t now, char* reply, size_t max,
-                          bool& changed) {
+                          bool& changed, bool is_signed = false) {
   if (strcmp(cmd, "get connectivity.mode") == 0) {
     snprintf(reply, max, "> %s", name(mode));
     return true;
   }
   static const char SET[] = "set connectivity.mode";
   if (memcmp(cmd, SET, sizeof(SET) - 1) != 0 || (cmd[sizeof(SET) - 1] != 0 && cmd[sizeof(SET) - 1] != ' ')) return false;
-  if (!callerMaySwitch(caller)) {
+  if (!callerMaySwitch(caller, is_signed)) {
     Posture::recordRefusal(now, caller, Posture::W_CONNMODE);
     snprintf(reply, max, "ERR: not permitted");
     return true;
@@ -77,7 +79,7 @@ inline bool handleCommand(const char* cmd, uint8_t caller, uint8_t& mode, uint32
     return true;
   }
   const uint8_t want = to_wifi ? WIFI : BLE;
-  if (requestSwitch(mode, want, caller, now)) {
+  if (requestSwitch(mode, want, caller, now, is_signed)) {
     changed = true;
     snprintf(reply, max, "OK - connectivity.mode %s, restarting", name(want));
   } else {

@@ -24,7 +24,7 @@ Every row of the two tables above is a cell of one privilege table, shared by al
 
 An attempted password is never logged or stored: stock's debug print of it is removed.
 
-Connectivity-mode switching (BLE or Wi-Fi, [Connectivity mode](CONNECTIVITY_MODE.md)) is allowed from trusted local transports and the device button in both postures, refused for remote callers, and audited.
+Connectivity-mode switching (BLE or Wi-Fi, [Connectivity mode](CONNECTIVITY_MODE.md)) is allowed from trusted local transports and the device button in both postures, refused for unsigned remote callers, and audited. On a device with a Deployment record, a signed request may switch on any transport ([Authority](contract/AUTHORITY.md) section 9).
 
 ## Commands
 
