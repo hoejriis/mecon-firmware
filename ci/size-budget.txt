@@ -15,12 +15,12 @@ heltec_v4_companion_radio_usb            698368      41984
 heltec_v4_companion_radio_wifi          1420288     118784
 heltec_v4_repeater                      1520640      82944
 heltec_v4_room_server                   1515520      87040
-t1000e_companion_radio_ble               538624     163840
-t1000e_companion_radio_usb               531456     159744
-t1000e_repeater                           486400      43008
-WioTrackerL1_companion_radio_ble         632832      94208
-WioTrackerL1_companion_radio_usb         623616      90112
-WioTrackerL1_repeater                     567296      46080
+t1000e_companion_radio_ble               543744     163840
+t1000e_companion_radio_usb               537600     159744
+t1000e_repeater                           491520      43008
+WioTrackerL1_companion_radio_ble         637952      94208
+WioTrackerL1_companion_radio_usb         628736      90112
+WioTrackerL1_repeater                     572416      46080
 # NimBLE twins (Issue #68, docs/NIMBLE_EVALUATION.md) and the LilyGo T-LoRa Bluedroid build they are compared with.
 LilyGo_TLora_V2_1_1_6_companion_radio_ble           1512448      82944
 # The STM32WLE5 Companion: 229376 B is the board's whole app area (board_upload.maximum_size), so its budget is the
