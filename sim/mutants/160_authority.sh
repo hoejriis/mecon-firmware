@@ -245,7 +245,7 @@ mutate standing_no_capacity src/helpers/iface/StandingOps.cpp 'if (!place) { c.e
 mutate standing_temporary_kept src/helpers/iface/StandingOps.cpp 'if (!s.used || !s.durable) continue;' 'if (!s.used) continue;' $LM::test_standing_bounds
 mutate standing_lost_at_boot src/helpers/iface/StandingOps.cpp '  load(now);' '' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
 mutate standing_revoked_runs_on src/helpers/iface/StandingOps.cpp 'if (s.issuer[0] && !_h.issuer_valid(_h.user, s.issuer)) {' 'if (false) {' $LM::test_a_revoked_members_instruction_stops
-mutate standing_never_fires src/helpers/iface/StandingOps.cpp 'if (!s.used || (int32_t)(now - s.next_ms) < 0) continue;' 'continue;' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
+mutate standing_never_fires src/helpers/iface/StandingOps.cpp 'if (!s.used || (uint32_t)(now - s.from_ms) < s.wait_ms) continue;' 'continue;' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
 mutate standing_remove_keeps src/helpers/iface/StandingOps.cpp '      s = Standing();
       if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' '      if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
 mutate lora_retry_new_number examples/companion_radio/MeconIface.cpp 'if (xt >= 0 && jsonGetInt(d, xt, 0, 255, &xv)) _rf_xid = (uint8_t)xv;
@@ -279,3 +279,5 @@ mutate sign_limit_one_byte_short src/helpers/iface/Provenance.cpp 'if (text_len 
 mutate sign_too_large_goes_unsigned src/helpers/iface/Provenance.cpp '  return sign("result", buf, (size_t)n, cap, signer, extra);' '  return n;' sim/tests/test_provenance.py::test_a_result_that_just_fits_is_signed_and_one_byte_more_is_a_signed_busy
 mutate deployment_get_judges_the_set_alone src/helpers/iface/DeployAuth.cpp '    if (w.size() + 20 + esc + after + reserve <= DEP_GET_ROOM) {' '    if (esc <= 900) {' sim/tests/test_deployment_authority.py::test_deployment_get_answers_at_every_size_of_set
 mutate deployment_get_forgets_the_rotation src/helpers/iface/DeployAuth.cpp 'w.size() + 20 + esc + after + reserve <= DEP_GET_ROOM' 'w.size() + 20 + esc + after <= DEP_GET_ROOM' sim/tests/test_identity_rotate.py::test_a_two_member_deployment_can_be_read_after_a_rotation
+mutate standing_long_period_signed src/helpers/iface/StandingOps.cpp '(uint32_t)(now - s.from_ms) < s.wait_ms' '(int32_t)(now - s.from_ms) < (int32_t)s.wait_ms' $LM::test_a_period_past_a_signed_difference_runs_once_a_period
+mutate standing_companion_any_channel examples/companion_radio/MeconIface.cpp '  if (slot >= 0 && slot != m->_lora_bound_slot) return false;' '' $LM::test_a_companion_reports_only_on_its_bound_channel

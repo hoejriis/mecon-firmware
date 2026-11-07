@@ -169,14 +169,15 @@ void StandingService::schedule(Standing& s, uint32_t now, bool first) {
   uint32_t j = s.every_s / 10;
   if (j > 300) j = 300;
   const uint32_t jitter = j ? _h.random(_h.user) % (j * 1000) : 0;
-  s.next_ms = now + (first ? jitter : s.every_s * 1000UL + jitter);
+  s.from_ms = now;
+  s.wait_ms = first ? jitter : s.every_s * 1000UL + jitter;   // at most 30 days and 5 minutes: well inside 32 bits of ms
 }
 
 void StandingService::tick(uint32_t now) {
   if (!_begun) return;
   bool changed = false;
   for (Standing& s : _s) {
-    if (!s.used || (int32_t)(now - s.next_ms) < 0) continue;
+    if (!s.used || (uint32_t)(now - s.from_ms) < s.wait_ms) continue;
     if (s.issuer[0] && !_h.issuer_valid(_h.user, s.issuer)) {   // revoked, or the Deployment went
       s = Standing();
       changed = true;
