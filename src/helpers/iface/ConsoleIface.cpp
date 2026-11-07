@@ -819,7 +819,7 @@ void ConsoleIface::onLoraFrame(void* user, const uint8_t* key, const uint8_t* se
 void ConsoleIface::setReportSend(ReportSendFn fn, void* user, SnapStore* store) {
   _report_send = fn;
   _report_user = user;
-  _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, store, this},
+  _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, reportAirtimeOk, store, this},
                   millis());
 }
 
@@ -833,6 +833,13 @@ uint8_t ConsoleIface::reportProduced(void* user) {
 bool ConsoleIface::reportMayRead(void* user) { return streamAllow(user, Cli::C_PRIVATE); }
 const char* ConsoleIface::reportIssuer(void* user) { return static_cast<ConsoleIface*>(user)->_auth.signingIssuer(); }
 bool ConsoleIface::reportIssuerValid(void* user, const char* issuer) { return static_cast<ConsoleIface*>(user)->_auth.issuerValid(issuer); }
+
+// Room for the largest report, as an anonymous datagram with its packet's headers.
+bool ConsoleIface::reportAirtimeOk(void* user) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  if (!s->_host.dispatcher || !s->_host.radio) return true;
+  return s->_host.dispatcher->getRemainingTxBudget() >= s->_host.radio->getEstAirtimeFor((int)REPORT_MAX + 40);
+}
 
 uint32_t ConsoleIface::reportRandom(void*) {
   CryptoRNG rng;

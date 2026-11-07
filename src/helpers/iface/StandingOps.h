@@ -18,6 +18,7 @@ struct ReportHost {
   const char* (*issuer)(void* user);               // the signing member of that request, "" for an unsigned one
   bool (*issuer_valid)(void* user, const char* issuer);   // still a member: a revoked member's instruction stops
   uint32_t (*random)(void* user);
+  bool (*airtime_ok)(void* user);                  // the duty window has room for a report now
   SnapStore* store;
   void* user;
 };
@@ -35,6 +36,7 @@ struct Standing {
   // in RAM only
   uint32_t from_ms = 0, wait_ms = 0;   // since when, and for how long: a period can be longer than a signed difference holds
   uint32_t runs = 0, failed = 0, skipped = 0;
+  uint8_t held = 0;                    // passes this run has waited for airtime
 };
 
 class StandingService {
@@ -42,6 +44,8 @@ public:
   static const int CAPACITY = 4;
   static const uint32_t MIN_EVERY_S = 900;
   static const uint32_t MAX_EVERY_S = 30UL * 24 * 3600;
+  static const uint32_t HOLD_MS = 60000;     // with no airtime, a run due looks again this often
+  static const uint8_t HOLDS = 5;            // and after this many looks it is skipped, until its next period
   static const uint32_t NOW_GAP_MS = 30000;   // report.now: at most one per this long, on every link
   static const size_t RECORD = 75;
 

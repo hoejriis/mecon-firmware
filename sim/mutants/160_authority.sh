@@ -246,6 +246,11 @@ mutate standing_temporary_kept src/helpers/iface/StandingOps.cpp 'if (!s.used ||
 mutate standing_lost_at_boot src/helpers/iface/StandingOps.cpp '  load(now);' '' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
 mutate standing_revoked_runs_on src/helpers/iface/StandingOps.cpp 'if (s.issuer[0] && !_h.issuer_valid(_h.user, s.issuer)) {' 'if (false) {' $LM::test_a_revoked_members_instruction_stops
 mutate standing_never_fires src/helpers/iface/StandingOps.cpp 'if (!s.used || (uint32_t)(now - s.from_ms) < s.wait_ms) continue;' 'continue;' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
+mutate standing_ignores_airtime src/helpers/iface/StandingOps.cpp 'if (!_h.airtime_ok(_h.user)) {' 'if (false) {' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
+mutate standing_skip_not_counted src/helpers/iface/StandingOps.cpp '        s.skipped++;
+' '' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
+mutate standing_no_room_needed src/helpers/iface/ConsoleIface.cpp 'return s->_host.dispatcher->getRemainingTxBudget() >= s->_host.radio->getEstAirtimeFor((int)REPORT_MAX + 40);' 'return true;' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
+mutate standing_no_room_needed_companion examples/companion_radio/MeconIface.cpp 'return static_cast<MeconIface*>(user)->_mesh->getRemainingTxBudget() >= radio_driver.getEstAirtimeFor((int)REPORT_MAX + 40);' 'return true;' $LM::test_a_run_with_no_airtime_is_skipped_counted_and_sends_nothing
 mutate standing_remove_keeps src/helpers/iface/StandingOps.cpp '      s = Standing();
       if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' '      if (!persist()) { s = old; c.error = "storage"; return ST_BUSY; }' $LM::test_a_standing_instruction_runs_keeps_across_a_reboot_and_can_be_removed
 mutate lora_retry_new_number examples/companion_radio/MeconIface.cpp 'if (xt >= 0 && jsonGetInt(d, xt, 0, 255, &xv)) _rf_xid = (uint8_t)xv;

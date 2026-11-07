@@ -183,6 +183,19 @@ void StandingService::tick(uint32_t now) {
       changed = true;
       continue;
     }
+    if (!_h.airtime_ok(_h.user)) {   // not a try: it waits a little, as a boot starts with the hour's window full, then it is passed over
+      if (s.held < HOLDS) {
+        s.held++;
+        s.from_ms = now;
+        s.wait_ms = HOLD_MS;
+      } else {
+        s.held = 0;
+        s.skipped++;
+        schedule(s, now, false);
+      }
+      continue;
+    }
+    s.held = 0;
     uint32_t seq;
     if (_h.send(_h.user, s.fields, s.has_to ? s.to : nullptr, s.slot, &seq)) s.runs++;
     else s.failed++;
