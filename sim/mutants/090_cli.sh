@@ -246,6 +246,8 @@ mutate iface_locked_not_enrolled_console src/helpers/iface/ConsoleIface.cpp '  c
 mutate frame_locked_native_reads_open examples/companion_radio/MyMesh.cpp '        _iface.cableLocked(_cmd_src, fctx)) {' '        false) {' sim/tests/test_posture_set.py::test_a_locked_cable_gets_no_native_reads_on_a_companion
 mutate frame_locked_ignores_the_unlock examples/companion_radio/MeconIface.cpp '  return !x.unlocked;' '  return true;' sim/tests/test_posture_set.py::test_a_locked_cable_gets_no_native_reads_on_a_companion
 mutate posture_signature_ignored src/helpers/Posture.h 'bool allowed = is_signed || Cli::decide(ctx' 'bool allowed = Cli::decide(ctx' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
-mutate posture_signature_not_passed_companion examples/companion_radio/MyMesh.cpp '                               _cli_ctx.auth == Cli::A_SIGNED)) {' '                               false)) {' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
+mutate posture_signature_not_passed_companion examples/companion_radio/MyMesh.cpp 'reply, 150, changed,
+                               _cli_ctx.auth == Cli::A_SIGNED)) {' 'reply, 150, changed,
+                               false)) {' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
 mutate posture_signature_not_passed_server src/helpers/Posture.h 'changed, Cli::serverCaller().signed_line)) return true;' 'changed, false)) return true;' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
 mutate posture_lora_reboots_before_its_answer examples/companion_radio/MeconIface.h '(_on_lora ? Iface::LORA_REBOOT_MS : 1500)' '1500' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
