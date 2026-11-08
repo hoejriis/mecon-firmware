@@ -81,7 +81,7 @@ Four boards are hardware test targets: **Heltec V3, Heltec V4, Seeed Wio Tracker
 
 ## Getting it
 
-> **Availability.** These pages describe the finished product. [v0.2.0](https://github.com/hoejriis/mecon-firmware/releases/tag/v0.2.0) is the first signed pre-release. No release is supported yet, and some features have run on few boards. Later MECON features are [outside these pages](docs/AVAILABILITY.md#what-only-a-manager-brings). [Availability](docs/AVAILABILITY.md) says what you can get today, and the [release notes](https://github.com/hoejriis/mecon-firmware/releases) say what each release contains.
+> **Availability.** These pages describe the finished product. The latest pre-release is [v0.2.1](https://github.com/hoejriis/mecon-firmware/releases/tag/v0.2.1), signed like v0.2.0, the first. No release is supported yet, and some features have run on few boards. Later MECON features are [outside these pages](docs/AVAILABILITY.md#what-only-a-manager-brings). [Availability](docs/AVAILABILITY.md) says what you can get today, and the [release notes](https://github.com/hoejriis/mecon-firmware/releases) say what each release contains.
 
 [Install and set up a device](docs/GETTING_STARTED.md) goes from choosing a board, through keeping what is on it, to a checked device and one useful result. Today that means building from source. Contributors' test commands are in [contributing](CONTRIBUTING.md#build-and-test).
 
