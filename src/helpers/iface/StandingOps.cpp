@@ -115,6 +115,7 @@ Status StandingService::opPut(OpContext& c, uint32_t now) {
   n.used = true;
   *place = n;
   schedule(*place, now, false);
+  place->fresh = true;
   if (!persist()) { *place = old; c.error = "storage"; return ST_BUSY; }
   JsonWriter& w = *c.out;
   w.key("id"); w.str(n.id);
@@ -177,7 +178,11 @@ void StandingService::tick(uint32_t now) {
   if (!_begun) return;
   bool changed = false;
   for (Standing& s : _s) {
-    if (!s.used || (uint32_t)(now - s.from_ms) < s.wait_ms) continue;
+    if (!s.used) continue;
+    // A loop takes its time once and handles requests later in the pass, so a put can be stamped after the time this
+    // tick is given; the difference would wrap and the run fall due at once. Its period starts here instead.
+    if (s.fresh) { s.fresh = false; s.from_ms = now; continue; }
+    if ((uint32_t)(now - s.from_ms) < s.wait_ms) continue;
     if (s.issuer[0] && !_h.issuer_valid(_h.user, s.issuer)) {   // revoked, or the Deployment went
       s = Standing();
       changed = true;
