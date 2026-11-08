@@ -1,6 +1,7 @@
 #include "SensorMesh.h"
 #include <helpers/Uptime.h>
 #include <helpers/RoutingPolicy.h>
+#include <helpers/Posture.h>
 #include <helpers/sensors/LPPDataHelpers.h>
 
 /* ------------------------------ Config -------------------------------- */
@@ -367,6 +368,10 @@ void SensorMesh::onDefaultRegionChanged(const RegionEntry* r) {
 
 uint8_t SensorMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood) {
   ClientInfo* client;
+  // While the admin password is the stock default (or empty) nobody logs in as admin over the air, as on the Repeater and
+  // Room server: the owner's decision of 2026-11-08 for the Sensor, which has no posture of its own (Issue #441). A
+  // password set on the local console lifts it.
+  const bool admin_open = !Posture::isDefaultAdminPassword(_prefs.password, ADMIN_PASSWORD);
   if (data[0] == 0) {   // blank password, just check if sender is in ACL
     client = acl.getClient(sender.pub_key, PUB_KEY_SIZE);
     if (client == NULL) {
@@ -375,8 +380,9 @@ uint8_t SensorMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* 
     #endif
       return 0;
     }
+    if (client->isAdmin() && !admin_open) return 0;   // an admin entry from before the password went back to the default
   } else {
-    if (strcmp((char *) data, _prefs.password) != 0) {  // check for valid admin password
+    if (!admin_open || strcmp((char *) data, _prefs.password) != 0) {  // check for valid admin password
     #if MESH_DEBUG
       MESH_DEBUG_PRINTLN("Invalid password: %s", &data[0]);
     #endif
