@@ -253,7 +253,7 @@ This contract adds one principal to the [CLI privilege table](../CLI.md): **sign
 |---|---|---|---|---|
 | signed | not applicable: nothing to verify against (`unauthenticated`) | per class: read, write, reboot, posture (with a controlled reboot), and the reset scopes section 11 allows | the same | `deployment_record_corrupt` |
 | USB cable, unsigned | today's table | reads, native messaging, and the recovery operations of section 11; **no configuration writes** | identification, and the local-unlock handshake | identification; `deployment.reset` |
-| BLE paired (own PIN), unsigned | today's table | native messaging and reads; no configuration writes, **no factory reset** | BLE is not started | reads |
+| BLE paired (own PIN), unsigned | today's table | native messaging and reads; no configuration writes, **no factory reset** | reads, a reboot and native messaging; no configuration writes, private streams, posture change or factory reset. BLE does not start with the default PIN | reads |
 | MQTT, TLS verified, unsigned | today's table | reads (`status.get`, `config.schema`, `deployment.get`); state changes refused `unauthenticated` | the same | reads; else `deployment_record_corrupt` |
 | local unlock (section 10) | not applicable | as signed, for reads and to unlock the posture | the management surface | `deployment.reset` only |
 | LoRa remote admin (native) | today's table | reads only | reads only | reads |
