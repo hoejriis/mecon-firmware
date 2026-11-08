@@ -4,7 +4,9 @@ It shares CommonCLI with the Repeater and the Room server, and the duty-cycle wi
 Dispatcher. It has no device interface and no posture (docs/CLI_REFERENCE.md)."""
 import re
 
-from sim.harness import CliClient
+import pytest
+
+from sim.harness import CliClient, CompanionClient
 
 RTC = 1760000000
 BAND = re.compile(r"^> band (\S+?)(?: MHz)?, limit (\d+\.\d\d)%, floor (\S+), user (\d+\.\d\d)%, used (\d+) ms \((\d+\.\d\d)%\)(, no time rule enforced)?$")
@@ -47,3 +49,25 @@ def test_a_sensor_has_no_device_interface_and_no_posture(nodes):
     assert c.command("get posture").startswith("??")
     reply = c.command('mecon> {"v":1,"id":"a","op":"hello"}', timeout=2.0)
     assert '"status":"ok"' not in (reply or "")
+
+
+@pytest.mark.lockstep()
+def test_a_sensor_refuses_remote_admin_while_its_password_is_the_default(ether, nodes):
+    """The owner's decision of 2026-11-08 (Issue #441): as on the Repeater and Room server, nobody logs in as admin over the
+    air while the admin password is the stock default. A password set on the local console lifts it."""
+    sen = nodes("sensor", "sp", seed=43, rtc=RTC, ether_path=ether.path).start()
+    adm = nodes("companion", "sa", seed=44, rtc=RTC, ether_path=ether.path).start()
+    assert ether.wait_for_nodes(["sp", "sa"])
+    ether.set_link("sp", "sa")
+    assert ether.wait_tx("sp") and ether.wait_quiet(), "the sensor never advertised"
+    cli = CliClient(sen)
+    pub = bytes.fromhex(cli.command("get public.key").lstrip("> ").strip())
+    c = CompanionClient(adm)
+    c.device_query()
+    c.app_start()
+    assert c.add_contact(pub, "sen", ctype=4)[0] == 0
+    assert not c.login(pub, "password", timeout=15), "the stock default opens nothing over the air"
+    cli.command("password s3cret-pw")
+    assert c.login(pub, "s3cret-pw"), "a password set on the console lifts it"
+    cli.command("password password")
+    assert not c.login(pub, "", timeout=15), "an admin entry from before is refused once the default is back"
