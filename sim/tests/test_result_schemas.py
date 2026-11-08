@@ -62,3 +62,18 @@ def test_the_checker_enforces_every_keyword_the_schemas_use():
     for bad in ({"a": "a"}, {"a": "abcd"}, {"n": 0}, {"n": 6}, {"l": [1, 2, 3]}, {"x": "seven"}, {}):
         assert mecon_schema.check(bad, s), bad
     assert mecon_schema.check(1, {"type": "integer", "exclusiveMinimum": 0}), "an unknown keyword is never silently passed"
+
+
+def test_status_reports_the_deployment_in_its_schema_healthy_and_corrupt(nodes):
+    from test_deployment_authority import boot as dep_boot, wreck_record
+    d = dep_boot(nodes, "rsd")
+    assert "deployment" not in ok(d.i.request("status.get"), "status.get"), "a standalone device reports none"
+    assert d.provision()["status"] == "ok"
+    dep = ok(d.i.request("status.get"), "status.get")["deployment"]
+    assert dep["contract_version"] == 1 and len(dep["deployment_id"]) == 32 and "state" not in dep, dep
+    d.n.stop()
+    wreck_record(d)
+    d.n.start()
+    d.attach()
+    dep = ok(d.i.request("status.get"), "status.get")["deployment"]
+    assert dep["state"] == "corrupt" and "deployment_id" not in dep, dep
