@@ -38,7 +38,7 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 | `uptime_s` | s | millis | all | |
 | `heap.free`, `heap.largest` | bytes | `memStats()` | all | internal RAM; `heap` is `null` where the platform has no heap API. On RP2040 and nRF52 `largest` equals `free` (no largest-block API) |
 | `heap.min_free` | bytes | `memStats()` | ESP32 | lowest since boot; `null` where untracked |
-| `heap.loop_stack_free` | bytes | `memStats()` | ESP32 | least free stack of the loop task since it started |
+| `heap.loop_stack_free` | bytes | `memStats()` | ESP32, nRF52 | least free stack of the loop task since it started (on nRF52 the task's FreeRTOS high-water mark); `null` elsewhere |
 | `heap.psram_free` | bytes | `memStats()` | boards with PSRAM | absent without |
 | `battery_mv` | mV | `getBattMilliVolts()` | all | `null` when the board cannot measure it |
 | `contacts.count`, `.capacity` | entries | contact store | Companion | absent on the server roles |
