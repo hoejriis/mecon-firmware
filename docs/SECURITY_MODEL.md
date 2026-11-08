@@ -45,9 +45,17 @@ Hardened requirements:
 
 Changing posture requires authenticated management and a controlled reboot.
 
+**Target, not all shipped.** The list above is the model's requirement. What this firmware does is in [Standalone security postures](STANDALONE_POSTURES.md) and [AUTHORITY](contract/AUTHORITY.md); where it differs, as checked against the code on 2026-11-08:
+- **BLE** starts in Hardened when the PIN is not the default (`Posture::bleMayStart`). A default-PIN link is untrusted and gets no management.
+- **USB.** Without a Deployment record, the cable keeps its rows in Hardened, a key export apart (`CliPolicy.h`). With a record, the unsigned cable identifies the device and offers the local unlock, and that is all.
+- **Changing posture.** `posture.set` reboots about 1.5 s after a change. The CLI's `set posture` saves the change without a restart, and what starts in each posture (BLE, the TCP server) follows at the next boot.
+- **Local UI.** In Hardened the display hides message text and names (`DisplayPrivacy.h`). No local UI on these builds composes or sends a user message in either posture, so there is nothing to block.
+
 A full external flash erase/reflash by a person with physical possession is outside the enrolled firmware trust model.
 
 ## Fail-secure posture recovery
+
+**Target, not shipped.** This firmware has no distinct fail-secure state: any stored posture value other than Normal is treated as Hardened (STANDALONE_POSTURES), so a damaged byte can only make the device stricter.
 
 Persist posture with integrity protection appropriate to the platform. If it is missing/corrupt and cannot be validated, enter a distinct fail-secure recovery state rather than silently selecting Normal or Hardened.
 
@@ -62,6 +70,8 @@ Revocation/generation rules are monotonic as defined by the Deployment authority
 Normal/Hardened posture is orthogonal to Deployment membership: **Normal → Hardened does not unenroll the device or remove its ability to recognize authorized Backend/Reader management.**
 
 ## Protected continuity storage boundary
+
+**Target, not shipped.** This firmware holds no continuity blob; nothing in `src/` stores or destroys one.
 
 Firmware provides a bounded protected storage boundary for Deployment continuity/recovery material.
 
@@ -99,7 +109,7 @@ Wi-Fi passwords, MQTT credentials/tokens, MeshCore private identity material, De
 
 Managed OTA installs only approved firmware represented by authenticated/integrity-checked release metadata compatible with hardware, role and variant.
 
-Hardened posture permits OTA over authenticated management paths supported by the target; it does not require USB-only upgrades. Normal `Both` mode may temporarily stop BLE during OTA to recover heap, without changing the persisted Normal connectivity choice.
+Hardened posture permits OTA over authenticated management paths supported by the target; it does not require USB-only upgrades. In the model, Normal `Both` mode may temporarily stop BLE during OTA to recover heap. This firmware's connectivity modes are `ble` and `wifi`, never both at once (`ConnMode.h`), so it has no such step.
 
 USB/full reflash remains the ultimate physical recovery path.
 
