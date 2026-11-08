@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/posture.set.result.json",
+  "title": "Result of posture.set",
+  "type": "object",
+  "required": [
+    "posture"
+  ],
+  "properties": {
+    "posture": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "hardened"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

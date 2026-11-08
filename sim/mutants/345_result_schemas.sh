@@ -1,0 +1,8 @@
+# Result schemas of standing.*, report.now and job.ack (docs/contract/schema/), and the checker's own bounds
+RS=sim/tests/test_result_schemas.py
+mutate standing_removed_false src/helpers/iface/StandingOps.cpp '      w.key("removed"); w.boolean(true);' '      w.key("removed"); w.boolean(false);' "$RS::test_standing_and_report_now_answer_in_their_schemas[repeater]"
+mutate report_now_without_seq src/helpers/iface/StandingOps.cpp '  w.key("seq"); w.unum(seq);' '' "$RS::test_standing_and_report_now_answer_in_their_schemas[repeater]"
+mutate job_ack_extra_key src/helpers/iface/JobService.cpp '  c.out->key("acked"); c.out->boolean(true);' '  c.out->key("acked"); c.out->boolean(true); c.out->key("x"); c.out->num(1);' "$RS::test_job_confirm_cancel_and_ack_answer_in_their_schemas"
+mutate checker_ignores_maxlength tools/mecon_schema.py '    if isinstance(value, str) and "maxLength" in schema and len(value) > schema["maxLength"]:' '    if False:' "$RS::test_the_checker_enforces_every_keyword_the_schemas_use"
+mutate checker_ignores_maximum tools/mecon_schema.py '    if _is(value, "number") and "maximum" in schema and value > schema["maximum"]:' '    if False:' "$RS::test_the_checker_enforces_every_keyword_the_schemas_use"
+mutate checker_passes_unknown tools/mecon_schema.py '    errs = ["%s: the checker does not know %s" % (path, k) for k in schema if k not in KNOWN]' '    errs = []' "$RS::test_the_checker_enforces_every_keyword_the_schemas_use"
