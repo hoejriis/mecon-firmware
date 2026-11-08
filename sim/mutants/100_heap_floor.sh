@@ -24,3 +24,6 @@ mutate heap_floor_marker_not_filled_in examples/companion_radio/ui-new/ConnStatu
 mutate heap_floor_not_run_from_the_loop examples/companion_radio/main.cpp "  heapFloor().loop(millis(), rtc_clock.getCurrentTime());
 " "" sim/tests/test_heap_floor.py::test_an_episode_starts_below_the_floor_holds_until_the_hysteresis_and_ends
 mutate heap_floor_not_started examples/companion_radio/main.cpp "heapFloor().begin(HEAP_FLOOR_BYTES);" "heapFloor().begin(0);" sim/tests/test_heap_floor.py::test_a_healthy_heap_reports_no_low_state_and_the_default_floor
+# the Repeater and the Room server run the same check (Issue #440)
+mutate heap_floor_repeater_not_started examples/simple_repeater/main.cpp "    heapFloor().begin(HEAP_FLOOR_BYTES);" "    heapFloor().begin(0);" "sim/tests/test_heap_floor_server.py::test_a_server_checks_the_floor_like_the_companion[repeater]"
+mutate heap_floor_room_not_started examples/simple_room_server/main.cpp "    heapFloor().begin(HEAP_FLOOR_BYTES);" "    heapFloor().begin(0);" "sim/tests/test_heap_floor_server.py::test_a_server_checks_the_floor_like_the_companion[room_server]"

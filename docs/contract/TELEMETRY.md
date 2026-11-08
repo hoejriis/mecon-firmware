@@ -53,7 +53,7 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 | `boot` | bool | the boot event | `true`, on the boot event only (below) |
 | `firmware`, `upstream`, `hardware`, `role` | text | as `hello` | the boot event only |
 | `loop_gap_ms.max` | ms | the device interface's loop tick | the longest main-loop pass since the previous runtime event; reading it resets it. 0 before two passes |
-| `heap_low` | bool | `HeapFloor` | Companion; the low-memory state the display shows. Absent where the build does not check the floor (it is enforced on ESP32 only) |
+| `heap_low` | bool | `HeapFloor` | Companion, Repeater and Room server; the low-memory state (on the Companion, the one its display shows). Absent where the build does not check the floor: it is enforced on ESP32 only, because nRF52 has no largest-block figure |
 | `stale_logins` | count | the login path | Repeater and Room server; remote logins refused since boot because the timestamp was not newer than that client's last accepted one. Absent on the Companion, which takes no remote login |
 | `stale_login_last` | hex | the login path | Repeater and Room server; the 4-byte key prefix of the last client refused that way, `null` before the first. A client locked out by a clock that once ran ahead shows here by name, and a restart clears both along with the lockout |
 | `gnss.powered` | bool | board (`getGnssHealth`) | T1000-E; the whole `gnss` object is absent on a board without a GNSS receiver |

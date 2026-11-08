@@ -1,4 +1,5 @@
 #include "ConsoleIface.h"
+#include "../HeapFloor.h"
 #include <helpers/esp32/NativeUsbTx.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/Uptime.h>
@@ -788,7 +789,9 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
       break;
     }
     case SID_POWER: writePower(w, *_host.board); break;
-    case SID_RUNTIME: writeRuntime(w, *_host.board, _gap, -1, &Posture::staleLogins()); break;
+    case SID_RUNTIME:   // heap_low absent where the build does not check (HeapFloor.h: ESP32 only)
+      writeRuntime(w, *_host.board, _gap, heapFloor().enabled() ? (heapFloor().low() ? 1 : 0) : -1, &Posture::staleLogins());
+      break;
     case SID_ENVIRONMENT:
       if (!_host.sensors || writeEnvironment(w, *_host.sensors, *_host.board) == 0) return false;
       break;
