@@ -34,9 +34,12 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
   out[2 * n] = 0;
 }
 
-// What a hello's capability list may fill (DEVICE_INTERFACE.md: one page unless it would outgrow the 1,536-byte result), as the
-// Companion's: a signed result leaves room for its signature (99), the op and counters it adds and the closing members.
-const size_t HELLO_SIGNED_BUDGET = 1350;
+// What a hello's result body may fill before its capability list goes on a next page (DEVICE_INTERFACE.md: one page unless it
+// would outgrow the 1,536-byte result). The body is counted without the envelope and the signature: measured on a simulated
+// Repeater, signing added 189 bytes, and the longest nonce's second device-id signature 156 more. A signed hello with that nonce
+// then needs the body to page at about 1,250 bytes; 1,150 leaves margin. An unsigned hello (1,458 bytes with every capability and
+// the longest nonce) fits in one page.
+const size_t HELLO_SIGNED_BUDGET = 1150;
 const size_t HELLO_PLAIN_BUDGET = 1500;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
