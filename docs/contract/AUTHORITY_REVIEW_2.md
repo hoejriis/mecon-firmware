@@ -16,7 +16,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 | L2 | The stock-array rescue rebuild restored the provisioned marker late | Fixed: restored right after the format | 7d517312 |
 | L3 | The local unlock secret could travel in the clear over any transport | Fixed: accepted only over the USB cable (`usb_only`) | 7846a1ca |
 
-## Not fixed in this slice
+## Not fixed in this slice (with the decisions taken since)
 
 | Id | Summary | Decision |
 |---|---|---|
