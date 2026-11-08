@@ -175,3 +175,11 @@ def test_a_standalone_server_may_be_rebooted_by_its_verified_broker(nodes, tmp_p
     r = b.iface_request(dev_of(s), {"v": 1, "id": "r1", "op": "device.reboot"})
     assert r["status"] == "ok", r
     assert s.n.wait_exit(10) == 75
+
+
+def test_region_list_is_a_plain_read_once_enrolled(nodes):
+    from test_deployment_authority_server import boot as srv_boot
+    s = srv_boot(nodes, "repeater", "rlp")
+    assert s.provision()["status"] == "ok"
+    r = s.send(wrap(s.node_key, "region.list", job=None, rid="rl1"))
+    assert r["status"] == "ok", "a signed region.list needs no job id: %s" % r
