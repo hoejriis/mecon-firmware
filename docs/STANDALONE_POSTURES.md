@@ -14,7 +14,7 @@ What the simulated-board suite checks here is software behaviour. BLE needs a ra
 | MQTT broker profiles (Wi-Fi) | plain or TLS static profiles, discovery profiles | plain static profiles refused (at the command and when used), TLS static and discovery profiles as in Normal |
 | Remote admin over RF (repeater, room server) | refused while the admin password is the default; otherwise as stock minus `set prv.key` | read-only plus `reboot`; no remote settings changes |
 | Remote CLI on a Companion (contact flag) | reads plus `reboot` | off |
-| Command line over MQTT (Companion, Wi-Fi) | TLS-verified broker session only: reads, settings and `reboot`; never the posture, the key or a factory reset | TLS-verified broker session only: reads; settings and `reboot` only when the broker profile is flagged for management (`set mqtt.profile <n> manage on`, set locally) |
+| Command line over MQTT (Heltec Wi-Fi builds: Companion, Repeater, Room server) | TLS-verified broker session only: reads, settings and `reboot`; never the posture, the key or a factory reset | TLS-verified broker session only: reads; settings and `reboot` only when the broker profile is flagged for management (`set mqtt.profile <n> manage on`, set locally) |
 | Private key export / import | trusted local transports | refused on every transport, USB included |
 | Factory reset | trusted local transports | USB / UART only; always works there and returns the device to Normal |
 
@@ -33,7 +33,7 @@ Connectivity-mode switching (BLE or Wi-Fi, [Connectivity mode](CONNECTIVITY_MODE
 | `get posture` | anyone who may run `get` commands, including a remote reader |
 | `set posture hardened` | a trusted local transport: the USB / UART console, or BLE paired with a non-default PIN. Never a remote caller |
 | `set posture normal confirm` | the USB / UART console only. A remote caller, a paired phone and an unauthenticated TCP client are refused, and the refusal is audited. Without `confirm` the command explains itself and changes nothing |
-| `get audit [n]` | a trusted local transport only (two entries per reply, newest first, `... next:<n>` continues) |
+| `get audit [start]` | a trusted local transport only (two entries per reply, newest first, `... next:<n>` continues) |
 
 These are the rules with no Deployment. On an enrolled device, lowering takes a signed `posture.set` ([Management authority contract](contract/AUTHORITY.md) section 9).
 

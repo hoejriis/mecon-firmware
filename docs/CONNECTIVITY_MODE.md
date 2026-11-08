@@ -13,7 +13,7 @@ What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED
 | Command | Effect |
 |---|---|
 | `get connectivity.mode` | `> ble` or `> wifi`; anyone who may run `get` commands |
-| `set connectivity.mode ble\|wifi` | trusted local transports only: USB / UART, BLE paired with a non-default PIN, the device button. Saves and restarts |
+| `set connectivity.mode ble\|wifi` | trusted local transports only: USB / UART, BLE paired with a non-default PIN, the device button. On a device that belongs to a Deployment, only the button or a signed request. Saves and restarts |
 
 An unsigned remote caller (a contact flagged for remote CLI, a TCP client, a broker) is refused with `ERR: not permitted` and the refusal is audited (`refused <caller> connectivity-mode`); a switch is audited as `mode <caller> ble|wifi` and the audit is written to flash before the restart. A request signed by a Deployment member may switch on any transport, with `confirm` ([operations](contract/OPERATIONS.md) section 3.4). A switch to BLE over a broker ends that session, so the confirmation comes over another link, or the change reverts at its deadline.
 
