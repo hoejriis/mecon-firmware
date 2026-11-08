@@ -56,7 +56,11 @@ def wait_job(i, job, secs=30):
 def test_the_cable_binds_a_channel_it_survives_a_reboot_and_a_native_change_makes_it_stale(nodes):
     n, (c, i) = companion_start(nodes, "mg1")
     i.id_prefix = "u%d" % next(_clients)
-    caps = i.request("hello")["result"]["capabilities"]
+    page = i.request("hello")["result"]
+    caps = list(page["capabilities"])
+    while "next" in page:   # the Companion's list runs to a second page
+        page = i.request("hello", {"cursor": page["next"]})["result"]
+        caps += page["capabilities"]
     assert {"mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"} <= set(caps), caps
     assert state(i) == {"state": "none"}
     assert put(i, 2, "ops", KEY)["status"] == "ok"

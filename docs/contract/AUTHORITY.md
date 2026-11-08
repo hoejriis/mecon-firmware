@@ -226,7 +226,7 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 
 ### 7.1 Plain, state-changing and sensitive operations
 
-- **Plain reads** are an allowlist: `hello`, `status.get`, `config.schema`, `config.get` of keys that are not secret, `deployment.get`, `identity.rotation`, `job.get`, `job.list`, and `sub.start`/`sub.stop` of the streams that are not private. A signed plain read carries no `job_id`. Replaying it elsewhere returns only what that operation returns to anyone allowed to read.
+- **Plain reads** are an allowlist: `hello`, `status.get`, `config.schema`, `config.get` of keys that are not secret, `deployment.get`, `identity.get`, `identity.rotation`, `clock.get`, `job.get`, `job.list`, `region.list`, and `sub.start`/`sub.stop` of the streams that are not private. A signed plain read carries no `job_id`. Replaying it elsewhere returns only what that operation returns to anyone allowed to read.
 - **Every other operation**, including any the device does not recognise as a plain read, carries a `job_id` and is subject to section 8. A captured request can then run at most once.
 - **Sensitive operations** are those whose reply is itself secret or private:
   - `identity.key.export`, `ble.pin.get`, `deployment.set_unlock` and `identity.rotate`;

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/advert.send.result.json",
+  "title": "Result of advert.send",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "flood"
+  ],
+  "properties": {
+    "flood": {
+      "type": "boolean"
+    }
+  }
+}
