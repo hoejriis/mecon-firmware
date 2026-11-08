@@ -4,6 +4,7 @@ DA=sim/tests/test_deployment_authority.py
 mutate deploy_failed_mark_write_still_runs src/helpers/iface/DeployAuth.cpp '    if (Dep::markAccepted(&wm, v.job_id) && !persistMarks()) {' '    if (Dep::markAccepted(&wm, v.job_id) && (persistMarks(), false)) {' $DA::test_a_mark_that_cannot_be_written_runs_nothing_and_is_not_consumed
 mutate deploy_channel_nonce_not_compared src/helpers/deployment/DepWrapper.cpp 'strcmp(nonce, link_nonce) != 0)' 'false)' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
 mutate deploy_channel_nonce_reusable src/helpers/iface/DeployAuth.cpp '  if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once' '' $DA::test_a_sensitive_operation_needs_this_links_nonce_once
+mutate deploy_rf_stream_without_nonce src/helpers/deployment/DepWrapper.cpp '"inventory", "rf" };' '"inventory" };' sim/tests/test_private_streams.py::test_the_rf_stream_needs_the_links_nonce_like_every_private_stream
 mutate deploy_mqtt_provisions_unsigned src/helpers/iface/DeployAuth.cpp '  if (!has && !_signed && !present) { c.error = "unauthenticated"; return ST_REFUSED; }' '' $DA::test_mqtt_never_provisions_unsigned_and_never_writes_unsigned_after
 mutate deploy_duplicate_runs_again src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_DUPLICATE) {' '    if (false) {' $DA::test_a_resend_at_the_mark_is_answered_and_not_run_again
 mutate deploy_replay_runs src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_TOO_OLD) {' '    if (false) {' $DA::test_an_older_job_id_is_a_replay_and_a_newer_one_runs
