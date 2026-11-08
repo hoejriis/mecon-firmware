@@ -1,4 +1,5 @@
 #include <Arduino.h>   // needed for PlatformIO
+#include <helpers/HeapFloor.h>
 #include <helpers/AuditLog.h>
 #include <helpers/BootTimes.h>
 #include <helpers/BootPresence.h>
@@ -222,6 +223,7 @@ void setup() {
     mgmt_snap_store.setFs(fs);
     standing_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
+    heapFloor().begin(HEAP_FLOOR_BYTES);   // the enforced heap floor (helpers/HeapFloor.h), as on the Companion: ESP32 only
     the_iface.setReportSend([](void* u, const uint8_t* to, int slot, const uint8_t* b, size_t n) {
       return static_cast<MyMesh*>(u)->reportSend(to, slot, b, n);
     }, &the_mesh, &standing_store);
@@ -261,6 +263,7 @@ void setup() {
 }
 
 void loop() {
+  heapFloor().loop(millis(), rtc_clock.getCurrentTime());
   // Handle Serial CLI
   int len = strlen(command);
   // `command` must stay NUL-terminated within its bounds. If it ever isn't,
