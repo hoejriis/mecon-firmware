@@ -19,6 +19,13 @@ KINDS = ["companion_standalone", "repeater", "room_server"]
 ADVERT = 4
 
 
+def shaped(op, result):
+    import mecon_schema
+    problems = mecon_schema.check(result, mecon_schema.load(op + ".result.json"))
+    assert not problems, (op, problems, result)
+    return result
+
+
 def next_job(d):
     return d.i.request("deployment.get")["result"]["members"][0]["mark"] + 1
 
@@ -60,9 +67,10 @@ def test_identity_and_clock_are_plain_reads_that_agree_with_hello(ether, nodes, 
         assert op in caps or "next" in h, (op, caps)
     r = d.i.request("identity.get")
     assert r["status"] == "ok", r
+    shaped("identity.get", r["result"])
     assert r["result"]["device_id"] == h["device_id"] and r["result"]["node_key"] == h["node_key"], r
     assert r["result"]["device_id_sig"] == h["device_id_sig"], "signed as hello signs it"
-    t = d.i.request("clock.get")["result"]["epoch"]
+    t = shaped("clock.get", d.i.request("clock.get")["result"])["epoch"]
     assert isinstance(t, int) and RTC <= t < RTC + 600, t
     assert d.provision()["status"] == "ok"
     # enrolled: both stay plain reads, unsigned, and a signed read needs no job id
@@ -81,7 +89,7 @@ def test_advert_send_goes_on_the_air_zero_hop_or_flooded(ether, nodes, kind):
     d.i.request("advert.send")   # wakes the radio: the first send of a boot waits ~30 s in the simulator
     before = settled(ether, name)
     r = d.i.request("advert.send")
-    assert r["status"] == "ok" and r["result"] == {"flood": False}, r
+    assert r["status"] == "ok" and shaped("advert.send", r["result"]) == {"flood": False}, r
     assert wait_adverts(ether, name, before) == [2], "zero hop: a direct route with no path"
     before = len(ether.tx_of(name))
     r = d.i.request("advert.send", {"flood": True})
@@ -104,7 +112,7 @@ def test_advert_send_goes_on_the_air_zero_hop_or_flooded(ether, nodes, kind):
 def test_device_reboot_answers_then_reboots_and_the_unsigned_cable_keeps_it(ether, nodes, kind):
     d = target(nodes, ether, kind, "rb" + kind[:2])
     r = d.i.request("device.reboot")
-    assert r["status"] == "ok", r
+    assert r["status"] == "ok" and shaped("device.reboot", r["result"]) == {}, r
     assert d.n.wait_exit(10) == 75, "the answer came first, then the reboot"
     d.n.start()
     d.attach()
