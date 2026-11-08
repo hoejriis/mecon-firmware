@@ -126,7 +126,7 @@ One event per new entry of the audit ring, when it is recorded (an event stream:
 | Field | Notes |
 |---|---|
 | `ts` | Unix seconds when recorded; `null` while the clock was not set |
-| `event` | `posture`, `refused`, `login-fail`, `reset`, `mode`, `low-mem`, `clock-back` |
+| `event` | `posture`, `refused`, `login-fail`, `reset`, `mode`, `low-mem`, `unlock`, `clock-back` |
 | `caller` | `cable`, `ble`, `net`, `remote-admin`, `remote-cli`, `button`, `mqtt`, `system` |
 | `what` | the command class refused, or the new posture (`normal`, `hardened`) or mode (`ble`, `wifi`) |
 | `count` | how many times this (event, caller, what) has been recorded |
