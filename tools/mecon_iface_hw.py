@@ -30,7 +30,9 @@ NRF52_DTR = os.environ.get("MECON_SERIAL_DTR") == "1"
 
 def serial_transport(port):
     import serial
-    s = serial.Serial(port, 115200, timeout=0.05)
+    # A short timeout, and only what is waiting: a read of 4096 bytes with a 50 ms timeout waited out the timeout on every
+    # frame, which added about 170 ms to a multi-frame result (201 ms against 30 ms on a T1000-E, 2026-11-08).
+    s = serial.Serial(port, 115200, timeout=0.005)
     s.dtr = NRF52_DTR
     s.rts = False
     buf = bytearray()
@@ -39,22 +41,28 @@ def serial_transport(port):
         s.write(b"<" + struct.pack("<H", len(payload)) + payload)
         s.flush()
 
-    def read(timeout):
-        nonlocal buf
-        end = time.time() + timeout
-        while time.time() < end:
-            buf += s.read(4096)
-            while len(buf) >= 3:
-                if buf[0:1] != b">":
-                    del buf[0]
-                    continue
-                n = struct.unpack_from("<H", buf, 1)[0]
-                if len(buf) < 3 + n:
-                    break
-                f = bytes(buf[3:3 + n])
-                del buf[:3 + n]
-                return f
+    def take():
+        while len(buf) >= 3:
+            if buf[0:1] != b">":
+                del buf[0]
+                continue
+            n = struct.unpack_from("<H", buf, 1)[0]
+            if len(buf) < 3 + n:
+                return None
+            f = bytes(buf[3:3 + n])
+            del buf[:3 + n]
+            return f
         return None
+
+    def read(timeout):
+        end = time.time() + timeout
+        while True:
+            f = take()   # a frame already buffered goes out before the port is read again
+            if f is not None:
+                return f
+            if time.time() >= end:
+                return None
+            buf.extend(s.read(max(1, s.in_waiting)))
 
     return send, read, s.close
 
