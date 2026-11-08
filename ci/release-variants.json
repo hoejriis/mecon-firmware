@@ -1,15 +1,9 @@
 {
-  "about": "What a signed release builds and signs (docs/contract/UPDATES.md section 3.1): the environments of the four boards the project verifies on hardware. `hardware` is one name the board reports in `hello`.",
+  "about": "What a signed release builds and signs (docs/contract/UPDATES.md section 3.1): the environments of the four boards the project verifies on hardware that carry the managed-device interface. Upstream-only environments (the Heltec `_usb`, `_ble` and `_wifi` Companions) are left out: they cannot take a signed update, and the standalone build covers their transports. `hardware` is one name the board reports in `hello`.",
   "variants": [
-    {"variant": "Heltec_v3_companion_radio_usb", "hardware": "Heltec V3", "role": "companion", "kind": "app"},
-    {"variant": "Heltec_v3_companion_radio_ble", "hardware": "Heltec V3", "role": "companion", "kind": "app"},
-    {"variant": "Heltec_v3_companion_radio_wifi", "hardware": "Heltec V3", "role": "companion", "kind": "app"},
     {"variant": "Heltec_v3_companion_radio_standalone", "hardware": "Heltec V3", "role": "companion", "kind": "app"},
     {"variant": "Heltec_v3_repeater", "hardware": "Heltec V3", "role": "repeater", "kind": "app"},
     {"variant": "Heltec_v3_room_server", "hardware": "Heltec V3", "role": "room", "kind": "app"},
-    {"variant": "heltec_v4_companion_radio_usb", "hardware": "Heltec V4 OLED", "role": "companion", "kind": "app"},
-    {"variant": "heltec_v4_companion_radio_ble", "hardware": "Heltec V4 OLED", "role": "companion", "kind": "app"},
-    {"variant": "heltec_v4_companion_radio_wifi", "hardware": "Heltec V4 OLED", "role": "companion", "kind": "app"},
     {"variant": "heltec_v4_companion_radio_standalone", "hardware": "Heltec V4 OLED", "role": "companion", "kind": "app"},
     {"variant": "heltec_v4_repeater", "hardware": "Heltec V4 OLED", "role": "repeater", "kind": "app"},
     {"variant": "heltec_v4_room_server", "hardware": "Heltec V4 OLED", "role": "room", "kind": "app"},
