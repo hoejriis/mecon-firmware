@@ -140,11 +140,11 @@ A third party should be able to implement a client from this page, the schemas a
 
 Published so far (v1.0 first cut):
 
-- [`schema/`](schema/): `request.json`, `result.json`, `event.json`; the results of `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `sub.start` and `sub.stop`; and the data of the `health` event (`event.health.json`);
+- [`schema/`](schema/): `request.json`, `result.json`, `event.json`; one `<op>.result.json` for each operation it names, and one `event.<stream>.json` for each stream except `rf`. Not yet schematised: `deployment.*`, `identity.rotate` and `identity.rotation` ([AUTHORITY](AUTHORITY.md)), `update.*` ([UPDATES](UPDATES.md)), `mgmt.channel.bind`, `.rotate` and `.unbind` ([MANAGEMENT_CHANNEL](MANAGEMENT_CHANNEL.md)), `rf.request` and the `rf` stream (OPERATIONS). Their results are described in those sections only;
 - [`fixtures/requests.json`](fixtures/requests.json): requests with the status (and result schema) a v1.0 device must answer, plus a transport case. A case that only applies to some roles lists them in `roles`; [`fixtures/framing.json`](fixtures/framing.json): one message and its exact `0x7F` frames;
-- [`tools/mecon_iface.py`](../../tools/mecon_iface.py): the reference client (framing, reassembly, envelope; transport-neutral), and [`tools/mecon_schema.py`](../../tools/mecon_schema.py), a dependency-free checker for the keywords these schemas use.
+- [`tools/mecon_iface.py`](../../tools/mecon_iface.py): the reference client (framing, reassembly, envelope; transport-neutral), and [`tools/mecon_schema.py`](../../tools/mecon_schema.py), a dependency-free checker for every keyword these schemas use; a keyword it does not know fails the check.
 
-- [`fixtures/config_schema.recorded.json`](fixtures/config_schema.recorded.json) and [`fixtures/config_radio.recorded.json`](fixtures/config_radio.recorded.json): the whole settings schema and real radio writes and reads, recorded from one build.
+- [`fixtures/config_schema.recorded.json`](fixtures/config_schema.recorded.json) and [`fixtures/config_radio.recorded.json`](fixtures/config_radio.recorded.json): the whole settings schema and real radio writes and reads, recorded from one build (the Companion); [`fixtures/config_schema_server.recorded.json`](fixtures/config_schema_server.recorded.json): the Repeater and Room server settings schema, recorded from a build without and one with Wi-Fi.
 
 The simulated-board suite (`sim/tests/test_device_interface.py`) runs every fixture against the firmware over USB, BLE and MQTT and checks each answer against the schemas; it fails if a recorded fixture drifts from the firmware.
 
