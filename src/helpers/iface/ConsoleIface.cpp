@@ -94,14 +94,12 @@ Status opHello(OpContext& c) {
   };
   w.key("capabilities"); w.beginArray();
   add(CAPABILITIES[0]);   // hello, then the streams, so a manager reading only the first page has what it subscribes to
-  if (!lora) {   // no stream goes over LoRa
-    const uint32_t produced = m->produced();
-    for (int sid = 0; sid < STREAM_COUNT; sid++) {
-      if (!(produced & (1u << sid))) continue;
-      char cap[24];
-      snprintf(cap, sizeof(cap), "stream.%s", STREAMS[sid].name);
-      add(cap);
-    }
+  const uint32_t produced = m->produced();
+  for (int sid = 0; sid < STREAM_COUNT; sid++) {   // add() leaves them out over LoRa, which carries no stream
+    if (!(produced & (1u << sid))) continue;
+    char cap[24];
+    snprintf(cap, sizeof(cap), "stream.%s", STREAMS[sid].name);
+    add(cap);
   }
   for (size_t i = 1; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
   if (m->hasRegions()) for (const char* rcap : REGION_CAPABILITIES) add(rcap);
