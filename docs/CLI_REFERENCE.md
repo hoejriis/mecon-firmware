@@ -395,6 +395,6 @@ get mecon.cli.check set name x
 
 ## Known gaps
 
-- **Sensor role.** Shares `CommonCLI` and therefore the gate for remote callers, but has no posture or audit commands and the stock login (the default admin password still logs in). Not exercised in the simulator or on hardware.
+- **Sensor role.** Shares `CommonCLI` and therefore the gate for remote callers, but has no posture or audit commands: a recorded exception, by the owner's decision of 2026-11-04. While its admin password is the stock default or empty it refuses remote admin, a login by password and an admin ACL entry's blank login alike, as the Repeater and Room server do, until a password is set on the local console (owner's decision of 2026-11-08; from the release after v0.2.1). That refusal is covered in the simulator; the role is not exercised on hardware.
 - **Rescue console `ls`, `cat`, `rm`** are not routed through the engine: they exist only on the cable and are not registered, so a remote caller never reaches them.
 - **Board commands.** Vendor commands added by a board class are not described here.
