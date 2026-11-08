@@ -11,14 +11,12 @@ import sys
 import time
 
 sys.path.insert(0, "tools")
-import serial
+import serial_lines
 import mecon_iface
 
 port = sys.argv[1]
 budget = float(sys.argv[2]) / 1000 if len(sys.argv) > 2 else 0.2
-s = serial.Serial(port, 115200, timeout=0.005)
-s.dtr = False
-s.rts = False
+s = serial_lines.open_serial(port, 115200, timeout=0.005, dtr=False)
 buf = bytearray()
 
 

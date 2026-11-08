@@ -7,8 +7,9 @@
     mecon_iface_hw.py mqtt <device_id> <host> <port> <cafile> <user> <pwdfile>
                                                     the broker topics, through mosquitto_pub / mosquitto_sub
 
-Prints one line per case (PASS/FAIL with the answer) and exits non-zero on any failure. Opening the serial port
-resets an ESP32 board; the script waits for it to boot. Set MECON_SERIAL_DTR=1 for an nRF52 board.
+Prints one line per case (PASS/FAIL with the answer) and exits non-zero on any failure. Opening the serial port leaves a
+Heltec V3's lines as they are, so it does not reset (serial_lines.py); other ESP32 boards may reset, and the script waits
+for them to boot. Set MECON_SERIAL_DTR=1 for an nRF52 board.
 """
 import json
 import os
@@ -22,6 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import mecon_iface  # noqa: E402
 import mecon_schema  # noqa: E402
+import serial_lines  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "..", "docs", "contract", "fixtures")
 # An nRF52 board stays silent on USB until the host asserts DTR. On an ESP32 board DTR drives reset, so it stays low.
@@ -29,12 +31,9 @@ NRF52_DTR = os.environ.get("MECON_SERIAL_DTR") == "1"
 
 
 def serial_transport(port):
-    import serial
     # A short timeout, and only what is waiting: a read of 4096 bytes with a 50 ms timeout waited out the timeout on every
     # frame, which added about 170 ms to a multi-frame result (201 ms against 30 ms on a T1000-E, 2026-11-08).
-    s = serial.Serial(port, 115200, timeout=0.005)
-    s.dtr = NRF52_DTR
-    s.rts = False
+    s = serial_lines.open_serial(port, 115200, timeout=0.005, dtr=NRF52_DTR)
     buf = bytearray()
 
     def send(payload):
@@ -70,11 +69,7 @@ def serial_transport(port):
 def console_transport(port):
     """A Repeater or Room server console: write bytes, read lines. port may be a device or a pyserial URL, such as
     socket://127.0.0.1:<port> for the simulated console."""
-    import serial
-    s = serial.serial_for_url(port, 115200, timeout=0.05, do_not_open=True)
-    s.dtr = NRF52_DTR
-    s.rts = False
-    s.open()
+    s = serial_lines.open_serial(port, 115200, timeout=0.05, dtr=NRF52_DTR)
     buf = bytearray()
 
     def write(data):
