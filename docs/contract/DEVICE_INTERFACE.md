@@ -2,7 +2,7 @@
 
 One logical device model reached over MQTT, USB and BLE. A Backend talks to the device directly over MQTT, or through a Reader that bridges USB or BLE; the device answers the same requests with the same results either way. Native MeshCore 1.18 Companion frames and the Repeater console stay exactly as they are beside it.
 
-> Version 1.0. Implemented by the Companion over USB, BLE and MQTT, and by the Repeater and Room server over their console and, on the Heltec boards, MQTT (section 7). Where another page of the contract set differs from this one on wire details, this page wins.
+> Version 1.0. Implemented by the Companion over USB, BLE and, on the Heltec boards, MQTT, and by the Repeater and Room server over their console and, on the Heltec boards, MQTT (section 7). Where another page of the contract set differs from this one on wire details, this page wins.
 
 ## Decisions
 
@@ -126,7 +126,7 @@ No fragmentation. On a build with the interface the MQTT client's buffer is 1,60
 
 - Requests are parsed and answered in the main loop in bounded steps; no operation blocks on a network or BLE write. A paged result is produced page by page.
 - Each subscription has a bounded rate, a lifetime after which it ends unless renewed, and a drop counter reported in its events. A slow or vanished consumer costs dropped events, never loop time.
-- Memory: the id cache, 3.4 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
+- Memory: the id cache, 3.6 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
 
 ### 9. Conformance
 
