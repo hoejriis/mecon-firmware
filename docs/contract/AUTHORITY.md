@@ -29,7 +29,7 @@ A broker login, a TLS session, a paired BLE link, a USB cable, a LoRa route and 
 | signed event | `MECON-UPLINK-v1` | the stream name, e.g. `health` |
 | signed result | `MECON-UPLINK-v1` | the literal `result` |
 | node rotation statement | `MECON-NODEROT-v1` | none (section 11) |
-| release manifest (*planned*, [UPDATES](UPDATES.md)) | `MECON-RELEASE-v1` | none |
+| release manifest ([UPDATES](UPDATES.md)) | `MECON-RELEASE-v1` | none |
 | device_id binding | `MECON-DEVID-v1` | none; raw bytes follow (section 3.5) |
 
 - A key a device would trust is checked first: a member's key, a rotation's new DAK, and the DAK of a first provisioning. A key that is not a valid curve point, or whose point has small order, is refused (`bad_authority_set`, or `untrusted_authority_key` for a DAK). A signature against such a key proves nothing.
