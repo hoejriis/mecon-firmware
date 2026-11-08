@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/rf.request.result.json",
+  "title": "Result of rf.request: the request on its way",
+  "description": "LORA_MANAGEMENT.md: the transfer id the reply will carry on the rf stream, and how many LoRa frames the request took.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "xid",
+    "frames"
+  ],
+  "properties": {
+    "xid": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "frames": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/update.offer.result.json",
+  "title": "Result of update.offer: the job it opened",
+  "description": "A pushed image answers next (0) and, only here, its transfer_token; a download answers next without a token; an nRF52 serial DFU answers dfu (UPDATES.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job",
+    "state"
+  ],
+  "properties": {
+    "job": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "state": {
+      "enum": [
+        "accepted",
+        "progress",
+        "applied",
+        "awaiting-confirm",
+        "confirmed",
+        "reverted",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "transfer_token": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "next": {
+      "type": "integer",
+      "const": 0
+    },
+    "dfu": {
+      "const": "serial"
+    }
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/update.status.result.json",
+  "title": "Result of update.status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job",
+    "running",
+    "security_floor",
+    "staged"
+  ],
+  "properties": {
+    "job": {
+      "description": "The open update job, or null.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "job",
+            "state"
+          ],
+          "properties": {
+            "job": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "state": {
+              "enum": [
+                "accepted",
+                "progress",
+                "applied",
+                "awaiting-confirm",
+                "confirmed",
+                "reverted",
+                "failed",
+                "cancelled"
+              ]
+            },
+            "received": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "next": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "version": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      ]
+    },
+    "running": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sha256"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "null on the nRF52, whose bootloader attests by version."
+        }
+      }
+    },
+    "security_floor": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "null when the store cannot be read; then no install passes."
+    },
+    "staged": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sha256",
+          "version"
+        ],
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

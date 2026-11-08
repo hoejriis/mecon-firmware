@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/region.default.result.json",
+  "title": "Result of region.default",
+  "description": "Empty once the default region set or cleared by the cable; a caller who must confirm gets job, job_state and confirm_left_s, or reverted.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "job": {
+      "type": "string"
+    },
+    "job_state": {
+      "enum": [
+        "awaiting-confirm",
+        "failed"
+      ]
+    },
+    "confirm_left_s": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 900
+    },
+    "reverted": {
+      "type": "boolean"
+    }
+  }
+}

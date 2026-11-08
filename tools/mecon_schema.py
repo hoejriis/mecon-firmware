@@ -1,6 +1,6 @@
 """A small JSON Schema checker for the device interface schemas (docs/contract/schema/), covering only the keywords
 they use: type (including null and lists of types), required, properties, additionalProperties (false, or a schema for
-the other keys), minProperties, enum, const, pattern, minLength, maxLength, minimum, maximum, items, maxItems, contains
+the other keys), minProperties, enum, const, pattern, minLength, maxLength, minimum, maximum, items, minItems, maxItems, contains
 and oneOf. Any standard JSON Schema 2020-12 validator accepts the same files; this one keeps the tests free of a
 dependency. Returns a list of problems, empty when the value conforms. A keyword the schemas use and this checker does
 not know fails the check (see KNOWN), so a bound can never sit in a schema untested."""
@@ -11,7 +11,7 @@ import re
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "docs", "contract", "schema")
 TYPES = {"object": dict, "array": list, "string": str, "boolean": bool, "null": type(None)}
 KNOWN = {"type", "required", "properties", "additionalProperties", "minProperties", "enum", "const", "pattern", "minLength",
-         "maxLength", "minimum", "maximum", "items", "maxItems", "contains", "oneOf",
+         "maxLength", "minimum", "maximum", "items", "minItems", "maxItems", "contains", "oneOf",
          "$schema", "$id", "title", "description"}   # the last four annotate and check nothing
 
 
@@ -70,6 +70,8 @@ def check(value, schema, path="$"):
         if "items" in schema:
             for i, v in enumerate(value):
                 errs += check(v, schema["items"], "%s[%d]" % (path, i))
+        if "minItems" in schema and len(value) < schema["minItems"]:
+            errs.append("%s: %d items, fewer than %d" % (path, len(value), schema["minItems"]))
         if "maxItems" in schema and len(value) > schema["maxItems"]:
             errs.append("%s: %d items, more than %d" % (path, len(value), schema["maxItems"]))
         if "contains" in schema and not any(not check(v, schema["contains"]) for v in value):

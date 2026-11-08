@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/deployment.authority_update.result.json",
+  "title": "Result of deployment.authority_update",
+  "description": "AUTHORITY.md section 6.2: the record after the update; duplicate when the same update came again.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "state"
+  ],
+  "properties": {
+    "state": {
+      "enum": [
+        "none",
+        "corrupt",
+        "provisioned"
+      ]
+    },
+    "duplicate": {
+      "const": true,
+      "description": "The same provisioning or update arrived again; nothing changed."
+    },
+    "device_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "node_key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "deployment_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "deployment_name": {
+      "type": "string"
+    },
+    "authority_epoch": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "authority_revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "provision_revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "fallback": {
+      "type": "boolean"
+    },
+    "marks_fallback": {
+      "type": "boolean"
+    },
+    "authority_set": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authority_set_sig": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{86}==$"
+    },
+    "authority_set_len": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "In place of the set when it would not fit in one result."
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance_id",
+          "admitted_revision",
+          "mark"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "admitted_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mark": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "description": "4294967295 while the member is blocked."
+          }
+        }
+      }
+    },
+    "broker_roles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profile",
+          "role"
+        ],
+        "properties": {
+          "profile": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "role": {
+            "enum": [
+              "primary",
+              "secondary",
+              "local"
+            ]
+          }
+        }
+      }
+    },
+    "rotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statement",
+        "sig"
+      ],
+      "properties": {
+        "statement": {
+          "type": "string"
+        },
+        "sig": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

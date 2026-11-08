@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/mgmt.channel.unbind.result.json",
+  "title": "Result of mgmt.channel.unbind",
+  "description": "The binding is gone; removed says whether the slot was erased too (only while it still held the bound key). A change by a caller other than the cable also carries job, job_state and confirm_left_s, or reverted.",
+  "type": "object",
+  "required": [
+    "state",
+    "removed"
+  ],
+  "properties": {
+    "state": {
+      "const": "none"
+    },
+    "removed": {
+      "type": "boolean"
+    },
+    "job": {
+      "type": "string"
+    },
+    "job_state": {
+      "enum": [
+        "awaiting-confirm",
+        "failed"
+      ]
+    },
+    "confirm_left_s": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 900
+    },
+    "reverted": {
+      "type": "boolean"
+    }
+  }
+}
