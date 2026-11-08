@@ -39,24 +39,32 @@ def companion(nodes, name, seed):
     return Dev(nodes("companion_standalone", name, seed=seed, rtc=RTC).start())
 
 
+def shaped(op, r):
+    import mecon_schema
+    assert r["status"] == "ok", r
+    problems = mecon_schema.check(r["result"], mecon_schema.load(op + ".result.json"))
+    assert not problems, (op, problems, r)
+    return r
+
+
 def test_set_get_clear_on_the_native_prefs(nodes):
     d = companion(nodes, "sc", 100)
-    r = d.i.request("scope.default.get")
+    r = shaped("scope.default.get", d.i.request("scope.default.get"))
     assert r["status"] == "ok" and r["result"] == {"name": None, "kind": None}, r
     assert native(d) is None
     caps = d.i.request("hello")["result"]["capabilities"]
     assert {"scope.default.get", "scope.default.set", "scope.default.clear"} <= set(caps), caps
-    r = d.i.request("scope.default.set", {"name": "#city"})
+    r = shaped("scope.default.set", d.i.request("scope.default.set", {"name": "#city"}))
     assert r["status"] == "ok" and r["result"] == {"name": "city", "kind": "hashtag"}, r
     assert native(d) == ("city", hashlib.sha256(b"#city").digest()[:16]), "the key the firmware's own default derives"
     r = d.i.request("scope.default.set", {"name": "$ops", "key": PRIVATE.hex()})
     assert r["status"] == "ok" and r["result"] == {"name": "$ops", "kind": "private"}, r
     assert native(d) == ("$ops", PRIVATE)
-    r = d.i.request("scope.default.get")
+    r = shaped("scope.default.get", d.i.request("scope.default.get"))
     assert r["result"] == {"name": "$ops", "kind": "private"} and PRIVATE.hex() not in str(r), "the key is never read back: %s" % r
     d.reboot()
     assert native(d) == ("$ops", PRIVATE), "saved in the prefs"
-    assert d.i.request("scope.default.clear")["status"] == "ok"
+    shaped("scope.default.clear", d.i.request("scope.default.clear"))
     assert native(d) is None and d.i.request("scope.default.get")["result"]["name"] is None
 
 
