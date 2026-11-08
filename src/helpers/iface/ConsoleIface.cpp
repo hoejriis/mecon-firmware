@@ -46,7 +46,7 @@ const size_t HELLO_PLAIN_BUDGET = 1500;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "advert.send", "device.reboot",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -245,6 +245,19 @@ Status opClockGet(OpContext& c) {
   c.out->key("epoch"); if (t) c.out->unum(t); else c.out->null();
   return ST_OK;
 }
+// clock.set: {"epoch": n}, forward only, through the native `time` line (which refuses a time not after the clock's).
+Status opClockSet(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  int64_t t;
+  if (c.req->args < 0 || !jsonGetInt(*c.doc, jsonFind(*c.doc, c.req->args, "epoch"), 1, 0xFFFFFFFFLL, &t)) return ST_INVALID;
+  char line[24], reply[80] = {0};
+  snprintf(line, sizeof(line), "time %lu", (unsigned long)t);
+  if (!h.run(h.user, line, reply, sizeof(reply))) { c.error = "refused"; return ST_FAILED; }
+  if (strncmp(reply, "OK", 2) != 0) { c.error = strstr(reply, "backwards") ? "backwards" : "refused"; return ST_FAILED; }
+  const uint32_t now = h.clock_s ? h.clock_s(h.user) : 0;
+  c.out->key("epoch"); if (now) c.out->unum(now); else c.out->null();
+  return ST_OK;
+}
 // advert.send: {"flood": true} floods the self advert; without it, zero hop. The native CLI line sends it, so the CLI's
 // gate decides it as this caller too.
 Status opAdvertSend(OpContext& c) {
@@ -303,6 +316,7 @@ const OpEntry OPS[] = {
   {"identity.rotation", opIdentityRotation, PRIV_READ, false},
   {"identity.get", opIdentityGet, PRIV_READ, false},
   {"clock.get", opClockGet, PRIV_READ, false},
+  {"clock.set", opClockSet, PRIV_WRITE, true},
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   // One channel slot, for the management channel (MANAGEMENT_CHANNEL.md section 6); bind, rotate and unbind confirm-or-revert

@@ -1427,6 +1427,14 @@ void MyMesh::setCliCaller(const Cli::Context& ctx, uint8_t caller) {
   _cli_caller = caller;
 }
 
+// CMD_SET_DEVICE_TIME and clock.set: the clock moves forward only (a time earlier than it reads is refused).
+bool MyMesh::setClockForward(uint32_t secs) {
+  if (secs < getRTCClock()->getCurrentTime()) return false;
+  getRTCClock()->setCurrentTime(secs);
+  _clock_set = true;
+  return true;
+}
+
 // The self advert of CMD_SEND_SELF_ADVERT and of advert.send: flooded in the default scope, or zero hop. false when no
 // packet could be allocated.
 bool MyMesh::sendSelfAdvert(bool flood) {
@@ -1732,10 +1740,7 @@ void MyMesh::handleCmdFrame(size_t len) {
   } else if (cmd_frame[0] == CMD_SET_DEVICE_TIME && len >= 5) {
     uint32_t secs;
     memcpy(&secs, &cmd_frame[1], 4);
-    uint32_t curr = getRTCClock()->getCurrentTime();
-    if (secs >= curr) {
-      getRTCClock()->setCurrentTime(secs);
-      _clock_set = true;
+    if (setClockForward(secs)) {
       writeOKFrame();
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);

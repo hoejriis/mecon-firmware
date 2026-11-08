@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/clock.set.result.json",
+  "title": "Result of clock.set: the clock after it",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "epoch"
+  ],
+  "properties": {
+    "epoch": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    }
+  }
+}
