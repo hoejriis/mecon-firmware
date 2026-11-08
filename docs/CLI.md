@@ -164,5 +164,5 @@ The registry and the table are `const` data in flash. Not in the static figure: 
 
 - BLE with a default PIN and the TCP port share one *untrusted* row: the table cannot grant one of them anything without granting the other.
 - A remote `erase` or `get prv.key` on a repeater or room server used to fall through to an unknown-command reply and now gets `ERR: not permitted` and an audit entry. The only behavioural difference from before the engine; no test relied on the old reply.
-- The sensor example reaches the same gate through the common CLI. It had no front door before, so Hardened now applies its remote read-only rule there too. The sensor role is not verified on hardware or in the simulator.
+- The sensor example reaches the same gate through the common CLI. It had no front door before, so Hardened now applies its remote read-only rule there too. From the release after v0.2.1 it also refuses remote admin while its admin password is the stock default or empty, until one is set on the local console (the owner's decision of 2026-11-08); the simulator covers that. The sensor role is not verified on hardware.
 - No rate limit on requests. A flood of refused requests folds into one audit entry but each is answered.
