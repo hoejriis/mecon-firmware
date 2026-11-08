@@ -29,11 +29,12 @@ def listed(d):
     return first, {e["name"]: e for e in regions}
 
 
-def capabilities(d):
+def capabilities(d, args=None):
     """hello's capability list, every page (DEVICE_INTERFACE.md: cursor in, next out)."""
     caps, cursor = [], 0
     for _ in range(8):
-        r = d.i.request("hello", {"cursor": cursor} if cursor else None)
+        a = dict(args or {}, **({"cursor": cursor} if cursor else {}))
+        r = d.i.request("hello", a or None)
         assert r["status"] == "ok", r
         caps += r["result"]["capabilities"]
         cursor = r["result"].get("next")
@@ -182,8 +183,9 @@ def test_an_enrolled_servers_signed_hello_pages_its_capabilities(nodes, kind):
     d = boot(nodes, kind, "rh" + kind[:2], 96)
     plain = capabilities(d)
     assert d.provision()["status"] == "ok"
-    first = d.i.request("hello")
+    big = {"nonce": "n" * 32}   # a nonce adds a second device-id signature: the largest hello there is
+    first = d.i.request("hello", big)
     assert first["status"] == "ok", first
-    signed = capabilities(d)
+    signed = capabilities(d, big)
     assert sorted(signed) == sorted(plain) and len(signed) == len(set(signed)), "every capability once, across the pages"
     assert "hello" in first["result"]["capabilities"], "hello and the streams come first"
