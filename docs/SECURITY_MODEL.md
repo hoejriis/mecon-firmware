@@ -53,13 +53,9 @@ Changing posture requires authenticated management and a controlled reboot.
 
 A full external flash erase/reflash by a person with physical possession is outside the enrolled firmware trust model.
 
-## Fail-secure posture recovery
+## Damaged posture
 
-**Target, not shipped.** This firmware has no distinct fail-secure state: any stored posture value other than Normal is treated as Hardened (STANDALONE_POSTURES), so a damaged byte can only make the device stricter.
-
-Persist posture with integrity protection appropriate to the platform. If it is missing/corrupt and cannot be validated, enter a distinct fail-secure recovery state rather than silently selecting Normal or Hardened.
-
-That state exposes no BLE, no stock inbound Wi-Fi/app management and no stock USB administration. Minimal identification/sanitized diagnostics and still-valid authenticated MECON management paths may remain available. It must be distinguishable from deliberately configured Hardened posture.
+The posture is persisted with the prefs and saved atomically (STANDALONE_POSTURES). A stored value that is not Normal is read as Hardened, so damage can only make the device stricter. There is no separate fail-secure state: the owner's decision of 2026-11-08 removed it from this model, since reading damage as Hardened already fails to the safe side. A device left in Hardened this way recovers as any Hardened device does: a signed `posture.set` or the local unlock when it is enrolled, or a factory reset over the cable.
 
 ## Deployment authority
 
@@ -71,7 +67,7 @@ Normal/Hardened posture is orthogonal to Deployment membership: **Normal → Har
 
 ## Protected continuity storage boundary
 
-**Target, not shipped.** This firmware holds no continuity blob; nothing in `src/` stores or destroys one.
+**Target, not shipped.** This firmware holds no continuity blob; nothing in `src/` stores or destroys one. It is to be built as part of the Deployment-membership work (the owner's decision of 2026-11-08).
 
 Firmware provides a bounded protected storage boundary for Deployment continuity/recovery material.
 
