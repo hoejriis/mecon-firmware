@@ -550,3 +550,20 @@ def test_the_region_tree_is_managed_over_lora_with_confirm(ether, nodes, kind):
     page = m.send(d.node_key, wrap(d.node_key, "region.list", job=3))   # a job id: accepted whether or not it is a plain read
     assert page and page["status"] == "ok", page
     assert [e["name"] for e in page["result"]["regions"]] == ["city"], page
+
+
+def test_a_full_length_region_tree_pages_over_lora(ether, nodes):
+    # Eight 30-byte names do not fit one LoRa reply with the signature; the list pages instead of answering too-large
+    d = target(nodes, ether, "repeater", "rgl")
+    names = ["%s%02d" % ("r" * 28, k) for k in range(8)]
+    for name in names:   # made over the cable before enrolling, so each takes effect at once
+        assert d.i.request("region.put", {"name": name})["status"] == "ok"
+    assert d.provision()["status"] == "ok"
+    m = Radio(nodes, ether, "rgl")
+    got, cursor, job, pages = [], 0, 1, 0
+    while cursor is not None and pages < 8:
+        r = m.send(d.node_key, wrap(d.node_key, "region.list", {"cursor": cursor}, job=job))
+        assert r and r["status"] == "ok", r
+        got += [e["name"] for e in r["result"]["regions"]]
+        cursor, job, pages = r["result"]["next"], job + 1, pages + 1
+    assert got == names and pages >= 2, (pages, got)

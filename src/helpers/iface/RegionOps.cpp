@@ -234,7 +234,11 @@ Status opRegionList(OpContext& c, RegionHost& h) {
   }
   w.key("regions"); w.beginArray();
   int i = (int)cursor;
-  for (unsigned n = 0; i < m.getCount() && n < REGION_PAGE; i++, n++) {
+  // At most REGION_PAGE a page, and fewer when the next would not leave room for the rest of the answer and its
+  // signature, with a margin: over LoRa a whole reply is 1,024 bytes, and the manager's Companion then carries it
+  // JSON-escaped inside an rf event of at most 1,536 bytes, so a LoRa page stays near 600 bytes.
+  const size_t ENTRY_MAX = 110, AFTER = 400;
+  for (unsigned n = 0; i < m.getCount() && n < REGION_PAGE && (n == 0 || w.size() + ENTRY_MAX + AFTER <= w.cap()); i++, n++) {
     w.beginObject(); writeEntry(w, h, *m.getByIdx(i)); w.endObject();
   }
   w.endArray();
