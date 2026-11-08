@@ -187,10 +187,10 @@ Status opIdentityGet(OpContext& c) {
   MeconIface* m = self(c);
   MyMesh* mesh = m->mesh();
   JsonWriter& w = *c.out;
-  char key[2 * PUB_KEY_SIZE + 1];
-  hexOf(key, mesh->self_id.pub_key, PUB_KEY_SIZE);
+  char nk[2 * PUB_KEY_SIZE + 1];
+  hexOf(nk, mesh->self_id.pub_key, PUB_KEY_SIZE);
   w.key("device_id"); w.str(m->deviceIdHex());
-  w.key("node_key"); w.str(key);
+  w.key("node_key"); w.str(nk);
   return writeDeviceIdSig(c, mesh->self_id, m->deviceIdHex());
 }
 // clock.get: wall-clock seconds; null while the clock is not set.

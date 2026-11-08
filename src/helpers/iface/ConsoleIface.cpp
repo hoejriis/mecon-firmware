@@ -231,10 +231,10 @@ Status opIdentityRotation(OpContext& c) { self(c)->writeRotation(*c.out); return
 Status opIdentityGet(OpContext& c) {
   ConsoleIface* m = self(c);
   JsonWriter& w = *c.out;
-  char key[65];
-  hexOf(key, m->host().node_key, 32);
+  char nk[65];
+  hexOf(nk, m->host().node_key, 32);
   w.key("device_id"); w.str(m->deviceIdHex());
-  w.key("node_key"); w.str(key);
+  w.key("node_key"); w.str(nk);
   if (m->host().identity) return writeDeviceIdSig(c, *m->host().identity, m->deviceIdHex());
   return ST_OK;
 }
