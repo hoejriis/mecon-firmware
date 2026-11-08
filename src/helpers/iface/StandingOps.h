@@ -37,6 +37,7 @@ struct Standing {
   uint32_t from_ms = 0, wait_ms = 0;   // since when, and for how long: a period can be longer than a signed difference holds
   uint32_t runs = 0, failed = 0, skipped = 0;
   uint8_t held = 0;                    // passes this run has waited for airtime
+  bool fresh = false;                  // put since the last tick: its period starts at the next tick's time
 };
 
 class StandingService {
