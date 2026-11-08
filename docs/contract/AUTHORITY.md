@@ -226,10 +226,10 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 
 ### 7.1 Plain, state-changing and sensitive operations
 
-- **Plain reads** are an allowlist: `hello`, `status.get`, `config.schema`, `config.get` of keys that are not secret, `deployment.get`, `job.get`, `job.list`, and `sub.start`/`sub.stop` of the streams that are not private. A signed plain read carries no `job_id`. Replaying it elsewhere returns only what that operation returns to anyone allowed to read.
+- **Plain reads** are an allowlist: `hello`, `status.get`, `config.schema`, `config.get` of keys that are not secret, `deployment.get`, `identity.rotation`, `job.get`, `job.list`, and `sub.start`/`sub.stop` of the streams that are not private. A signed plain read carries no `job_id`. Replaying it elsewhere returns only what that operation returns to anyone allowed to read.
 - **Every other operation**, including any the device does not recognise as a plain read, carries a `job_id` and is subject to section 8. A captured request can then run at most once.
 - **Sensitive operations** are those whose reply is itself secret or private:
-  - `identity.key.export` and `ble.pin.get`;
+  - `identity.key.export`, `ble.pin.get`, `deployment.set_unlock` and `identity.rotate`;
   - `sub.start` of a private stream: `screen`, `location`, `logs` and `inventory` (which carries the contact and channel entries on the Companion). It needs the nonce alone: no `job_id`, and one sent is not looked at. The nonce already stops a replay before and after a reboot, so renewing a stream writes no mark to flash. `sub.stop` of a private stream carries a `job_id` and no nonce.
 
   On top of the `job_id` where one is required, each must carry the `channel_nonce` the device issued for the link it arrives on. A device issues a fresh nonce per link, readable with `hello` on that link and replaced when the link drops, and a nonce is used once. A request captured on one link and replayed over another link (the attacker's own USB, BLE or broker session) fails before the reply exists.
@@ -256,7 +256,7 @@ This contract adds one principal to the [CLI privilege table](../CLI.md): **sign
 | BLE paired (own PIN), unsigned | today's table | native messaging and reads; no configuration writes, **no factory reset** | BLE is not started | reads |
 | MQTT, TLS verified, unsigned | today's table | reads (`status.get`, `config.schema`, `deployment.get`); state changes refused `unauthenticated` | the same | reads; else `deployment_record_corrupt` |
 | local unlock (section 10) | not applicable | as signed, for reads and to unlock the posture | the management surface | `deployment.reset` only |
-| LoRa remote admin (native) | today's table | reads only | reads and `reboot` | reads |
+| LoRa remote admin (native) | today's table | reads only | reads only | reads |
 | Ethernet console, logged in | today's table | reads only | off | reads |
 
 Its point is that a transport never becomes authority: once a device belongs to a Deployment, changing it needs a member's signature or someone physically present.
@@ -266,7 +266,7 @@ Its point is that a transport never becomes authority: once a device belongs to 
 - The unsigned cable on an enrolled device in Hardened gets `hello`, the open `deployment.get` and `deployment.authority_update`, the unlock handshake, and on a Companion the native frames `CMD_APP_START` and `CMD_DEVICE_QUERY`. Every other read, native reads and messaging included, is refused (`locked`, or the native not-permitted error) until it holds a local unlock. A reboot and the factory reset stay, for someone physically present.
 - Entering Hardened while a record exists is refused unless the record holds a local unlock secret. A signed `posture.set` lowers the posture. On a device with a record that takes a signature: neither the cable nor a local unlock can lower it from Hardened.
 - BLE loses the native factory reset once a record exists. Otherwise a BLE factory reset followed by a BLE first provisioning would let a paired phone take a device over without touching it.
-- Every path that formats or rebuilds storage keeps the record, or is gated as `deployment.reset` is. That includes the rescue console's `rebuild`, which reformats and saves back identity, settings, contacts and channels: it saves the record back too. A recovery path is never a silent unenrollment.
+- Every path that formats or rebuilds storage keeps the record, or is gated as `deployment.reset` is. That includes the Companion's rescue console `rebuild` (the Repeater and Room server have no rescue console), which reformats and saves back identity, settings, contacts and channels: it saves the record back too. A recovery path is never a silent unenrollment.
 
 ## 10. Local unlock
 
@@ -289,7 +289,7 @@ The unlock grants the reads and posture unlock shown in section 9. It never gran
 | `deployment.reset`, corrupt record | the same | the same | USB cable in Normal; local unlock in Hardened |
 | posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed (`posture.set`); the cable only with no record |
 | `identity.rotate` (new owner) | node key, and what was made with it. Companion: contacts, message queue. Repeater: the client ACL. Room server: the client ACL and its posts | configuration, record, posture, `device_id`, and a Companion's channels | signed and sensitive; refused without a readable record. Every role |
-| rescue `rebuild` | nothing: it reformats and saves everything back, the record included | everything | the cable |
+| Companion rescue `rebuild` | nothing: it reformats and saves everything back, the record included | everything | the cable |
 | factory reset | everything, the record, the provisioned marker and `device_id` included | nothing | the cable only; never remote, never BLE once enrolled |
 
 Rules:
