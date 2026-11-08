@@ -34,7 +34,8 @@ jobs:
       fail-fast: false
       matrix:
         env: [t1000e_repeater, t1000e_room_server, t1000e_companion_radio_ble, t1000e_companion_radio_usb,
-              WioTrackerL1_repeater, WioTrackerL1_room_server, WioTrackerL1_companion_radio_usb]
+              WioTrackerL1_repeater, WioTrackerL1_room_server, WioTrackerL1_companion_radio_usb,
+              WioTrackerL1_companion_radio_ble]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6

@@ -69,7 +69,7 @@ The device UI of a Hardened device shows operational status and sanitized diagno
 
 Posture changes require authenticated management and a controlled reboot.
 
-If persisted posture is invalid, firmware enters fail-secure recovery rather than Normal.
+If the persisted posture is invalid, the firmware reads it as Hardened, never as Normal. There is no separate fail-secure state (the owner's decision of 2026-11-08).
 
 ## Reader USB authority
 

@@ -30,6 +30,7 @@ The device then sends a snapshot every `period_s` until `lifetime_s` runs out, s
 | `logs` | audit log entries | an event per entry, at most 5 per second |
 | `inventory` | contacts and channels on a Companion; counts only on a Repeater or Room server | 3600 s / 300 s |
 | `screen` | a snapshot of the device screen | 60 s / 5 s |
+| `rf` | Companion only: the replies the managed devices send to this Companion's `rf.request`, and their compact reports | an event per reply |
 
 A board without a sensor, GNSS receiver, battery reading or screen does not offer that stream, and `hello` lists only the streams it can produce. Private streams (`location`, inventory entries, `screen`) and `logs` need more than a read permission: `logs`, for example, goes to the cable, to a BLE link paired with your own PIN, or over MQTT to a subscriber whose request a Deployment manager signed. A broker login by itself never gets it. The [telemetry catalogue](contract/TELEMETRY.md) gives every field and the access rule for each stream.
 
