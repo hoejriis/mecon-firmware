@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/deployment.unlock_challenge.result.json",
+  "title": "Result of deployment.unlock_challenge",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "challenge",
+    "expires_in_s"
+  ],
+  "properties": {
+    "challenge": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "expires_in_s": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

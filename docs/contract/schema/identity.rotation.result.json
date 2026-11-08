@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/identity.rotation.result.json",
+  "title": "Result of identity.rotation",
+  "description": "The old key's signed statement of the last rotation, or an empty object when there has been none (AUTHORITY.md section 11).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statement",
+        "sig"
+      ],
+      "properties": {
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{86}==$"
+        }
+      }
+    }
+  }
+}

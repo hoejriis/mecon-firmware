@@ -173,7 +173,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `scope.default.get` | the default flood scope's name and kind, never its key | frame 64, prefs | read | no | C | USB BLE MQTT |
 | `scope.default.set`, `scope.default.clear` | set or clear it; saved in the prefs | frame 63, prefs | write; confirm for all but the unsigned cable | yes | C | USB BLE MQTT |
 | `job.cancel` | cancel, or revert if applied | | the job's classes | yes | C R S | all |
-| `device.reboot` | reboot | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | all |
+| `device.reboot` | reboot, about 1.5 s after the answer; an unsigned local caller (cable, paired BLE) keeps it on an enrolled device, an unsigned remote one does not | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope |
 | `contact.list`, `contact.get` | contact table (name, type, protection flag, last advert, hops, position; `list` paged by up to 6, fewer when a page would not fit); the shared secret and the path bytes never | native contact table | private | no | C | all |
 | `contact.put`, `contact.remove` | add, update, remove; a put names no flags, so it never grants telemetry or the remote CLI, and a full table behaves as for the app | `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` | write | yes | C | all |
@@ -188,9 +188,10 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `mgmt.channel.bind`, `mgmt.channel.rotate`, `mgmt.channel.unbind` | bind a slot, rotate its key, end the binding; confirm-or-revert for anyone but the cable | `CMD_SET_CHANNEL` for a rotation | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `acl.list`, `acl.put` | remote-admin ACL | CLI `setperm`; REQ `GET_ACCESS_LIST` | read / write | `acl.put` | R S | Con, MQTT where built, RF |
 | `password.set` | admin or guest password (write-only) | CLI `password`, `set guest.password` | write; commit-or-revert over RF | yes | R S | Con, RF |
-| `clock.get`, `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | read / write | `set` | C R S | all |
-| `advert.send` | self advert (zero-hop or flood) | `CMD_SEND_SELF_ADVERT`, CLI `advert` | write | yes | C R S | all |
-| `identity.get` | node key, device id | | read | no | C R S | all |
+| `clock.get` | `{"epoch": n}`, wall-clock seconds; `null` while the clock is not set | `CMD_GET_DEVICE_TIME` | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
+| `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | write | yes | C R S | all |
+| `advert.send` | self advert: `{"flood": true}` floods it in the default scope, otherwise zero hop; the result names which | `CMD_SEND_SELF_ADVERT`, CLI `advert`, `advert.zerohop` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
+| `identity.get` | `device_id`, `node_key` and `device_id_sig`, as `hello` gives them | | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `identity.rotate` | new node key on the device | | per [AUTHORITY](AUTHORITY.md) | yes | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `identity.rotation` | the old key's signed statement of the rotation | | read | no | C R S | all |
 | `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per [AUTHORITY](AUTHORITY.md) |
@@ -205,11 +206,15 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
+**Not built yet.** No build registers `device.reset`, `clock.set`, `identity.key.export`, `acl.list`, `acl.put`, `password.set`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `setperm`, `password`, `set guest.password`, `get prv.key`, the frames `CMD_SET_DEVICE_TIME` and `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
+
+`contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
+
 **Keys `config.*` reaches.**
 - Companion: 19 key patterns, 96 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|transport|path|site|user|pwd|priority`. The 22 password and user keys are write-only.
 - Repeater and Room server: 12 keys: `name`, `tx`, `radio`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`. The Heltec builds also have the Wi-Fi and broker keys above; `connectivity.mode` stays on the Companion, because a server has no BLE to choose between.
 
-Each of the following stands for its existing CLI line:
+Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in `src/helpers/iface/IfaceConfig.cpp`) has them, so each is reached by its CLI line only:
 - **Companion:** `mqtt.profile.N.anchor` (with the CA lines as one operation), `tz.offset`, and the remaining radio preferences (`af`, `rxdelay`, `txdelay`, `direct.txdelay`, `int.thresh`, `cad`, `radio.rxgain`, `agc.reset.interval`, `path.hash.mode`, `multi.acks`, `dutycycle`).
 - **Repeater and Room server:** the same radio preferences, plus `flood.max.advert`, `flood.max.unscoped` and `guest.password` (write-only).
 - **Stays a separate posture-class operation:** `mqtt.profile.N.manage`, which is set locally, never remotely.
@@ -233,7 +238,7 @@ Each of the following stands for its existing CLI line:
 | 11 | `CMD_SET_RADIO_PARAMS` | write | refused | `config.apply radio` |
 | 12 | `CMD_SET_RADIO_TX_POWER` | write | refused | `config.apply tx` |
 | 13 | `CMD_RESET_PATH` | messaging (contact handling) | served | native |
-| 14 | `CMD_SET_ADVERT_LATLON` | write | refused | `config.apply` (lat/lon keys) |
+| 14 | `CMD_SET_ADVERT_LATLON` | write | refused | none yet: the Companion has no `lat`/`lon` key in `config.*` (the Repeater and Room server have) |
 | 15 | `CMD_REMOVE_CONTACT` | messaging (contact handling) | served | `contact.remove` |
 | 16 | `CMD_SHARE_CONTACT` | messaging | served | native |
 | 17 | `CMD_EXPORT_CONTACT` | read | served | `contact.get` |

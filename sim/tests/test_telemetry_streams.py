@@ -600,3 +600,25 @@ def test_a_repeater_with_a_display_streams_it_over_the_console_and_one_without_h
     assert "stream.screen" not in i2.request("hello")["result"]["capabilities"]
     r = i2.request("sub.start", {"stream": "screen"})
     assert r["status"] == "invalid" and r["error"] == "unknown-stream", r
+
+
+@pytest.mark.parametrize("make", [companion, repeater])
+def test_first_snapshots_of_streams_started_together_take_turns(nodes, make):
+    # A manager that starts every stream at once gets every first snapshot, but one at a time, not as one burst (#100)
+    n, c, i = make(nodes, "turns" + make.__name__[:3])
+    streams = ["health", "radio", "power", "runtime"]
+    for st in streams:
+        assert i.request("sub.start", {"stream": st, "period_s": 3600, "lifetime_s": 60})["status"] == "ok"
+    got, end = {}, time.time() + 15
+    for m in list(i.events):   # a first snapshot that came while the requests were still going
+        if m.get("ev") in streams and m["ev"] not in got and not m["data"].get("boot"):
+            got[m["ev"]] = time.time()
+    while time.time() < end and len(got) < len(streams):
+        m = i.read_message(0.2)
+        if m and m.get("ev") in streams and m["ev"] not in got:
+            got[m["ev"]] = time.time()
+    assert set(got) == set(streams), got
+    at = sorted(got.values())
+    gaps = [b - a for a, b in zip(at, at[1:])]
+    assert min(gaps) >= 0.3, ("one burst, not turns", gaps)
+    assert at[-1] - at[0] < 5.0, ("the turns are short", gaps)

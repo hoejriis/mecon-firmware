@@ -221,3 +221,16 @@ def test_an_apply_saves_the_prefs_once_on_a_server(nodes, tmp_path):
     n.start()
     cli, i = client(n)
     assert i.request("config.get", {"keys": ["name"]})["result"]["values"] == {"name": "Rep"}
+
+
+@pytest.mark.parametrize("kind,build", [("repeater", "plain"), ("room_server", "plain"), ("repeater_wifi", "wifi"),
+                                        ("room_server_wifi", "wifi")])
+def test_the_recorded_server_schema_is_what_the_firmware_answers(nodes, kind, build):
+    with open(os.path.join(FIXTURES, "config_schema_server.recorded.json")) as f:
+        rec = json.load(f)["builds"][build]
+    n, (c, i) = start(nodes, kind, "rs" + kind[:2] + kind[-3:])
+    pages = rec["pages"]
+    for page in pages:
+        assert i.request("config.schema", {"cursor": page["cursor"]})["result"] == page["result"], (
+            "config.schema drifted from docs/contract/fixtures/config_schema_server.recorded.json; re-record it with the change")
+    assert pages[-1]["result"].get("next") is None, "the recording ends where the firmware's pages end"

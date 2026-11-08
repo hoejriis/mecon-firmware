@@ -58,7 +58,21 @@ struct StreamClock {
   uint32_t next[STREAM_COUNT] = {0};
   // Lapses expired subscriptions in each set, and returns the bit mask of streams due now (advancing their clocks).
   uint32_t due(SubSet* const* sets, int nsets, uint32_t now);
-  void scheduleNow(int stream, uint32_t now) { if (stream >= 0) next[stream] = now; }
+  // A new subscriber's first snapshot goes at once, unless another stream's first snapshot is due within FIRST_GAP_MS:
+  // then it takes the next turn. A manager that starts every stream together (the Backend does) would otherwise queue
+  // every first snapshot at once; on a Heltec V3 over wss that burst set the session's heap low-water (#100). Periodic
+  // snapshots keep the spacing their first one was given.
+  static const uint32_t FIRST_GAP_MS = 500;
+  uint32_t first_at = 0;
+  bool first_any = false;
+  void scheduleNow(int stream, uint32_t now) {
+    if (stream < 0) return;
+    uint32_t at = now;
+    if (first_any && (int32_t)(first_at + FIRST_GAP_MS - now) > 0) at = first_at + FIRST_GAP_MS;
+    next[stream] = at;
+    first_at = at;
+    first_any = true;
+  }
 };
 
 // A rate limit for an event stream: at most RATE events a second (a burst of RATE), then dropped and counted; the next

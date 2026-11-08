@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/region.list.result.json",
+  "title": "Result of region.list: one page of the region tree",
+  "description": "OPERATIONS.md, Region scopes. The first page (cursor 0) also carries the table's capacity, the wildcard's flood policy and the home and default regions; next is null on the last page.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "regions",
+    "next"
+  ],
+  "properties": {
+    "capacity": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "wildcard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "flood"
+      ],
+      "properties": {
+        "flood": {
+          "enum": [
+            "allow",
+            "deny"
+          ]
+        }
+      }
+    },
+    "home": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 30
+    },
+    "default": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 30
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "parent",
+          "flood",
+          "kind"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "parent": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "The parent region's name; * for the wildcard."
+          },
+          "flood": {
+            "enum": [
+              "allow",
+              "deny"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "hashtag",
+              "private"
+            ]
+          }
+        }
+      }
+    },
+    "next": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    }
+  }
+}

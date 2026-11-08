@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/job.ack.result.json",
+  "title": "Result of job.ack",
+  "type": "object",
+  "required": [
+    "acked"
+  ],
+  "properties": {
+    "acked": {
+      "type": "boolean",
+      "const": true
+    }
+  },
+  "additionalProperties": false
+}

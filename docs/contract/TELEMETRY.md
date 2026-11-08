@@ -39,6 +39,7 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 | `heap.free`, `heap.largest` | bytes | `memStats()` | all | internal RAM; `heap` is `null` where the platform has no heap API. On RP2040 and nRF52 `largest` equals `free` (no largest-block API) |
 | `heap.min_free` | bytes | `memStats()` | ESP32 | lowest since boot; `null` where untracked |
 | `heap.loop_stack_free` | bytes | `memStats()` | ESP32, nRF52 | least free stack of the loop task since it started (on nRF52 the task's FreeRTOS high-water mark); `null` elsewhere |
+| `heap.worker_stack_free` | bytes | `NrfWorker::workerStackFree()` | nRF52, every role | least free stack of the interface worker task, which runs every request on nRF52, since it started (FreeRTOS high-water mark); absent elsewhere, and while no worker exists |
 | `heap.psram_free` | bytes | `memStats()` | boards with PSRAM | absent without |
 | `battery_mv` | mV | `getBattMilliVolts()` | all | `null` when the board cannot measure it |
 | `contacts.count`, `.capacity` | entries | contact store | Companion | absent on the server roles |
@@ -48,7 +49,7 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 |---|---|---|---|
 | `reset_reason` | text | `getResetReason()` | ESP32 and nRF52; `null` elsewhere. Includes panic, watchdog and brownout on ESP32 |
 | `abnormal_reset` | bool | derived from `reset_reason` | true for panic, watchdog, brownout, lockup; `null` where the reason is unknown |
-| `shutdown_reason` | text | nRF52 GPREGRET2 | nRF52 only; not emitted yet |
+| `shutdown_reason` | text | nRF52 GPREGRET2 | not emitted. The register is kept only where a build enables nRF52 power management (`NRF52_POWER_MANAGEMENT`), and no released board does: neither the T1000-E nor the Wio Tracker L1. Correction 2026-11-08: this row said "not emitted yet", as if it were planned |
 | `boot_ms.store`, `.mesh`, `.setup` | ms | `BootTimes` | `null` for an unmarked stage |
 | `boot` | bool | the boot event | `true`, on the boot event only (below) |
 | `firmware`, `upstream`, `hardware`, `role` | text | as `hello` | the boot event only |
@@ -56,7 +57,7 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 | `heap_low` | bool | `HeapFloor` | Companion, Repeater and Room server; the low-memory state (on the Companion, the one its display shows). Absent where the build does not check the floor: it is enforced on ESP32 only, because nRF52 has no largest-block figure |
 | `stale_logins` | count | the login path | Repeater and Room server; remote logins refused since boot because the timestamp was not newer than that client's last accepted one. Absent on the Companion, which takes no remote login |
 | `stale_login_last` | hex | the login path | Repeater and Room server; the 4-byte key prefix of the last client refused that way, `null` before the first. A client locked out by a clock that once ran ahead shows here by name, and a restart clears both along with the lockout |
-| `gnss.powered` | bool | board (`getGnssHealth`) | T1000-E; the whole `gnss` object is absent on a board without a GNSS receiver |
+| `gnss.powered` | bool | board (`getGnssHealth`) | T1000-E only. The Heltec V4 builds with a GPS, but its board has no `getGnssHealth` yet, so it reports no `gnss` object. The whole object is absent on a board without a GNSS receiver |
 | `gnss.fix` | bool | GNSS receiver | `null` while the receiver is powered off |
 | `gnss.sats` | count | GNSS receiver | satellites used in the last fix; 0 while powered off |
 | `gnss.fix_age_s` | s | GNSS receiver | since the last GGA/RMC sentence with a valid fix; `null` when there has been none this boot. It keeps counting after the receiver is powered off |

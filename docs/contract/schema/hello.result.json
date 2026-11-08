@@ -8,7 +8,7 @@
     "interface": {"type": "string", "pattern": "^1\\.[0-9]+$"},
     "device_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
     "node_key": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "The native MeshCore public key."},
-    "role": {"type": "string", "enum": ["companion", "repeater", "room", "sensor"]},
+    "role": {"type": "string", "enum": ["companion", "repeater", "room"], "description": "The sensor role carries no device interface (OPERATIONS.md, the recorded exception of 2026-11-04), so it never answers hello."},
     "hardware": {"type": "string"},
     "firmware": {"type": "string", "description": "mecon-firmware version, for example v1.18.0-mecon.0.1.3."},
     "variant": {"type": "string", "description": "The build this image is, as a release's update set names it, for example Heltec_v3_companion_radio_standalone. Absent on v0.2.0 and earlier."},

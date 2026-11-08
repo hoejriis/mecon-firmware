@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/identity.get.result.json",
+  "title": "Result of identity.get",
+  "description": "device_id, node_key and the node key's signature binding them, as hello gives them (AUTHORITY.md section 3.5); with a nonce, also its own signature.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "device_id",
+    "node_key",
+    "device_id_sig"
+  ],
+  "properties": {
+    "device_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "node_key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "device_id_sig": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nonce": {
+      "type": "string"
+    },
+    "device_id_sig_nonce": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

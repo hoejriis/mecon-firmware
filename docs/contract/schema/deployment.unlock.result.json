@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/deployment.unlock.result.json",
+  "title": "Result of deployment.unlock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "unlocked",
+    "expires_in_s"
+  ],
+  "properties": {
+    "unlocked": {
+      "const": true
+    },
+    "expires_in_s": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}
