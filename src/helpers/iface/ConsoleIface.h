@@ -23,6 +23,7 @@
 #include "StandingOps.h"
 #include "Streams.h"
 #include "MgmtChannel.h"
+#include "RegionOps.h"
 #include "MgmtSlot.h"
 
 namespace Iface {
@@ -75,6 +76,13 @@ public:
     // profile_exists: an MQTT profile is configured (the Deployment's broker roles). Null: no such settings.
     bool (*read_secret)(void* user, const KeyDef& k, unsigned idx, char* out, size_t cap);
     bool (*profile_exists)(void* user, uint8_t index);
+    // The native region tree (OPERATIONS.md, "Region scopes"): the map, its atomic save, the hook that updates the live default
+    // scope, and the file for a pending change's copy of the map. Null map: the role has none, and the region operations are
+    // neither listed nor answered.
+    RegionMap* regions;
+    bool (*regions_save)(void* user);
+    void (*regions_default_changed)(void* user, const RegionEntry* r);
+    SnapStore* region_snap;
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |
@@ -134,6 +142,8 @@ public:
   ConfigHost configHost();
   ChannelHost channelHost() { return _mgmt_slot.host(); }
   MgmtHost mgmtHost();
+  RegionHost regionHost();
+  bool hasRegions() const { return _host.regions != nullptr; }
   SubSet& subs() { return _on_mqtt ? _mqtt_subs : _subs; }
   uint32_t produced() const { return streamsProduced(); }
   void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read

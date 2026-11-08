@@ -42,6 +42,9 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
                                     "update.offer", "update.chunk"};
+// Listed only on a role with a region tree.
+const char* const REGION_CAPABILITIES[] = {"region.list", "region.put", "region.remove", "region.flood", "region.home",
+                                           "region.default"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -67,6 +70,8 @@ Status opHello(OpContext& c) {
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
   w.key("capabilities"); w.beginArray();
   for (const char* cap : CAPABILITIES) if (!m->onLora() || loraOpAllowed(cap)) w.str(cap);
+  if (m->hasRegions())
+    for (const char* rcap : REGION_CAPABILITIES) if (loraOpAllowed(rcap) || !m->onLora()) w.str(rcap);
   if (!m->onLora()) writeStreamCapabilities(w, m->produced());   // no stream goes over LoRa
   w.endArray();
   return ST_OK;
@@ -174,6 +179,17 @@ Status opChanRemove(OpContext& c) {
   MgmtHost h = self(c)->mgmtHost();
   return mgmtGuardChannel(c, h, opChannelRemove, "channel.remove");
 }
+Status withRegions(OpContext& c, Status (*op)(OpContext&, RegionHost&)) {
+  RegionHost h = self(c)->regionHost();
+  if (!h.map) return ST_UNKNOWN_OP;   // the role has no region tree
+  return op(c, h);
+}
+Status opRegListW(OpContext& c) { return withRegions(c, opRegionList); }
+Status opRegPutW(OpContext& c) { return withRegions(c, opRegionPut); }
+Status opRegRemoveW(OpContext& c) { return withRegions(c, opRegionRemove); }
+Status opRegFloodW(OpContext& c) { return withRegions(c, opRegionFlood); }
+Status opRegHomeW(OpContext& c) { return withRegions(c, opRegionHome); }
+Status opRegDefaultW(OpContext& c) { return withRegions(c, opRegionDefault); }
 Status opMgmtGetW(OpContext& c) { return withMgmt(c, opMgmtGet); }
 Status opMgmtBindW(OpContext& c) { return withMgmt(c, opMgmtBind); }
 Status opMgmtRotateW(OpContext& c) { return withMgmt(c, opMgmtRotate); }
@@ -228,6 +244,13 @@ const OpEntry OPS[] = {
   {"mgmt.channel.bind", opMgmtBindW, PRIV_WRITE, true},
   {"mgmt.channel.rotate", opMgmtRotateW, PRIV_WRITE, true},
   {"mgmt.channel.unbind", opMgmtUnbindW, PRIV_WRITE, true},
+  // The native region tree; every change confirm-or-revert for anyone but the cable (OPERATIONS.md, "Region scopes").
+  {"region.list", opRegListW, PRIV_READ, false},
+  {"region.put", opRegPutW, PRIV_WRITE, true},
+  {"region.remove", opRegRemoveW, PRIV_WRITE, true},
+  {"region.flood", opRegFloodW, PRIV_WRITE, true},
+  {"region.home", opRegHomeW, PRIV_WRITE, true},
+  {"region.default", opRegDefaultW, PRIV_WRITE, true},
   // As on the Companion: ack is of the read class, cancel and confirm write; the three keep their result.
   {"job.get", opJobGet, PRIV_READ, false},
   {"job.list", opJobList, PRIV_READ, false},
@@ -265,6 +288,7 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _updates.bootReconcile();   // an installed image attests, or the bootloader rolled it back
   configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
   mgmtSnapBoot(mgmtHost());       // likewise the management channel's: it holds an old key
+  if (hasRegions()) { RegionHost rh = regionHost(); regionSnapBoot(rh); }   // and the region tree's copy
   if (_host.dep_store) {
     DeployAuth::Env env;
     env.store = _host.dep_store;
@@ -295,6 +319,11 @@ bool ConsoleIface::authProfileExists(void* user, uint8_t index) {
 bool ConsoleIface::confirmReadSecret(void* user, const KeyDef& k, unsigned idx, char* out, size_t cap) {
   const ConsoleIface* s = static_cast<ConsoleIface*>(user);
   return s->_host.read_secret(s->_host.user, k, idx, out, cap);
+}
+
+RegionHost ConsoleIface::regionHost() {
+  return RegionHost{_host.regions, _host.regions_save, _host.regions_default_changed, _host.user, _host.region_snap, &_jobs,
+                    confirmCable, confirmRecordCaller, confirmJobId, (uint8_t)(1u << Cli::C_WRITE), this};
 }
 
 MgmtHost ConsoleIface::mgmtHost() {
@@ -507,6 +536,12 @@ bool ConsoleIface::jobRevert(void* user, Job& j) {
     s->_jobs.table()->setState(&j, JOB_REVERTED);
     return true;
   }
+  if (regionOwnsJob(j) && s->hasRegions()) {
+    RegionHost rh = s->regionHost();
+    if (!regionRevert(rh, j)) return false;
+    s->_jobs.table()->setState(&j, JOB_REVERTED);
+    return true;
+  }
   if (strcmp(j.op, "config.apply") != 0) return false;
   bool reboot = false;
   if (!configRevert(s->configHost(), j, &reboot)) return false;
@@ -520,6 +555,11 @@ bool ConsoleIface::jobConfirm(void* user, Job& j) {
   if (Upd::UpdateService::owns(j)) return static_cast<ConsoleIface*>(user)->_updates.jobConfirm(j);
   if (mgmtOwnsJob(j)) {
     mgmtConfirmed(static_cast<ConsoleIface*>(user)->mgmtHost());
+    return true;
+  }
+  if (regionOwnsJob(j) && static_cast<ConsoleIface*>(user)->hasRegions()) {
+    RegionHost rh = static_cast<ConsoleIface*>(user)->regionHost();
+    regionConfirmed(rh);
     return true;
   }
   if (strcmp(j.op, "config.apply") != 0) return false;

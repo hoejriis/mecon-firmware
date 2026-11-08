@@ -249,6 +249,7 @@ public:
   void formatRadioStatsReply(char *reply) override;
   void formatPacketStatsReply(char *reply) override;
   void startRegionsLoad() override;
+  RegionMap& regions() { return region_map; }   // the device interface's region operations (OPERATIONS.md)
   bool saveRegions() override;
   void onDefaultRegionChanged(const RegionEntry* r) override;
 

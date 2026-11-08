@@ -168,6 +168,8 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `job.get`, `job.list` | job state, owed results | | read | no | C R S | all |
 | `job.ack` | release an owed result | | read; not a plain read once enrolled | yes | C R S | all |
 | `job.confirm` | confirm a tentative change | | the job's classes | yes | C R S | all |
+| `region.list` | the region tree, paged; the first page adds the wildcard's flood, `home` and `default` | `RegionMap` | read | no | R S | Con, MQTT where built |
+| `region.put`, `region.remove`, `region.flood`, `region.home`, `region.default` | change the tree; each is saved at once | `RegionMap`, `/regions2` | write; confirm for all but the unsigned cable | yes | R S | Con, MQTT where built |
 | `job.cancel` | cancel, or revert if applied | | the job's classes | yes | C R S | all |
 | `device.reboot` | reboot | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | all |
 | `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope |
@@ -315,6 +317,26 @@ A standing instruction runs only what it names: a compact report to a named dest
 - **Who.** It carries the member who set it. When that member is no longer in the authority set, or the Deployment is gone, it is removed the next time it comes due, unsent. One set by an unsigned caller on a standalone device has no member and stays until removed.
 - **Durable by default.** It lasts across boots in a file. A subscription stays short-lived and never becomes one of these.
 - **Failure.** A report that cannot go counts in `failed`, and the schedule carries on.
+
+### Region scopes
+
+A Repeater's and a Room server's native region tree, the one the console's `region` commands edit (`RegionMap`, saved in `/regions2`). A region is a flood scope: `$name` is a private one with its own transport keys, any other name a hashtag one keyed from its name. The wildcard `*` is the root and stands for unscoped floods.
+
+- **`region.list {"cursor"?}`** gives `{"regions":[{"name","parent","flood":"allow"|"deny","kind":"hashtag"|"private"}...],"next"}`, 8 to a page. `parent` is `"*"` for a child of the root, and `next` is `null` after the last page. The first page (cursor 0) also gives `"capacity"`, `"wildcard":{"flood"}`, `"home"` and `"default"` (a name or `null`). No key material appears in it.
+- **`region.put {"name","parent"?,"flood"?}`** adds a region, or moves an existing one. `parent` defaults to `"*"`, `flood` to `"allow"`, as the console's `region put` does. The result is the entry.
+- **`region.remove {"name"}`**, **`region.flood {"name","flood"}`** (`name` may be `"*"`), **`region.home {"name"}`** and **`region.default {"name"}`** (a name, or `null` for none). `region.default` makes its region allow floods, as the console's `region default` does.
+
+**Rules the operations add to the console's.** The console keeps stock's behaviour.
+- Exact names only, with an optional leading `#`, where the console matches a prefix and takes the last.
+- At most 30 bytes, in the native character set. Longer is `invalid` `name-too-long`, where the console truncates. Other characters are `bad-char`.
+- A parent must exist (`failed` `not-found`), and a move must not close a loop (`invalid` `cycle`).
+- A region with children is not removed (`busy` `not-empty`), nor the home or the default (`busy` `referenced`). The console leaves the default pointing at nothing.
+- 32 regions besides the wildcard; one more is `busy` `full`.
+- Every change saves the tree at once, atomically, as the console's `region default` does, so it survives a reboot. It also saves any unsaved console edits made before it.
+
+**Confirmation.** A change can cut a remote caller's path: the default scope carries the server's adverts and its unsolicited replies, and a flood flag decides what it forwards. So for every caller but the unsigned cable, each change needs `"confirm":{"within_s":N}` (otherwise `invalid` `confirm-required`) and runs as a job (section 3.4). A copy of the whole tree is written to `/region_snap` before the change. Confirmed, the copy goes; not confirmed in time, or across a second boot, the tree is put back from it and saved. An unsigned caller on an enrolled device changes nothing.
+
+**Not yet on these operations:** LoRa point to point (they are not in its allowlist yet), the console's `region def` and `region load` (batch editors over the same tree, which `region.put` covers), and the Companion's default scope.
 
 ### 5.4 LoRa remote administration (native)
 
