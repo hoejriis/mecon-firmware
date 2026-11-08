@@ -277,8 +277,17 @@ def test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead
     # result: it answered busy too-large-to-sign. The list is paged, as the contract says, only when it must be.
     from sim.tests.test_deployment_authority import boot
     d = boot(nodes, "hp")
-    full = d.i.request("hello")["result"]["capabilities"]
-    assert "next" not in d.i.request("hello")["result"], "a hello that fits is one page"
+    # Standalone and unsigned it may page too, now that the Companion offers more than 1,500 bytes of names; the pages
+    # join up, and the last one has no next.
+    page = d.i.request("hello")["result"]
+    full = list(page["capabilities"])
+    for _ in range(5):
+        if "next" not in page:
+            break
+        assert page["next"] == len(full), page
+        page = d.i.request("hello", {"cursor": page["next"]})["result"]
+        full += page["capabilities"]
+    assert "next" not in page and len(set(full)) == len(full), full
     d.provision()
     plain = d.i.request("hello")["result"]
     listed = list(plain["capabilities"])
