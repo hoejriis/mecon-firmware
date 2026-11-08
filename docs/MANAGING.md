@@ -99,4 +99,23 @@ On a Companion, a manager can do what the stock app does, and the two share the 
 
 The device keeps a few of these in RAM and a reboot loses them, so this is not delivery or history. Bounds and what each field proves are in the [messages contract](contract/OPERATIONS.md#6-messages).
 
-A manager can also ask for an allowlisted report now or every few hours, which the device runs while the manager is away. It has a bounded interval and airtime budget, and does not catch up without limit after a reboot.
+## Standing instructions
+
+A manager can ask the device for a [compact report](contract/TELEMETRY.md) over LoRa now (`report.now`), or on a schedule that the device keeps while the manager is away (`standing.put`). A standing instruction sends a report and does nothing else.
+
+- **What a manager sets:**
+  - an `id`;
+  - the report's `fields`;
+  - a period, `every_s`, from 900 s to 30 days;
+  - a destination, either `to` (a node key) or `slot` (a channel). `location` never goes on a channel, where every member could read it.
+  - Optionally, `runs`, to stop after that many tries;
+  - optionally, `durable: false`, to end it at the next boot.
+  A device keeps at most 4, and a put with an existing `id` replaces that instruction.
+- **When reports come.** The first comes one period after the put. Each run adds a jitter of up to a tenth of the period, at most 5 minutes. After a boot, the next run comes within that jitter. A run missed while the device was off is not made up.
+- **Counting runs.** `runs` counts tries, sent or not. What is left of it is kept across a boot, so a device that reboots does not get its runs back. `standing.list` shows it as `runs_left`.
+- **Airtime.** A report goes through the duty window. With no room, it looks again once a minute for 5 minutes. Then it counts as `skipped`, which does not use up a run, and waits for the next period.
+- **Counters and removal.** `standing.list` counts `runs`, `failed` and `skipped` since the last boot. `standing.remove` ends an instruction. One set by a member who leaves the authority set is removed the next time it comes due.
+
+**In v0.2.0 and v0.2.1,** a new instruction sends its first report at once, and a count set with `runs` starts again at each boot. Both are fixed on `main` for the next release: see [availability](AVAILABILITY.md).
+
+The full rules are in the [operations contract](contract/OPERATIONS.md#standing-instructions).

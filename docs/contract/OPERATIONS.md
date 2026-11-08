@@ -311,7 +311,7 @@ Notes the matrix depends on, as the code stands:
 
 A standing instruction runs only what it names: a compact report to a named destination. There is no other action, script or rule.
 
-- **Time.** It runs on the device's uptime, so a clock change does nothing to it. A tick missed while the device was off is gone: after a boot the first run comes within the jitter, and there is no catch-up burst. One runs on each pass, so two due together do not go out at once.
+- **Time.** It runs on the device's uptime, so a clock change does nothing to it. After a put, the first run comes one period later, with the jitter. A tick missed while the device was off is gone: after a boot the first run comes within the jitter, and there is no catch-up burst. One runs on each pass, so two due together do not go out at once.
 - **Who.** It carries the member who set it. When that member is no longer in the authority set, or the Deployment is gone, it is removed the next time it comes due, unsent. One set by an unsigned caller on a standalone device has no member and stays until removed.
 - **Durable by default.** It lasts across boots in a file. A subscription stays short-lived and never becomes one of these.
 - **Failure.** A report that cannot go counts in `failed`, and the schedule carries on.
