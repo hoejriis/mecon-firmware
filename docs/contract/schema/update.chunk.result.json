@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/update.chunk.result.json",
+  "title": "Result of update.chunk: where the next chunk starts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "next"
+  ],
+  "properties": {
+    "next": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

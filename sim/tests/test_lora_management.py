@@ -12,6 +12,7 @@ from sim.harness import CompanionClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
+import mecon_schema  # noqa: E402
 from test_deployment_authority import SECRET, Dev, RTC, apply_name, wrap  # noqa: E402
 from test_deployment_authority_server import Srv  # noqa: E402
 from test_provenance import verifies  # noqa: E402
@@ -46,11 +47,15 @@ class Radio:
             args["slot"] = slot
         r = self.i.request("rf.request", args)
         assert r["status"] == "ok", r
+        assert not mecon_schema.check(r["result"], mecon_schema.load("rf.request.result.json")), r
         xid = r["result"]["xid"]
         sender = to if slot is None else to[:16]
         end = time.time() + timeout
         while time.time() < end:
             for e in list(self.i.events):   # a reply may have come while the request above was being answered
+                if e.get("ev") == "rf":
+                    problems = mecon_schema.check(e["data"], mecon_schema.load("event.rf.json"))
+                    assert not problems, (problems, e)
                 if e.get("ev") == "rf" and e["data"]["from"] == sender and e["data"].get("xid") == xid:
                     self.i.events.remove(e)
                     return Reply(e["data"]["message"])
@@ -276,6 +281,7 @@ def next_report(m, timeout=30.0):
         for e in list(m.i.events):
             if e.get("ev") == "rf" and "report" in e["data"]:
                 m.i.events.remove(e)
+                assert not mecon_schema.check(e["data"], mecon_schema.load("event.rf.json")), e
                 return e["data"]
         msg = m.i.read_message(0.5)
         if msg and "ev" in msg:

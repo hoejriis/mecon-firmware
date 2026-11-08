@@ -103,3 +103,38 @@ def test_identity_rotate_and_rotation_answer_in_their_schemas(nodes):
     assert r["old_public_key"] == old and "node_key" in r["removed"], r
     rot = ok(d.i.request("identity.rotation"), "identity.rotation")
     assert rot["rotation"]["statement"], rot
+
+
+def test_the_update_operations_answer_in_their_schemas(nodes):
+    import base64, hashlib
+    from test_update_install import CHUNK, NEW, image, offer, start
+    n, d = start(nodes, "rup", 61)
+    assert ok(d.i.request("update.status"), "update.status")["job"] is None
+    img = image()
+    text = d.manifest(version=NEW, image={"size": len(img), "sha256": hashlib.sha256(img).hexdigest()})
+    m = ok(d.stage(text), "update.manifest")
+    assert m["preflight"] == "ok", m
+    o = ok(offer(d, m["sha256"]), "update.offer")
+    assert len(o["transfer_token"]) == 32 and o["next"] == 0, "a pushed image gets its token here, and only here"
+    st = ok(d.i.request("update.status"), "update.status")
+    assert st["job"]["job"] == o["job"] and len(st["staged"]) == 1, st
+    data = base64.b64encode(img[:CHUNK]).decode()
+    c = ok(d.i.request("update.chunk", {"job": o["job"], "token": o["transfer_token"], "offset": 0, "data": data}), "update.chunk")
+    assert c["next"] == CHUNK, c
+
+
+def test_the_deployment_operations_answer_in_their_schemas(nodes):
+    from test_deployment_authority import SECRET, boot as dep_boot, provision_args, try_unlock, update_args, wrap
+    d = dep_boot(nodes, "rdp")
+    assert ok(d.i.request("deployment.get"), "deployment.get") == {"state": "none"}
+    p = ok(d.i.request("deployment.provision", provision_args(d.node_key)), "deployment.provision")
+    assert p["state"] == "provisioned" and p["node_key"] == d.node_key, p
+    g = ok(d.i.request("deployment.get"), "deployment.get")
+    assert g["members"] and "device_id" not in g, "the pair is read back at enrolment only"
+    assert ok(d.i.request("deployment.authority_update", update_args()), "deployment.authority_update")["authority_revision"] == 2
+    ok(d.send(wrap(d.node_key, "deployment.set_unlock", {"unlock_secret": SECRET}, job=3, nonce=d.nonce())), "deployment.set_unlock")
+    ch = ok(d.i.request("deployment.unlock_challenge"), "deployment.unlock_challenge")
+    assert len(ch["challenge"]) == 64, ch
+    ok(try_unlock(d.i.request), "deployment.unlock")
+    r = ok(d.send(wrap(d.node_key, "deployment.reset", job=4)), "deployment.reset")
+    assert "record" in r["removed"], r
