@@ -240,6 +240,7 @@ void writeHealth(JsonWriter& w, MyMesh* mesh) {
     w.key("largest"); w.unum(ms.largest);
     w.key("min_free"); if (ms.min_free) w.unum(ms.min_free); else w.null();
     w.key("loop_stack_free"); if (ms.loop_stack_free) w.unum(ms.loop_stack_free); else w.null();
+    if (const uint32_t ws = NrfWorker::workerStackFree()) { w.key("worker_stack_free"); w.unum(ws); }   // nRF52 (#158)
     if (ms.psram) { w.key("psram_free"); w.unum(ms.psram); }
     w.endObject();
   }
