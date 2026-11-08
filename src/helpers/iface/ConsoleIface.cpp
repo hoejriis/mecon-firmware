@@ -46,7 +46,7 @@ const size_t HELLO_PLAIN_BUDGET = 1500;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "advert.send", "device.reboot",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -227,6 +227,41 @@ Status opMgmtBindW(OpContext& c) { return withMgmt(c, opMgmtBind); }
 Status opMgmtRotateW(OpContext& c) { return withMgmt(c, opMgmtRotate); }
 Status opMgmtUnbindW(OpContext& c) { return withMgmt(c, opMgmtUnbind); }
 Status opIdentityRotation(OpContext& c) { self(c)->writeRotation(*c.out); return ST_OK; }
+// identity.get: the node key and device id, with the device id's signature, as hello gives them (OPERATIONS.md 5.1).
+Status opIdentityGet(OpContext& c) {
+  ConsoleIface* m = self(c);
+  JsonWriter& w = *c.out;
+  char key[65];
+  hexOf(key, m->host().node_key, 32);
+  w.key("device_id"); w.str(m->deviceIdHex());
+  w.key("node_key"); w.str(key);
+  if (m->host().identity) return writeDeviceIdSig(c, *m->host().identity, m->deviceIdHex());
+  return ST_OK;
+}
+// clock.get: wall-clock seconds; null while the clock is not set.
+Status opClockGet(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  const uint32_t t = h.clock_s ? h.clock_s(h.user) : 0;
+  c.out->key("epoch"); if (t) c.out->unum(t); else c.out->null();
+  return ST_OK;
+}
+// advert.send: {"flood": true} floods the self advert; without it, zero hop. The native CLI line sends it, so the CLI's
+// gate decides it as this caller too.
+Status opAdvertSend(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  bool flood = false;
+  const int tf = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "flood") : -1;
+  if (tf >= 0 && !jsonGetBool(*c.doc, tf, &flood)) return ST_INVALID;
+  char reply[64] = {0};
+  if (!h.run(h.user, flood ? "advert" : "advert.zerohop", reply, sizeof(reply)) || strncmp(reply, "OK", 2) != 0) {
+    c.error = "refused";
+    return ST_FAILED;
+  }
+  c.out->key("flood"); c.out->boolean(flood);
+  return ST_OK;
+}
+// device.reboot: answered first, then the reboot (1.5 s, or the LoRa delay so that the answer goes out).
+Status opDeviceReboot(OpContext& c) { self(c)->rebootSoon(); return ST_OK; }
 Status opDeployProvision(OpContext& c) { return self(c)->auth().opProvision(c); }
 Status opDeployUpdate(OpContext& c) { return self(c)->auth().opUpdate(c); }
 Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
@@ -266,6 +301,10 @@ const OpEntry OPS[] = {
   {"deployment.unlock", opDeployUnlock, PRIV_WRITE, false},
   {"identity.rotate", opIdentityRotate, PRIV_WRITE, false},   // never answered from the cache: it must run once
   {"identity.rotation", opIdentityRotation, PRIV_READ, false},
+  {"identity.get", opIdentityGet, PRIV_READ, false},
+  {"clock.get", opClockGet, PRIV_READ, false},
+  {"advert.send", opAdvertSend, PRIV_WRITE, true},
+  {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   // One channel slot, for the management channel (MANAGEMENT_CHANNEL.md section 6); bind, rotate and unbind confirm-or-revert
   // for anyone but the cable.
   {"channel.list", opChanList, PRIV_READ, false},
@@ -653,9 +692,12 @@ bool ConsoleIface::authorize(void* user, const OpEntry& op, const Request&) {
   const uint8_t cls = op.priv == PRIV_READ    ? Cli::C_READ
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
+                      : op.priv == PRIV_REBOOT ? Cli::C_REBOOT
                                                : Cli::C_POSTURE;
   Cli::Context ctx = s->_ctx;
-  ctx.enrolled = cls == Cli::C_READ && s->_auth.enrolled();   // beyond reads, preAuthorize and the handlers have decided
+  // Beyond reads and a reboot, preAuthorize and the handlers have decided. A reboot is left to the table, which keeps it for
+  // an unsigned local caller on an enrolled device and refuses it to an unsigned remote one.
+  ctx.enrolled = (cls == Cli::C_READ || cls == Cli::C_REBOOT) && s->_auth.enrolled();
   const Cli::Verdict v = Cli::decide(ctx, cls, strcmp(op.name, "hello") == 0 ? Cli::F_IDENTIFY : 0);   // a refusal says why, as on the Companion
   if (!v.allow) s->_deny = Cli::reasonName(v.reason);
   return v.allow;

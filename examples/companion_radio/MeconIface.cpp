@@ -43,7 +43,7 @@ const size_t HELLO_PLAIN_BUDGET = 1500;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "advert.send", "device.reboot",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
@@ -56,6 +56,10 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     };
 
 Status opHello(OpContext& c);
+Status opIdentityGet(OpContext& c);
+Status opClockGet(OpContext& c);
+Status opAdvertSend(OpContext& c);
+Status opDeviceReboot(OpContext& c);
 Status opStatus(OpContext& c);
 Status opMsgSend(OpContext& c);
 Status opMsgGet(OpContext& c);
@@ -123,6 +127,10 @@ const OpEntry OPS[] = {
   {"deployment.unlock", MeconIface::opDeployUnlock, PRIV_WRITE, false},
   {"identity.rotate", MeconIface::opIdentityRotate, PRIV_WRITE, false},   // never answered from the cache: it must run once
   {"identity.rotation", MeconIface::opIdentityRotation, PRIV_READ, false},
+  {"identity.get", opIdentityGet, PRIV_READ, false},
+  {"clock.get", opClockGet, PRIV_READ, false},
+  {"advert.send", opAdvertSend, PRIV_WRITE, true},
+  {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   // Reading a job and acknowledging its result are of the read class (the result belongs to whoever may read it);
   // cancelling and confirming change the device. The three that change something keep their result (OPERATIONS.md 5.1).
   {"job.get", opJobGet, PRIV_READ, false},
@@ -173,6 +181,35 @@ const OpEntry OPS[] = {
 // ---- operations
 
 namespace {
+
+// identity.get: the node key and device id, with the device id's signature, as hello gives them (OPERATIONS.md 5.1).
+Status opIdentityGet(OpContext& c) {
+  MeconIface* m = self(c);
+  MyMesh* mesh = m->mesh();
+  JsonWriter& w = *c.out;
+  char key[2 * PUB_KEY_SIZE + 1];
+  hexOf(key, mesh->self_id.pub_key, PUB_KEY_SIZE);
+  w.key("device_id"); w.str(m->deviceIdHex());
+  w.key("node_key"); w.str(key);
+  return writeDeviceIdSig(c, mesh->self_id, m->deviceIdHex());
+}
+// clock.get: wall-clock seconds; null while the clock is not set.
+Status opClockGet(OpContext& c) {
+  const uint32_t t = self(c)->mesh()->getRTCClock()->knownTime();
+  c.out->key("epoch"); if (t) c.out->unum(t); else c.out->null();
+  return ST_OK;
+}
+// advert.send: {"flood": true} floods the self advert in the default scope; without it, zero hop. As CMD_SEND_SELF_ADVERT.
+Status opAdvertSend(OpContext& c) {
+  bool flood = false;
+  const int tf = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "flood") : -1;
+  if (tf >= 0 && !jsonGetBool(*c.doc, tf, &flood)) return ST_INVALID;
+  if (!self(c)->mesh()->sendSelfAdvert(flood)) { c.error = "busy"; return ST_FAILED; }   // no packet to build it in
+  c.out->key("flood"); c.out->boolean(flood);
+  return ST_OK;
+}
+// device.reboot: answered first, then the reboot (1.5 s, or the LoRa delay so that the answer goes out).
+Status opDeviceReboot(OpContext& c) { self(c)->rebootSoon(); return ST_OK; }
 
 Status opHello(OpContext& c) {
   MeconIface* m = self(c);
@@ -664,11 +701,14 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
   const uint8_t cls = op.priv == PRIV_READ    ? Cli::C_READ
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
+                      : op.priv == PRIV_REBOOT ? Cli::C_REBOOT
                                                : Cli::C_POSTURE;
   // A refusal says why, in the CLI's words (broker-not-verified, untrusted-transport, enrolled-unsigned, ...): a bare
   // "refused" cannot be told from any other.
   Cli::Context ctx = self->_ctx;
-  ctx.enrolled = cls == Cli::C_READ && self->_auth.enrolled();   // beyond reads, preAuthorize and the handlers have decided
+  // Beyond reads and a reboot, preAuthorize and the handlers have decided. A reboot is left to the table, which keeps it for
+  // an unsigned local caller on an enrolled device and refuses it to an unsigned remote one.
+  ctx.enrolled = (cls == Cli::C_READ || cls == Cli::C_REBOOT) && self->_auth.enrolled();
   const Cli::Verdict v = Cli::decide(ctx, cls, strcmp(op.name, "hello") == 0 ? Cli::F_IDENTIFY : 0);
   if (!v.allow) self->_deny = Cli::reasonName(v.reason);
   return v.allow;

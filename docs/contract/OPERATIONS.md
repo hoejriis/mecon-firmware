@@ -171,7 +171,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `region.list` | the region tree, paged; the first page adds the wildcard's flood, `home` and `default` | `RegionMap` | read | no | R S | Con, MQTT where built |
 | `region.put`, `region.remove`, `region.flood`, `region.home`, `region.default` | change the tree; each is saved at once | `RegionMap`, `/regions2` | write; confirm for all but the unsigned cable | yes | R S | Con, MQTT where built |
 | `job.cancel` | cancel, or revert if applied | | the job's classes | yes | C R S | all |
-| `device.reboot` | reboot | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | all |
+| `device.reboot` | reboot, about 1.5 s after the answer; an unsigned local caller (cable, paired BLE) keeps it on an enrolled device, an unsigned remote one does not | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope |
 | `contact.list`, `contact.get` | contact table (name, type, protection flag, last advert, hops, position; `list` paged by up to 6, fewer when a page would not fit); the shared secret and the path bytes never | native contact table | private | no | C | all |
 | `contact.put`, `contact.remove` | add, update, remove; a put names no flags, so it never grants telemetry or the remote CLI, and a full table behaves as for the app | `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` | write | yes | C | all |
@@ -186,9 +186,10 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `mgmt.channel.bind`, `mgmt.channel.rotate`, `mgmt.channel.unbind` | bind a slot, rotate its key, end the binding; confirm-or-revert for anyone but the cable | `CMD_SET_CHANNEL` for a rotation | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `acl.list`, `acl.put` | remote-admin ACL | CLI `setperm`; REQ `GET_ACCESS_LIST` | read / write | `acl.put` | R S | Con, MQTT where built, RF |
 | `password.set` | admin or guest password (write-only) | CLI `password`, `set guest.password` | write; commit-or-revert over RF | yes | R S | Con, RF |
-| `clock.get`, `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | read / write | `set` | C R S | all |
-| `advert.send` | self advert (zero-hop or flood) | `CMD_SEND_SELF_ADVERT`, CLI `advert` | write | yes | C R S | all |
-| `identity.get` | node key, device id | | read | no | C R S | all |
+| `clock.get` | `{"epoch": n}`, wall-clock seconds; `null` while the clock is not set | `CMD_GET_DEVICE_TIME` | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
+| `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | write | yes | C R S | all |
+| `advert.send` | self advert: `{"flood": true}` floods it in the default scope, otherwise zero hop; the result names which | `CMD_SEND_SELF_ADVERT`, CLI `advert`, `advert.zerohop` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
+| `identity.get` | `device_id`, `node_key` and `device_id_sig`, as `hello` gives them | | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `identity.rotate` | new node key on the device | | per [AUTHORITY](AUTHORITY.md) | yes | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `identity.rotation` | the old key's signed statement of the rotation | | read | no | C R S | all |
 | `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per [AUTHORITY](AUTHORITY.md) |
