@@ -203,6 +203,8 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
+**Not built yet.** No build registers `device.reset`, `clock.set`, `identity.key.export`, `acl.list`, `acl.put`, `password.set`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `setperm`, `password`, `set guest.password`, `get prv.key`, the frames `CMD_SET_DEVICE_TIME` and `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
+
 `contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
 
 **Keys `config.*` reaches.**
