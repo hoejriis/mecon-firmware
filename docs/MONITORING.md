@@ -15,7 +15,7 @@ A manager subscribes to a stream with `sub.start` and ends it with `sub.stop`:
 {"v":1,"id":"s-1","op":"sub.start","args":{"stream":"health","period_s":60,"lifetime_s":300}}
 ```
 
-The device then sends a snapshot every `period_s` until `lifetime_s` runs out, so a manager that goes away costs nothing. Renew a subscription to keep it. Over MQTT, events arrive on `mecon/<device_id>/ev/<stream>`.
+The device then sends a snapshot every `period_s` until `lifetime_s` runs out, so a manager that goes away costs nothing. `lifetime_s` is 10 to 600 s (300 by default) and `period_s` at most 3600 s. Renew a subscription to keep it. Over MQTT, events arrive on `mecon/<device_id>/ev/<stream>`.
 
 | Stream | What it carries | Default / minimum period |
 |---|---|---|
@@ -28,8 +28,8 @@ The device then sends a snapshot every `period_s` until `lifetime_s` runs out, s
 | `location` | GNSS position | 300 s / 30 s |
 | `observations` | received packets | an event per packet, at most 10 per second |
 | `logs` | audit log entries | an event per entry, at most 5 per second |
-| `inventory` | contacts and channels | 3600 s / 300 s |
-| `screen` | a snapshot of the device screen | on request, at most one per 5 s |
+| `inventory` | contacts and channels on a Companion; counts only on a Repeater or Room server | 3600 s / 300 s |
+| `screen` | a snapshot of the device screen | 60 s / 5 s |
 
 A board without a sensor, GNSS receiver, battery reading or screen does not offer that stream, and `hello` lists only the streams it can produce. Private streams (`location`, inventory entries, `screen`) and `logs` need more than a read permission: `logs`, for example, goes to the cable, to a BLE link paired with your own PIN, or over MQTT to a subscriber whose request a Deployment manager signed. A broker login by itself never gets it. The [telemetry catalogue](contract/TELEMETRY.md) gives every field and the access rule for each stream.
 

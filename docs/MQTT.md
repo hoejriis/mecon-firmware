@@ -8,7 +8,7 @@ What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED
 
 `PubSubClient` 2.8.0 (`knolleary/PubSubClient`, MIT), pinned to that exact version in the Heltec V3 and V4 builds with Wi-Fi, and in the simulated builds with the controller.
 
-- **Heap.** One packet buffer allocated once (512 bytes since the command line over MQTT, 256 before) and, on ESP32, the connect worker's 10 KiB stack, allocated when the first connect attempt starts and kept (see "The connect runs on a worker"). No queue. The connection object belongs to the platform, so the TLS context exists only while a session is open.
+- **Heap.** One packet buffer allocated once: 512 bytes, or 1,600 bytes in a build with the device interface (a result page of up to 1,536 bytes and its topic). A received message larger than the buffer is dropped and, on ESP32, the connect worker's 10 KiB stack, allocated when the first connect attempt starts and kept (see "The connect runs on a worker"). No queue. The connection object belongs to the platform, so the TLS context exists only while a session is open.
 - **TLS and portability.** It speaks MQTT 3.1.1 through the Arduino `Client` interface, so the same code runs over `WiFiClient` and over `WiFiClientSecure` (mbedTLS) on ESP32, and compiles natively for the simulated board with three small shims (`Client.h`, `IPAddress.h`, two macros in `Arduino.h`) and a socket-and-OpenSSL `Client`. Nothing in the library knows about TLS, so the certificate check is ours and identical in the simulator and on the device.
 - **Maintenance.** The last release is 2.8 (2020). The library is small, stable and very widely deployed; its protocol subset (3.1.1, QoS 0 and 1, no MQTT 5) is all this stage needs. If it ever has to be replaced, the controller touches it in three calls (`connect`, `loop`, `publish`).
 - **Alternatives considered.** `esp-mqtt` (ESP-IDF) brings its own task, its own TLS stack and no native build, and does not exist on RP2040. `AsyncMqttClient` is ESP-only and depends on AsyncTCP. `arduino-mqtt` (lwmqtt) is comparable and more actively maintained, with a larger footprint and no advantage here.
@@ -120,7 +120,7 @@ All of them run on a trusted local transport; the TCP companion port refuses the
 
 ## Status topic
 
-On every connect, and again every 5 minutes, the device publishes a retained message (QoS 0) on `mecon/<node id>/status`, where the node id is the first four bytes of the public key as 8 hex digits, for example `{"online":true,"profile":1,"tls":"verified"}` with `tls` one of `verified`, `unverified`, `plain`. The broker publishes the last will `{"online":false}` on the same topic, retained, if the session ends without a DISCONNECT. The client id is `mecon-<node id>`; the session is clean. This topic is a Stage A placeholder: it is not part of the MECON contract and carries no secret.
+On every connect, and again every 5 minutes, the device publishes a retained message (QoS 0) on `mecon/<device_id>/status`, where `device_id` is the device's 32-hex-digit id (in a build without the device interface, `mecon/<node id>/status`, with the node id the first four bytes of the public key as 8 hex digits), for example `{"online":true,"profile":1,"tls":"verified"}` with `tls` one of `verified`, `unverified`, `plain`. The broker publishes the last will `{"online":false}` on the same topic, retained, if the session ends without a DISCONNECT. The client id is `mecon-<node id>`; the session is clean. This topic is a Stage A placeholder: it is not part of the MECON contract and carries no secret.
 
 ## Storage
 
@@ -128,7 +128,7 @@ The profiles are saved in the Companion prefs file under `mqtt` (`en` and, per p
 
 ## Memory
 
-Measured by compiling the Heltec V3 and V4 Wi-Fi builds at this change and at its base (the Wi-Fi controller):
+Measured when MQTT was first added, by compiling the Heltec V3 and V4 Wi-Fi builds at that change and at its base (the Wi-Fi controller). Later builds differ; each release's notes give its current flash and RAM:
 
 | Build | RAM before | RAM with MQTT | Flash before | Flash with MQTT |
 |---|---|---|---|---|
@@ -155,4 +155,4 @@ RAM is the static figure PlatformIO reports (data and bss): the profiles (1.5 KB
 - IPv4 only. A discovery responder is identified by address and port; at most six candidates are tracked, so a LAN that advertises many responders with the right site ID can delay discovery (each failed candidate cools down alone) but cannot make the device connect to one whose certificate does not match.
 - A lost discovery responder is noticed by a browse, which runs only while a better discovery profile exists; on the best profile the session dropping is the signal.
 - No client certificates. One CA certificate per profile, not a CA store or bundle (see "The anchor"). The CA anchor's validity-date check is skipped on a device whose clock has never been set.
-- Besides the retained status, the device subscribes to its own command-line request topic and answers on its response topic ([Command-line engine](CLI.md)); it subscribes to nothing else.
+- Besides the retained status, the device subscribes to its own command-line request topic and answers on its response topic ([Command-line engine](CLI.md)), and, with the device interface, to `mecon/<device_id>/req`, answering on `/resp` and publishing events on `/ev/<stream>`. It subscribes to nothing else.
