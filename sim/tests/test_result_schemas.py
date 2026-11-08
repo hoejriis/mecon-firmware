@@ -138,3 +138,33 @@ def test_the_deployment_operations_answer_in_their_schemas(nodes):
     ok(try_unlock(d.i.request), "deployment.unlock")
     r = ok(d.send(wrap(d.node_key, "deployment.reset", job=4)), "deployment.reset")
     assert "record" in r["removed"], r
+
+
+def test_the_region_operations_answer_in_their_schemas(ether, nodes):
+    d = target(nodes, ether, "repeater", "rrg")
+    first = ok(d.i.request("region.list"), "region.list")
+    assert first["capacity"] >= 1 and first["next"] is None, first
+    assert ok(d.i.request("region.put", {"name": "city"}), "region.put")["parent"] == "*"
+    assert ok(d.i.request("region.put", {"name": "old-town", "parent": "city"}), "region.put")["parent"] == "city"
+    ok(d.i.request("region.flood", {"name": "old-town", "flood": "deny"}), "region.flood")
+    ok(d.i.request("region.home", {"name": "city"}), "region.home")
+    ok(d.i.request("region.default", {"name": "old-town"}), "region.default")
+    page = ok(d.i.request("region.list"), "region.list")
+    assert page["home"] == "city" and page["default"] == "old-town" and len(page["regions"]) == 2, page
+    ok(d.i.request("region.default", {"name": None}), "region.default")
+    ok(d.i.request("region.remove", {"name": "old-town"}), "region.remove")
+
+
+def test_every_capability_has_a_result_schema():
+    # The contract's schema set covers every operation a build offers; a new operation without one fails here (#449)
+    import re
+    root = os.path.join(os.path.dirname(__file__), "..", "..")
+    caps = set()
+    for f in ("src/helpers/iface/ConsoleIface.cpp", "examples/companion_radio/MeconIface.cpp"):
+        src = open(os.path.join(root, f)).read()
+        for m in re.finditer(r"const char\* const (\w*CAPABILITIES)\[\] = \{(.*?)\};", src, re.S):
+            caps |= set(re.findall(r'"([a-z][a-z0-9_.]*)"', m.group(2)))
+    assert len(caps) > 40, caps   # the lists were found
+    have = {f[:-len(".result.json")] for f in os.listdir(os.path.join(root, "docs", "contract", "schema"))
+            if f.endswith(".result.json")}
+    assert not sorted(caps - have), "no result schema for: %s" % sorted(caps - have)
