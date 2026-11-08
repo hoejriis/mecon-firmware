@@ -154,3 +154,24 @@ def test_an_unsigned_reboot_over_a_servers_broker_is_refused_once_enrolled(nodes
     r = b.iface_request(dev, wrap(s.node_key, "device.reboot", job=next_job(s)))
     assert r["status"] == "ok", "a member's signature may, over the same session: %s" % r
     assert s.n.wait_exit(10) == 75
+
+
+def test_a_standalone_companion_may_be_rebooted_by_its_verified_broker(nodes, tmp_path, broker):
+    # the reboot class, not the posture class: a verified broker session may reboot a device with no record (the table),
+    # though it may not change the posture
+    b = broker()
+    d, dev = mqtt_boot(nodes, tmp_path, "rbw", b)
+    r = b.iface_request(dev, {"v": 1, "id": "r1", "op": "device.reboot"})
+    assert r["status"] == "ok", r
+    assert d.n.wait_exit(10) == 75
+
+
+@pytest.mark.timescale(10)
+def test_a_standalone_server_may_be_rebooted_by_its_verified_broker(nodes, tmp_path, brokers):
+    from test_server_mqtt import boot as srv_boot, dev_of, tls_broker, up, verified
+    b = tls_broker(brokers)
+    s = srv_boot(nodes, tmp_path, "repeater_wifi", "rbw2", verified(b))
+    up(s)
+    r = b.iface_request(dev_of(s), {"v": 1, "id": "r1", "op": "device.reboot"})
+    assert r["status"] == "ok", r
+    assert s.n.wait_exit(10) == 75

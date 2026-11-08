@@ -1,7 +1,7 @@
 # identity.get, clock.get, advert.send and device.reboot (docs/contract/OPERATIONS.md section 5.1): undo each rule they add
 DO=sim/tests/test_device_ops.py
-mutate reboot_class_console src/helpers/iface/ConsoleIface.cpp '                      : op.priv == PRIV_REBOOT ? Cli::C_REBOOT' '' "$DO::test_device_reboot_answers_then_reboots_and_the_unsigned_cable_keeps_it[repeater]"
-mutate reboot_class_companion examples/companion_radio/MeconIface.cpp '                      : op.priv == PRIV_REBOOT ? Cli::C_REBOOT' '' "$DO::test_device_reboot_answers_then_reboots_and_the_unsigned_cable_keeps_it[companion_standalone]"
+mutate reboot_class_console src/helpers/iface/ConsoleIface.cpp '                      : op.priv == PRIV_REBOOT ? Cli::C_REBOOT' '' "$DO::test_a_standalone_server_may_be_rebooted_by_its_verified_broker"
+mutate reboot_class_companion examples/companion_radio/MeconIface.cpp '                      : op.priv == PRIV_REBOOT ? Cli::C_REBOOT' '' "$DO::test_a_standalone_companion_may_be_rebooted_by_its_verified_broker"
 mutate reboot_remote_unsigned_console src/helpers/iface/ConsoleIface.cpp '  ctx.enrolled = (cls == Cli::C_READ || cls == Cli::C_REBOOT) && s->_auth.enrolled();' '  ctx.enrolled = cls == Cli::C_READ && s->_auth.enrolled();' "$DO::test_an_unsigned_reboot_over_a_servers_broker_is_refused_once_enrolled[repeater_wifi]"
 mutate reboot_remote_unsigned_companion examples/companion_radio/MeconIface.cpp '  ctx.enrolled = (cls == Cli::C_READ || cls == Cli::C_REBOOT) && self->_auth.enrolled();' '  ctx.enrolled = cls == Cli::C_READ && self->_auth.enrolled();' "$DO::test_an_unsigned_reboot_over_mqtt_is_refused_once_enrolled"
 mutate reboot_preauth_denied src/helpers/iface/DeployAuth.cpp '!plain_read && op.priv != PRIV_REBOOT && ' '!plain_read && ' "$DO::test_device_reboot_answers_then_reboots_and_the_unsigned_cable_keeps_it[room_server]"
