@@ -35,6 +35,14 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
   out[2 * n] = 0;
 }
 
+// What a hello's result body may fill before its capability list goes on a next page (DEVICE_INTERFACE.md: one page unless it
+// would outgrow the 1,536-byte result). The body is counted without the envelope and the signature: measured on a simulated
+// Repeater, signing added 189 bytes, and the longest nonce's second device-id signature 156 more. A signed hello with that nonce
+// then needs the body to page at about 1,250 bytes; 1,150 leaves margin. An unsigned hello (1,458 bytes with every capability and
+// the longest nonce) fits in one page.
+const size_t HELLO_SIGNED_BUDGET = 1150;
+const size_t HELLO_PLAIN_BUDGET = 1500;
+
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
@@ -43,6 +51,9 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
                                     "update.offer", "update.chunk"};
+// Listed only on a role with a region tree.
+const char* const REGION_CAPABILITIES[] = {"region.list", "region.put", "region.remove", "region.flood", "region.home",
+                                           "region.default"};
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -66,10 +77,35 @@ Status opHello(OpContext& c) {
   // The channel nonce of the console link, only once a Deployment record exists (AUTHORITY.md section 7.1).
   const char* nonce = m->helloNonce();
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
+  // The list is paged (`cursor` in, `next` out, as DEVICE_INTERFACE.md says) once it would not leave room for the signature,
+  // as on the Companion: an enrolled server signs the result, and the device-id signature and the nonce come before the list.
+  // The region operations took the server's signed hello past the 1,536-byte result. Most hellos fit in one page.
+  int64_t from = 0;
+  const int ct = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "cursor") : -1;
+  if (ct >= 0 && !jsonGetInt(*c.doc, ct, 0, 255, &from)) return ST_INVALID;
+  const size_t room = m->helloSigned() ? HELLO_SIGNED_BUDGET : HELLO_PLAIN_BUDGET;
+  unsigned idx = 0;
+  int next = -1;
+  const bool lora = m->onLora();
+  auto add = [&](const char* cap) {
+    if (lora && !loraOpAllowed(cap)) return;   // an operation this link does not carry is not offered on it
+    if (idx++ < (unsigned)from || next >= 0) return;
+    if (w.size() + strlen(cap) + 3 > room) { next = (int)idx - 1; return; }
+    w.str(cap);
+  };
   w.key("capabilities"); w.beginArray();
-  for (const char* cap : CAPABILITIES) if (!m->onLora() || loraOpAllowed(cap)) w.str(cap);
-  if (!m->onLora()) writeStreamCapabilities(w, m->produced());   // no stream goes over LoRa
+  add(CAPABILITIES[0]);   // hello, then the streams, so a manager reading only the first page has what it subscribes to
+  const uint32_t produced = m->produced();
+  for (int sid = 0; sid < STREAM_COUNT; sid++) {   // add() leaves them out over LoRa, which carries no stream
+    if (!(produced & (1u << sid))) continue;
+    char cap[24];
+    snprintf(cap, sizeof(cap), "stream.%s", STREAMS[sid].name);
+    add(cap);
+  }
+  for (size_t i = 1; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
+  if (m->hasRegions()) for (const char* rcap : REGION_CAPABILITIES) add(rcap);
   w.endArray();
+  if (next >= 0) { w.key("next"); w.num(next); }
   return ST_OK;
 }
 
@@ -175,6 +211,17 @@ Status opChanRemove(OpContext& c) {
   MgmtHost h = self(c)->mgmtHost();
   return mgmtGuardChannel(c, h, opChannelRemove, "channel.remove");
 }
+Status withRegions(OpContext& c, Status (*op)(OpContext&, RegionHost&)) {
+  RegionHost h = self(c)->regionHost();
+  if (!h.map) return ST_UNKNOWN_OP;   // the role has no region tree
+  return op(c, h);
+}
+Status opRegListW(OpContext& c) { return withRegions(c, opRegionList); }
+Status opRegPutW(OpContext& c) { return withRegions(c, opRegionPut); }
+Status opRegRemoveW(OpContext& c) { return withRegions(c, opRegionRemove); }
+Status opRegFloodW(OpContext& c) { return withRegions(c, opRegionFlood); }
+Status opRegHomeW(OpContext& c) { return withRegions(c, opRegionHome); }
+Status opRegDefaultW(OpContext& c) { return withRegions(c, opRegionDefault); }
 Status opMgmtGetW(OpContext& c) { return withMgmt(c, opMgmtGet); }
 Status opMgmtBindW(OpContext& c) { return withMgmt(c, opMgmtBind); }
 Status opMgmtRotateW(OpContext& c) { return withMgmt(c, opMgmtRotate); }
@@ -229,6 +276,13 @@ const OpEntry OPS[] = {
   {"mgmt.channel.bind", opMgmtBindW, PRIV_WRITE, true},
   {"mgmt.channel.rotate", opMgmtRotateW, PRIV_WRITE, true},
   {"mgmt.channel.unbind", opMgmtUnbindW, PRIV_WRITE, true},
+  // The native region tree; every change confirm-or-revert for anyone but the cable (OPERATIONS.md, "Region scopes").
+  {"region.list", opRegListW, PRIV_READ, false},
+  {"region.put", opRegPutW, PRIV_WRITE, true},
+  {"region.remove", opRegRemoveW, PRIV_WRITE, true},
+  {"region.flood", opRegFloodW, PRIV_WRITE, true},
+  {"region.home", opRegHomeW, PRIV_WRITE, true},
+  {"region.default", opRegDefaultW, PRIV_WRITE, true},
   // As on the Companion: ack is of the read class, cancel and confirm write; the three keep their result.
   {"job.get", opJobGet, PRIV_READ, false},
   {"job.list", opJobList, PRIV_READ, false},
@@ -266,6 +320,7 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   _updates.bootReconcile();   // an installed image attests, or the bootloader rolled it back
   configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
   mgmtSnapBoot(mgmtHost());       // likewise the management channel's: it holds an old key
+  if (hasRegions()) { RegionHost rh = regionHost(); regionSnapBoot(rh); }   // and the region tree's copy
   if (_host.dep_store) {
     DeployAuth::Env env;
     env.store = _host.dep_store;
@@ -296,6 +351,11 @@ bool ConsoleIface::authProfileExists(void* user, uint8_t index) {
 bool ConsoleIface::confirmReadSecret(void* user, const KeyDef& k, unsigned idx, char* out, size_t cap) {
   const ConsoleIface* s = static_cast<ConsoleIface*>(user);
   return s->_host.read_secret(s->_host.user, k, idx, out, cap);
+}
+
+RegionHost ConsoleIface::regionHost() {
+  return RegionHost{_host.regions, _host.regions_save, _host.regions_default_changed, _host.user, _host.region_snap, &_jobs,
+                    confirmCable, confirmRecordCaller, confirmJobId, (uint8_t)(1u << Cli::C_WRITE), this};
 }
 
 MgmtHost ConsoleIface::mgmtHost() {
@@ -508,6 +568,12 @@ bool ConsoleIface::jobRevert(void* user, Job& j) {
     s->_jobs.table()->setState(&j, JOB_REVERTED);
     return true;
   }
+  if (regionOwnsJob(j) && s->hasRegions()) {
+    RegionHost rh = s->regionHost();
+    if (!regionRevert(rh, j)) return false;
+    s->_jobs.table()->setState(&j, JOB_REVERTED);
+    return true;
+  }
   if (strcmp(j.op, "config.apply") != 0) return false;
   bool reboot = false;
   if (!configRevert(s->configHost(), j, &reboot)) return false;
@@ -521,6 +587,11 @@ bool ConsoleIface::jobConfirm(void* user, Job& j) {
   if (Upd::UpdateService::owns(j)) return static_cast<ConsoleIface*>(user)->_updates.jobConfirm(j);
   if (mgmtOwnsJob(j)) {
     mgmtConfirmed(static_cast<ConsoleIface*>(user)->mgmtHost());
+    return true;
+  }
+  if (regionOwnsJob(j) && static_cast<ConsoleIface*>(user)->hasRegions()) {
+    RegionHost rh = static_cast<ConsoleIface*>(user)->regionHost();
+    regionConfirmed(rh);
     return true;
   }
   if (strcmp(j.op, "config.apply") != 0) return false;

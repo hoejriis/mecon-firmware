@@ -1,0 +1,10 @@
+# Region scopes on the managed interface (docs/contract/OPERATIONS.md, "Region scopes"): undo each rule the operations add
+RG=sim/tests/test_regions.py
+mutate region_cycle_allowed src/helpers/iface/RegionOps.cpp 'if (existing && (existing->id == parent->id || makesCycle(h, existing->id, parent->id))) {' 'if (existing && existing->id == parent->id) {' "$RG::test_put_builds_the_native_tree_and_rejects_bad_names_parents_and_cycles[repeater]"
+mutate region_name_truncated src/helpers/iface/RegionOps.cpp '  if (strlen(buf) > REGION_NAME_MAX) { c.error = "name-too-long"; return false; }' '' "$RG::test_put_builds_the_native_tree_and_rejects_bad_names_parents_and_cycles[repeater]"
+mutate region_remove_referenced src/helpers/iface/RegionOps.cpp '  if ((home && home->id == e->id) || (def && def->id == e->id)) { c.error = "referenced"; return ST_BUSY; }' '' "$RG::test_flood_home_default_and_the_references_remove_refuses[repeater]"
+mutate region_change_not_saved src/helpers/iface/RegionOps.cpp '  return h.save(h.role_user);' '  return true;' "$RG::test_a_full_table_is_busy_and_a_managed_change_survives_a_reboot[repeater]"
+mutate region_signed_without_confirm src/helpers/iface/RegionOps.cpp '  if (conf < 0 && !cable) { c.error = "confirm-required"; return ST_INVALID; }' '' "$RG::test_a_signed_change_must_confirm_reverts_unconfirmed_and_stays_confirmed[repeater]"
+mutate region_revert_keeps_change src/helpers/iface/RegionOps.cpp '    ok = n && restore(*h.map, img, n, j.id, false) && restore(*h.map, img, n, j.id, true);' '    ok = n && restore(*h.map, img, n, j.id, false);' "$RG::test_a_signed_change_must_confirm_reverts_unconfirmed_and_stays_confirmed[repeater]"
+mutate region_room_server_has_none examples/simple_room_server/main.cpp '                                       &the_mesh.regions(), ifaceRegionsSave, ifaceRegionsDefault, &region_snap_store,' '' "$RG::test_a_fresh_server_lists_only_the_wildcard[room_server]"
+mutate server_hello_not_paged src/helpers/iface/ConsoleIface.cpp '    if (w.size() + strlen(cap) + 3 > room) { next = (int)idx - 1; return; }' '' "$RG::test_an_enrolled_servers_signed_hello_pages_its_capabilities[repeater]"
