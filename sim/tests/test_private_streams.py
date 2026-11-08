@@ -388,6 +388,17 @@ def _mark(d):
     return d.i.request("deployment.get")["result"]["members"][0]["mark"]
 
 
+def test_the_rf_stream_needs_the_links_nonce_like_every_private_stream(nodes):
+    """rf carries the managed devices' own replies to this Companion's rf.request. A captured signed sub.start of it must
+    be dead on any other link, as for screen, location, logs and inventory."""
+    d = Dev(nodes("companion_standalone", "rfn", seed=71, rtc=RTC).start())
+    assert d.provision()["status"] == "ok"
+    r = d.send(wrap(d.node_key, "sub.start", {"stream": "rf", "lifetime_s": 60}, job=None))
+    assert r["status"] == "refused", "a signed sub.start of rf without the link's nonce: %s" % r
+    r = d.send(wrap(d.node_key, "sub.start", {"stream": "rf", "lifetime_s": 60}, nonce=d.nonce(), job=None))
+    assert r["status"] == "ok", r
+
+
 def test_a_private_renewal_takes_no_job_and_moves_no_mark(nodes):
     """Issue #293: on an nRF52 a mark save costs about 5 erases on one page. The nonce already stops a replay, before and
     after a reboot, so a renewal writes nothing."""

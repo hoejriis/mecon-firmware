@@ -28,6 +28,7 @@
         "reset",
         "mode",
         "low-mem",
+        "unlock",
         "clock-back"
       ]
     },

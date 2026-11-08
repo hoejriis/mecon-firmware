@@ -204,7 +204,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
 **Keys `config.*` reaches.**
-- Companion: 17 key patterns, 84 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|site|user|pwd|priority`. The 22 password and user keys are write-only.
+- Companion: 19 key patterns, 96 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|transport|path|site|user|pwd|priority`. The 22 password and user keys are write-only.
 - Repeater and Room server: 12 keys: `name`, `tx`, `radio`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`. The Heltec builds also have the Wi-Fi and broker keys above; `connectivity.mode` stays on the Companion, because a server has no BLE to choose between.
 
 Each of the following stands for its existing CLI line:
@@ -223,10 +223,10 @@ Each of the following stands for its existing CLI line:
 | 3 | `CMD_SEND_CHANNEL_TXT_MSG` | messaging | served | native |
 | 4 | `CMD_GET_CONTACTS` | read | served | `contact.list` |
 | 5 | `CMD_GET_DEVICE_TIME` | read | served | `clock.get` |
-| 6 | `CMD_SET_DEVICE_TIME` | messaging (forward only; the app's clock sync) | served | `clock.set` |
+| 6 | `CMD_SET_DEVICE_TIME` | messaging for the first set since boot (the app's clock sync); **write** after it (forward only) | served / refused | `clock.set` |
 | 7 | `CMD_SEND_SELF_ADVERT` | messaging | served | `advert.send` |
 | 8 | `CMD_SET_ADVERT_NAME` | write | refused | `config.apply name` |
-| 9 | `CMD_ADD_UPDATE_CONTACT` | messaging (contact handling) | served | `contact.put` |
+| 9 | `CMD_ADD_UPDATE_CONTACT` | messaging (contact handling); **write** when it grants telemetry or the remote CLI | served / refused | `contact.put` |
 | 10 | `CMD_SYNC_NEXT_MESSAGE` | messaging | served | native |
 | 11 | `CMD_SET_RADIO_PARAMS` | write | refused | `config.apply radio` |
 | 12 | `CMD_SET_RADIO_TX_POWER` | write | refused | `config.apply tx` |
@@ -307,7 +307,7 @@ Every CLI line is classed by the registry; a line the registry does not name is 
 Notes the matrix depends on, as the code stands:
 - `start ota` on an ESP32 Repeater or Room server opens an unauthenticated Wi-Fi access point that accepts an image. This is stock behaviour, and it is unsigned. It is compiled out unless a build defines `ENABLE_WIFI_OTA`, and every build with the device interface refuses it ([CLI reference](../CLI_REFERENCE.md)).
 - The Repeater runs any line that starts with `reboot`, while the registry classes only the exact `reboot` as reboot. A longer form is `write`, which is stricter (refused to a Hardened remote admin), not weaker.
-- The sensor role (`simple_sensor`) is not a MECON target. It has no device interface and no posture front door, and nothing on this page applies to it. This is a recorded exception to the rule that the firmware works the same way in all modes: the owner's decision of 2026-11-04.
+- The sensor role (`simple_sensor`) is not a MECON target. It has no device interface and no posture front door, and nothing on this page applies to it. This is a recorded exception to the rule that the firmware works the same way in all modes: the owner's decision of 2026-11-04. One part of the posture rules does apply to it, by the owner's decision of 2026-11-08: it refuses remote admin while its admin password is the stock default or empty, as the Repeater and Room server do, until a password is set on the local console.
 
 ### Standing instructions
 

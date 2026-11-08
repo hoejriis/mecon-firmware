@@ -208,7 +208,7 @@ private:
   const char* _deny = nullptr; // why authorize() refused, when it has a contract code for it
   char _nonce[33] = {0};       // the console's channel nonce (AUTHORITY.md section 7.1)
   LinkUnlock _unlock;          // the console's local unlock challenge and state (section 10). The console is the cable and
-                               // has no link-drop signal: an unlock ends after 10 minutes or at a reboot.
+                               // has no link-drop signal: an unlock ends after 5 minutes (LinkUnlock::UNLOCK_MS) or at a reboot.
   static bool consoleUnlocked(void* self);
   static bool confirmReadSecret(void* self, const KeyDef& k, unsigned idx, char* out, size_t cap);
   static bool authProfileExists(void* self, uint8_t index);

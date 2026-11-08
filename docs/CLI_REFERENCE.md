@@ -39,7 +39,7 @@ A compact copy of the table in [Command-line engine](CLI.md#the-table), where th
 
 *limited*: a flagged contact reads and reboots only. *off*: Hardened turns the remote CLI off, reads included. *flag*: allowed only when the broker profile is flagged for management (`set mqtt.profile <n> manage on`). *local only*: refused for the remote caller (explicit reply, audited). A command nobody registered is `write`. Lowering the posture (`set posture normal confirm`) and any `set posture` argument other than `hardened` additionally need the **cable**, whatever the cell says.
 
-Classes: `read` changes nothing; `write` changes settings or transmits (also every unregistered command); `secret` is private-key material; `posture` is the posture, the audit log, the connectivity mode and the broker-management flag; `destructive` erases or powers off; `reboot` is exactly `reboot`. A cell reading `read / write` lists a getter and a setter.
+Classes: `read` changes nothing; `write` changes settings or transmits (also every unregistered command); `secret` is private-key material; `posture` is the posture, the audit log, the connectivity mode and the broker-management flag; `destructive` erases or powers off, and also covers `start ota` and the cable-only `clock back`; `reboot` is exactly `reboot`. A cell reading `read / write` lists a getter and a setter.
 
 In the tables below *Origin* is **stock** (upstream 1.18.0, unchanged), **stock, behaviour changed** (upstream command, different behaviour here, see [Changed from stock](#changed-from-stock)) or **MECON** (added by this project). *console only* means the command handler itself runs the command only for the local console, over and above the class.
 
@@ -67,7 +67,7 @@ The commands the Companion CLI accepts, reached by the app frame, the rescue con
 | `set posture normal confirm` | Lower the posture to Normal. | MECON | posture | Cable only (the paired phone is refused too). Without `confirm` nothing changes. On an enrolled device the cable is refused too, and lowering takes a signed `posture.set`. |
 | `get audit [start]` | Read the audit log. | MECON | posture | Cable or paired phone. Two entries per reply, newest first. |
 | `get connectivity.mode` | `> ble` or `> wifi`. | MECON | read | Builds with `ENABLE_CONNMODE`. |
-| `set connectivity.mode ble\|wifi` | Switch the Companion between BLE and Wi-Fi; saves and restarts. | MECON | posture | Cable, paired phone, the device button, or a request a Deployment member signed, on any transport. Never an unsigned remote caller; audited. `OK - connectivity.mode <mode>, restarting`, or `OK - already <mode>`. |
+| `set connectivity.mode ble\|wifi` | Switch the Companion between BLE and Wi-Fi; saves and restarts. | MECON | posture | Cable, paired phone, the device button, or a request a Deployment member signed, on any transport. Never an unsigned remote caller; on a device that belongs to a Deployment, only a signed request or the button switches it. Audited. `OK - connectivity.mode <mode>, restarting`, or `OK - already <mode>`. |
 | `get wifi.profile <n>` | One Wi-Fi profile: `<n>: <ssid> prio=<p> pwd=set\|unset last=<reason>`. | MECON | read | `n` is 0 to 9. Wi-Fi builds (`ENABLE_WIFI_INTERFACE`). |
 | `get wifi.profiles [from]` | Every configured profile, paged with `... next:<n>`. | MECON | read |  |
 | `set wifi.profile <n> ssid <name>` | SSID of a profile (1-32 characters, spaces allowed). | MECON | write | Applies at once; the profile in use is rejoined. |
@@ -86,7 +86,9 @@ The commands the Companion CLI accepts, reached by the app frame, the rescue con
 | `get mqtt.profiles [from]` | Every configured broker profile, paged with `... next:<n>`. | MECON | read |  |
 | `set mqtt.profile <n> type static\|discovery` | A fixed broker, or one found by mDNS for a site. | MECON | write |  |
 | `set mqtt.profile <n> host <name-or-ipv4>` | Static profile: broker host (1-63 characters). | MECON | write |  |
-| `set mqtt.profile <n> port <0-65535>` | Broker port; 0 = 8883 with TLS, 1883 without. | MECON | write |  |
+| `set mqtt.profile <n> port <0-65535>` | Broker port; 0 = 8883 with TLS, 1883 without (443 and 80 over WebSocket). | MECON | write |  |
+| `set mqtt.profile <n> transport tcp\|ws` | The broker connection: plain MQTT over TCP, or MQTT over WebSocket. | MECON | write | `get mqtt.profile <n>` shows `transport=ws` only for a WebSocket profile. |
+| `set mqtt.profile <n> path <path>` | WebSocket path: `/` and then URL path characters, at most 63. | MECON | write | Read it with `get mqtt.profile <n> path`; the profile line leaves it out. |
 | `set mqtt.profile <n> tls on\|off` | TLS for a static profile. | MECON | write | `off` is refused in Hardened for every caller (`ERR: plain MQTT is refused in the Hardened posture`). A discovery profile is always TLS. |
 | `set mqtt.profile <n> anchor <64-hex>\|clear` | Pin the broker by the SHA-256 fingerprint of its certificate; replaces a CA anchor. | MECON | write | Colons and capitals are accepted. `clear` removes either kind of anchor. |
 | `set mqtt.profile <n> ca begin` / `set mqtt.profile <n> ca add <base64>` / `set mqtt.profile <n> ca end` / `set mqtt.profile <n> ca clear` | Trust a CA certificate instead of a fingerprint, sent in pieces and installed whole. | MECON | write | Nothing changes until `ca end` has seen one complete DER certificate. `tools/mqtt_ca_commands.py` prints the lines from a PEM file. |
@@ -127,9 +129,9 @@ The Companion also accepts `get`/`set` lines of the **board** (vendor commands a
 | `(every Companion CLI command above)` | The rescue console runs the same handler as the app frame, as the cable. | stock | as listed | Posture and class rules are those of the cable row. |
 | `rebuild` | Rewrite identity, prefs, channels and audit from memory and rebuild the contacts from the persistent store. | stock, behaviour changed | write | Stock reformatted and re-saved. With the adaptive contact store it does not format; damaged buckets are kept as `/ct<N>.bad` ([CONTACTS](CONTACTS.md)). |
 | `erase` | Format the file system. | stock, behaviour changed | destructive | Also returns the posture to Normal and writes a factory-reset audit entry. |
-| `ls [path]` | List files (`UserData/...`, `ExtraFS/...`). | stock | write |  |
-| `cat <path>` | Print a file in hex. | stock | write | Path must start with `UserData/` or `ExtraFS/`. |
-| `rm <path>` | Remove a file. | stock | destructive | Refuses an empty path and `/`. |
+| `ls [path]` | List files (`UserData/...`, `ExtraFS/...`). | stock | write | Refused on a device that belongs to a Deployment or is Hardened: use `rebuild` or `erase`. |
+| `cat <path>` | Print a file in hex. | stock | write | Path must start with `UserData/` or `ExtraFS/`. Refused on a device that belongs to a Deployment or is Hardened: use `rebuild` or `erase`. |
+| `rm <path>` | Remove a file. | stock | destructive | Refuses an empty path and `/`. Refused on a device that belongs to a Deployment or is Hardened: use `rebuild` or `erase`. |
 | `reboot` | Restart. | stock | reboot |  |
 
 ## Repeater, Room server and Sensor
@@ -393,6 +395,6 @@ get mecon.cli.check set name x
 
 ## Known gaps
 
-- **Sensor role.** Shares `CommonCLI` and therefore the gate for remote callers, but has no posture or audit commands and the stock login (the default admin password still logs in). Not exercised in the simulator or on hardware.
+- **Sensor role.** Shares `CommonCLI` and therefore the gate for remote callers, but has no posture or audit commands: a recorded exception, by the owner's decision of 2026-11-04. While its admin password is the stock default or empty it refuses remote admin, a login by password and an admin ACL entry's blank login alike, as the Repeater and Room server do, until a password is set on the local console (owner's decision of 2026-11-08; from the release after v0.2.1). That refusal is covered in the simulator; the role is not exercised on hardware.
 - **Rescue console `ls`, `cat`, `rm`** are not routed through the engine: they exist only on the cable and are not registered, so a remote caller never reaches them.
 - **Board commands.** Vendor commands added by a board class are not described here.

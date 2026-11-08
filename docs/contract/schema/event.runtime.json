@@ -100,6 +100,38 @@
       ],
       "pattern": "^[0-9a-f]{8}$",
       "description": "Repeater and Room server: the 4-byte key prefix of the last client refused as stale, as hex; null before the first refusal"
+    },
+    "gnss": {
+      "type": "object",
+      "description": "Present only on a board with a GNSS receiver (TELEMETRY.md).",
+      "properties": {
+        "powered": {
+          "type": "boolean"
+        },
+        "fix": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sats": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fix_age_s": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      },
+      "required": [
+        "powered",
+        "fix",
+        "sats",
+        "fix_age_s"
+      ]
     }
   },
   "description": "Two shapes. A snapshot (periodic, and at once when a subscription starts) has reset_reason, abnormal_reset, boot_ms, loop_gap_ms and, on the Companion, heap_low, or on the Repeater and Room server, stale_logins and stale_login_last. The boot event is sent once per epoch right after the first snapshot: boot is true and it carries firmware, upstream, hardware and role as hello does, and reset_reason; it has none of the snapshot-only members."

@@ -318,9 +318,10 @@ def test_runtime_carries_heap_low_on_the_companion(nodes):
     assert seen is False, "heap_low never ended"
 
 
-def test_runtime_has_no_heap_low_on_the_repeater(nodes):
+def test_runtime_has_heap_low_on_the_repeater(nodes):
     n, cli, i = repeater(nodes, "noheaplow")
-    assert "heap_low" not in check(first_event(i, "runtime"), "runtime")
+    data = check(first_event(i, "runtime"), "runtime")
+    assert data.get("heap_low") is False, "the Repeater checks the floor too (Issue #440), and the heap is healthy: %s" % data
 
 
 def test_runtime_has_no_gnss_object_without_a_receiver(nodes):

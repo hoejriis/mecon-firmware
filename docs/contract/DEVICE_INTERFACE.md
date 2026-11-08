@@ -2,7 +2,7 @@
 
 One logical device model reached over MQTT, USB and BLE. A Backend talks to the device directly over MQTT, or through a Reader that bridges USB or BLE; the device answers the same requests with the same results either way. Native MeshCore 1.18 Companion frames and the Repeater console stay exactly as they are beside it.
 
-> Version 1.0. Implemented by the Companion over USB, BLE and MQTT, and by the Repeater and Room server over their console and, on the Heltec boards, MQTT (section 7). Where another page of the contract set differs from this one on wire details, this page wins.
+> Version 1.0. Implemented by the Companion over USB, BLE and, on the Heltec boards, MQTT, and by the Repeater and Room server over their console and, on the Heltec boards, MQTT (section 7). Where another page of the contract set differs from this one on wire details, this page wins.
 
 ## Decisions
 
@@ -64,7 +64,7 @@ UTF-8 JSON objects. Three shapes:
 | `update.status` | the open update job, the security floor and the staged manifests | read |
 | `channel.list` / `channel.get` | the native channel table: per used slot its name, the one-byte channel hash and the key size, never the secret; `list` is paged by 8 used slots (`cursor` in, `next` out). Companion only | read |
 | `channel.put` / `channel.remove` | write or clear a slot of the native channel table, as the app's `CMD_SET_CHANNEL` does: a name of 1 to 31 bytes and a 128-bit key as 32 hex digits; a key another slot holds is `failed` `duplicate-secret`; a table that cannot be saved is `failed` `write-failed` with the slot unchanged, in RAM and on flash. A slot holding a key under an empty name counts as present for `remove`. Companion only | write |
-| `contact.list` / `contact.get` | the native contact table: per stored contact its key, name, type, protection flag, last advert, hops and position, never the shared secret or the path bytes; `list` is paged by up to 6 contacts in record order (`cursor` in, `next` out; a record number, so adds and removals between pages never skip or repeat a contact that stays); `get` takes the whole key as 64 hex digits. Companion only | read |
+| `contact.list` / `contact.get` | the native contact table: per stored contact its key, name, type, protection flag (`fav`), last advert, hops and position, never the shared secret or the path bytes; `list` is paged by up to 6 contacts in record order (`cursor` in, `next` out; a record number, so adds and removals between pages never skip or repeat a contact that stays); `get` takes the whole key as 64 hex digits. Companion only | read |
 | `contact.put` / `contact.remove` / `contact.protect` | write the native contact table as `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` and the favourite flag do: a put adds a contact (name and type required; type 0 has no spelling) or updates the fields it names, keeps the contact's flags and path, and never grants telemetry or the remote CLI; a full table overwrites the oldest unprotected contact when the overwrite setting is on, otherwise `failed` `table-full`; a repeat is the same state (`changed` false, nothing written); `remove` of a key that is not stored is `ok` with `removed` false; `protect` takes `protected` true or false and a key that is not stored is `failed` `not-found`. Saved by the native lazy write. Companion only | write |
 | `message.send` / `message.get` / `message.list` / `message.ack` | send one native direct or channel message, and read what became of it ([operations contract](OPERATIONS.md) section 6). Results follow `message.send.result.json`, `message.get.result.json`, `message.list.result.json` and `message.ack.result.json` |
 | `inbox.list` / `inbox.ack` | read what the Companion received from a copy kept for the manager, and release it, with the native queue left to the stock app ([operations contract](OPERATIONS.md) section 6.4). Results follow `inbox.list.result.json` and `inbox.ack.result.json` |
@@ -126,7 +126,7 @@ No fragmentation. On a build with the interface the MQTT client's buffer is 1,60
 
 - Requests are parsed and answered in the main loop in bounded steps; no operation blocks on a network or BLE write. A paged result is produced page by page.
 - Each subscription has a bounded rate, a lifetime after which it ends unless renewed, and a drop counter reported in its events. A slow or vanished consumer costs dropped events, never loop time.
-- Memory: the id cache, 3.4 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
+- Memory: the id cache, 3.6 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
 
 ### 9. Conformance
 
