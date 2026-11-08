@@ -81,6 +81,25 @@ TEST_F(StandingTest, APutStampedWithTheLoopsTimeRunsOnePeriodOn) {
   EXPECT_EQ(g_sends, 1) << "the next is a period after that";
 }
 
+TEST_F(StandingTest, ABoundedInstructionKeepsItsCountAcrossAReboot) {
+  g_put_at = 5000;
+  const std::string put = R"({"id":"h","fields":["health"],"every_s":900,"runs":2,"to":"abababababababababababababababababababababababababababababababab"})";
+  ASSERT_NE(call(s, "standing.put", put).find("\"ok\""), std::string::npos);
+  s.tick(5000);
+  s.tick(5000 + 900000);
+  ASSERT_EQ(g_sends, 1) << "the first of two";
+  StandingService b;   // a reboot: the same store, a new service
+  b.begin(ReportHost{hSend, hProduced, hNo, hIssuer, hValid, hRandom, hYes, &store, nullptr}, 1000);
+  b.tick(1000);   // no jitter here: a boot's first run is due at once
+  EXPECT_EQ(g_sends, 2) << "the second";
+  EXPECT_EQ(call(b, "standing.list").find("\"h\""), std::string::npos) << "and then it is gone: " << call(b, "standing.list");
+  StandingService c;   // another reboot finds nothing left to run
+  c.begin(ReportHost{hSend, hProduced, hNo, hIssuer, hValid, hRandom, hYes, &store, nullptr}, 1000);
+  c.tick(1000);
+  c.tick(1000 + 900000);
+  EXPECT_EQ(g_sends, 2) << "no third run";
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

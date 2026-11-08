@@ -205,9 +205,9 @@ void StandingService::tick(uint32_t now) {
     if (_h.send(_h.user, s.fields, s.has_to ? s.to : nullptr, s.slot, &seq)) s.runs++;
     else s.failed++;
     schedule(s, now, false);
-    if (s.runs_left && --s.runs_left == 0) {
-      s = Standing();
-      changed = true;
+    if (s.runs_left) {
+      if (--s.runs_left == 0) s = Standing();
+      changed = true;   // the count is kept, so a reboot does not give a bounded instruction its runs back
     }
     break;   // one on a pass: a report is airtime, and the next can wait
   }
