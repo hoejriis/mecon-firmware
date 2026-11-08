@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/standing.list.result.json",
+  "title": "Result of standing.list: every stored instruction, with its counts since boot",
+  "type": "object",
+  "required": [
+    "capacity",
+    "instructions"
+  ],
+  "properties": {
+    "capacity": {
+      "type": "integer",
+      "const": 4
+    },
+    "instructions": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "fields",
+          "every_s",
+          "durable",
+          "runs",
+          "failed",
+          "skipped"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16,
+            "pattern": "^[0-9A-Za-z._:-]+$"
+          },
+          "fields": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "enum": [
+                "health",
+                "radio",
+                "location"
+              ]
+            }
+          },
+          "every_s": {
+            "type": "integer",
+            "minimum": 900,
+            "maximum": 2592000
+          },
+          "runs_left": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Left of the runs it was given; absent without a limit. Kept across a boot."
+          },
+          "durable": {
+            "type": "boolean"
+          },
+          "slot": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The channel slot; absent when it goes to a node key."
+          },
+          "runs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
