@@ -56,10 +56,10 @@ def test_the_checker_enforces_every_keyword_the_schemas_use():
     s = {"type": "object", "minProperties": 1,
          "properties": {"a": {"type": "string", "minLength": 2, "maxLength": 3},
                         "n": {"type": "integer", "minimum": 1, "maximum": 5},
-                        "l": {"type": "array", "maxItems": 2}},
+                        "l": {"type": "array", "minItems": 1, "maxItems": 2}},
          "additionalProperties": {"type": "integer"}}
     assert mecon_schema.check({"a": "ab", "n": 3, "l": [1, 2], "x": 7}, s) == []
-    for bad in ({"a": "a"}, {"a": "abcd"}, {"n": 0}, {"n": 6}, {"l": [1, 2, 3]}, {"x": "seven"}, {}):
+    for bad in ({"a": "a"}, {"a": "abcd"}, {"n": 0}, {"n": 6}, {"l": []}, {"l": [1, 2, 3]}, {"x": "seven"}, {}):
         assert mecon_schema.check(bad, s), bad
     assert mecon_schema.check(1, {"type": "integer", "exclusiveMinimum": 0}), "an unknown keyword is never silently passed"
 
@@ -77,3 +77,29 @@ def test_status_reports_the_deployment_in_its_schema_healthy_and_corrupt(nodes):
     d.attach()
     dep = ok(d.i.request("status.get"), "status.get")["deployment"]
     assert dep["state"] == "corrupt" and "deployment_id" not in dep, dep
+
+
+@pytest.mark.timescale(10)
+def test_the_management_channel_changes_answer_in_their_schemas(nodes):
+    from test_mgmt_channel import KEY, NEW, ble, companion_client, put
+    n = ble_boot(nodes, "rmg", PIN)
+    u, ui = companion_client(n)
+    assert put(ui, 2, "ops", KEY)["status"] == "ok"
+    ok(ui.request("mgmt.channel.bind", {"slot": 2}), "mgmt.channel.bind")
+    ok(ui.request("mgmt.channel.rotate", {"secret": NEW.hex()}), "mgmt.channel.rotate")
+    assert ok(ui.request("mgmt.channel.unbind", {"remove": False}), "mgmt.channel.unbind")["removed"] is False
+    u.close()
+    b, i = ble(n)   # a paired phone's change carries its job and its deadline
+    r = ok(i.request("mgmt.channel.bind", {"slot": 2, "confirm": {"within_s": 60}}), "mgmt.channel.bind")
+    assert r["job_state"] == "awaiting-confirm" and "job" in r, r
+
+
+def test_identity_rotate_and_rotation_answer_in_their_schemas(nodes):
+    from test_identity_rotate import enrolled_companion, rotate
+    d = enrolled_companion(nodes, "rir", 43)
+    assert ok(d.i.request("identity.rotation"), "identity.rotation") == {}, "none yet"
+    old = d.node_key
+    r = ok(rotate(d, 1, old), "identity.rotate")
+    assert r["old_public_key"] == old and "node_key" in r["removed"], r
+    rot = ok(d.i.request("identity.rotation"), "identity.rotation")
+    assert rot["rotation"]["statement"], rot
