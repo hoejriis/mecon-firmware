@@ -1,0 +1,577 @@
+{
+ "description": "Every config.schema page answered by the Repeater and Room server, in order, as recorded from the simulated builds: `plain` is a build without Wi-Fi (SERVER_KEYS), `wifi` one with ENABLE_WIFI_INTERFACE (SERVER_KEYS plus the Wi-Fi and broker keys). The Repeater and the Room server answer the same pages. A Backend maps its own keys only to keys listed here. sim/tests/test_device_interface_server.py fails if the firmware's schema drifts from this recording.",
+ "builds": {
+  "plain": {
+   "roles": [
+    "repeater",
+    "room"
+   ],
+   "build": {
+    "interface": "1.0",
+    "upstream": "v1.18.0"
+   },
+   "pages": [
+    {
+     "cursor": 0,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
+       {
+        "key": "name",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 31,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "tx",
+        "type": "integer",
+        "min": -9,
+        "max": 30,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "radio",
+        "type": "string",
+        "min_len": 7,
+        "max_len": 40,
+        "format": "freq,bw,sf,cr",
+        "writable": true,
+        "write_only": false,
+        "reboot": true,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "lat",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 12,
+        "format": "latitude",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "lon",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 12,
+        "format": "longitude",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "repeat",
+        "type": "boolean",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       }
+      ],
+      "next": 6
+     }
+    },
+    {
+     "cursor": 6,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
+       {
+        "key": "advert.interval",
+        "type": "integer",
+        "min": 0,
+        "max": 240,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "flood.advert.interval",
+        "type": "integer",
+        "min": 0,
+        "max": 168,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "flood.max",
+        "type": "integer",
+        "min": 0,
+        "max": 64,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "loop.detect",
+        "type": "enum",
+        "choices": [
+         "off",
+         "minimal",
+         "moderate",
+         "strict"
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "allow.read.only",
+        "type": "boolean",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "owner.info",
+        "type": "string",
+        "min_len": 0,
+        "max_len": 119,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       }
+      ],
+      "next": null
+     }
+    }
+   ]
+  },
+  "wifi": {
+   "roles": [
+    "repeater",
+    "room"
+   ],
+   "build": {
+    "interface": "1.0",
+    "upstream": "v1.18.0"
+   },
+   "pages": [
+    {
+     "cursor": 0,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
+       {
+        "key": "name",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 31,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "tx",
+        "type": "integer",
+        "min": -9,
+        "max": 30,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "radio",
+        "type": "string",
+        "min_len": 7,
+        "max_len": 40,
+        "format": "freq,bw,sf,cr",
+        "writable": true,
+        "write_only": false,
+        "reboot": true,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "lat",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 12,
+        "format": "latitude",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "lon",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 12,
+        "format": "longitude",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "repeat",
+        "type": "boolean",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       }
+      ],
+      "next": 6
+     }
+    },
+    {
+     "cursor": 6,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
+       {
+        "key": "advert.interval",
+        "type": "integer",
+        "min": 0,
+        "max": 240,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "flood.advert.interval",
+        "type": "integer",
+        "min": 0,
+        "max": 168,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "flood.max",
+        "type": "integer",
+        "min": 0,
+        "max": 64,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "loop.detect",
+        "type": "enum",
+        "choices": [
+         "off",
+         "minimal",
+         "moderate",
+         "strict"
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "allow.read.only",
+        "type": "boolean",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "owner.info",
+        "type": "string",
+        "min_len": 0,
+        "max_len": 119,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       }
+      ],
+      "next": 12
+     }
+    },
+    {
+     "cursor": 12,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
+       {
+        "key": "wifi.enabled",
+        "type": "boolean",
+        "writable": true,
+        "write_only": false,
+        "reboot": true,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "wifi.profile.{n}.ssid",
+        "type": "string",
+        "min_len": 0,
+        "max_len": 32,
+        "index": [
+         0,
+         9
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "wifi.profile.{n}.pwd",
+        "type": "string",
+        "min_len": 0,
+        "max_len": 63,
+        "index": [
+         0,
+         9
+        ],
+        "writable": true,
+        "write_only": true,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "wifi.profile.{n}.priority",
+        "type": "integer",
+        "min": 0,
+        "max": 255,
+        "index": [
+         0,
+         9
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "mqtt.enabled",
+        "type": "boolean",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "mqtt.profile.{n}.type",
+        "type": "enum",
+        "choices": [
+         "static",
+         "discovery"
+        ],
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       }
+      ],
+      "next": 18
+     }
+    },
+    {
+     "cursor": 18,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
+       {
+        "key": "mqtt.profile.{n}.host",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 63,
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "mqtt.profile.{n}.port",
+        "type": "integer",
+        "min": 0,
+        "max": 65535,
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "mqtt.profile.{n}.tls",
+        "type": "boolean",
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "mqtt.profile.{n}.transport",
+        "type": "enum",
+        "choices": [
+         "tcp",
+         "ws"
+        ],
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "mqtt.profile.{n}.path",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 63,
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "mqtt.profile.{n}.site",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 23,
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       }
+      ],
+      "next": 24
+     }
+    },
+    {
+     "cursor": 24,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
+       {
+        "key": "mqtt.profile.{n}.user",
+        "type": "string",
+        "min_len": 0,
+        "max_len": 63,
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": true,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "mqtt.profile.{n}.pwd",
+        "type": "string",
+        "min_len": 0,
+        "max_len": 63,
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": true,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "mqtt.profile.{n}.priority",
+        "type": "integer",
+        "min": 0,
+        "max": 255,
+        "index": [
+         0,
+         5
+        ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       }
+      ],
+      "next": null
+     }
+    }
+   ]
+  }
+ }
+}
