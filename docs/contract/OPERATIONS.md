@@ -203,11 +203,13 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
+`contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
+
 **Keys `config.*` reaches.**
 - Companion: 19 key patterns, 96 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|transport|path|site|user|pwd|priority`. The 22 password and user keys are write-only.
 - Repeater and Room server: 12 keys: `name`, `tx`, `radio`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`. The Heltec builds also have the Wi-Fi and broker keys above; `connectivity.mode` stays on the Companion, because a server has no BLE to choose between.
 
-Each of the following stands for its existing CLI line:
+Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in `src/helpers/iface/IfaceConfig.cpp`) has them, so each is reached by its CLI line only:
 - **Companion:** `mqtt.profile.N.anchor` (with the CA lines as one operation), `tz.offset`, and the remaining radio preferences (`af`, `rxdelay`, `txdelay`, `direct.txdelay`, `int.thresh`, `cad`, `radio.rxgain`, `agc.reset.interval`, `path.hash.mode`, `multi.acks`, `dutycycle`).
 - **Repeater and Room server:** the same radio preferences, plus `flood.max.advert`, `flood.max.unscoped` and `guest.password` (write-only).
 - **Stays a separate posture-class operation:** `mqtt.profile.N.manage`, which is set locally, never remotely.
@@ -231,7 +233,7 @@ Each of the following stands for its existing CLI line:
 | 11 | `CMD_SET_RADIO_PARAMS` | write | refused | `config.apply radio` |
 | 12 | `CMD_SET_RADIO_TX_POWER` | write | refused | `config.apply tx` |
 | 13 | `CMD_RESET_PATH` | messaging (contact handling) | served | native |
-| 14 | `CMD_SET_ADVERT_LATLON` | write | refused | `config.apply` (lat/lon keys) |
+| 14 | `CMD_SET_ADVERT_LATLON` | write | refused | none yet: the Companion has no `lat`/`lon` key in `config.*` (the Repeater and Room server have) |
 | 15 | `CMD_REMOVE_CONTACT` | messaging (contact handling) | served | `contact.remove` |
 | 16 | `CMD_SHARE_CONTACT` | messaging | served | native |
 | 17 | `CMD_EXPORT_CONTACT` | read | served | `contact.get` |
