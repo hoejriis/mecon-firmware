@@ -1040,7 +1040,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
     if (n > 0) n = _prov.sign(STREAMS[s].name, ev, (size_t)n, sizeof(ev));   // -1: not signable, so not sent
     if (n > 0) emit(s, ev, (size_t)n);
   }
-  if (_boot_pending) {   // once per epoch, right after the first runtime snapshot
+  if (_boot_pending && (due & (1u << SID_RUNTIME))) {   // once per epoch, right after the first runtime snapshot
     _boot_pending = false;
     if (_subs.s[SID_RUNTIME].active || _mqtt_subs.s[SID_RUNTIME].active) {
       _boot_sent = true;

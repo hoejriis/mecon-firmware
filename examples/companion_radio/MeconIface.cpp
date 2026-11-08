@@ -972,7 +972,7 @@ void MeconIface::streamTick(uint32_t now) {
     if (n <= 0) continue;
     sendEvent(s, ev, (size_t)n);
   }
-  if (_boot_pending) {   // once per epoch, right after the first runtime snapshot
+  if (_boot_pending && (due & (1u << Iface::SID_RUNTIME))) {   // once per epoch, right after the first runtime snapshot
     _boot_pending = false;
     bool any = _mqtt_subs.s[SID_RUNTIME].active;
     for (Link& l : _links) any = any || l.subs.s[SID_RUNTIME].active;
