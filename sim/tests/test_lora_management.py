@@ -537,3 +537,16 @@ def test_a_native_channel_write_makes_the_companion_read_the_binding(ether, node
     d.c.set_channel(1, "ops", KEY)
     time.sleep(0.2)
     assert reads() > before, "a slot written by a frame can leave the binding stale, and no request said so"
+
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_the_region_tree_is_managed_over_lora_with_confirm(ether, nodes, kind):
+    d, m = enrolled(nodes, ether, kind, "rg" + kind[:2])
+    r = m.send(d.node_key, wrap(d.node_key, "region.put", {"name": "city", "confirm": {"within_s": 120}}, job=1))
+    assert r and r["status"] == "ok" and r["result"]["job_state"] == "awaiting-confirm", r
+    assert verifies(r.raw, d.node_key, "result")
+    c = m.send(d.node_key, wrap(d.node_key, "job.confirm", {"job": r["result"]["job"]}, job=2))
+    assert c and c["status"] == "ok", c
+    page = m.send(d.node_key, wrap(d.node_key, "region.list", job=3))   # a job id: accepted whether or not it is a plain read
+    assert page and page["status"] == "ok", page
+    assert [e["name"] for e in page["result"]["regions"]] == ["city"], page
