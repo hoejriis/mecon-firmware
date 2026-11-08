@@ -2,6 +2,8 @@
 
 The Companion `_wifi` and `_standalone` builds join a network to serve the TCP companion port and, where the MQTT controller is built in, to carry its broker session. The Heltec V3 and V4 Repeater and Room server builds join one for the broker session alone: they have no TCP port for an app. They hold up to **ten profiles** (SSID, password, priority) and a controller that picks among them. The decision logic is platform-free (`src/helpers/wifi/WifiCore.*`, unit-tested natively); `WifiController.*` is a thin layer over the Arduino `WiFi` API that ESP32 and RP2040 share; `WifiProfiles.*` is the profile store and its CLI. Later modules (the MQTT controller, connectivity-mode switching) ask the same controller for the link instead of joining a network themselves.
 
+Upstream also sets `ENABLE_WIFI_INTERFACE` in the Heltec V3 and V4 `_ble` Companion builds, for its own dynamic Wi-Fi (the V3 line is upstream's 590bc23a). This firmware leaves the flag as upstream has it. Those builds are not release targets, carry no MQTT controller, and nothing on this page is tested on them.
+
 What has been checked on real boards is in [hardware evidence](HARDWARE_VERIFIED.md), and what the simulated-board suite covers is in the [test harness](SIMULATION.md).
 
 ## Selection and failover
