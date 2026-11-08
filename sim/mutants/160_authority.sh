@@ -221,7 +221,7 @@ mutate observation_unsigned_console src/helpers/iface/ConsoleIface.cpp '  if (n 
 LM=sim/tests/test_lora_management.py
 mutate lora_every_op_console src/helpers/iface/ConsoleIface.cpp '  if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);' '' $LM::test_an_operation_this_link_does_not_carry_is_unknown_here
 mutate lora_every_op_companion examples/companion_radio/MeconIface.cpp '  if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);' '' $LM::test_an_operation_this_link_does_not_carry_is_unknown_here
-mutate lora_hello_offers_all src/helpers/iface/ConsoleIface.cpp 'if (!m->onLora() || loraOpAllowed(cap)) w.str(cap);' 'w.str(cap);' $LM::test_hello_over_lora_offers_only_what_this_link_carries
+mutate lora_hello_offers_all src/helpers/iface/ConsoleIface.cpp '    if (lora && !loraOpAllowed(cap)) return;   // an operation this link does not carry is not offered on it' '' $LM::test_hello_over_lora_offers_only_what_this_link_carries
 mutate lora_hello_lists_streams src/helpers/iface/ConsoleIface.cpp 'if (!m->onLora()) writeStreamCapabilities(w, m->produced());' 'writeStreamCapabilities(w, m->produced());' $LM::test_hello_over_lora_offers_only_what_this_link_carries
 mutate lora_refusal_counts_as_verified src/helpers/iface/ConsoleIface.cpp '      if (n > 0) _lora.queueReply(*p, res, (size_t)n, verified, now);' '      if (n > 0) _lora.queueReply(*p, res, (size_t)n, true, now);' $LM::test_unverified_answers_stay_within_their_budget
 mutate lora_budget_off src/helpers/iface/LoraLink.h '    if (_tok < 15000) return false;' '' unit:test_lora_link

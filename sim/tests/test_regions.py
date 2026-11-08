@@ -29,6 +29,19 @@ def listed(d):
     return first, {e["name"]: e for e in regions}
 
 
+def capabilities(d):
+    """hello's capability list, every page (DEVICE_INTERFACE.md: cursor in, next out)."""
+    caps, cursor = [], 0
+    for _ in range(8):
+        r = d.i.request("hello", {"cursor": cursor} if cursor else None)
+        assert r["status"] == "ok", r
+        caps += r["result"]["capabilities"]
+        cursor = r["result"].get("next")
+        if cursor is None:
+            return caps
+    raise AssertionError("hello never ended its pages")
+
+
 def wait_job(d, job, secs=30):
     end = time.time() + secs
     st = None
@@ -46,7 +59,7 @@ def test_a_fresh_server_lists_only_the_wildcard(nodes, kind):
     first, regions = listed(d)
     assert first["capacity"] == 32 and first["wildcard"] == {"flood": "allow"}, first
     assert first["home"] is None and first["default"] is None and regions == {}, first
-    caps = d.i.request("hello")["result"]["capabilities"]
+    caps = capabilities(d)
     assert {"region.list", "region.put", "region.remove", "region.flood", "region.home", "region.default"} <= set(caps), caps
 
 
@@ -160,3 +173,17 @@ def test_a_reboot_while_a_change_is_pending_reverts_it_at_boot(nodes, kind):
     d.attach()
     assert "maybe" not in listed(d)[1], "the unconfirmed change was reverted at boot"
     assert d.i.request("job.get", {"job": job})["result"]["state"] == "reverted"
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_an_enrolled_servers_signed_hello_pages_its_capabilities(nodes, kind):
+    """The device-id signature, the nonce and the result's own signature leave less room on an enrolled server: the list
+    goes on a second page rather than past the 1,536-byte result (it answered too-large-to-sign before it was paged)."""
+    d = boot(nodes, kind, "rh" + kind[:2], 96)
+    plain = capabilities(d)
+    assert d.provision()["status"] == "ok"
+    first = d.i.request("hello")
+    assert first["status"] == "ok", first
+    signed = capabilities(d)
+    assert sorted(signed) == sorted(plain) and len(signed) == len(set(signed)), "every capability once, across the pages"
+    assert "hello" in first["result"]["capabilities"], "hello and the streams come first"

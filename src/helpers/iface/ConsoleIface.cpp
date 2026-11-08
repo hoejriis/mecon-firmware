@@ -34,6 +34,11 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
   out[2 * n] = 0;
 }
 
+// What a hello's capability list may fill (DEVICE_INTERFACE.md: one page unless it would outgrow the 1,536-byte result), as the
+// Companion's: a signed result leaves room for its signature (99), the op and counters it adds and the closing members.
+const size_t HELLO_SIGNED_BUDGET = 1350;
+const size_t HELLO_PLAIN_BUDGET = 1500;
+
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
@@ -68,12 +73,37 @@ Status opHello(OpContext& c) {
   // The channel nonce of the console link, only once a Deployment record exists (AUTHORITY.md section 7.1).
   const char* nonce = m->helloNonce();
   if (nonce && nonce[0]) { w.key("channel_nonce"); w.str(nonce); }
+  // The list is paged (`cursor` in, `next` out, as DEVICE_INTERFACE.md says) once it would not leave room for the signature,
+  // as on the Companion: an enrolled server signs the result, and the device-id signature and the nonce come before the list.
+  // The region operations took the server's signed hello past the 1,536-byte result. Most hellos fit in one page.
+  int64_t from = 0;
+  const int ct = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "cursor") : -1;
+  if (ct >= 0 && !jsonGetInt(*c.doc, ct, 0, 255, &from)) return ST_INVALID;
+  const size_t room = m->helloSigned() ? HELLO_SIGNED_BUDGET : HELLO_PLAIN_BUDGET;
+  unsigned idx = 0;
+  int next = -1;
+  const bool lora = m->onLora();
+  auto add = [&](const char* cap) {
+    if (lora && !loraOpAllowed(cap)) return;   // an operation this link does not carry is not offered on it
+    if (idx++ < (unsigned)from || next >= 0) return;
+    if (w.size() + strlen(cap) + 3 > room) { next = (int)idx - 1; return; }
+    w.str(cap);
+  };
   w.key("capabilities"); w.beginArray();
-  for (const char* cap : CAPABILITIES) if (!m->onLora() || loraOpAllowed(cap)) w.str(cap);
-  if (m->hasRegions())
-    for (const char* rcap : REGION_CAPABILITIES) if (loraOpAllowed(rcap) || !m->onLora()) w.str(rcap);
-  if (!m->onLora()) writeStreamCapabilities(w, m->produced());   // no stream goes over LoRa
+  add(CAPABILITIES[0]);   // hello, then the streams, so a manager reading only the first page has what it subscribes to
+  if (!lora) {   // no stream goes over LoRa
+    const uint32_t produced = m->produced();
+    for (int sid = 0; sid < STREAM_COUNT; sid++) {
+      if (!(produced & (1u << sid))) continue;
+      char cap[24];
+      snprintf(cap, sizeof(cap), "stream.%s", STREAMS[sid].name);
+      add(cap);
+    }
+  }
+  for (size_t i = 1; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
+  if (m->hasRegions()) for (const char* rcap : REGION_CAPABILITIES) add(rcap);
   w.endArray();
+  if (next >= 0) { w.key("next"); w.num(next); }
   return ST_OK;
 }
 
