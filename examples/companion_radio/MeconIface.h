@@ -12,6 +12,7 @@
 #include <helpers/iface/InboxOps.h>
 #include <helpers/iface/MessageOps.h>
 #include <helpers/iface/MgmtChannel.h>
+#include <helpers/iface/ScopeOps.h>
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
@@ -106,6 +107,9 @@ public:
   Iface::Inbox& inbox() { return _inbox; }   // inbox.* operations: the manager's copy of what the Companion receives
   Iface::InboxHost inboxHost();
   Iface::MgmtHost mgmtHost();         // the management channel binding (mgmt.channel.*; MeconMgmt.cpp)
+  Iface::ScopeHost scopeHost();       // the default flood scope (scope.default.*; MeconMgmt.cpp)
+  static bool scopeGet(void* user, char name[Iface::SCOPE_NAME_MAX + 1], uint8_t key[Iface::SCOPE_KEY_BYTES]);
+  static bool scopeSet(void* user, const char* name, const uint8_t key[Iface::SCOPE_KEY_BYTES]);
   void channelsChanged() { _lora_bound_dirty = true; }   // a native frame wrote the channels: a binding can have gone stale
   const char* deviceIdHex() const { return _id_hex; }
   uint32_t epoch() const { return _epoch; }

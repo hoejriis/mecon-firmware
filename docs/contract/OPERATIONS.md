@@ -170,6 +170,8 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `job.confirm` | confirm a tentative change | | the job's classes | yes | C R S | all |
 | `region.list` | the region tree, paged; the first page adds the wildcard's flood, `home` and `default` | `RegionMap` | read | no | R S | Con, MQTT where built |
 | `region.put`, `region.remove`, `region.flood`, `region.home`, `region.default` | change the tree; each is saved at once | `RegionMap`, `/regions2` | write; confirm for all but the unsigned cable | yes | R S | Con, MQTT where built |
+| `scope.default.get` | the default flood scope's name and kind, never its key | frame 64, prefs | read | no | C | USB BLE MQTT |
+| `scope.default.set`, `scope.default.clear` | set or clear it; saved in the prefs | frame 63, prefs | write; confirm for all but the unsigned cable | yes | C | USB BLE MQTT |
 | `job.cancel` | cancel, or revert if applied | | the job's classes | yes | C R S | all |
 | `device.reboot` | reboot | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | all |
 | `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope |
@@ -336,7 +338,13 @@ A Repeater's and a Room server's native region tree, the one the console's `regi
 
 **Confirmation.** A change can cut a remote caller's path: the default scope carries the server's adverts and its unsolicited replies, and a flood flag decides what it forwards. So for every caller but the unsigned cable, each change needs `"confirm":{"within_s":N}` (otherwise `invalid` `confirm-required`) and runs as a job (section 3.4). A copy of the whole tree is written to `/region_snap` before the change. Confirmed, the copy goes; not confirmed in time, or across a second boot, the tree is put back from it and saved. An unsigned caller on an enrolled device changes nothing.
 
-**Not yet on these operations:** LoRa point to point (they are not in its allowlist yet), the console's `region def` and `region load` (batch editors over the same tree, which `region.put` covers), and the Companion's default scope.
+**A Companion's default scope.** The scope its own floods go out in, the same one native frames 63 and 64 set and read (`default_scope_name` and `default_scope_key` in the prefs).
+- **`scope.default.get`** gives `{"name","kind"}`, or both `null` when there is none. The key is never read back, for either kind.
+- **`scope.default.set {"name","key"?}`** names a hashtag scope, with an optional leading `#`; its key is derived as the firmware's own default derives it (SHA-256 of `"#name"`, 16 bytes). A private scope (`$name`) needs `key`, 32 hex characters, not all zero (`key-required`, `bad-key`). The same names as `region.put` take, and the same errors (`name-too-long`, `bad-char`).
+- **`scope.default.clear`** sends the Companion's floods unscoped again.
+- **Confirmation** as for the region tree: a scope the network does not forward would cut the Companion's reports to its manager, so every caller but the unsigned cable must confirm. The previous name and key are kept in `/scope_snap` until the job ends.
+
+**Not yet on these operations:** LoRa point to point (they are not in its allowlist yet), the console's `region def` and `region load` (batch editors over the same tree, which `region.put` covers), and a per-send scope on `message.send` (stock's frame 54 sets one for the whole device until the next, so a manager setting it would change the app's sends too).
 
 ### 5.4 LoRa remote administration (native)
 

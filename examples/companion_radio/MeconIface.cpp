@@ -48,7 +48,8 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
                                     "message.send", "message.get", "message.list", "message.ack",
-                                    "inbox.list", "inbox.ack", "message.deliver"
+                                    "inbox.list", "inbox.ack", "message.deliver",
+                                    "scope.default.get", "scope.default.set", "scope.default.clear"
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -97,6 +98,9 @@ Status opMgmtGetW(OpContext& c);
 Status opMgmtBindW(OpContext& c);
 Status opMgmtRotateW(OpContext& c);
 Status opMgmtUnbindW(OpContext& c);
+Status opScopeGetW(OpContext& c);
+Status opScopeSetW(OpContext& c);
+Status opScopeClearW(OpContext& c);
 
 // The operation's class is the least it needs; each config key is decided again by its own CLI line (IfaceConfig).
 const OpEntry OPS[] = {
@@ -110,6 +114,10 @@ const OpEntry OPS[] = {
   {"standing.put", opStandingPut, PRIV_WRITE, true},
   {"standing.list", opStandingList, PRIV_READ, false},
   {"standing.remove", opStandingRemove, PRIV_WRITE, true},
+  // The default flood scope (frames 63 and 64); a change confirm-or-revert for anyone but the cable.
+  {"scope.default.get", opScopeGetW, PRIV_READ, false},
+  {"scope.default.set", opScopeSetW, PRIV_WRITE, true},
+  {"scope.default.clear", opScopeClearW, PRIV_WRITE, true},
   {"posture.set", opPostureW, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
@@ -406,6 +414,13 @@ Status opMgmtGetW(OpContext& c) { return withMgmt(c, opMgmtGet); }
 Status opMgmtBindW(OpContext& c) { return withMgmt(c, opMgmtBind); }
 Status opMgmtRotateW(OpContext& c) { return withMgmt(c, opMgmtRotate); }
 Status opMgmtUnbindW(OpContext& c) { return withMgmt(c, opMgmtUnbind); }
+Status withScope(OpContext& c, Status (*op)(OpContext&, ScopeHost&)) {
+  ScopeHost h = self(c)->scopeHost();
+  return op(c, h);
+}
+Status opScopeGetW(OpContext& c) { return withScope(c, opScopeGet); }
+Status opScopeSetW(OpContext& c) { return withScope(c, opScopeSet); }
+Status opScopeClearW(OpContext& c) { return withScope(c, opScopeClear); }
 
 }  // namespace
 

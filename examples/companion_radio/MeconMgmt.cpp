@@ -13,6 +13,7 @@ namespace {
 Iface::PathFsStore g_mgmt_record("/mgmt_channel");
 Iface::PathFsStore g_mgmt_snap("/mgmt_snap");
 Iface::PathFsStore g_standing("/standing");
+Iface::PathFsStore g_scope_snap("/scope_snap");   // a pending default-scope change's previous scope
 
 void fpOf(const uint8_t* key, size_t len, uint8_t out[Iface::MGMT_FP_BYTES]) {
   mesh::Utils::sha256(out, Iface::MGMT_FP_BYTES, key, (int)len);
@@ -28,10 +29,39 @@ void MeconIface::mgmtLoad() {
   g_mgmt_record.setFs(_mesh->_store->getPrimaryFS());
   g_mgmt_snap.setFs(_mesh->_store->getPrimaryFS());
   g_standing.setFs(_mesh->_store->getPrimaryFS());
+  g_scope_snap.setFs(_mesh->_store->getPrimaryFS());
   fpOf(Iface::MGMT_PUBLIC_KEY, sizeof(Iface::MGMT_PUBLIC_KEY), _public_fp);
 }
 
 Iface::SnapStore* MeconIface::standingStore() { return &g_standing; }
+
+// The default flood scope in the native prefs, as frames 63 and 64 keep it (OPERATIONS.md, "Region scopes").
+bool MeconIface::scopeGet(void* user, char name[Iface::SCOPE_NAME_MAX + 1], uint8_t key[Iface::SCOPE_KEY_BYTES]) {
+  const NodePrefs& p = static_cast<MeconIface*>(user)->_mesh->_prefs;
+  memcpy(name, p.default_scope_name, Iface::SCOPE_NAME_MAX);
+  name[Iface::SCOPE_NAME_MAX] = 0;
+  memcpy(key, p.default_scope_key, Iface::SCOPE_KEY_BYTES);
+  return name[0] != 0;
+}
+
+bool MeconIface::scopeSet(void* user, const char* name, const uint8_t key[Iface::SCOPE_KEY_BYTES]) {
+  MyMesh* m = static_cast<MeconIface*>(user)->_mesh;
+  if (name) {
+    memset(m->_prefs.default_scope_name, 0, sizeof(m->_prefs.default_scope_name));
+    strncpy(m->_prefs.default_scope_name, name, sizeof(m->_prefs.default_scope_name) - 1);
+    memcpy(m->_prefs.default_scope_key, key, sizeof(m->_prefs.default_scope_key));
+  } else {
+    memset(m->_prefs.default_scope_name, 0, sizeof(m->_prefs.default_scope_name));   // as frame 63 clears it
+    memset(m->_prefs.default_scope_key, 0, sizeof(m->_prefs.default_scope_key));
+  }
+  m->savePrefs();
+  return true;
+}
+
+Iface::ScopeHost MeconIface::scopeHost() {
+  return Iface::ScopeHost{scopeGet, scopeSet, this, &g_scope_snap, &_jobs, confirmCable, confirmRecordCaller, confirmJobId,
+                          (uint8_t)(1u << Cli::C_WRITE), this};
+}
 
 Iface::MgmtHost MeconIface::mgmtHost() {
   _chan_host = channelHost();
