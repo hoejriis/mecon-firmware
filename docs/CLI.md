@@ -4,7 +4,7 @@ Every command, per role, with its class and origin: [CLI reference](CLI_REFERENC
 
 Stock MeshCore 1.18 lets commands reach a device four ways, each with its own parser and its own idea of who may do what: the Companion's `CMD_RUN_CLI_COMMAND` frame, the serial rescue console, a remote `TXT_TYPE_CLI_COMMAND` from a flagged contact, and the repeater and room server console and remote admin. This firmware routes all of them, and the new MQTT transport, through **one engine** in `src/helpers/cli/`.
 
-What the simulated-board suite checks here is software behaviour. BLE needs a radio stack the simulator does not have: its rows of the table are covered by unit tests of the table and, end to end, by a simulated BLE transport that pairs with a PIN and reports its trust like the real class, not by a real pairing ([Simulated-board test harness](SIMULATION.md)). **Nothing here has run on a board.**
+What the simulated-board suite checks here is software behaviour. BLE needs a radio stack the simulator does not have: its rows of the table are covered by unit tests of the table and, end to end, by a simulated BLE transport that pairs with a PIN and reports its trust like the real class, not by a real pairing ([Simulated-board test harness](SIMULATION.md)). What has run on a board, and when, is in [Hardware verified](HARDWARE_VERIFIED.md): the MQTT CLI, the CLI over LoRa and over BLE, the rescue console and the Hardened refusals among others. Anything not listed there has not.
 
 ## Shape
 
@@ -141,11 +141,11 @@ The Companion `_wifi` and standalone builds, and the Heltec Repeater and Room se
 - **Retained requests.** A broker redelivers a retained message to every new subscriber, and the MQTT library does not say which messages are retained, so requests arriving in the first 1.5 s after the subscription are dropped: a retained `reboot` cannot become a reboot loop. A live request in that window gets no answer and is sent again. Publishers should not retain requests.
 - **Cost.** The MQTT packet buffer is 512 bytes, or 1,600 in a build with the device interface (one request or response). A request runs on the main loop like any other command.
 
-Not verified on hardware: the ESP32 path of all of this. The TLS verification and the exchange are verified on the simulated board against real Mosquitto brokers.
+On hardware, a `get` answered and a `poweroff` refused over MQTT have been checked ([Hardware verified](HARDWARE_VERIFIED.md)); the rest of the ESP32 path has not. The TLS verification and the exchange are verified on the simulated board against real Mosquitto brokers.
 
 ## Memory
 
-Measured by compiling the Heltec V3 environments at this change and at its base (the adaptive contact memory); RAM is the static figure PlatformIO reports (data and bss):
+Current compiled sizes are in the CI memory table of each pull request. Measured when the engine was written, by compiling the Heltec V3 environments at that change and at its base (the adaptive contact memory); RAM is the static figure PlatformIO reports (data and bss):
 
 | Environment | RAM before | RAM after | Flash before | Flash after |
 |---|---|---|---|---|
