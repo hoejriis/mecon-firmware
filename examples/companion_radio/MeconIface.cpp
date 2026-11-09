@@ -46,7 +46,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "advert.send", "device.reboot",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
@@ -61,6 +61,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
 Status opHello(OpContext& c);
 Status opIdentityGet(OpContext& c);
 Status opClockGet(OpContext& c);
+Status opClockSet(OpContext& c);
 Status opAdvertSend(OpContext& c);
 Status opDeviceReboot(OpContext& c);
 Status opStatus(OpContext& c);
@@ -132,6 +133,7 @@ const OpEntry OPS[] = {
   {"identity.rotation", MeconIface::opIdentityRotation, PRIV_READ, false},
   {"identity.get", opIdentityGet, PRIV_READ, false},
   {"clock.get", opClockGet, PRIV_READ, false},
+  {"clock.set", opClockSet, PRIV_WRITE, true},
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   // Reading a job and acknowledging its result are of the read class (the result belongs to whoever may read it);
@@ -200,6 +202,15 @@ Status opIdentityGet(OpContext& c) {
 Status opClockGet(OpContext& c) {
   const uint32_t t = self(c)->mesh()->getRTCClock()->knownTime();
   c.out->key("epoch"); if (t) c.out->unum(t); else c.out->null();
+  return ST_OK;
+}
+// clock.set: {"epoch": n}, forward only, as CMD_SET_DEVICE_TIME; the answer is the clock after it.
+Status opClockSet(OpContext& c) {
+  int64_t t;
+  if (c.req->args < 0 || !jsonGetInt(*c.doc, jsonFind(*c.doc, c.req->args, "epoch"), 1, 0xFFFFFFFFLL, &t)) return ST_INVALID;
+  MyMesh* mesh = self(c)->mesh();
+  if (!mesh->setClockForward((uint32_t)t)) { c.error = "backwards"; return ST_FAILED; }
+  c.out->key("epoch"); c.out->unum(mesh->getRTCClock()->getCurrentTime());
   return ST_OK;
 }
 // advert.send: {"flood": true} floods the self advert in the default scope; without it, zero hop. As CMD_SEND_SELF_ADVERT.
