@@ -1,4 +1,6 @@
 #include "MessageOps.h"
+#include "ScopeOps.h"
+#include "Wipe.h"
 #include <string.h>
 
 // For size: a table of 8 is otherwise unrolled in every loop, 3 KB for claim() alone on a T1000-E.
@@ -192,6 +194,18 @@ Status opMessageSend(OpContext& c) {
   int64_t stamp = 0, attempt = 0;
   if (ts >= 0 && !jsonGetInt(*c.doc, ts, 1, 0xFFFFFFFFLL, &stamp)) return ST_INVALID;
   if (at >= 0 && !jsonGetInt(*c.doc, at, 0, 3, &attempt)) return ST_INVALID;
+  // The scope of this send only: a name as scope.default.set takes it, or null for none. The device's default is untouched.
+  SendScope scope = {SendScope::DEFAULT, {0}};
+  struct Wiped { SendScope& s; ~Wiped() { wipe(s.key, sizeof(s.key)); } } wiped{scope};   // a private key, on every return
+  const int sc = argOf(c, "scope"), sk = argOf(c, "scope_key");
+  if (sk >= 0 && (sc < 0 || jsonIsNull(*c.doc, sc))) { c.error = "bad-key"; return ST_INVALID; }
+  if (sc >= 0 && jsonIsNull(*c.doc, sc)) {
+    scope.mode = SendScope::NONE;
+  } else if (sc >= 0) {
+    char name[SCOPE_NAME_MAX + 1];
+    if (!scopeOf(c, sc, sk, name, scope.key)) return ST_INVALID;
+    scope.mode = SendScope::KEY;
+  }
   char text[257];   // larger than any native limit, so a text too long is told from a malformed one below
   if (!jsonGetString(*c.doc, tx, text, sizeof(text), CS_ANY, 1)) {
     c.error = "text-too-long";
@@ -214,8 +228,8 @@ Status opMessageSend(OpContext& c) {
   e->channel = (int8_t)slot;
   e->ts = ts >= 0 ? (uint32_t)stamp : h->clock(h->user);
   MessageSent sent = {};
-  const MessageSend r = to >= 0 ? h->send_dm(h->user, key, e->ts, (uint8_t)attempt, text, sent)
-                                : h->send_channel(h->user, (int)slot, e->ts, text, len, sent);
+  const MessageSend r = to >= 0 ? h->send_dm(h->user, key, e->ts, (uint8_t)attempt, text, scope, sent)
+                                : h->send_channel(h->user, (int)slot, e->ts, text, len, scope, sent);
   if (r != MS_OK) {
     memset(e, 0, sizeof(*e));   // nothing was sent: the request's own answer is the whole record
     if (r == MS_QUEUE_FULL) { c.error = "queue-full"; return ST_BUSY; }

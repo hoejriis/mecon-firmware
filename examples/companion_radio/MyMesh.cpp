@@ -498,12 +498,25 @@ void MyMesh::onDutyHold(mesh::Packet* packet, uint32_t wait_ms) {
 
 // The native send, as CMD_SEND_TXT_MSG makes it, less the app's own ACK table: the ACK is the outcome table's, so a stock
 // app is not told of a message it did not send. No contact is created for a recipient that is not stored.
+MyMesh::ScopedSend::ScopedSend(MyMesh& mesh, const Iface::SendScope& s) : m(mesh), scope(mesh.send_scope), unscoped(mesh.send_unscoped) {
+  if (s.mode == Iface::SendScope::NONE) m.send_unscoped = true;
+  if (s.mode != Iface::SendScope::KEY) return;
+  m.send_unscoped = false;
+  memcpy(m.send_scope.key, s.key, sizeof(m.send_scope.key));
+}
+MyMesh::ScopedSend::~ScopedSend() {
+  m.send_scope = scope;
+  m.send_unscoped = unscoped;
+  memset(scope.key, 0, sizeof(scope.key));
+}
+
 Iface::MessageSend MyMesh::messageSendDirect(const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text,
-                                             Iface::MessageSent& out) {
+                                             const Iface::SendScope& scope, Iface::MessageSent& out) {
   ContactInfo* to = contactStore().find(key, PUB_KEY_SIZE);
   if (!to) return Iface::MS_NOT_FOUND;
   uint32_t est = 0;
   _msg_capture = &out;
+  ScopedSend scoped(*this, scope);
   const int r = sendMessage(*to, ts, attempt, text, out.ack, est);
   _msg_capture = nullptr;
   if (r == MSG_SEND_FAILED) return Iface::MS_QUEUE_FULL;
@@ -514,12 +527,14 @@ Iface::MessageSend MyMesh::messageSendDirect(const uint8_t key[32], uint32_t ts,
 
 // As CMD_SEND_CHANNEL_TXT_MSG makes it. The native send cuts a text that does not fit beside the sender's name; here that
 // is an answer instead, since a manager that asked for the whole text must not believe it went.
-Iface::MessageSend MyMesh::messageSendChannel(int slot, uint32_t ts, const char* text, size_t len, Iface::MessageSent& out) {
+Iface::MessageSend MyMesh::messageSendChannel(int slot, uint32_t ts, const char* text, size_t len, const Iface::SendScope& scope,
+                                              Iface::MessageSent& out) {
 #ifdef MAX_GROUP_CHANNELS
   ChannelDetails ch;
   if (!getChannel(slot, ch) || !ch.name[0]) return Iface::MS_NOT_FOUND;
   if (strlen(_prefs.node_name) + 2 + len > MAX_TEXT_LEN) return Iface::MS_TOO_LONG;
   _msg_capture = &out;
+  ScopedSend scoped(*this, scope);
   const bool sent = sendGroupMessage(ts, ch.channel, _prefs.node_name, text, (int)len);
   _msg_capture = nullptr;
   if (!sent) return Iface::MS_QUEUE_FULL;

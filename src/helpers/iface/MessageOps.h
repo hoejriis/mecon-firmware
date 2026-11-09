@@ -78,12 +78,20 @@ struct MessageSent {
   bool flood;
 };
 
+// The flood scope of one send: the device's default (as a stock app's send), none, or the scope a request names.
+struct SendScope {
+  enum Mode : uint8_t { DEFAULT, NONE, KEY } mode;
+  uint8_t key[16];
+};
+
 struct MessageHost {
   MessageTable* table;     // null when the heap cannot hold it
   unsigned text_max;       // the longest text the native send takes
   bool has_channels;
-  MessageSend (*send_dm)(void* user, const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text, MessageSent& out);
-  MessageSend (*send_channel)(void* user, int slot, uint32_t ts, const char* text, size_t len, MessageSent& out);
+  MessageSend (*send_dm)(void* user, const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text,
+                         const SendScope& scope, MessageSent& out);
+  MessageSend (*send_channel)(void* user, int slot, uint32_t ts, const char* text, size_t len, const SendScope& scope,
+                              MessageSent& out);
   uint32_t (*clock)(void* user);                                       // the timestamp of a message that names none
   bool (*identity)(void* user, const Request& req, char* out, size_t cap);   // the request's identity (OPERATIONS.md 3.1)
   uint32_t epoch;
