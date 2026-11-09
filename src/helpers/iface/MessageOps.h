@@ -80,7 +80,7 @@ struct MessageSent {
 
 // The flood scope of one send: the device's default (as a stock app's send), none, or the scope a request names.
 struct SendScope {
-  enum Mode : uint8_t { DEFAULT, NONE, KEY } mode;
+  enum Mode : uint8_t { DEVICE, UNSCOPED, NAMED } mode;   // not KEY: the Heltec V4 build defines it as a macro
   uint8_t key[16];
 };
 

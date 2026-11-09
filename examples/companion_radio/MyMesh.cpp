@@ -499,8 +499,8 @@ void MyMesh::onDutyHold(mesh::Packet* packet, uint32_t wait_ms) {
 // The native send, as CMD_SEND_TXT_MSG makes it, less the app's own ACK table: the ACK is the outcome table's, so a stock
 // app is not told of a message it did not send. No contact is created for a recipient that is not stored.
 MyMesh::ScopedSend::ScopedSend(MyMesh& mesh, const Iface::SendScope& s) : m(mesh), scope(mesh.send_scope), unscoped(mesh.send_unscoped) {
-  if (s.mode == Iface::SendScope::NONE) m.send_unscoped = true;
-  if (s.mode != Iface::SendScope::KEY) return;
+  if (s.mode == Iface::SendScope::UNSCOPED) m.send_unscoped = true;
+  if (s.mode != Iface::SendScope::NAMED) return;
   m.send_unscoped = false;
   memcpy(m.send_scope.key, s.key, sizeof(m.send_scope.key));
 }

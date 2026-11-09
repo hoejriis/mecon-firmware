@@ -194,17 +194,17 @@ Status opMessageSend(OpContext& c) {
   if (ts >= 0 && !jsonGetInt(*c.doc, ts, 1, 0xFFFFFFFFLL, &stamp)) return ST_INVALID;
   if (at >= 0 && !jsonGetInt(*c.doc, at, 0, 3, &attempt)) return ST_INVALID;
   // The scope of this send only: a name as scope.default.set takes it, or null for none. The device's default is untouched.
-  SendScope scope = {SendScope::DEFAULT, {0}};
+  SendScope scope = {SendScope::DEVICE, {0}};
   struct Wiped { SendScope& s; ~Wiped() { wipe(s.key, sizeof(s.key)); } } wiped{scope};   // a private key, on every return
   const int sc = argOf(c, "scope"), sk = argOf(c, "scope_key");
   if (sk >= 0 && (sc < 0 || jsonIsNull(*c.doc, sc))) { c.error = "bad-key"; return ST_INVALID; }
   if (sc >= 0 && jsonIsNull(*c.doc, sc)) {
-    scope.mode = SendScope::NONE;
+    scope.mode = SendScope::UNSCOPED;
   } else if (sc >= 0) {
     char name[32];
     if (!h->scope_of) { c.error = "unsupported"; return ST_FAILED; }
     if (!h->scope_of(c, sc, sk, name, scope.key)) return ST_INVALID;
-    scope.mode = SendScope::KEY;
+    scope.mode = SendScope::NAMED;
   }
   char text[257];   // larger than any native limit, so a text too long is told from a malformed one below
   if (!jsonGetString(*c.doc, tx, text, sizeof(text), CS_ANY, 1)) {
