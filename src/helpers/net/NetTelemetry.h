@@ -41,6 +41,8 @@ inline void writeNetConnectivity(JsonWriter& w) {
   w.key("up_s"); w.unum(ms.up_s);
   w.key("browsing"); w.boolean(ms.browsing);
   w.key("reconnects"); w.unum(ms.reconnects);
+  w.key("write_ms_max"); w.unum(ms.write_ms_max);   // the longest one publish held the loop (#447)
+  w.key("slow_writes"); w.unum(ms.slow_writes);
   w.endObject();
 #endif
 }
