@@ -13,8 +13,8 @@ heltec_v4_companion_radio_ble           1439744     122880
 heltec_v4_companion_radio_standalone    1763328     136192
 heltec_v4_companion_radio_usb            698368      41984
 heltec_v4_companion_radio_wifi          1425408     118784
-heltec_v4_repeater                      1530880      82944
-heltec_v4_room_server                   1525760      87040
+heltec_v4_repeater                      1536000      82944
+heltec_v4_room_server                   1530880      87040
 t1000e_companion_radio_ble               552960     163840
 t1000e_companion_radio_usb               545792     159744
 t1000e_repeater                           503808      43008
