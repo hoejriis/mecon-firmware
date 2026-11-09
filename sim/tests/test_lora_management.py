@@ -573,3 +573,24 @@ def test_a_full_length_region_tree_pages_over_lora(ether, nodes):
         got += [e["name"] for e in r["result"]["regions"]]
         cursor, job, pages = r["result"]["next"], job + 1, pages + 1
     assert got == names and pages >= 2, (pages, got)
+
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_the_settings_schema_and_the_deployment_read_arrive_over_lora(ether, nodes, kind):
+    # Pages sized for the 1,536-byte result could not be signed in a LoRa reply, and a deployment.get that fit LoRa was
+    # lost at the manager's Companion once escaped. Over LoRa both now answer in pages and fields that arrive.
+    d, m = enrolled(nodes, ether, kind, "sd" + kind[:2])
+    whole = []
+    cur = 0
+    while cur is not None:
+        whole += [k["key"] for k in d.i.request("config.schema", {"cursor": cur})["result"]["keys"]]
+        cur = d.i.request("config.schema", {"cursor": cur})["result"]["next"]
+    got, cur, job, pages = [], 0, 1, 0
+    while cur is not None and pages < 12:
+        r = m.send(d.node_key, wrap(d.node_key, "config.schema", {"cursor": cur}, job=job))
+        assert r and r["status"] == "ok", r
+        got += [k["key"] for k in r["result"]["keys"]]
+        cur, job, pages = r["result"]["next"], job + 1, pages + 1
+    assert got == whole, (got, whole)
+    r = m.send(d.node_key, wrap(d.node_key, "deployment.get", job=job))
+    assert r and r["status"] == "ok" and r["result"]["state"] == "provisioned" and r["result"]["members"], r
