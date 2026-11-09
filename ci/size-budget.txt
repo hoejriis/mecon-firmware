@@ -3,7 +3,7 @@
 # needs it, and say why in the commit message. Seeded 2026-10-21 from main (dd5c9c44): use + 4 KB, rounded up
 # to a whole KB. The Heltec V3 and V4 rows were set 2026-10-31 for the rebuilt IDF libraries (docs/PLATFORM.md), same rule.
 # environment                             flash        ram
-Heltec_v3_companion_radio_ble           1453056     122880
+Heltec_v3_companion_radio_ble           1458176     122880
 Heltec_v3_companion_radio_standalone     1778688     141312
 Heltec_v3_companion_radio_usb            712704      41984
 Heltec_v3_companion_radio_wifi          1438720     118784

@@ -249,3 +249,23 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
 bool SerialBLEInterface::isConnected() const {
   return deviceConnected;  //pServer != NULL && pServer->getConnectedCount() > 0;
 }
+
+#include <esp_bt_main.h>
+#include <esp_gap_ble_api.h>
+
+int SerialBLEInterface::bondCount() {
+  if (esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_ENABLED) return -1;
+  return esp_ble_get_bond_device_num();
+}
+
+bool SerialBLEInterface::clearBonds() {
+  if (esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_ENABLED) return false;
+  int n = esp_ble_get_bond_device_num();
+  if (n <= 0) return n == 0;
+  esp_ble_bond_dev_t* list = (esp_ble_bond_dev_t*)malloc(sizeof(esp_ble_bond_dev_t) * n);
+  if (!list) return false;
+  bool ok = esp_ble_get_bond_device_list(&n, list) == ESP_OK;
+  for (int i = 0; ok && i < n; i++) ok = esp_ble_remove_bond_device(list[i].bd_addr) == ESP_OK;
+  free(list);
+  return ok;
+}

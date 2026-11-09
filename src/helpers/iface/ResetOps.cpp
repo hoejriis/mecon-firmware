@@ -1,4 +1,5 @@
 #include "ResetOps.h"
+#include "../Posture.h"
 #include <string.h>
 
 namespace Iface {
@@ -19,7 +20,8 @@ Status opDeviceReset(OpContext& c, ResetHost& h) {
   // AUTHORITY section 11 owns these two, with their own operations and rules: one place decides them.
   if (s == RS_DEPLOYMENT) { c.error = "use-deployment.reset"; return ST_INVALID; }
   if (s == RS_IDENTITY) { c.error = "use-identity.rotate"; return ST_INVALID; }
-  if (s == RS_BONDS) { c.error = "not-built"; return ST_FAILED; }   // each BLE stack's bond store, with a board check each
+  // Bonds are cleared over physical USB only (SECURITY_AND_AUTHORITY), whatever else the destructive class allows
+  if (s == RS_BONDS && h.caller != Posture::CALLER_CABLE) { c.error = "usb-only"; return ST_REFUSED; }
   if (!(h.scopes & (1u << s))) { c.error = "not-on-this-device"; return ST_FAILED; }
   if (!h.reset(h.user, (ResetScope)s, h.caller)) { c.error = "io-error"; return ST_FAILED; }
   JsonWriter& w = *c.out;

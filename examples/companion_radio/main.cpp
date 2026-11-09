@@ -316,6 +316,10 @@ void setup() {
     bluetooth_interface.setPinChosenByUser(the_mesh.getNodePrefs()->ble_pin != 0);   // issue #143: BLE DFU only then
 #endif
     bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
+#ifdef ENABLE_MECON_IFACE
+    // device.reset bonds: the clear asked for runs here, the stack up and not yet advertising, and is then checked
+    if (the_mesh.bondsClearPending()) the_mesh.bondsCleared(bluetooth_interface.clearBonds() && bluetooth_interface.bondCount() == 0);
+#endif
     interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
   } else {
     Posture::audit().addOnce(rtc_clock.getCurrentTime(), Posture::EV_REFUSED, Posture::CALLER_BLE, Posture::W_BLE_START);
@@ -402,6 +406,9 @@ void setup() {
 
 #ifdef ENABLE_MECON_IFACE
   the_mesh.iface().setConnectivity(ifaceConnWrite, ifaceConnSignature);   // reported even while Wi-Fi is off
+#if defined(BLE_PIN_CODE)
+  the_mesh.iface().setBleBonds([]() { return bluetooth_interface.bondCount(); });
+#endif
 #endif
 
   heapFloor().begin(HEAP_FLOOR_BYTES);   // the enforced heap floor (helpers/HeapFloor.h): first look in loop(), then every 60 s

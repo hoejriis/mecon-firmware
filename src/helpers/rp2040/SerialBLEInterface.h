@@ -58,6 +58,9 @@ public:
    * @param pin_code   the BLE security pin
    */
   void begin(const char* prefix, char* name, uint32_t pin_code);
+  // Not a MECON target: the bond store is not reached from here (ble.bonds answers unknown, device.reset bonds fails).
+  int bondCount() { return -1; }
+  bool clearBonds() { return false; }
 
   void disconnect();
   void enable() override;

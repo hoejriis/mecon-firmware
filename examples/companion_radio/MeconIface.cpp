@@ -53,6 +53,9 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "message.send", "message.get", "message.list", "message.ack",
                                     "inbox.list", "inbox.ack", "message.deliver",
                                     "scope.default.get", "scope.default.set", "scope.default.clear"
+#if defined(BLE_PIN_CODE)
+                                    , "ble.bonds"
+#endif
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -66,6 +69,7 @@ Status opClockSet(OpContext& c);
 Status opAdvertSend(OpContext& c);
 Status opDeviceReboot(OpContext& c);
 Status opDeviceResetW(OpContext& c);
+Status opBleBonds(OpContext& c);
 Status opStatus(OpContext& c);
 Status opMsgSend(OpContext& c);
 Status opMsgGet(OpContext& c);
@@ -146,6 +150,7 @@ const OpEntry OPS[] = {
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
+  {"ble.bonds", opBleBonds, PRIV_READ, false},
   // Reading a job and acknowledging its result are of the read class (the result belongs to whoever may read it);
   // cancelling and confirming change the device. The three that change something keep their result (OPERATIONS.md 5.1).
   {"job.get", opJobGet, PRIV_READ, false},
@@ -234,6 +239,18 @@ Status opAdvertSend(OpContext& c) {
 }
 // device.reboot: answered first, then the reboot (1.5 s, or the LoRa delay so that the answer goes out).
 Status opDeviceReboot(OpContext& c) { self(c)->rebootSoon(); return ST_OK; }
+// ble.bonds: how many centrals the BLE stack holds a bond for, null while the stack is not running (Wi-Fi mode, or
+// Hardened with the default PIN), and whether a clear asked for by device.reset bonds still waits for a BLE start.
+Status opBleBonds(OpContext& c) {
+  MeconIface* m = self(c);
+  if (!m->bleBonds()) { c.error = "no-ble"; return ST_FAILED; }
+  const int n = m->bleBonds()();
+  JsonWriter& w = *c.out;
+  w.key("count"); if (n >= 0) w.unum((uint32_t)n); else w.null();
+  w.key("clear_pending"); w.boolean(m->mesh()->bondsClearPending());
+  return ST_OK;
+}
+
 Status opDeviceResetW(OpContext& c) {
   ResetHost h = self(c)->resetHost();
   return opDeviceReset(c, h);
@@ -507,6 +524,9 @@ ResetHost MeconIface::resetHost() {
   uint16_t scopes = (1u << RS_RADIO) | (1u << RS_CONTACTS) | (1u << RS_FACTORY);
 #ifdef MAX_GROUP_CHANNELS
   scopes |= 1u << RS_CHANNELS;
+#endif
+#if defined(BLE_PIN_CODE)
+  scopes |= 1u << RS_BONDS;
 #endif
 #if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
   scopes |= 1u << RS_NETWORK;

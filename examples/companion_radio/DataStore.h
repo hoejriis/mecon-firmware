@@ -41,6 +41,9 @@ public:
   size_t loadRotation(uint8_t* buf, size_t cap);
   bool saveRotation(const uint8_t* buf, size_t len);
   void removeRotation();
+  // A BLE bond clear asked for by device.reset bonds: a marker kept until a BLE start clears the bonds and sees none left.
+  bool bondsClearPending();
+  bool setBondsClearPending(bool on);
   // The device interface's identity and boot counter (docs/contract/DEVICE_INTERFACE.md): device_id is created on the
   // first boot and kept; epoch is incremented and saved on every call (once per boot). False when the file could
   // not be written: the values are still usable for this boot.

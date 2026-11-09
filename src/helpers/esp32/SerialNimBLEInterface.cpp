@@ -279,3 +279,7 @@ bool SerialNimBLEInterface::isConnected() const {
 }
 
 #endif // USE_NIMBLE
+
+int SerialNimBLEInterface::bondCount() { return NimBLEDevice::isInitialized() ? NimBLEDevice::getNumBonds() : -1; }
+
+bool SerialNimBLEInterface::clearBonds() { return NimBLEDevice::isInitialized() && NimBLEDevice::deleteAllBonds(); }
