@@ -893,6 +893,42 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
   revert_radio_at = futureMillis(2000 + timeout_mins * 60 * 1000); // schedule when to revert radio params
 }
 
+#ifdef ENABLE_MECON_IFACE
+// device.reset (OPERATIONS.md 3.5): one scope removed and saved; the interface reboots after its answer.
+bool MyMesh::resetScope(Iface::ResetScope s, uint8_t caller) {
+  switch (s) {
+    case Iface::RS_RADIO:   // the build's defaults, as a first boot sets them; applied at the reboot that follows
+      _prefs.freq = LORA_FREQ;
+      _prefs.bw = LORA_BW;
+      _prefs.sf = LORA_SF;
+      _prefs.cr = LORA_CR;
+      _prefs.tx_power_dbm = LORA_TX_POWER;
+      savePrefs();
+      return true;
+    case Iface::RS_NETWORK:
+#ifdef ENABLE_WIFI_INTERFACE
+      for (uint8_t i = 0; i < WifiProfiles::COUNT; i++) _prefs.wifi_profiles.clear(i);
+#endif
+#ifdef ENABLE_MQTT
+      for (uint8_t i = 0; i < MqttProfiles::COUNT; i++) _prefs.mqtt_profiles.clear(i);
+#endif
+      savePrefs();
+      return true;
+    case Iface::RS_FACTORY: {   // as the console's erase: the files, then Normal and the audit record
+      const bool ok = formatFileSystem();
+      if (ok) {
+        _prefs.posture = Posture::NORMAL;
+        Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_FACTORY_RESET, caller, Posture::W_NONE);
+        auditStore().flush(millis());
+      }
+      return ok;
+    }
+    default:
+      return false;
+  }
+}
+#endif
+
 bool MyMesh::formatFileSystem() {
   bool ok;
 #if defined(NRF52_PLATFORM)

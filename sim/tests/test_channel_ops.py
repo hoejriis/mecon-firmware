@@ -27,8 +27,10 @@ def put(i, slot, name, key):
 def test_a_channel_put_through_the_interface_is_the_native_channel_and_survives_a_reboot(nodes):
     n = nodes("companion_standalone", "ch1", seed=11, rtc=RTC).start()
     c, i = client(n)
-    h = i.request("hello")["result"]
-    assert {"channel.list", "channel.get", "channel.put", "channel.remove"} <= set(h["capabilities"]), h
+    from types import SimpleNamespace
+    from test_regions import capabilities
+    caps = capabilities(SimpleNamespace(i=i))   # every page: the Companion's list is longer than one hello
+    assert {"channel.list", "channel.get", "channel.put", "channel.remove"} <= set(caps), caps
     r = put(i, 2, "ops", KEY)
     assert r["status"] == "ok", r
     assert r["result"]["replaced"] is False and r["result"]["key_bits"] == 128, r

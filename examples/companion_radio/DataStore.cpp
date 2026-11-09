@@ -170,7 +170,14 @@ bool DataStore::removeFile(FILESYSTEM* fs, const char* filename) {
   return fs->remove(filename);
 }
 
+#if defined(ESP32) && !defined(SIM_FREE_HEAP)
+void blobSaverDropAll();   // the blob saver's waiting saves, and one being written (below)
+#endif
+
 bool DataStore::formatFileSystem() {
+#if defined(ESP32) && !defined(SIM_FREE_HEAP)
+  blobSaverDropAll();   // no advert blob is written into the store while it is formatted
+#endif
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   if (_fsExtra == nullptr) {
     return _fs->format();
@@ -852,6 +859,8 @@ void blobWaitIdle(const char* path) {
   }
 }
 }  // namespace
+
+void blobSaverDropAll() { if (g_blob_task) blobDrop(nullptr); }
 #endif
 
 uint8_t DataStore::getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_buf[]) {

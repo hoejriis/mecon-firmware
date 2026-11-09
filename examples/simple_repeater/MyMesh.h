@@ -30,6 +30,7 @@
 #include <helpers/ClientACL.h>
 #ifdef ENABLE_MECON_IFACE
   #include <helpers/iface/IdentityRotationFile.h>
+  #include <helpers/iface/ResetOps.h>
 #endif
 #include <helpers/CommonCLI.h>
 #include <helpers/IdentityStore.h>
@@ -245,6 +246,9 @@ public:
   // CommonCLICallbacks
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
   bool formatFileSystem() override;
+#ifdef ENABLE_MECON_IFACE
+  bool resetScope(Iface::ResetScope s, uint8_t caller);
+#endif
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
   void updateAdvertTimer() override;
   void updateFloodAdvertTimer() override;

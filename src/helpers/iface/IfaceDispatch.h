@@ -8,7 +8,7 @@ namespace Iface {
 
 // PRIV_UPDATE: the update class of the privilege table (UPDATES.md section 5). PRIV_REBOOT: its reboot class, which an
 // unsigned local caller keeps on an enrolled device (AUTHORITY.md section 9).
-enum Priv { PRIV_READ, PRIV_WRITE, PRIV_ADMIN, PRIV_UPDATE, PRIV_REBOOT };
+enum Priv { PRIV_READ, PRIV_WRITE, PRIV_ADMIN, PRIV_UPDATE, PRIV_REBOOT, PRIV_DESTRUCTIVE };   // PRIV_DESTRUCTIVE: device.reset
 
 struct OpContext {
   const Request* req;
