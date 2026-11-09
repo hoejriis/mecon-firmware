@@ -51,9 +51,11 @@ jobs:
           - t1000e_companion_radio_usb
           - t1000e_companion_radio_ble
           - t1000e_repeater
+          - t1000e_room_server
           - WioTrackerL1_companion_radio_usb
           - WioTrackerL1_companion_radio_ble
           - WioTrackerL1_repeater
+          - WioTrackerL1_room_server
           - LilyGo_TLora_V2_1_1_6_companion_radio_ble          # NimBLE, this board's default stack
           - wio-e5-mini_companion_radio_usb                    # STM32WLE5, 224 KB for the app: the tightest target
     steps:

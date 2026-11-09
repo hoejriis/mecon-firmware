@@ -4,7 +4,7 @@ Every command, per role, with its class and origin: [CLI reference](CLI_REFERENC
 
 Stock MeshCore 1.18 lets commands reach a device four ways, each with its own parser and its own idea of who may do what: the Companion's `CMD_RUN_CLI_COMMAND` frame, the serial rescue console, a remote `TXT_TYPE_CLI_COMMAND` from a flagged contact, and the repeater and room server console and remote admin. This firmware routes all of them, and the new MQTT transport, through **one engine** in `src/helpers/cli/`.
 
-What the simulated-board suite checks here is software behaviour. BLE needs a radio stack the simulator does not have: its rows of the table are covered by unit tests of the table and, end to end, by a simulated BLE transport that pairs with a PIN and reports its trust like the real class, not by a real pairing ([Simulated-board test harness](SIMULATION.md)). **Nothing here has run on a board.**
+What the simulated-board suite checks here is software behaviour. BLE needs a radio stack the simulator does not have: its rows of the table are covered by unit tests of the table and, end to end, by a simulated BLE transport that pairs with a PIN and reports its trust like the real class, not by a real pairing ([Simulated-board test harness](SIMULATION.md)). What has run on a board, and when, is in [Hardware verified](HARDWARE_VERIFIED.md): the MQTT CLI, the CLI over LoRa and over BLE, the rescue console and the Hardened refusals among others. Anything not listed there has not.
 
 ## Shape
 
@@ -88,19 +88,22 @@ A refusal's reply text (the strings are those the individual checks always gave)
 | `set prv.key` from the air | `ERR: prv.key can only be set from the local console` |
 | MQTT, session not verified | `ERR: management needs a TLS-verified broker` |
 | MQTT, Hardened, profile not flagged | `ERR: management is off for this broker profile` |
+| unsigned change on a device that belongs to a Deployment | `ERR: this device belongs to a Deployment; the change must be signed` |
+| Hardened and enrolled, before the local unlock | `ERR: locked: this device needs its local unlock first` |
+| Hardened on an enrolled device with no local unlock secret | `ERR: set a local unlock secret before Hardened (the device belongs to a Deployment)` |
 | a Companion frame on an untrusted transport | `ERR_CODE_NOT_PERMITTED` (7) |
 
 Every refusal is an audit entry ([Standalone security postures](STANDALONE_POSTURES.md)): the class (`remote-write`, `posture`, `audit`, `key-export`, ...) and who asked (`cable`, `ble`, `net`, `remote-admin`, `remote-cli`, `mqtt`). Two new kinds: `mqtt-session` (a request on a session that is not TLS-verified) and `mgmt-flag` (an attempt to set the management flag from a caller that may not). A refusal on a BLE link is recorded as `ble` whether the link is paired with a PIN of its own or still has a default PIN (which authenticates nobody, but is still BLE); `net` is for the TCP ports (Wi-Fi, Ethernet) and the Ethernet console. Repeats fold into one entry with a count.
 
 ## The Ethernet console
 
-The RAK4631 `_ethernet` builds of the Repeater and Room server listen on a TCP port (23) and hand each line to the same command handler as the serial console. The serial console is the cable. The TCP port is a plain-text line protocol on a network, so it is not.
+The RAK4631 `_ethernet` builds of the Repeater and Room server listen on a TCP port (23 by default) and hand each line to the same command handler as the serial console. The serial console is the cable. The TCP port is a plain-text line protocol on a network, so it is not.
 
 Before this was fixed the console passed its lines with sender timestamp 0, the marker for the local console, so any host that could open the port ran `get prv.key`, `set prv.key`, `erase` and posture changes. Now the console is its own caller (`T_NETCON`, in `NetConsole.h`):
 
 - **A connection starts untrusted.** Every line is refused with `ERR: not permitted` and audited (caller `net`, the command's own kind), except `login`.
 - **`login <admin password>`** turns the connection into the *Ethernet admin* row, which has the remote admin's rights: reads, writes and `reboot`, but not the private key, `erase`, `poweroff`, `shutdown`, posture or audit. Those stay on the cable. Once the device is enrolled it can only read, like a LoRa remote admin, because the password crosses the LAN in plain text. It needs Normal posture and an admin password that has been set (not the stock default, not empty); the console then runs the line as a remote admin (a non-zero sender timestamp), so the handlers' console-only commands (`set freq`, `stats-*`, `log`, `get acl`) stay closed too.
-- **Wrong passwords** are answered `ERR: wrong password` and audited as `login-fail net bad-password`; the attempt itself is never stored or echoed. Five wrong attempts lock all logins for a minute, across connections. The default password gets `ERR: the Ethernet console is off until the admin password is set on the local console` and is audited as `default-password`.
+- **Wrong passwords** are answered `ERR: wrong password` and audited as `login-fail net bad-password`; the attempt itself is never stored or echoed. Five wrong attempts lock all logins for a minute, across connections (`ERR: too many failed logins, try again later`). The default password gets `ERR: the Ethernet console is off until the admin password is set on the local console` and is audited as `default-password`.
 - **A login ends** with the connection (a new connection replaces the old one), with `logout`, when the posture is no longer Normal, or when the admin password is the default again.
 - **Hardened** refuses the login (`ERR: the Ethernet console is off in hardened posture`) and drops a live session.
 - **Lines** end at CR or LF, and hold up to 159 characters. A longer line is dropped up to its end and answered `ERR: line too long`; none of it runs, its tail included. A new connection starts with an empty line, whatever the previous one left unfinished (`helpers/LineAssembler.h`).
@@ -122,7 +125,7 @@ New commands live under `mecon.` and are tried at the place where upstream calls
 
 ## The command line over MQTT
 
-The Companion `_wifi` builds with MQTT ([MQTT broker profiles](MQTT.md)) subscribe to a request topic once a broker session is up. `<node id>` is the first four bytes of the public key as 8 hex digits, the same id as in the status topic.
+The Companion `_wifi` and standalone builds, and the Heltec Repeater and Room server builds, with MQTT ([MQTT broker profiles](MQTT.md)) subscribe to a request topic once a broker session is up. `<node id>` is the first four bytes of the public key as 8 hex digits. (The device-interface topics use the 32-hex-digit device id instead.)
 
 | Topic | Direction | Payload |
 |---|---|---|
@@ -130,19 +133,19 @@ The Companion `_wifi` builds with MQTT ([MQTT broker profiles](MQTT.md)) subscri
 | `mecon/<node id>/cli/resp` | device to broker | `{"id":"<same id>","status":"ok\|refused\|unknown\|bad-request","ok":<bool>,"reply":"<text>"}` |
 
 - `id` is 1 to 32 characters of letters, digits, `.` `_` `:` `-`; it is echoed unchanged. `cmd` is 1 to 159 characters, with no control characters (a command line has no line breaks). Other keys are ignored; a duplicated `id` or `cmd`, a nested value, or anything that is not one JSON object is a `bad-request`, answered with an empty `id` and run as nothing.
-- `status` is `ok` (the command ran), `refused` (the gate said no; `reply` is the refusal text of the table above), `unknown` (allowed, but not a command) or `bad-request`. `reply` is the command's own reply, JSON-escaped; a reply that does not fit the 512-byte MQTT buffer is cut at a character boundary and `"truncated":true` is added.
+- `status` is `ok` (the command ran), `refused` (the gate said no; `reply` is the refusal text of the table above), `unknown` (allowed, but not a command) or `bad-request`. `reply` is the command's own reply, JSON-escaped; a command's own reply is at most 159 characters, and a response that does not fit 440 bytes is cut at a character boundary and `"truncated":true` is added.
 - QoS 0, not retained. **`reboot` is never answered**: the device is gone before it could reply. `poweroff` and `shutdown` are `destructive`, so a request for them is answered `refused` (`ERR: not permitted`) and the device stays up.
 - A request is answered in every case, including a refusal. The device subscribes on any session; a request is **run only on a session that is TLS-verified** (the broker certificate satisfied the profile's anchor: the pinned fingerprint, or a chain to the profile's CA certificate, which for a discovery profile or an address literal is the only check, see [MQTT broker profiles](MQTT.md)). On a plain session, or TLS without an anchor, every request is answered `refused` with `ERR: management needs a TLS-verified broker` and audited.
 - **Authority.** Mosquitto (or whatever broker) decides who may publish to a device's request topic; the device cannot tell publishers apart. Treat publish rights on `mecon/+/cli/req` as management rights over every device, and grant them per device with the broker's ACLs. The device's own check is the transport: the session must be TLS-verified, so the broker is the one the owner pinned.
 - **Hardened.** A verified session reads. Writes and `reboot` need the profile flagged for management: `set mqtt.profile <n> manage on` (`off` clears it). The flag can be set only from a caller that may change the posture (the cable or a paired phone); a broker, however trusted, cannot flag itself. `get mqtt.profile` shows `manage=on` only when on, so a profile that does not manage lists as it always did. In Normal a verified session may manage without the flag. No session, flagged or not, runs a `secret`, `posture` or `destructive` command.
 - **Retained requests.** A broker redelivers a retained message to every new subscriber, and the MQTT library does not say which messages are retained, so requests arriving in the first 1.5 s after the subscription are dropped: a retained `reboot` cannot become a reboot loop. A live request in that window gets no answer and is sent again. Publishers should not retain requests.
-- **Cost.** The MQTT packet buffer grows from 256 to 512 bytes (one request or response). A request runs on the main loop like any other command.
+- **Cost.** The MQTT packet buffer is 512 bytes, or 1,600 in a build with the device interface (one request or response). A request runs on the main loop like any other command.
 
-Not verified on hardware: the ESP32 path of all of this. The TLS verification and the exchange are verified on the simulated board against real Mosquitto brokers.
+On hardware, a `get` answered and a `poweroff` refused over MQTT have been checked ([Hardware verified](HARDWARE_VERIFIED.md)); the rest of the ESP32 path has not. The TLS verification and the exchange are verified on the simulated board against real Mosquitto brokers.
 
 ## Memory
 
-Measured by compiling the Heltec V3 environments at this change and at its base (the adaptive contact memory); RAM is the static figure PlatformIO reports (data and bss):
+Current compiled sizes are in the CI memory table of each pull request. Measured when the engine was written, by compiling the Heltec V3 environments at that change and at its base (the adaptive contact memory); RAM is the static figure PlatformIO reports (data and bss):
 
 | Environment | RAM before | RAM after | Flash before | Flash after |
 |---|---|---|---|---|
@@ -161,5 +164,5 @@ The registry and the table are `const` data in flash. Not in the static figure: 
 
 - BLE with a default PIN and the TCP port share one *untrusted* row: the table cannot grant one of them anything without granting the other.
 - A remote `erase` or `get prv.key` on a repeater or room server used to fall through to an unknown-command reply and now gets `ERR: not permitted` and an audit entry. The only behavioural difference from before the engine; no test relied on the old reply.
-- The sensor example reaches the same gate through the common CLI. It had no front door before, so Hardened now applies its remote read-only rule there too. The sensor role is not verified on hardware or in the simulator.
+- The sensor example reaches the same gate through the common CLI. It had no front door before, so Hardened now applies its remote read-only rule there too. From the release after v0.2.1 it also refuses remote admin while its admin password is the stock default or empty, until one is set on the local console (the owner's decision of 2026-11-08); the simulator covers that. The sensor role is not verified on hardware.
 - No rate limit on requests. A flood of refused requests folds into one audit entry but each is answered.

@@ -91,7 +91,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   - the result of a state-changing operation;
   - errors.
   An operation whose result lists or reveals state is point to point only: `hello`, `status.get`, `config.schema`,
-  `config.get`, `deployment.get` and `job.list`. `contact.list` and the `channel.*` reads are not offered over LoRa at all.
+  `config.get`, `deployment.get`, `job.list` and `region.list`. `contact.list` and the `channel.*` reads are not offered over LoRa at all.
 
 ## 4. Frames
 

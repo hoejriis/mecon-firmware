@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/update.manifest.result.json",
+  "title": "Result of update.manifest: the manifest staged",
+  "description": "UPDATES.md: the staged manifest's image hash and version, and what the install checks would say for it now (\"ok\", or the refusal's code).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sha256",
+    "version",
+    "preflight"
+  ],
+  "properties": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "preflight": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

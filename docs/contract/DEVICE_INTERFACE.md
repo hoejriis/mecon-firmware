@@ -2,14 +2,14 @@
 
 One logical device model reached over MQTT, USB and BLE. A Backend talks to the device directly over MQTT, or through a Reader that bridges USB or BLE; the device answers the same requests with the same results either way. Native MeshCore 1.18 Companion frames and the Repeater console stay exactly as they are beside it.
 
-> Version 1.0. Implemented by the Companion over USB, BLE and MQTT, and by the Repeater and Room server over their console and, on the Heltec boards, MQTT (section 7). Where another page of the contract set differs from this one on wire details, this page wins.
+> Version 1.0. Implemented by the Companion over USB, BLE and, on the Heltec boards, MQTT, and by the Repeater and Room server over their console and, on the Heltec boards, MQTT (section 7). Where another page of the contract set differs from this one on wire details, this page wins.
 
 ## Decisions
 
 ### 1. Identity
 
 - `device_id`: 16 random bytes generated on first boot, stored in their own file, written as 32 lowercase hex digits. Distinct from the native node public key, which a key rotation changes, and from any Backend row. Whether a reset scope keeps or regenerates it is decided with enrollment; until then the native factory reset and the rescue `erase` regenerate it.
-- Every `hello` and every status snapshot reports both `device_id` and `node_key` (the native public key, hex). `hello` also carries `device_id_sig`, the node key's signature binding the two, and, for `args.nonce`, `nonce` and `device_id_sig_nonce` ([authority contract](AUTHORITY.md) section 3.5).
+- Every `hello` reports both `device_id` and `node_key` (the native public key, hex); a status snapshot reports `device_id` only. Correction 2026-11-08: this line said every status snapshot carries `node_key` too, which no build has done. `hello` also carries `device_id_sig`, the node key's signature binding the two, and, for `args.nonce`, `nonce` and `device_id_sig_nonce` ([authority contract](AUTHORITY.md) section 3.5).
 - **How a Backend learns it before MQTT.** The first `hello` travels over a direct path at enrolment: USB, or BLE through a Reader bridge. MQTT credentials reach a device only after that, so the Backend knows `device_id`, and can add `mecon/<device_id>/#` to the device's broker ACL, before the device ever publishes there. The broker username is the Backend's choice (it may rotate logins by generation): the device accepts any username and publishes under its `device_id` whatever it is.
 - **A device already on MQTT when it gets this interface** (an in-place upgrade) never makes that direct-path `hello`, and from its first boot on the new build it publishes under `mecon/<device_id>/`, which its broker ACL does not yet cover. The Backend asks it for its `device_id` with the CLI line `get device.id` (or `get device.id <nonce>`) on the device's legacy `mecon/<node id>/cli/req` topic, which its existing login already covers. The answer is `> <device_id> <sig>` (with `<nonce>` appended for the nonce form). The Backend verifies `<sig>` against the node key of that login ([authority contract](AUTHORITY.md) section 3.5), then adds `mecon/<device_id>/#` to that same login. Nothing is granted up front.
 
@@ -64,7 +64,7 @@ UTF-8 JSON objects. Three shapes:
 | `update.status` | the open update job, the security floor and the staged manifests | read |
 | `channel.list` / `channel.get` | the native channel table: per used slot its name, the one-byte channel hash and the key size, never the secret; `list` is paged by 8 used slots (`cursor` in, `next` out). Companion only | read |
 | `channel.put` / `channel.remove` | write or clear a slot of the native channel table, as the app's `CMD_SET_CHANNEL` does: a name of 1 to 31 bytes and a 128-bit key as 32 hex digits; a key another slot holds is `failed` `duplicate-secret`; a table that cannot be saved is `failed` `write-failed` with the slot unchanged, in RAM and on flash. A slot holding a key under an empty name counts as present for `remove`. Companion only | write |
-| `contact.list` / `contact.get` | the native contact table: per stored contact its key, name, type, protection flag, last advert, hops and position, never the shared secret or the path bytes; `list` is paged by up to 6 contacts in record order (`cursor` in, `next` out; a record number, so adds and removals between pages never skip or repeat a contact that stays); `get` takes the whole key as 64 hex digits. Companion only | read |
+| `contact.list` / `contact.get` | the native contact table: per stored contact its key, name, type, protection flag (`fav`), last advert, hops and position, never the shared secret or the path bytes; `list` is paged by up to 6 contacts in record order (`cursor` in, `next` out; a record number, so adds and removals between pages never skip or repeat a contact that stays); `get` takes the whole key as 64 hex digits. Companion only | read |
 | `contact.put` / `contact.remove` / `contact.protect` | write the native contact table as `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` and the favourite flag do: a put adds a contact (name and type required; type 0 has no spelling) or updates the fields it names, keeps the contact's flags and path, and never grants telemetry or the remote CLI; a full table overwrites the oldest unprotected contact when the overwrite setting is on, otherwise `failed` `table-full`; a repeat is the same state (`changed` false, nothing written); `remove` of a key that is not stored is `ok` with `removed` false; `protect` takes `protected` true or false and a key that is not stored is `failed` `not-found`. Saved by the native lazy write. Companion only | write |
 | `message.send` / `message.get` / `message.list` / `message.ack` | send one native direct or channel message, and read what became of it ([operations contract](OPERATIONS.md) section 6). Results follow `message.send.result.json`, `message.get.result.json`, `message.list.result.json` and `message.ack.result.json` |
 | `inbox.list` / `inbox.ack` | read what the Companion received from a copy kept for the manager, and release it, with the native queue left to the stock app ([operations contract](OPERATIONS.md) section 6.4). Results follow `inbox.list.result.json` and `inbox.ack.result.json` |
@@ -126,7 +126,7 @@ No fragmentation. On a build with the interface the MQTT client's buffer is 1,60
 
 - Requests are parsed and answered in the main loop in bounded steps; no operation blocks on a network or BLE write. A paged result is produced page by page.
 - Each subscription has a bounded rate, a lifetime after which it ends unless renewed, and a drop counter reported in its events. A slow or vanished consumer costs dropped events, never loop time.
-- Memory: the id cache, 3.4 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
+- Memory: the id cache, 3.6 KB for the device, and 512 bytes of hashes of older ids; per transport, the outbound queue and, only while a message is arriving, its reassembly buffer (at most about 4.1 KB). The implementation records the measured total against the heap figures in [PLATFORM](../PLATFORM.md).
 
 ### 9. Conformance
 
@@ -140,11 +140,11 @@ A third party should be able to implement a client from this page, the schemas a
 
 Published so far (v1.0 first cut):
 
-- [`schema/`](schema/): `request.json`, `result.json`, `event.json`; the results of `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `sub.start` and `sub.stop`; and the data of the `health` event (`event.health.json`);
+- [`schema/`](schema/): `request.json`, `result.json`, `event.json`; one `<op>.result.json` for every operation in the capability lists, and one `event.<stream>.json` for every stream;
 - [`fixtures/requests.json`](fixtures/requests.json): requests with the status (and result schema) a v1.0 device must answer, plus a transport case. A case that only applies to some roles lists them in `roles`; [`fixtures/framing.json`](fixtures/framing.json): one message and its exact `0x7F` frames;
-- [`tools/mecon_iface.py`](../../tools/mecon_iface.py): the reference client (framing, reassembly, envelope; transport-neutral), and [`tools/mecon_schema.py`](../../tools/mecon_schema.py), a dependency-free checker for the keywords these schemas use.
+- [`tools/mecon_iface.py`](../../tools/mecon_iface.py): the reference client (framing, reassembly, envelope; transport-neutral), and [`tools/mecon_schema.py`](../../tools/mecon_schema.py), a dependency-free checker for every keyword these schemas use; a keyword it does not know fails the check.
 
-- [`fixtures/config_schema.recorded.json`](fixtures/config_schema.recorded.json) and [`fixtures/config_radio.recorded.json`](fixtures/config_radio.recorded.json): the whole settings schema and real radio writes and reads, recorded from one build.
+- [`fixtures/config_schema.recorded.json`](fixtures/config_schema.recorded.json) and [`fixtures/config_radio.recorded.json`](fixtures/config_radio.recorded.json): the whole settings schema and real radio writes and reads, recorded from one build (the Companion); [`fixtures/config_schema_server.recorded.json`](fixtures/config_schema_server.recorded.json): the Repeater and Room server settings schema, recorded from a build without and one with Wi-Fi.
 
 The simulated-board suite (`sim/tests/test_device_interface.py`) runs every fixture against the firmware over USB, BLE and MQTT and checks each answer against the schemas; it fails if a recorded fixture drifts from the firmware.
 

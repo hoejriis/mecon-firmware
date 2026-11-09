@@ -69,7 +69,7 @@ The device UI of a Hardened device shows operational status and sanitized diagno
 
 Posture changes require authenticated management and a controlled reboot.
 
-If persisted posture is invalid, firmware enters fail-secure recovery rather than Normal.
+If the persisted posture is invalid, the firmware reads it as Hardened, never as Normal. There is no separate fail-secure state (the owner's decision of 2026-11-08).
 
 ## Reader USB authority
 
@@ -120,11 +120,13 @@ The reference firmware's vocabulary maps the classes above to five codes: **S** 
 
 ## Restricted-posture recovery boundary
 
-Where the bootloader accepts images over USB, a recovery path outside OTA clears the posture record and continuity material while preserving identity, enrolment and the Deployment record. The reference firmware ships this as a recovery-only image for the Wio repeater and the T1000-E (it removes only the posture records); gateways recover through the Reader unlock or a USB `deployment_reset`. A USB factory erase removes everything, the posture and Deployment records included. Because such a bootloader accepts unsigned images, physical USB access can always replace the application: restricted posture protects the application's command surface, not against reflashing.
+Where the bootloader accepts images over USB, a recovery path outside OTA clears the posture record and continuity material while preserving identity, enrolment and the Deployment record. The reference firmware (the private 0.9x line) ships this as a recovery-only image for the Wio repeater and the T1000-E (it removes only the posture records); gateways recover through the Reader unlock or a USB `deployment_reset`. This firmware has no recovery-only image: a device in Hardened recovers through the local unlock or a cable `deployment.reset` ([AUTHORITY](AUTHORITY.md) sections 10 and 11). A USB factory erase removes everything, the posture and Deployment records included. Because such a bootloader accepts unsigned images, physical USB access can always replace the application: restricted posture protects the application's command surface, not against reflashing.
 
-## Repeater signed-writes switch
+## Repeater signed-writes switch (the private 0.9x line, not this firmware)
 
-A per-device setting, off by default. When on, unsigned RF management writes are refused and reads stay available. It changes only by a Deployment-signed request or the physical console, and is cleared when the Deployment record is erased.
+In the reference firmware, a per-device setting, off by default. When on, unsigned RF management writes are refused and reads stay available. It changes only by a Deployment-signed request or the physical console, and is cleared when the Deployment record is erased.
+
+This firmware has no such setting, because it does not need one: once a device holds a Deployment record, every unsigned remote write is refused already, and reads stay available ([AUTHORITY](AUTHORITY.md) section 9). A device with no record keeps the stock remote admin by password.
 
 ## Credentials and secrets
 
@@ -150,7 +152,7 @@ Hardened local/unauthenticated diagnostics are sanitized; authenticated manageme
 
 OTA authority permits only an approved authenticated/integrity-checked release compatible with hardware, role and variant. Arbitrary URL/binary execution is not OTA authority.
 
-Hardened may accept OTA through supported authenticated management transports. Normal `Both` may temporarily stop BLE to recover heap during OTA without changing the persisted connectivity mode.
+Hardened may accept OTA through supported authenticated management transports. In the reference firmware (the private 0.9x line), Normal `Both` may temporarily stop BLE to recover heap during OTA without changing the persisted connectivity mode. This firmware's connectivity modes are `ble` and `wifi`, one at a time, so it has no `Both` mode to step down from during an update.
 
 ## Backend federation boundary
 

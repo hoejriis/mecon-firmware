@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/standing.put.result.json",
+  "title": "Result of standing.put: the stored instruction",
+  "type": "object",
+  "required": [
+    "id",
+    "every_s"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16,
+      "pattern": "^[0-9A-Za-z._:-]+$"
+    },
+    "every_s": {
+      "type": "integer",
+      "minimum": 900,
+      "maximum": 2592000
+    }
+  },
+  "additionalProperties": false
+}

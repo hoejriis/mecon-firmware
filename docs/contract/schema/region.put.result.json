@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/region.put.result.json",
+  "title": "Result of region.put: the region as stored",
+  "description": "A change by a caller other than the cable also carries job, job_state and confirm_left_s, or reverted.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 30
+    },
+    "parent": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 30,
+      "description": "The parent region's name; * for the wildcard."
+    },
+    "flood": {
+      "enum": [
+        "allow",
+        "deny"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "hashtag",
+        "private"
+      ]
+    },
+    "job": {
+      "type": "string"
+    },
+    "job_state": {
+      "enum": [
+        "awaiting-confirm",
+        "failed"
+      ]
+    },
+    "confirm_left_s": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 900
+    },
+    "reverted": {
+      "type": "boolean"
+    }
+  }
+}

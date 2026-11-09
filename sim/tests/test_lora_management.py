@@ -12,6 +12,7 @@ from sim.harness import CompanionClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
+import mecon_schema  # noqa: E402
 from test_deployment_authority import SECRET, Dev, RTC, apply_name, wrap  # noqa: E402
 from test_deployment_authority_server import Srv  # noqa: E402
 from test_provenance import verifies  # noqa: E402
@@ -46,11 +47,15 @@ class Radio:
             args["slot"] = slot
         r = self.i.request("rf.request", args)
         assert r["status"] == "ok", r
+        assert not mecon_schema.check(r["result"], mecon_schema.load("rf.request.result.json")), r
         xid = r["result"]["xid"]
         sender = to if slot is None else to[:16]
         end = time.time() + timeout
         while time.time() < end:
             for e in list(self.i.events):   # a reply may have come while the request above was being answered
+                if e.get("ev") == "rf":
+                    problems = mecon_schema.check(e["data"], mecon_schema.load("event.rf.json"))
+                    assert not problems, (problems, e)
                 if e.get("ev") == "rf" and e["data"]["from"] == sender and e["data"].get("xid") == xid:
                     self.i.events.remove(e)
                     return Reply(e["data"]["message"])
@@ -276,6 +281,7 @@ def next_report(m, timeout=30.0):
         for e in list(m.i.events):
             if e.get("ev") == "rf" and "report" in e["data"]:
                 m.i.events.remove(e)
+                assert not mecon_schema.check(e["data"], mecon_schema.load("event.rf.json")), e
                 return e["data"]
         msg = m.i.read_message(0.5)
         if msg and "ev" in msg:
@@ -537,3 +543,33 @@ def test_a_native_channel_write_makes_the_companion_read_the_binding(ether, node
     d.c.set_channel(1, "ops", KEY)
     time.sleep(0.2)
     assert reads() > before, "a slot written by a frame can leave the binding stale, and no request said so"
+
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_the_region_tree_is_managed_over_lora_with_confirm(ether, nodes, kind):
+    d, m = enrolled(nodes, ether, kind, "rg" + kind[:2])
+    r = m.send(d.node_key, wrap(d.node_key, "region.put", {"name": "city", "confirm": {"within_s": 120}}, job=1))
+    assert r and r["status"] == "ok" and r["result"]["job_state"] == "awaiting-confirm", r
+    assert verifies(r.raw, d.node_key, "result")
+    c = m.send(d.node_key, wrap(d.node_key, "job.confirm", {"job": r["result"]["job"]}, job=2))
+    assert c and c["status"] == "ok", c
+    page = m.send(d.node_key, wrap(d.node_key, "region.list", job=3))   # a job id: accepted whether or not it is a plain read
+    assert page and page["status"] == "ok", page
+    assert [e["name"] for e in page["result"]["regions"]] == ["city"], page
+
+
+def test_a_full_length_region_tree_pages_over_lora(ether, nodes):
+    # Eight 30-byte names do not fit one LoRa reply with the signature; the list pages instead of answering too-large
+    d = target(nodes, ether, "repeater", "rgl")
+    names = ["%s%02d" % ("r" * 28, k) for k in range(8)]
+    for name in names:   # made over the cable before enrolling, so each takes effect at once
+        assert d.i.request("region.put", {"name": name})["status"] == "ok"
+    assert d.provision()["status"] == "ok"
+    m = Radio(nodes, ether, "rgl")
+    got, cursor, job, pages = [], 0, 1, 0
+    while cursor is not None and pages < 8:
+        r = m.send(d.node_key, wrap(d.node_key, "region.list", {"cursor": cursor}, job=job))
+        assert r and r["status"] == "ok", r
+        got += [e["name"] for e in r["result"]["regions"]]
+        cursor, job, pages = r["result"]["next"], job + 1, pages + 1
+    assert got == names and pages >= 2, (pages, got)

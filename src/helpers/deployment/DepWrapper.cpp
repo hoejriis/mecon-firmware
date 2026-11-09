@@ -63,7 +63,8 @@ static bool u32Field(const JsonDoc& d, const char* key, uint32_t* out) {
 }
 
 static bool streamIsPrivate(const JsonDoc& d) {
-  static const char* const PRIVATE[] = { "screen", "location", "logs", "inventory" };   // inventory carries the entries
+  // inventory carries the entries; rf the managed devices' own replies to this Companion's rf.request (Streams.cpp)
+  static const char* const PRIVATE[] = { "screen", "location", "logs", "inventory", "rf" };
   char name[33];
   int ta = jsonFind(d, 0, "args");
   int ts = ta >= 0 ? jsonFind(d, ta, "stream") : -1;
@@ -75,7 +76,8 @@ static bool streamIsPrivate(const JsonDoc& d) {
 
 OpClass contractOpClass(const char* op, const JsonDoc& body) {
   static const char* const PLAIN[] = { "hello", "status.get", "config.schema", "config.get", "deployment.get",
-                                       "identity.rotation", "job.get", "job.list" };
+                                       "identity.get", "identity.rotation", "clock.get", "job.get", "job.list",
+                                       "region.list" };
   for (const char* p : PLAIN)
     if (strcmp(op, p) == 0) return OPC_PLAIN;
   if (strcmp(op, "sub.start") == 0 || strcmp(op, "sub.stop") == 0)

@@ -18,6 +18,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import mecon_iface  # noqa: E402
+import serial_lines  # noqa: E402
 
 V = json.load(open(os.path.join(HERE, "..", "test", "fixtures", "deployment_authority_public_v1.json")))
 failed = False
@@ -30,9 +31,7 @@ def check(name, ok, detail=""):
 
 
 def console(port):
-    import serial
-    s = serial.Serial(port, 115200, timeout=0.05)
-    s.dtr = True
+    s = serial_lines.open_serial(port, 115200, timeout=0.05, dtr=True)
     buf = bytearray()
 
     def write(data):

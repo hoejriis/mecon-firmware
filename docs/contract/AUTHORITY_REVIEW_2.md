@@ -16,7 +16,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 | L2 | The stock-array rescue rebuild restored the provisioned marker late | Fixed: restored right after the format | 7d517312 |
 | L3 | The local unlock secret could travel in the clear over any transport | Fixed: accepted only over the USB cable (`usb_only`) | 7846a1ca |
 
-## Not fixed in this slice
+## Not fixed in this slice (with the decisions taken since)
 
 | Id | Summary | Decision |
 |---|---|---|
@@ -54,7 +54,7 @@ that the test kills.
 | M1 | A power cut between the key save and the drop left the old owner's contacts with the new key | Fixed: the statement is drop-pending until the drop ends; the boot finishes it (power-cut sim tests at the key save and at the first drop step). Mutants `rot_pending_drop_not_finished`, `rot_pending_never_cleared` |
 | M2 | The native signing command signed `MECON-` bytes | Fixed: refused (`ILLEGAL_ARG`) when the data starts with `MECON-`, enrolled or not. Mutant `native_signer_signs_mecon_bytes` |
 | M3 | A signed result was not bound to its request | Fixed: results carry `op` and, for a signed request, `job_id`, inside the signed text; the manager's freshness rule is now written in 3.4. Mutants `prov_result_names_no_op`, `prov_result_names_no_job` |
-| M4 | Unauthenticated input drove signing with no limit, and its cost was unmeasured | Fixed for refusals: at most 8 signed refusals a second (burst 8), beyond it unsigned with `"unsigned":"rate"`. Other results and events are always signed. Cost measured on the sim host: 12.4 µs per signature (see below). Mutant `prov_refusal_budget_unlimited`. Not done: measuring on a target MCU, moving observation signing out of the receive callback, and avoiding the per-signature allocation (deferred, below) |
+| M4 | Unauthenticated input drove signing with no limit, and its cost was unmeasured | Fixed for refusals: at most 8 signed refusals a second (burst 8), beyond it unsigned with `"unsigned":"rate"`. Other results and events are always signed. Cost measured on the sim host: 12.4 µs per signature (see below). Mutant `prov_refusal_budget_unlimited`. Measured on target MCUs on 2026-11-08: 18.9 ms on an ESP32-S3, 14.6 ms on an nRF52840 (below). Not done: moving observation signing out of the receive callback, and avoiding the per-signature allocation (deferred, below) |
 | L1 | `usig_boot` can repeat after `/mecon_dev` is lost while the key and record persist | Fixed for the loss of one file: a second copy of the record keeps the epoch rising and `device_id` the same, with no change to the signed format. Losing both while the key and record survive still restarts the epoch: a manager then rejects the messages as stale, and the device re-enrols |
 | L2 | The reset result, and every message after an unenrolment, was unsigned | Fixed for the reset result: whether to sign is decided when the request begins. Messages after the unenrolment stay unsigned by design (no record). Mutant `prov_reset_result_unsigned` |
 | L3 | Key hygiene: elidable wipes, `fresh` not wiped on the storage path, the old key left in flash | Fixed: a volatile-loop wipe (`Wipe.h`) at every key wipe of the rotation and the retired-key holder, and `fresh` is wiped on every exit. Accepted: the temporary of `LocalIdentity(&r)` is not wiped (a stack temporary the type's constructor owns), and flash remanence (written in section 12) |
@@ -73,5 +73,10 @@ Signing time: 12.4 µs per Ed25519 signature of a 250-byte message (20,000 signa
 container on the sim host, 2026-10-28). Not a target figure: the nRF52840 and ESP32 are expected to be in the millisecond
 range, which is why the refusal budget exists.
 
-Not established by this review: the signing time on a target MCU, and whether the ESP32 MQTT worker task ever calls `dispatch()`
-or `sign()` (it appears to handle connects only).
+On target MCUs (added 2026-11-08, bench builds of main a576740a with a timer around `key->sign()`, 20 signed results each,
+over the cable): **18.9 ms** per signature of a 982-byte message on a Heltec V3 (ESP32-S3), and **14.6 ms** for 945 bytes on a
+SenseCAP T1000-E (nRF52840; its `micros()` moves in steps of about 1 ms). At the refusal budget of 8 a second, that is at
+most about 150 ms of CPU a second on the V3.
+
+Not established by this review: whether the ESP32 MQTT worker task ever calls `dispatch()` or `sign()` (it appears to
+handle connects only).

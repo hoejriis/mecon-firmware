@@ -49,7 +49,9 @@ Flash and static RAM (`.data` + `.bss`) per Heltec target, from local builds in 
 | `heltec_v4_repeater` | 1,190,041 B (18.2 %) | 1,377,532 B (21.0 %) | +187,491 B | 63,180 B | 63,084 B | −96 B |
 | `heltec_v4_room_server` | 1,185,421 B (18.1 %) | 1,372,540 B (20.9 %) | +187,119 B | 66,868 B | 66,772 B | −96 B |
 
-ESP-IDF 5.3 adds about 150–200 KB of flash to a build with Wi-Fi or a role firmware, and about 50 KB to a USB-only Companion; static RAM is within 0.5 KB. NimBLE takes about 400 KB of flash and 12 KB of static RAM off a BLE Companion, more than ESP-IDF 5 adds, so the BLE Companions come out smaller than before.
+The V3 "after" figures are from before the hybrid compile described below, which changes them; that section has the V3 figures after it. Each release's notes give its current sizes.
+
+ESP-IDF 5.3 adds about 150–200 KB of flash to a build with Wi-Fi or a role firmware, and about 50 KB to a USB-only Companion; static RAM is within 0.5 KB. NimBLE takes about 440 KB of flash and 13.5 KB of static RAM off a BLE Companion, more than ESP-IDF 5 adds, so the BLE Companions come out smaller than before.
 
 On ESP-IDF 5.3, Bluedroid against NimBLE for the same build (before the switch):
 
@@ -58,7 +60,7 @@ On ESP-IDF 5.3, Bluedroid against NimBLE for the same build (before the switch):
 | `Heltec_v3_companion_radio_ble` | 1,949,024 B | 1,506,932 B | 132,512 B | 118,956 B |
 | `Heltec_v3_companion_radio_standalone` | 2,092,836 B | 1,651,028 B | 138,632 B | 125,084 B |
 
-The size budgets in `ci/size-budget.txt` are seeded from the "after" column (use + 4 KB).
+The size budgets in `ci/size-budget.txt` were seeded from the "after" column (use + 4 KB). Each has since been raised in the PR that needed it, by the same rule, so the file, not this table, is the current budget.
 
 ## Heap: rebuilt Arduino IDF libraries (hybrid compile)
 
@@ -88,7 +90,7 @@ Flash and static RAM of the V3 envs, main (bafb88d5) against this build (local b
 | `Heltec_v3_repeater` | 1,445,804 B | 1,383,208 B | −62,596 B | 63,940 B | 62,612 B | −1,328 B |
 | `Heltec_v3_room_server` | 1,440,816 B | 1,378,152 B | −62,664 B | 67,628 B | 66,300 B | −1,328 B |
 
-Flash drops by about 57-63 KB on the BLE, standalone and Wi-Fi Companions and by about 39-40 KB on the USB Companion, the repeater and the room server; static RAM by about 1.3-1.6 KB. The V3 budgets in `ci/size-budget.txt` are set from these builds (use + 4 KB).
+Flash drops by about 57-63 KB on the BLE, standalone and Wi-Fi Companions and by about 39-40 KB on the USB Companion, the repeater and the room server; static RAM by about 1.3-1.6 KB. The V3 budgets in `ci/size-budget.txt` were set from these builds (use + 4 KB) and have been raised since, in the PRs that needed it.
 
 ### The Heltec V4 has its own rebuilt libraries
 
@@ -139,7 +141,7 @@ The Adafruit nRF52 core runs `loop()` on a fixed 4 KB stack (`LOOP_STACK_SZ`). A
   - There is no hardware watchdog on these builds. One added later needs a timeout longer than this wait.
 - **The boot's identity-rotation recovery** on a Companion with the device interface runs on the worker too (#172). It reads and rewrites the rotation statement (two 512 B buffers) and saves it through LittleFS; on the loop task it had been the deepest path, 3,568 of 3,840 B. Without a worker it runs on the loop task as before.
 - **Measured.** `status.get` reports the loop task's `loop_stack_free` and the worker's `worker_stack_free`.
-- **The gate.** The `stack-gate` workflow (`tools/stack_callgraph.py`) builds the T1000-E and Wio Tracker L1 Repeater, Room server and Companion envs with GCC's call-graph files. It fails a change whose worst static path is over 3,840 B on the loop task or 7,936 B on the worker, or where a hand-off no longer reaches `NrfWorker::run`: received packets, a Companion's contact-import loopback, and the boot's rotation recovery. It follows the receive chain into the file system, and counts a job nested in another on the worker together with it. A recursion reachable from either task fails it unless every function in it is on the workflow's list, each entry with its reason: a depth counts a recursion once, so one driven by stored data could be far deeper than the figure.
+- **The gate.** The `stack-gate` workflow (`tools/stack_callgraph.py`) builds eight envs with GCC's call-graph files: the Repeater, Room server, and BLE and USB Companions of the T1000-E and of the Wio Tracker L1. The Wio Tracker L1 BLE Companion joined on 2026-11-08; its first run had a worst 3,568 B of 3,840 on the loop task and 3,664 B of 7,936 on the worker. It fails a change whose worst static path is over 3,840 B on the loop task or 7,936 B on the worker, or where a hand-off no longer reaches `NrfWorker::run`: received packets, a Companion's contact-import loopback, and the boot's rotation recovery. It follows the receive chain into the file system, and counts a job nested in another on the worker together with it. A recursion reachable from either task fails it unless every function in it is on the workflow's list, each entry with its reason: a depth counts a recursion once, so one driven by stored data could be far deeper than the figure.
 
 The stack figures are the least free stack of the Arduino loop task (8 KB, where every CLI command and the radio and app paths run) since boot, from `get mecon.mem` (`loop_stack_free`); both runtimes leave about 5.4 KB of it unused in every state measured. On 2.0.17 the BLE pairing step's CLI over BLE was not answered, so that baseline reading covers pairing and USB CLI only; the V4's 2.0.17 Wi-Fi reading was lost to an MQTT reconnect on that build and is not captured.
 

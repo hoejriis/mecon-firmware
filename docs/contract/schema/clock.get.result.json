@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/clock.get.result.json",
+  "title": "Result of clock.get",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "epoch"
+  ],
+  "properties": {
+    "epoch": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "description": "Wall-clock seconds; null while the clock is not set."
+    }
+  }
+}

@@ -25,10 +25,12 @@
     },
     "type": {
       "enum": [
+        "none",
         "chat",
         "repeater",
         "room",
-        "sensor"
+        "sensor",
+        "other"
       ],
       "description": "Never none: type 0 is the anonymous slot's and is not a stored contact."
     },

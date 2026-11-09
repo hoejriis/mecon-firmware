@@ -168,8 +168,10 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `job.get`, `job.list` | job state, owed results | | read | no | C R S | all |
 | `job.ack` | release an owed result | | read; not a plain read once enrolled | yes | C R S | all |
 | `job.confirm` | confirm a tentative change | | the job's classes | yes | C R S | all |
+| `region.list` | the region tree, paged; the first page adds the wildcard's flood, `home` and `default` | `RegionMap` | read | no | R S | Con, MQTT where built |
+| `region.put`, `region.remove`, `region.flood`, `region.home`, `region.default` | change the tree; each is saved at once | `RegionMap`, `/regions2` | write; confirm for all but the unsigned cable | yes | R S | Con, MQTT where built |
 | `job.cancel` | cancel, or revert if applied | | the job's classes | yes | C R S | all |
-| `device.reboot` | reboot | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | all |
+| `device.reboot` | reboot, about 1.5 s after the answer; an unsigned local caller (cable, paired BLE) keeps it on an enrolled device, an unsigned remote one does not | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope |
 | `contact.list`, `contact.get` | contact table (name, type, protection flag, last advert, hops, position; `list` paged by up to 6, fewer when a page would not fit); the shared secret and the path bytes never | native contact table | private | no | C | all |
 | `contact.put`, `contact.remove` | add, update, remove; a put names no flags, so it never grants telemetry or the remote CLI, and a full table behaves as for the app | `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` | write | yes | C | all |
@@ -184,9 +186,10 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `mgmt.channel.bind`, `mgmt.channel.rotate`, `mgmt.channel.unbind` | bind a slot, rotate its key, end the binding; confirm-or-revert for anyone but the cable | `CMD_SET_CHANNEL` for a rotation | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `acl.list`, `acl.put` | remote-admin ACL | CLI `setperm`; REQ `GET_ACCESS_LIST` | read / write | `acl.put` | R S | Con, MQTT where built, RF |
 | `password.set` | admin or guest password (write-only) | CLI `password`, `set guest.password` | write; commit-or-revert over RF | yes | R S | Con, RF |
-| `clock.get`, `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | read / write | `set` | C R S | all |
-| `advert.send` | self advert (zero-hop or flood) | `CMD_SEND_SELF_ADVERT`, CLI `advert` | write | yes | C R S | all |
-| `identity.get` | node key, device id | | read | no | C R S | all |
+| `clock.get` | `{"epoch": n}`, wall-clock seconds; `null` while the clock is not set | `CMD_GET_DEVICE_TIME` | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
+| `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | write | yes | C R S | all |
+| `advert.send` | self advert: `{"flood": true}` floods it in the default scope, otherwise zero hop; the result names which | `CMD_SEND_SELF_ADVERT`, CLI `advert`, `advert.zerohop` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
+| `identity.get` | `device_id`, `node_key` and `device_id_sig`, as `hello` gives them | | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `identity.rotate` | new node key on the device | | per [AUTHORITY](AUTHORITY.md) | yes | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `identity.rotation` | the old key's signed statement of the rotation | | read | no | C R S | all |
 | `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per [AUTHORITY](AUTHORITY.md) |
@@ -201,11 +204,15 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
+**Not built yet.** No build registers `device.reset`, `clock.set`, `identity.key.export`, `acl.list`, `acl.put`, `password.set`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `setperm`, `password`, `set guest.password`, `get prv.key`, the frames `CMD_SET_DEVICE_TIME` and `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
+
+`contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
+
 **Keys `config.*` reaches.**
-- Companion: 17 key patterns, 84 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|site|user|pwd|priority`. The 22 password and user keys are write-only.
+- Companion: 19 key patterns, 96 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|transport|path|site|user|pwd|priority`. The 22 password and user keys are write-only.
 - Repeater and Room server: 12 keys: `name`, `tx`, `radio`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`. The Heltec builds also have the Wi-Fi and broker keys above; `connectivity.mode` stays on the Companion, because a server has no BLE to choose between.
 
-Each of the following stands for its existing CLI line:
+Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in `src/helpers/iface/IfaceConfig.cpp`) has them, so each is reached by its CLI line only:
 - **Companion:** `mqtt.profile.N.anchor` (with the CA lines as one operation), `tz.offset`, and the remaining radio preferences (`af`, `rxdelay`, `txdelay`, `direct.txdelay`, `int.thresh`, `cad`, `radio.rxgain`, `agc.reset.interval`, `path.hash.mode`, `multi.acks`, `dutycycle`).
 - **Repeater and Room server:** the same radio preferences, plus `flood.max.advert`, `flood.max.unscoped` and `guest.password` (write-only).
 - **Stays a separate posture-class operation:** `mqtt.profile.N.manage`, which is set locally, never remotely.
@@ -221,15 +228,15 @@ Each of the following stands for its existing CLI line:
 | 3 | `CMD_SEND_CHANNEL_TXT_MSG` | messaging | served | native |
 | 4 | `CMD_GET_CONTACTS` | read | served | `contact.list` |
 | 5 | `CMD_GET_DEVICE_TIME` | read | served | `clock.get` |
-| 6 | `CMD_SET_DEVICE_TIME` | messaging (forward only; the app's clock sync) | served | `clock.set` |
+| 6 | `CMD_SET_DEVICE_TIME` | messaging for the first set since boot (the app's clock sync); **write** after it (forward only) | served / refused | `clock.set` |
 | 7 | `CMD_SEND_SELF_ADVERT` | messaging | served | `advert.send` |
 | 8 | `CMD_SET_ADVERT_NAME` | write | refused | `config.apply name` |
-| 9 | `CMD_ADD_UPDATE_CONTACT` | messaging (contact handling) | served | `contact.put` |
+| 9 | `CMD_ADD_UPDATE_CONTACT` | messaging (contact handling); **write** when it grants telemetry or the remote CLI | served / refused | `contact.put` |
 | 10 | `CMD_SYNC_NEXT_MESSAGE` | messaging | served | native |
 | 11 | `CMD_SET_RADIO_PARAMS` | write | refused | `config.apply radio` |
 | 12 | `CMD_SET_RADIO_TX_POWER` | write | refused | `config.apply tx` |
 | 13 | `CMD_RESET_PATH` | messaging (contact handling) | served | native |
-| 14 | `CMD_SET_ADVERT_LATLON` | write | refused | `config.apply` (lat/lon keys) |
+| 14 | `CMD_SET_ADVERT_LATLON` | write | refused | none yet: the Companion has no `lat`/`lon` key in `config.*` (the Repeater and Room server have) |
 | 15 | `CMD_REMOVE_CONTACT` | messaging (contact handling) | served | `contact.remove` |
 | 16 | `CMD_SHARE_CONTACT` | messaging | served | native |
 | 17 | `CMD_EXPORT_CONTACT` | read | served | `contact.get` |
@@ -305,7 +312,7 @@ Every CLI line is classed by the registry; a line the registry does not name is 
 Notes the matrix depends on, as the code stands:
 - `start ota` on an ESP32 Repeater or Room server opens an unauthenticated Wi-Fi access point that accepts an image. This is stock behaviour, and it is unsigned. It is compiled out unless a build defines `ENABLE_WIFI_OTA`, and every build with the device interface refuses it ([CLI reference](../CLI_REFERENCE.md)).
 - The Repeater runs any line that starts with `reboot`, while the registry classes only the exact `reboot` as reboot. A longer form is `write`, which is stricter (refused to a Hardened remote admin), not weaker.
-- The sensor role (`simple_sensor`) is not a MECON target. It has no device interface and no posture front door, and nothing on this page applies to it. This is a recorded exception to the rule that the firmware works the same way in all modes: the owner's decision of 2026-11-04.
+- The sensor role (`simple_sensor`) is not a MECON target. It has no device interface and no posture front door, and nothing on this page applies to it. This is a recorded exception to the rule that the firmware works the same way in all modes: the owner's decision of 2026-11-04. One part of the posture rules does apply to it, by the owner's decision of 2026-11-08: it refuses remote admin while its admin password is the stock default or empty, as the Repeater and Room server do, until a password is set on the local console.
 
 ### Standing instructions
 
@@ -315,6 +322,26 @@ A standing instruction runs only what it names: a compact report to a named dest
 - **Who.** It carries the member who set it. When that member is no longer in the authority set, or the Deployment is gone, it is removed the next time it comes due, unsent. One set by an unsigned caller on a standalone device has no member and stays until removed.
 - **Durable by default.** It lasts across boots in a file. A subscription stays short-lived and never becomes one of these.
 - **Failure.** A report that cannot go counts in `failed`, and the schedule carries on.
+
+### Region scopes
+
+A Repeater's and a Room server's native region tree, the one the console's `region` commands edit (`RegionMap`, saved in `/regions2`). A region is a flood scope: `$name` is a private one with its own transport keys, any other name a hashtag one keyed from its name. The wildcard `*` is the root and stands for unscoped floods.
+
+- **`region.list {"cursor"?}`** gives `{"regions":[{"name","parent","flood":"allow"|"deny","kind":"hashtag"|"private"}...],"next"}`, 8 to a page. `parent` is `"*"` for a child of the root, and `next` is `null` after the last page. The first page (cursor 0) also gives `"capacity"`, `"wildcard":{"flood"}`, `"home"` and `"default"` (a name or `null`). No key material appears in it.
+- **`region.put {"name","parent"?,"flood"?}`** adds a region, or moves an existing one. `parent` defaults to `"*"`, `flood` to `"allow"`, as the console's `region put` does. The result is the entry.
+- **`region.remove {"name"}`**, **`region.flood {"name","flood"}`** (`name` may be `"*"`), **`region.home {"name"}`** and **`region.default {"name"}`** (a name, or `null` for none). `region.default` makes its region allow floods, as the console's `region default` does.
+
+**Rules the operations add to the console's.** The console keeps stock's behaviour.
+- Exact names only, with an optional leading `#`, where the console matches a prefix and takes the last.
+- At most 30 bytes, in the native character set. Longer is `invalid` `name-too-long`, where the console truncates. Other characters are `bad-char`.
+- A parent must exist (`failed` `not-found`), and a move must not close a loop (`invalid` `cycle`).
+- A region with children is not removed (`busy` `not-empty`), nor the home or the default (`busy` `referenced`). The console leaves the default pointing at nothing.
+- 32 regions besides the wildcard; one more is `busy` `full`.
+- Every change saves the tree at once, atomically, as the console's `region default` does, so it survives a reboot. It also saves any unsaved console edits made before it.
+
+**Confirmation.** A change can cut a remote caller's path: the default scope carries the server's adverts and its unsolicited replies, and a flood flag decides what it forwards. So for every caller but the unsigned cable, each change needs `"confirm":{"within_s":N}` (otherwise `invalid` `confirm-required`) and runs as a job (section 3.4). A copy of the whole tree is written to `/region_snap` before the change. Confirmed, the copy goes; not confirmed in time, or across a second boot, the tree is put back from it and saved. An unsigned caller on an enrolled device changes nothing.
+
+**Not yet on these operations:** LoRa point to point (they are not in its allowlist yet), the console's `region def` and `region load` (batch editors over the same tree, which `region.put` covers), and the Companion's default scope.
 
 ### 5.4 LoRa remote administration (native)
 
@@ -330,7 +357,7 @@ A standing instruction runs only what it names: a compact report to a named dest
 | `REQ_TYPE_GET_OWNER_INFO` 0x07 | yes | no | no | ACL client |
 | CLI text | any text from an admin (plain, CLI data, CLI command) | CLI data or CLI command from an admin; plain text is a post | CLI command from a flagged contact (reads and `reboot`) | admin / flagged contact |
 
-The device-interface operations go over LoRa point to point ([LORA_MANAGEMENT](LORA_MANAGEMENT.md)): `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `deployment.get`, `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm`, `posture.set`, `report.now`, `standing.put`, `standing.list` and `standing.remove`. Only a signed request runs. Any other operation answers `unknown-op` there. On the management channel only `config.apply`, `job.get`, `job.ack`, `job.cancel`, `job.confirm`, `posture.set` and `report.now` go: every member can read a reply there.
+The device-interface operations go over LoRa point to point ([LORA_MANAGEMENT](LORA_MANAGEMENT.md)): `hello`, `status.get`, `config.schema`, `config.get`, `config.apply`, `deployment.get`, `job.get`, `job.list`, `job.ack`, `job.cancel`, `job.confirm`, `posture.set`, `report.now`, `standing.put`, `standing.list`, `standing.remove`, and on the Repeater and Room server the six `region.*` operations. Only a signed request runs. Any other operation answers `unknown-op` there. On the management channel only `config.apply`, `job.get`, `job.ack`, `job.cancel`, `job.confirm`, `posture.set`, `report.now` and the five region changes go (`region.put`, `.remove`, `.flood`, `.home`, `.default`): every member can read a reply there, so `region.list`, which reads the whole tree back, is point to point only.
 
 These native facilities sit beside the device interface over LoRa, which is a separate path ([management over LoRa](LORA_MANAGEMENT.md)). A channel key, an RF route or a proxy is never authority on that path: the request carries its own signature.
 

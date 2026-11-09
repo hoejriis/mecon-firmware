@@ -1,4 +1,5 @@
 #include <Arduino.h>   // needed for PlatformIO
+#include <helpers/HeapFloor.h>
 #include <helpers/AuditLog.h>
 #include <helpers/BootTimes.h>
 #include <helpers/BootPresence.h>
@@ -49,7 +50,10 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static Iface::PathFsStore mgmt_slot_store("/mgmt_slot");       // the management channel (MANAGEMENT_CHANNEL.md section 6)
   static Iface::PathFsStore mgmt_record_store("/mgmt_channel");
   static Iface::PathFsStore mgmt_snap_store("/mgmt_snap");
+  static Iface::PathFsStore region_snap_store("/region_snap");   // a pending region change's copy of the map
   static Iface::PathFsStore standing_store("/standing");   // the standing instructions (OPERATIONS.md)
+  static bool ifaceRegionsSave(void*) { return the_mesh.saveRegions(); }
+  static void ifaceRegionsDefault(void*, const RegionEntry* r) { the_mesh.onDefaultRegionChanged(r); }
   static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
     char cmd[160], out[160];
     snprintf(cmd, sizeof(cmd), "%s", line);
@@ -189,6 +193,7 @@ void setup() {
 #else
                                        nullptr, nullptr,
 #endif
+                                       &the_mesh.regions(), ifaceRegionsSave, ifaceRegionsDefault, &region_snap_store,
                                      };
     dep_store.setFs(fs);
     job_store.setFs(fs);
@@ -196,8 +201,10 @@ void setup() {
     mgmt_slot_store.setFs(fs);
     mgmt_record_store.setFs(fs);
     mgmt_snap_store.setFs(fs);
+    region_snap_store.setFs(fs);
     standing_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
+    heapFloor().begin(HEAP_FLOOR_BYTES);   // the enforced heap floor (helpers/HeapFloor.h), as on the Companion: ESP32 only
     the_iface.setReportSend([](void* u, const uint8_t* to, int slot, const uint8_t* b, size_t n) {
       return static_cast<MyMesh*>(u)->reportSend(to, slot, b, n);
     }, &the_mesh, &standing_store);
@@ -237,6 +244,7 @@ void setup() {
 }
 
 void loop() {
+  heapFloor().loop(millis(), rtc_clock.getCurrentTime());
   int len = strlen(command);
   // `command` must stay NUL-terminated within its bounds. If it ever isn't,
   // strlen() above can return >= sizeof(command) and the loop below would then

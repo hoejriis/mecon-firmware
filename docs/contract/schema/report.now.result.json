@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/report.now.result.json",
+  "title": "Result of report.now: the compact report that went out",
+  "type": "object",
+  "required": [
+    "seq",
+    "fields"
+  ],
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The report's sequence number on the air."
+    },
+    "fields": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "enum": [
+          "health",
+          "radio",
+          "location"
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}

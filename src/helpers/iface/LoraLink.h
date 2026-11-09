@@ -278,14 +278,18 @@ private:
 inline bool loraOpAllowed(const char* op) {
   static const char* const OPS[] = {"hello", "status.get", "config.schema", "config.get", "config.apply", "deployment.get",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm", "posture.set", "report.now",
-                                    "standing.put", "standing.list", "standing.remove"};
+                                    "standing.put", "standing.list", "standing.remove", "region.list", "region.put",
+                                    "region.remove", "region.flood", "region.home", "region.default"};
   for (const char* o : OPS) if (strcmp(o, op) == 0) return true;
   return false;
 }
 
 // The channel carries only results that say nothing beyond the job (LORA_MANAGEMENT.md section 3.2): every member can read them.
 inline bool loraChannelOpAllowed(const char* op) {
-  static const char* const OPS[] = {"config.apply", "job.get", "job.ack", "job.cancel", "job.confirm", "posture.set", "report.now"};
+  // region.list is not here: it reads back the whole tree. The region changes are, as config.apply is: each answers the
+  // change and its job.
+  static const char* const OPS[] = {"config.apply", "job.get", "job.ack", "job.cancel", "job.confirm", "posture.set", "report.now",
+                                    "region.put", "region.remove", "region.flood", "region.home", "region.default"};
   for (const char* o : OPS) if (strcmp(o, op) == 0) return true;
   return false;
 }
