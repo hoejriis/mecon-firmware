@@ -246,8 +246,17 @@ def run_cases(i, close):
     def fits(c):
         raw = c.get("raw", "")
         return not (console and ("\n" in raw or "\r" in raw))
-    cases = [c for c in json.load(open(os.path.join(FIXTURES, "requests.json")))["cases"]
-             if role in c.get("roles", [role]) and fits(c)]
+    import mecon_fixture
+    keys = mecon_fixture.schema_keys(lambda op, args: i.request(op, args))
+    cases = []
+    for c in json.load(open(os.path.join(FIXTURES, "requests.json")))["cases"]:
+        if role not in c.get("roles", [role]) or not fits(c):
+            continue
+        ok, why = mecon_fixture.applicable(c, keys)
+        if not ok:
+            print("SKIP %s: %s" % (c["name"], why), flush=True)   # a setting this board does not have (#418)
+            continue
+        cases.append(c)
     print("role %s: %d cases" % (role, len(cases)), flush=True)
     fails = 0
     for case in cases:

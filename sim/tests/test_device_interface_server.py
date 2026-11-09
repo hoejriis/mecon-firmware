@@ -149,8 +149,10 @@ def test_every_request_fixture_against_the_repeater(nodes):
     with open(os.path.join(FIXTURES, "requests.json")) as f:
         cases = json.load(f)["cases"]
     n, (cli, i) = start(nodes, "repeater", "fx")
+    import mecon_fixture
+    keys = mecon_fixture.schema_keys(lambda op, args: i.request(op, args))
     for case in cases:
-        if "repeater" not in case.get("roles", ["repeater"]):
+        if "repeater" not in case.get("roles", ["repeater"]) or not mecon_fixture.applicable(case, keys)[0]:
             continue
         if "raw" in case:
             if "\n" in case["raw"] or "\r" in case["raw"]:
