@@ -468,7 +468,14 @@ Status opConfigSchema(OpContext& c) {
   w.key("profile"); w.str("config/1.0");
   w.key("keys"); w.beginArray();
   size_t i = (size_t)cursor;
-  for (unsigned n = 0; i < nk && n < SCHEMA_PAGE; i++, n++) writeDef(w, tk[i]);
+  // Over LoRa a page also stops when the next key would not leave room for the rest, the signature, and the manager's
+  // JSON-escaped copy of the reply in an rf event of at most 1,536 bytes: the margin region.list's pages keep. Elsewhere
+  // the page is as it was, so the recorded schemas stand.
+  const ConfigHost* ch = hostOf(c);
+  const bool air = ch->on_air && ch->on_air(ch->user);
+  const size_t DEF_MAX = 220, AFTER = 400;
+  for (unsigned n = 0; i < nk && n < SCHEMA_PAGE && (n == 0 || !air || w.size() + DEF_MAX + AFTER <= w.cap()); i++, n++)
+    writeDef(w, tk[i]);
   w.endArray();
   w.key("next"); if (i < nk) w.num((int64_t)i); else w.null();
   return ST_OK;

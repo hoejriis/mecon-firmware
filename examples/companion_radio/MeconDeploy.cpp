@@ -48,6 +48,7 @@ void MeconIface::jobsLoad() {
   _updates.bootReconcile();   // an installed image attests, or the bootloader rolled it back
   Iface::configSnapBoot(configHost());   // a snapshot no awaiting job owns goes: it holds old secrets
   Iface::mgmtSnapBoot(mgmtHost());       // likewise the management channel's: it holds an old key
+  { Iface::ScopeHost sh = scopeHost(); Iface::scopeSnapBoot(sh); }   // and the default scope's previous key
 }
 
 // The unsigned cable keeps its path whatever it changes. A signed request on the cable is a signed caller.
@@ -114,6 +115,12 @@ bool MeconIface::jobRevert(void* user, Iface::Job& j) {
     m->_jobs.table()->setState(&j, Iface::JOB_REVERTED);
     return true;
   }
+  if (Iface::scopeOwnsJob(j)) {
+    Iface::ScopeHost sh = m->scopeHost();
+    if (!Iface::scopeRevert(sh, j)) return false;
+    m->_jobs.table()->setState(&j, Iface::JOB_REVERTED);
+    return true;
+  }
   if (strcmp(j.op, "config.apply") != 0) return false;
   bool reboot = false;
   if (!Iface::configRevert(m->configHost(), j, &reboot)) return false;   // the job ends failed, revert-failed
@@ -126,6 +133,11 @@ bool MeconIface::jobConfirm(void* user, Iface::Job& j) {
   if (Upd::UpdateService::owns(j)) return static_cast<MeconIface*>(user)->_updates.jobConfirm(j);
   if (Iface::mgmtOwnsJob(j)) {
     Iface::mgmtConfirmed(static_cast<MeconIface*>(user)->mgmtHost());
+    return true;
+  }
+  if (Iface::scopeOwnsJob(j)) {
+    Iface::ScopeHost sh = static_cast<MeconIface*>(user)->scopeHost();
+    Iface::scopeConfirmed(sh);
     return true;
   }
   if (strcmp(j.op, "config.apply") != 0) return false;
@@ -256,7 +268,8 @@ Status MeconIface::opDeployGet(OpContext& c) {
   const bool may_read = Cli::decide(self(c)->_ctx, Cli::C_READ).allow;
   char text[256], sig[89];
   const bool rotated = may_read && self(c)->_mesh->readRotation(text, sizeof(text), sig, sizeof(sig));
-  const Status st = self(c)->_auth.opGet(c, rotated ? Iface::DeployAuth::ROTATION_MEMBER : 0);
+  const Status st = self(c)->_auth.opGet(c, (rotated ? Iface::DeployAuth::ROTATION_MEMBER : 0) +
+                                                (self(c)->onLora() ? Iface::DeployAuth::LORA_RESERVE : 0));
   if (st == ST_OK && rotated) writeRotationMember(*c.out, self(c)->_mesh, "rotation");
   return st;
 }
