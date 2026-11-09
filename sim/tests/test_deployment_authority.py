@@ -389,7 +389,7 @@ def test_a_sensitive_operation_needs_this_links_nonce_once(nodes):
     r = d.send(wrap(d.node_key, "identity.key.export", job=1, nonce="00" * 16))
     assert r["error"] == "bad_channel_nonce", r
     r = d.send(wrap(d.node_key, "identity.key.export", job=2, nonce=n1))
-    assert r["status"] == "unknown-op", "past every check; this build has no such operation: %s" % r
+    assert r["status"] == "ok" and "wrapped" in r["result"], "past every check: the key, wrapped for the signer: %s" % r
     n2 = d.nonce()
     assert n2 != n1, "a nonce is used once"
     r = d.send(wrap(d.node_key, "identity.key.export", job=3, nonce=n1))

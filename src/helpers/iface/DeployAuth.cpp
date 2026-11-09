@@ -406,6 +406,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   }
   _verified = true;
   for (int i = 0; i < 8; i++) snprintf(_signing_issuer + 2 * i, 3, "%02x", _dep->set.members[v.member].instance_id[i]);
+  _signing_member = v.member;
   strncpy(_answering.op, v.op, sizeof(_answering.op) - 1);   // the verified request: its result names it
   _answering.op[sizeof(_answering.op) - 1] = 0;
   _answering.has_job = v.has_job;
@@ -480,6 +481,7 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   if (_env.publish_caller) Cli::serverCaller().signed_line = false;
   _signed = false;
   _signing_issuer[0] = 0;
+  _signing_member = -1;
   if (n > 0 && key[0] && cache) cache->store(key, SIGNED_OP, out, (size_t)n);
   if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once
   freeBody(body, body_cap);

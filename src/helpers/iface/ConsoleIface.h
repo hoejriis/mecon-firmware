@@ -15,6 +15,7 @@
 #include "IfaceConfig.h"
 #include "IfaceDispatch.h"
 #include "ResetOps.h"
+#include "KeyExportOps.h"
 #include "JobService.h"
 #include "helpers/updates/UpdService.h"
 #include "CableLine.h"
@@ -135,6 +136,7 @@ public:
   // For the operations.
   const Host& host() const { return _host; }
   DeployAuth& auth() { return _auth; }
+  const Cli::Context& callerContext() const { return _ctx; }
   bool helloSigned() const { return _auth.enrolled(); }   // an enrolled server signs its results (AUTHORITY.md 3.4)
   Status rotateIdentity(OpContext& c);   // the operations identity.rotate and identity.rotation, and deployment.get's member
   bool writeRotation(JsonWriter& w);

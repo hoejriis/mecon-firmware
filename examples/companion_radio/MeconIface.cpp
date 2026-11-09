@@ -46,7 +46,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
@@ -71,6 +71,7 @@ Status opDeviceReboot(OpContext& c);
 Status opDeviceResetW(OpContext& c);
 Status opBleBonds(OpContext& c);
 Status opBlePin(OpContext& c);
+Status opKeyExportW(OpContext& c);
 Status opStatus(OpContext& c);
 Status opMsgSend(OpContext& c);
 Status opMsgGet(OpContext& c);
@@ -154,6 +155,8 @@ const OpEntry OPS[] = {
   {"ble.bonds", opBleBonds, PRIV_READ, false},
   // Never answered from the cache: a PIN must not sit in the result cache for a later caller's retry.
   {"ble.pin.get", opBlePin, PRIV_READ, false},
+  // The handler decides who may have it (KeyExportOps.h), so it is never answered from the cache.
+  {"identity.key.export", opKeyExportW, PRIV_READ, false},
   // Reading a job and acknowledging its result are of the read class (the result belongs to whoever may read it);
   // cancelling and confirming change the device. The three that change something keep their result (OPERATIONS.md 5.1).
   {"job.get", opJobGet, PRIV_READ, false},
@@ -266,6 +269,21 @@ Status opBlePin(OpContext& c) {
   JsonWriter& w = *c.out;
   w.key("pin"); w.unum(m->mesh()->getBLEPin());
   return ST_OK;
+}
+
+Status opKeyExportW(OpContext& c) {
+  MeconIface* m = self(c);
+  const Cli::Context& ctx = m->callerContext();
+  const Dep::Member* member = m->authState().signingMember();
+#if ENABLE_PRIVATE_KEY_EXPORT
+  const bool allowed = true;
+#else
+  const bool allowed = false;
+#endif
+  KeyExportHost h{&m->mesh()->self_id, allowed, true, Cli::principalOf(ctx), ctx.posture != Posture::NORMAL,
+                  m->authState().state(), member ? member->public_key : nullptr, member ? member->instance_id : nullptr,
+                  m->authState().signingJob()};
+  return Iface::opKeyExport(c, h);
 }
 
 Status opDeviceResetW(OpContext& c) {
