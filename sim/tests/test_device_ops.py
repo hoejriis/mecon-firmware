@@ -229,3 +229,35 @@ def test_the_remote_admin_acl_is_listed_and_set(ether, nodes, kind):
     r = d.send(wrap(d.node_key, "acl.put", {"key": who, "role": "admin"}, job=next_job(d)))
     assert r["status"] == "ok" and r["result"]["role"] == "admin", r
     assert {"key": who, "role": "admin"} in d.i.request("acl.list")["result"]["clients"]
+
+
+def test_password_set_is_write_only_and_console_only(nodes, tmp_path, brokers):
+    import json as _json
+    from sim.harness import CliClient
+    from test_deployment_authority_server import RTC as SRTC, Srv
+    n = nodes("repeater_eth", "pws", seed=43, rtc=SRTC).start()
+    d = Srv(n)
+    r = d.i.request("password.set", {"which": "admin", "password": "n3wpass"})
+    assert r["status"] == "ok" and shaped("password.set", r["result"]) == {"which": "admin"}, r
+    assert "n3wpass" not in _json.dumps(r), "write-only: never in the answer"
+    eth = CliClient(n, ethernet=True)
+    assert eth.command("login n3wpass") == "OK - logged in", "the native password changed"
+    assert d.i.request("password.set", {"which": "guest", "password": "gu3st"})["status"] == "ok"
+    r = d.i.request("password.set", {"which": "admin", "password": "x" * 16})
+    assert r["status"] == "invalid" and r["error"] == "too-long", "refused, not cut to the native 15: %s" % r
+    assert d.i.request("password.set", {"which": "root", "password": "abc"})["status"] == "invalid"
+    assert d.provision()["status"] == "ok"
+    r = d.i.request("password.set", {"which": "admin", "password": "an0ther"})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    r = d.send(wrap(d.node_key, "password.set", {"which": "admin", "password": "an0ther"}, job=next_job(d)))
+    assert r["status"] == "ok", r
+
+
+@pytest.mark.timescale(10)
+def test_password_set_is_refused_over_the_broker(nodes, tmp_path, brokers):
+    from test_server_mqtt import boot as srv_boot, dev_of, tls_broker, up, verified
+    b = tls_broker(brokers)
+    s = srv_boot(nodes, tmp_path, "repeater_wifi", "pwb", verified(b))
+    up(s)
+    r = b.iface_request(dev_of(s), {"v": 1, "id": "p1", "op": "password.set", "args": {"which": "admin", "password": "viabroker"}})
+    assert r["status"] == "refused" and r["error"] == "not-over-this-link", r

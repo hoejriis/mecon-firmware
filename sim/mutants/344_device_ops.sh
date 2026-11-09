@@ -14,3 +14,5 @@ mutate region_list_needs_a_job src/helpers/deployment/DepWrapper.cpp '          
 mutate clock_set_backwards_companion examples/companion_radio/MyMesh.cpp '  if (secs < getRTCClock()->getCurrentTime()) return false;' '' "$DO::test_clock_set_moves_the_clock_forward_only[companion_standalone]"
 mutate acl_role_lost src/helpers/iface/ConsoleIface.cpp '    w.key("role"); w.str(ACL_ROLES[perms & 3]);' '    w.key("role"); w.str(ACL_ROLES[0]);' "$DO::test_the_remote_admin_acl_is_listed_and_set[repeater]"
 mutate acl_put_any_role src/helpers/iface/ConsoleIface.cpp '  if (perms < 0) return ST_INVALID;' '  if (perms < 0) perms = 3;' "$DO::test_the_remote_admin_acl_is_listed_and_set[repeater]"
+mutate password_set_over_broker src/helpers/iface/ConsoleIface.cpp '  if (m->onBroker()) { c.error = "not-over-this-link"; return ST_REFUSED; }' '' "$DO::test_password_set_is_refused_over_the_broker"
+mutate password_set_truncates src/helpers/iface/ConsoleIface.cpp '  if (strlen(pw) > 15) { wipe(pw, sizeof(pw)); c.error = "too-long"; return ST_INVALID; }   // the native field holds 15' '' "$DO::test_password_set_is_write_only_and_console_only"

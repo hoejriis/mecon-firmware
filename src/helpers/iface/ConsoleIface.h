@@ -149,6 +149,7 @@ public:
   RegionHost regionHost();
   bool hasRegions() const { return _host.regions != nullptr; }
   SubSet& subs() { return _on_mqtt ? _mqtt_subs : _subs; }
+  bool onBroker() const { return _on_mqtt; }
   uint32_t produced() const { return streamsProduced(); }
   void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read
   uint8_t postureNow() const { return _host.posture(_host.user); }

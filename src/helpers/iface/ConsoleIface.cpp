@@ -49,7 +49,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "acl.list", "acl.put",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "acl.list", "acl.put", "password.set",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -300,6 +300,32 @@ Status opAclPut(OpContext& c) {
   c.out->key("role"); c.out->str(ACL_ROLES[perms]);
   return ST_OK;
 }
+// password.set {"which": "admin" | "guest", "password"}: the native `password` and `set guest.password` lines. Write-only:
+// the answer names which one changed, never the value, and the native reply, which echoes it, is wiped. The console only:
+// a broker session does not set it, and the LoRa link carries no write-only setting (LORA_MANAGEMENT section 2). Over
+// the air the native remote admin keeps its own `password` line.
+Status opPasswordSet(OpContext& c) {
+  ConsoleIface* m = self(c);
+  if (m->onBroker()) { c.error = "not-over-this-link"; return ST_REFUSED; }
+  const ConsoleIface::Host& h = m->host();
+  char which[8], pw[24] = {0};
+  const bool parsed = c.req->args >= 0 &&
+                      jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "which"), which, sizeof(which), CS_NAME, 1) &&
+                      jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "password"), pw, sizeof(pw), CS_ANY, 1);
+  const bool admin = parsed && strcmp(which, "admin") == 0, guest = parsed && strcmp(which, "guest") == 0;
+  if (!admin && !guest) { wipe(pw, sizeof(pw)); return ST_INVALID; }
+  if (strlen(pw) > 15) { wipe(pw, sizeof(pw)); c.error = "too-long"; return ST_INVALID; }   // the native field holds 15
+  char line[48], reply[160] = {0};
+  snprintf(line, sizeof(line), "%s%s", admin ? "password " : "set guest.password ", pw);
+  const bool ran = h.run(h.user, line, reply, sizeof(reply));
+  const bool ok = ran && (admin ? strncmp(reply, "password now", 12) == 0 : strncmp(reply, "OK", 2) == 0);
+  wipe(line, sizeof(line));
+  wipe(reply, sizeof(reply));
+  wipe(pw, sizeof(pw));
+  if (!ok) { c.error = "refused"; return ST_FAILED; }
+  c.out->key("which"); c.out->str(admin ? "admin" : "guest");
+  return ST_OK;
+}
 Status opClockSet(OpContext& c) {
   const ConsoleIface::Host& h = self(c)->host();
   int64_t t;
@@ -373,6 +399,7 @@ const OpEntry OPS[] = {
   {"clock.set", opClockSet, PRIV_WRITE, true},
   {"acl.list", opAclList, PRIV_READ, false},
   {"acl.put", opAclPut, PRIV_WRITE, true},
+  {"password.set", opPasswordSet, PRIV_WRITE, true},
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   // One channel slot, for the management channel (MANAGEMENT_CHANNEL.md section 6); bind, rotate and unbind confirm-or-revert
