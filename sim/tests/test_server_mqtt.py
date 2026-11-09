@@ -93,9 +93,10 @@ def test_a_server_answers_the_device_interface_over_a_verified_broker(nodes, tmp
     r = b.iface_request(dev, {"v": 1, "id": "m2", "op": "config.apply", "args": {"set": {"name": "ViaBroker"}}})
     assert r["status"] == "ok" and r["result"]["complete"], r
     assert s.name() == "> ViaBroker"
-    # the same id over either transport runs once
-    again = s.i.request("config.apply", {"set": {"name": "ViaBroker"}}, rid="m2")
-    assert again["result"] == r["result"], (r, again)
+    # the same id from another caller runs nothing, and its stored result stays the broker's (#476)
+    again = s.i.request("config.apply", {"set": {"name": "ViaConsole"}}, rid="m2")
+    assert again["status"] == "invalid" and again["error"] == "id-in-use", (r, again)
+    assert s.name() == "> ViaBroker"
 
 
 def test_the_settings_survive_a_reboot_and_the_session_comes_back(nodes, tmp_path, brokers):

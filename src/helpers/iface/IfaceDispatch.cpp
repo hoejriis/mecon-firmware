@@ -30,7 +30,7 @@ int Dispatcher::handleWith(JsonDoc& doc, const char* msg, size_t len, char* out,
 
   if (st == ST_OK && cache) {
     const char* data; size_t dl;
-    ResultCache::Lookup l = cache->find(req.id, req.op, &data, &dl);
+    ResultCache::Lookup l = cache->find(req.id, req.op, &data, &dl, _caller);
     // The id holds another operation's result: never hand it to this one, and never run this one under it.
     if (l == ResultCache::CONFLICT) return writeResult(out, cap, id, ST_INVALID, nullptr, "id-in-use");
     if (l != ResultCache::MISS) {
@@ -76,7 +76,7 @@ int Dispatcher::handleWith(JsonDoc& doc, const char* msg, size_t len, char* out,
   }
   if (n < 0) n = writeResult(out, cap, id, st, nullptr, err);
   if (n > 0 && cache && op && op->mutating && (st == ST_OK || st == ST_FAILED))
-    cache->store(req.id, req.op, out, (size_t)n);
+    cache->store(req.id, req.op, out, (size_t)n, _caller);
   return n;
 }
 
