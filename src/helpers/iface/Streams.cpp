@@ -61,8 +61,9 @@ Status subStart(OpContext& c, SubSet* set, uint32_t supported, uint32_t now, int
   int64_t period = def.default_s, life = LIFE_DEFAULT_S;
   const int pt = jsonFind(*c.doc, c.req->args, "period_s"), lt = jsonFind(*c.doc, c.req->args, "lifetime_s");
   if (pt >= 0 && def.events()) { c.error = "no-period"; return ST_INVALID; }   // an event stream has no period
-  if (pt >= 0 && !jsonGetInt(*c.doc, pt, def.min_s, def.max_s, &period)) return ST_INVALID;
-  if (lt >= 0 && !jsonGetInt(*c.doc, lt, LIFE_MIN_S, LIFE_MAX_S, &life)) return ST_INVALID;
+  // Each names its field: a client tells a bound it missed from a malformed request (#408)
+  if (pt >= 0 && !jsonGetInt(*c.doc, pt, def.min_s, def.max_s, &period)) { c.error = "bad-period"; return ST_INVALID; }
+  if (lt >= 0 && !jsonGetInt(*c.doc, lt, LIFE_MIN_S, LIFE_MAX_S, &life)) { c.error = "bad-lifetime"; return ST_INVALID; }
   if (!set) { c.error = "no-transport"; return ST_FAILED; }
   Sub& sub = set->s[s];
   if (!sub.active && !def.events()) *started = s;   // a new subscriber gets the current state at once

@@ -622,3 +622,16 @@ def test_first_snapshots_of_streams_started_together_take_turns(nodes, make):
     gaps = [b - a for a, b in zip(at, at[1:])]
     assert min(gaps) >= 0.3, ("one burst, not turns", gaps)
     assert at[-1] - at[0] < 5.0, ("the turns are short", gaps)
+
+
+@pytest.mark.parametrize("make", [companion, repeater])
+def test_a_bound_out_of_range_names_its_field(nodes, make):
+    # A client tells a bound it missed from a malformed request (#408): each refusal names the field.
+    got = make(nodes, "sb" + make.__name__[:2])
+    i = got[-1]
+    for args, err in (({"stream": "health", "lifetime_s": 3600}, "bad-lifetime"), ({"stream": "health", "lifetime_s": 5}, "bad-lifetime"),
+                      ({"stream": "health", "lifetime_s": "long"}, "bad-lifetime"), ({"stream": "radio", "period_s": 1}, "bad-period"),
+                      ({"stream": "health", "period_s": 10 ** 7}, "bad-period")):
+        r = i.request("sub.start", args)
+        assert r["status"] == "invalid" and r.get("error") == err, (args, r)
+    assert i.request("sub.start", {"stream": "health", "lifetime_s": 600})["status"] == "ok", "the bounds themselves are taken"
