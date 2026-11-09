@@ -46,7 +46,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
@@ -65,6 +65,7 @@ Status opClockGet(OpContext& c);
 Status opClockSet(OpContext& c);
 Status opAdvertSend(OpContext& c);
 Status opDeviceReboot(OpContext& c);
+Status opDeviceResetW(OpContext& c);
 Status opStatus(OpContext& c);
 Status opMsgSend(OpContext& c);
 Status opMsgGet(OpContext& c);
@@ -144,6 +145,7 @@ const OpEntry OPS[] = {
   {"clock.set", opClockSet, PRIV_WRITE, true},
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
+  {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
   // Reading a job and acknowledging its result are of the read class (the result belongs to whoever may read it);
   // cancelling and confirming change the device. The three that change something keep their result (OPERATIONS.md 5.1).
   {"job.get", opJobGet, PRIV_READ, false},
@@ -232,6 +234,10 @@ Status opAdvertSend(OpContext& c) {
 }
 // device.reboot: answered first, then the reboot (1.5 s, or the LoRa delay so that the answer goes out).
 Status opDeviceReboot(OpContext& c) { self(c)->rebootSoon(); return ST_OK; }
+Status opDeviceResetW(OpContext& c) {
+  ResetHost h = self(c)->resetHost();
+  return opDeviceReset(c, h);
+}
 
 Status opHello(OpContext& c) {
   MeconIface* m = self(c);
@@ -490,6 +496,22 @@ static DeliverResult msgDeliver(void* user, const uint8_t* from, int channel, ui
   return static_cast<MeconIface*>(user)->mesh()->messageDeliver(from, channel, ts, text, len);
 }
 
+static bool resetScope(void* user, ResetScope s, uint8_t caller) {
+  return static_cast<MeconIface*>(user)->mesh()->resetScope(s, caller);
+}
+static void resetReboot(void* user) { static_cast<MeconIface*>(user)->rebootSoon(); }
+
+ResetHost MeconIface::resetHost() {
+  uint16_t scopes = (1u << RS_RADIO) | (1u << RS_CONTACTS) | (1u << RS_FACTORY);
+#ifdef MAX_GROUP_CHANNELS
+  scopes |= 1u << RS_CHANNELS;
+#endif
+#if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
+  scopes |= 1u << RS_NETWORK;
+#endif
+  return ResetHost{scopes, resetScope, resetReboot, Cli::auditCaller(Cli::principalOf(_ctx)), this};
+}
+
 InboxHost MeconIface::inboxHost() {
 #ifdef MAX_GROUP_CHANNELS
   const bool channels = true;
@@ -731,13 +753,14 @@ bool MeconIface::authorize(void* user, const OpEntry& op, const Request&) {
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
                       : op.priv == PRIV_REBOOT ? Cli::C_REBOOT
+                      : op.priv == PRIV_DESTRUCTIVE ? Cli::C_DESTRUCTIVE
                                                : Cli::C_POSTURE;
   // A refusal says why, in the CLI's words (broker-not-verified, untrusted-transport, enrolled-unsigned, ...): a bare
   // "refused" cannot be told from any other.
   Cli::Context ctx = self->_ctx;
   // Beyond reads and a reboot, preAuthorize and the handlers have decided. A reboot is left to the table, which keeps it for
   // an unsigned local caller on an enrolled device and refuses it to an unsigned remote one.
-  ctx.enrolled = (cls == Cli::C_READ || cls == Cli::C_REBOOT) && self->_auth.enrolled();
+  ctx.enrolled = (cls == Cli::C_READ || cls == Cli::C_REBOOT || cls == Cli::C_DESTRUCTIVE) && self->_auth.enrolled();
   const Cli::Verdict v = Cli::decide(ctx, cls, strcmp(op.name, "hello") == 0 ? Cli::F_IDENTIFY : 0);
   if (!v.allow) self->_deny = Cli::reasonName(v.reason);
   return v.allow;
@@ -1484,7 +1507,10 @@ void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
   _jobs.tick(now);
   _updates.loop(now);
-  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) board.reboot();
+  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) {
+    _mesh->saveDirtyContacts();   // as the native CMD_REBOOT does: a contact change still waiting for its lazy save
+    board.reboot();
+  }
   streamTick(now);
   tellMessages();
   tellInbox();

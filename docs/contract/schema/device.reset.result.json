@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/device.reset.result.json",
+  "title": "Result of device.reset",
+  "description": "The scope removed. The device answers, then reboots about 1.5 s later.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scope", "reboot"],
+  "properties": {
+    "scope": {"type": "string", "enum": ["network", "contacts", "channels", "radio", "factory"]},
+    "reboot": {"type": "boolean", "enum": [true]}
+  }
+}

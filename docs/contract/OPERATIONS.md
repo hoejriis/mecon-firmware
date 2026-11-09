@@ -131,6 +131,23 @@ The bound on any pending change is therefore `within_s` plus at most one reboot.
 
 A reset scope that removes the caller's own path (`network` over MQTT) is not a commit-or-revert change. Its purpose is to remove the path, and the class decides who may ask for it.
 
+**As built.**
+- **Who may ask:** the destructive class of the privilege table. The unsigned cable may ask on any device, enrolled or not. Paired BLE may ask on a device with no Deployment record, in Normal. A signed request is refused whatever its signature, as is a broker session. The operation is not on the LoRa link.
+- **The answer** is `{"scope","reboot":true}`. Each scope is saved before the answer, and the device reboots about 1.5 s after it, so nothing runs half reset. A contact change still waiting for its lazy save is saved first, as the native reboot does.
+- **The scopes built:**
+  - `radio`: frequency, bandwidth, spreading factor, coding rate and transmit power, back to the build's defaults. Other radio tuning stays.
+  - `network`: every stored Wi-Fi and broker profile. A network compiled into the build is not stored, so it stays. Only on builds with Wi-Fi or a broker.
+  - `contacts` (Companion): the contact table and the adverts kept with it.
+  - `channels` (Companion): every slot emptied, and slot 0 the public channel again.
+  - `factory`: the native factory reset, as `CMD_FACTORY_RESET` and the console's `erase` do it, with its audit record.
+- **The scopes not on this operation:**
+  - `deployment`: answered `invalid` `use-deployment.reset`.
+  - `identity`: answered `invalid` `use-identity.rotate`.
+  - `bonds`: answered `failed` `not-built`.
+  - `contacts` and `channels` on the Repeater and Room server: `failed` `not-on-this-device`.
+  - An unknown or missing scope: `invalid` `bad-scope`.
+- **A save that fails** answers `failed` `io-error`, and the device does not reboot.
+
 ## 4. Routing a request
 
 ```
@@ -174,7 +191,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `scope.default.set`, `scope.default.clear` | set or clear it; saved in the prefs | frame 63, prefs | write; confirm for all but the unsigned cable | yes | C | USB BLE MQTT |
 | `job.cancel` | cancel, or revert if applied | | the job's classes | yes | C R S | all |
 | `device.reboot` | reboot, about 1.5 s after the answer; an unsigned local caller (cable, paired BLE) keeps it on an enrolled device, an unsigned remote one does not | CLI `reboot`, frame `CMD_REBOOT` | reboot | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
-| `device.reset` | one reset scope (3.5) | per scope | per scope | yes | C R S | per scope |
+| `device.reset` | one reset scope (3.5), then a reboot | CMD_FACTORY_RESET, console `erase`, the prefs, channels and contacts files | destructive | yes | C R S | the unsigned cable; paired BLE on a device with no record; not over a broker or LoRa |
 | `contact.list`, `contact.get` | contact table (name, type, protection flag, last advert, hops, position; `list` paged by up to 6, fewer when a page would not fit); the shared secret and the path bytes never | native contact table | private | no | C | all |
 | `contact.put`, `contact.remove` | add, update, remove; a put names no flags, so it never grants telemetry or the remote CLI, and a full table behaves as for the app | `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` | write | yes | C | all |
 | `contact.protect` | protect from auto-removal (favourite flag) | contact flags | write | yes | C | all |
@@ -206,7 +223,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
-**Not built yet.** No build registers `device.reset`, `identity.key.export`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `get prv.key`, the frame `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
+**Not built yet.** No build registers `identity.key.export`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `get prv.key`, the frame `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
 
 `contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
 

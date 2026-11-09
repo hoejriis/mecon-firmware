@@ -14,6 +14,7 @@
 #include "DeployAuth.h"
 #include "IfaceConfig.h"
 #include "IfaceDispatch.h"
+#include "ResetOps.h"
 #include "JobService.h"
 #include "helpers/updates/UpdService.h"
 #include "CableLine.h"
@@ -86,6 +87,8 @@ public:
     // The remote-admin ACL (acl.list): how many entries, and one entry's key and permissions. Null: the role has none.
     int (*acl_count)(void* user);
     bool (*acl_entry)(void* user, int idx, uint8_t key[32], uint8_t* perms);
+    // device.reset: the role removes one scope (radio, network, factory) and saves it; the interface reboots afterwards.
+    bool (*reset)(void* user, ResetScope s, uint8_t caller);
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |
@@ -153,6 +156,7 @@ public:
   uint32_t produced() const { return streamsProduced(); }
   void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read
   uint8_t postureNow() const { return _host.posture(_host.user); }
+  ResetHost resetHost();
   void rebootSoon() { _reboot_at = millis() + (_on_lora ? LORA_REBOOT_MS : 1500); }
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);

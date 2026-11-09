@@ -49,7 +49,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "acl.list", "acl.put", "password.set",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "acl.list", "acl.put", "password.set",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -356,6 +356,10 @@ Status opAdvertSend(OpContext& c) {
 }
 // device.reboot: answered first, then the reboot (1.5 s, or the LoRa delay so that the answer goes out).
 Status opDeviceReboot(OpContext& c) { self(c)->rebootSoon(); return ST_OK; }
+Status opDeviceResetW(OpContext& c) {
+  ResetHost h = self(c)->resetHost();
+  return opDeviceReset(c, h);
+}
 Status opDeployProvision(OpContext& c) { return self(c)->auth().opProvision(c); }
 Status opDeployUpdate(OpContext& c) { return self(c)->auth().opUpdate(c); }
 Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
@@ -403,6 +407,7 @@ const OpEntry OPS[] = {
   {"password.set", opPasswordSet, PRIV_WRITE, true},
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
+  {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
   // One channel slot, for the management channel (MANAGEMENT_CHANNEL.md section 6); bind, rotate and unbind confirm-or-revert
   // for anyone but the cable.
   {"channel.list", opChanList, PRIV_READ, false},
@@ -437,6 +442,23 @@ const OpEntry OPS[] = {
 };
 
 }  // namespace
+
+static bool consoleReset(void* user, ResetScope s, uint8_t caller) {
+  const ConsoleIface::Host& h = static_cast<ConsoleIface*>(user)->host();
+  return h.reset && h.reset(h.user, s, caller);
+}
+static void consoleReboot(void* user) { static_cast<ConsoleIface*>(user)->rebootSoon(); }
+
+ResetHost ConsoleIface::resetHost() {
+  uint16_t scopes = 0;
+  if (_host.reset) {
+    scopes = (1u << RS_RADIO) | (1u << RS_FACTORY);
+#if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
+    scopes |= 1u << RS_NETWORK;
+#endif
+  }
+  return ResetHost{scopes, consoleReset, consoleReboot, Cli::auditCaller(Cli::principalOf(_ctx)), this};
+}
 
 void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t epoch, bool epoch_saved) {
   _host = host;
@@ -791,11 +813,12 @@ bool ConsoleIface::authorize(void* user, const OpEntry& op, const Request&) {
                       : op.priv == PRIV_WRITE  ? Cli::C_WRITE
                       : op.priv == PRIV_UPDATE ? Cli::C_UPDATE
                       : op.priv == PRIV_REBOOT ? Cli::C_REBOOT
+                      : op.priv == PRIV_DESTRUCTIVE ? Cli::C_DESTRUCTIVE
                                                : Cli::C_POSTURE;
   Cli::Context ctx = s->_ctx;
   // Beyond reads and a reboot, preAuthorize and the handlers have decided. A reboot is left to the table, which keeps it for
   // an unsigned local caller on an enrolled device and refuses it to an unsigned remote one.
-  ctx.enrolled = (cls == Cli::C_READ || cls == Cli::C_REBOOT) && s->_auth.enrolled();
+  ctx.enrolled = (cls == Cli::C_READ || cls == Cli::C_REBOOT || cls == Cli::C_DESTRUCTIVE) && s->_auth.enrolled();
   const Cli::Verdict v = Cli::decide(ctx, cls, strcmp(op.name, "hello") == 0 ? Cli::F_IDENTIFY : 0);   // a refusal says why, as on the Companion
   if (!v.allow) s->_deny = Cli::reasonName(v.reason);
   return v.allow;

@@ -69,6 +69,7 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static uint16_t ifaceBattery(void*) { return board.getBattMilliVolts(); }
   static uint32_t ifaceClock(void*) { return the_mesh.getRTCClock()->knownTime(); }
   static const char* const ROT_REMOVED[] = {"acl", nullptr};
+  static bool ifaceReset(void*, Iface::ResetScope s, uint8_t caller) { return the_mesh.resetScope(s, caller); }
   static int ifaceAclCount(void*) { return the_mesh.clients().getNumClients(); }
   static bool ifaceAclEntry(void*, int idx, uint8_t key[32], uint8_t* perms) {
     if (idx < 0 || idx >= the_mesh.clients().getNumClients()) return false;
@@ -226,7 +227,7 @@ void setup() {
                                        nullptr, nullptr,
 #endif
                                        &the_mesh.regions(), ifaceRegionsSave, ifaceRegionsDefault, &region_snap_store,
-                                       ifaceAclCount, ifaceAclEntry,
+                                       ifaceAclCount, ifaceAclEntry, ifaceReset,
                                      };
     dep_store.setFs(fs);
     job_store.setFs(fs);

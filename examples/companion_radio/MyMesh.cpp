@@ -1299,7 +1299,11 @@ void MyMesh::begin() {
   _active_ble_pin = _prefs.ble_pin;
 
   loadContactsAtBoot();
+#if defined(ENABLE_MECON_IFACE) && defined(MAX_GROUP_CHANNELS)
+  if (ChannelDetails* pub = addChannel("Public", PUBLIC_GROUP_PSK)) _public_channel = *pub;   // device.reset channels
+#else
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure public channel
+#endif
   _store->loadChannels(this);
 #ifdef ENABLE_MECON_IFACE
   recoverRotationAtBoot();   // a rotation cut by a power loss: delete a statement that never took effect, finish a pending drop
@@ -2607,11 +2611,61 @@ bool MyMesh::readRotation(char* text, size_t tcap, char* sig_b64, size_t scap) {
 }
 
 // Drops what belonged to the old key: contacts (their shared secrets), the message queue and what was cached from them.
+bool MyMesh::resetScope(Iface::ResetScope s, uint8_t caller) {
+  switch (s) {
+    case Iface::RS_RADIO:   // the build's defaults, as a first boot sets them; applied at the reboot that follows
+      _prefs.freq = LORA_FREQ;
+      _prefs.bw = LORA_BW;
+      _prefs.sf = LORA_SF;
+      _prefs.cr = LORA_CR;
+      _prefs.tx_power_dbm = LORA_TX_POWER;
+      savePrefs();
+      return true;
+    case Iface::RS_NETWORK:   // every stored profile; a build's own compiled-in network is not stored, so it stays
+#ifdef ENABLE_WIFI_INTERFACE
+      for (uint8_t i = 0; i < WifiProfiles::COUNT; i++) _prefs.wifi_profiles.clear(i);
+#endif
+#ifdef ENABLE_MQTT
+      for (uint8_t i = 0; i < MqttProfiles::COUNT; i++) _prefs.mqtt_profiles.clear(i);
+#endif
+      savePrefs();
+      return true;
+#ifdef MAX_GROUP_CHANNELS
+    case Iface::RS_CHANNELS: {   // every slot empty but the first, which is the public channel again
+      ChannelDetails ch;
+      memset(&ch, 0, sizeof(ch));
+      for (int i = 1; i < MAX_GROUP_CHANNELS; i++) setChannel(i, ch);
+      setChannel(0, _public_channel);   // as boot made it, before the stored channels were loaded
+      return saveChannels();
+    }
+#endif
+    case Iface::RS_CONTACTS: {   // the table and its blobs; the message queue and identity stay
+      ContactStore& cs = contactStore();
+      _store->deleteAllBlobs();
+      const bool ok = cs.clearAll();
+      resetContacts();   // the transient anon slots
+#ifdef CONTACTS_STOCK_ARRAY
+      saveContacts();
+#endif
+      dirty_contacts_expiry = 0;
+      return ok;
+    }
+    case Iface::RS_FACTORY: {   // the native factory reset (CMD_FACTORY_RESET)
+      const bool ok = _store->formatFileSystem();
+      if (ok) recordFactoryReset(caller);
+      dirty_contacts_expiry = 0;   // nothing written back into the erased files before the reboot
+      return ok;
+    }
+    default:
+      return false;
+  }
+}
+
 bool MyMesh::dropOldKeyState() {
   bool dropped = true;
   {
     ContactStore& cs = contactStore();
-    _store->deleteAllBlobs();
+    _store->deleteAllBlobs();   // the old key's adverts
     dropped = cs.clearAll();
     resetContacts();   // the transient anon slots
 #ifdef CONTACTS_STOCK_ARRAY

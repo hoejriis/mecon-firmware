@@ -313,6 +313,16 @@ private:
   void recoverRotationOnLoop();
   bool dropOldKeyState();
 #ifdef ENABLE_MECON_IFACE
+public:
+  void saveDirtyContacts() { if (dirty_contacts_expiry) saveContacts(); }
+  // device.reset (OPERATIONS.md 3.5): removes exactly one scope and saves; the interface reboots afterwards.
+  bool resetScope(Iface::ResetScope s, uint8_t caller);
+private:
+#ifdef MAX_GROUP_CHANNELS
+  ChannelDetails _public_channel;
+#endif
+#endif
+#ifdef ENABLE_MECON_IFACE
   static size_t rotLoad(void* u, uint8_t* buf, size_t cap);
   static bool rotSave(void* u, const uint8_t* buf, size_t len);
   static void rotRemove(void* u);
