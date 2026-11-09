@@ -755,7 +755,11 @@ inline void makeBlobPath(const uint8_t key[], int key_len, char* path, size_t pa
   sprintf(path, "/bl/%s", fname);
 }
 
-#if defined(ESP32)
+// The blob saver runs on ESP32 hardware; the simulator, which defines ESP32 without FreeRTOS, saves inline.
+#if defined(ESP32) && !defined(SIM_FREE_HEAP)
+#define MECON_BLOB_SAVER 1
+#endif
+#if defined(MECON_BLOB_SAVER)
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -854,7 +858,7 @@ uint8_t DataStore::getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_b
   char path[64];
   makeBlobPath(key, key_len, path, sizeof(path));
 
-#if defined(ESP32)
+#if defined(MECON_BLOB_SAVER)
   if (g_blob_task) {
     xSemaphoreTake(g_blobq_lock, portMAX_DELAY);
     const int i = blobFind(path);
@@ -883,7 +887,7 @@ bool DataStore::putBlobByKey(const uint8_t key[], int key_len, const uint8_t src
   char path[64];
   makeBlobPath(key, key_len, path, sizeof(path));
 
-#if defined(ESP32)
+#if defined(MECON_BLOB_SAVER)
   if (blobSaverStart(_fs) && strlen(path) < sizeof(g_blobq[0].path)) {
     xSemaphoreTake(g_blobq_lock, portMAX_DELAY);
     int i = blobFind(path);
@@ -909,7 +913,7 @@ bool DataStore::deleteBlobByKey(const uint8_t key[], int key_len) {
   char path[64];
   makeBlobPath(key, key_len, path, sizeof(path));
 
-#if defined(ESP32)
+#if defined(MECON_BLOB_SAVER)
   if (g_blob_task) blobDrop(path);   // a waiting save of this key must not bring the blob back
 #endif
   AtomicFile::discard(_fs, path);
@@ -918,7 +922,7 @@ bool DataStore::deleteBlobByKey(const uint8_t key[], int key_len) {
 }
 
 void DataStore::deleteAllBlobs() {
-#if defined(ESP32)
+#if defined(MECON_BLOB_SAVER)
   if (g_blob_task) blobDrop(nullptr);
 #endif
   char names[8][32];
