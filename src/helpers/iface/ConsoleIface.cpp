@@ -49,7 +49,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "acl.list", "acl.put", "password.set",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -250,6 +250,83 @@ Status opClockGet(OpContext& c) {
   return ST_OK;
 }
 // clock.set: {"epoch": n}, forward only, through the native `time` line (which refuses a time not after the clock's).
+// The remote-admin ACL's roles, as the native permission byte's low two bits (helpers/ClientACL.h).
+const char* const ACL_ROLES[] = {"guest", "read-only", "read-write", "admin"};
+const unsigned ACL_PAGE = 8;
+// acl.list {cursor}: the ACL, 8 entries a page: each client's node key and role, never its shared secret. The entries say
+// who may administer the device, so it is private data, decided as the inventory stream that counts them is.
+Status opAclList(OpContext& c) {
+  ConsoleIface* m = self(c);
+  const ConsoleIface::Host& h = m->host();
+  if (!h.acl_count || !h.acl_entry) { c.error = "unsupported"; return ST_FAILED; }
+  if (!ConsoleIface::streamAllow(m, Cli::C_PRIVATE)) { c.error = "private"; return ST_REFUSED; }
+  int64_t cursor = 0;
+  const int ct = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "cursor") : -1;
+  if (ct >= 0 && !jsonGetInt(*c.doc, ct, 0, 255, &cursor)) return ST_INVALID;
+  const int n = h.acl_count(h.user);
+  JsonWriter& w = *c.out;
+  w.key("clients"); w.beginArray();
+  int i = (int)cursor;
+  for (unsigned k = 0; i < n && k < ACL_PAGE; i++, k++) {
+    uint8_t key[32], perms = 0;
+    if (!h.acl_entry(h.user, i, key, &perms)) continue;
+    char hex[65];
+    hexOf(hex, key, 32);
+    w.beginObject();
+    w.key("key"); w.str(hex);
+    w.key("role"); w.str(ACL_ROLES[perms & 3]);
+    w.endObject();
+  }
+  w.endArray();
+  w.key("next"); if (i < n) w.num(i); else w.null();
+  return ST_OK;
+}
+// acl.put {key, role}: sets a client's role through the native `setperm` line, so the CLI's gate decides it as this
+// caller; a key not in the ACL yet is added, as setperm adds it.
+Status opAclPut(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  if (!h.acl_count) { c.error = "unsupported"; return ST_FAILED; }
+  char hex[65], role[16];
+  if (c.req->args < 0 || !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "key"), hex, sizeof(hex), CS_NAME, 64) ||
+      strlen(hex) != 64 || !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "role"), role, sizeof(role), CS_NAME, 1))
+    return ST_INVALID;
+  for (const char* p = hex; *p; p++) if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f'))) return ST_INVALID;
+  int perms = -1;
+  for (int r = 0; r < 4; r++) if (strcmp(role, ACL_ROLES[r]) == 0) perms = r;
+  if (perms < 0) return ST_INVALID;
+  char line[96], reply[80] = {0};
+  snprintf(line, sizeof(line), "setperm %s %d", hex, perms);
+  if (!h.run(h.user, line, reply, sizeof(reply)) || strncmp(reply, "OK", 2) != 0) { c.error = "refused"; return ST_FAILED; }
+  c.out->key("key"); c.out->str(hex);
+  c.out->key("role"); c.out->str(ACL_ROLES[perms]);
+  return ST_OK;
+}
+// password.set {"which": "admin" | "guest", "password"}: the native `password` and `set guest.password` lines. Write-only:
+// the answer names which one changed, never the value, and the native reply, which echoes it, is wiped. The console only:
+// a broker session does not set it, and the LoRa link carries no write-only setting (LORA_MANAGEMENT section 2). Over
+// the air the native remote admin keeps its own `password` line.
+Status opPasswordSet(OpContext& c) {
+  ConsoleIface* m = self(c);
+  if (m->onBroker()) { c.error = "not-over-this-link"; return ST_REFUSED; }
+  const ConsoleIface::Host& h = m->host();
+  char which[8], pw[24] = {0};
+  const bool parsed = c.req->args >= 0 &&
+                      jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "which"), which, sizeof(which), CS_NAME, 1) &&
+                      jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "password"), pw, sizeof(pw), CS_ANY, 1);
+  const bool admin = parsed && strcmp(which, "admin") == 0, guest = parsed && strcmp(which, "guest") == 0;
+  if (!admin && !guest) { wipe(pw, sizeof(pw)); return ST_INVALID; }
+  if (strlen(pw) > 15) { wipe(pw, sizeof(pw)); c.error = "too-long"; return ST_INVALID; }   // the native field holds 15
+  char line[48], reply[160] = {0};
+  snprintf(line, sizeof(line), "%s%s", admin ? "password " : "set guest.password ", pw);
+  const bool ran = h.run(h.user, line, reply, sizeof(reply));
+  const bool ok = ran && (admin ? strncmp(reply, "password now", 12) == 0 : strncmp(reply, "OK", 2) == 0);
+  wipe(line, sizeof(line));
+  wipe(reply, sizeof(reply));
+  wipe(pw, sizeof(pw));
+  if (!ok) { c.error = "refused"; return ST_FAILED; }
+  c.out->key("which"); c.out->str(admin ? "admin" : "guest");
+  return ST_OK;
+}
 Status opClockSet(OpContext& c) {
   const ConsoleIface::Host& h = self(c)->host();
   int64_t t;
@@ -321,6 +398,9 @@ const OpEntry OPS[] = {
   {"identity.get", opIdentityGet, PRIV_READ, false},
   {"clock.get", opClockGet, PRIV_READ, false},
   {"clock.set", opClockSet, PRIV_WRITE, true},
+  {"acl.list", opAclList, PRIV_READ, false},
+  {"acl.put", opAclPut, PRIV_WRITE, true},
+  {"password.set", opPasswordSet, PRIV_WRITE, true},
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   // One channel slot, for the management channel (MANAGEMENT_CHANNEL.md section 6); bind, rotate and unbind confirm-or-revert

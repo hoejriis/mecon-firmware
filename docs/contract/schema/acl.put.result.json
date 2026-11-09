@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/acl.put.result.json",
+  "title": "Result of acl.put: the client's role as set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "key",
+    "role"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "role": {
+      "enum": [
+        "guest",
+        "read-only",
+        "read-write",
+        "admin"
+      ]
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/acl.list.result.json",
+  "title": "Result of acl.list: one page of the remote-admin ACL",
+  "description": "Each client's node key and role, 8 a page; never its shared secret. Private data. Repeater and Room server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "clients",
+    "next"
+  ],
+  "properties": {
+    "clients": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "role"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "role": {
+            "enum": [
+              "guest",
+              "read-only",
+              "read-write",
+              "admin"
+            ]
+          }
+        }
+      }
+    },
+    "next": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    }
+  }
+}

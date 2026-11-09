@@ -83,6 +83,9 @@ public:
     bool (*regions_save)(void* user);
     void (*regions_default_changed)(void* user, const RegionEntry* r);
     SnapStore* region_snap;
+    // The remote-admin ACL (acl.list): how many entries, and one entry's key and permissions. Null: the role has none.
+    int (*acl_count)(void* user);
+    bool (*acl_entry)(void* user, int idx, uint8_t key[32], uint8_t* perms);
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |
@@ -146,6 +149,7 @@ public:
   RegionHost regionHost();
   bool hasRegions() const { return _host.regions != nullptr; }
   SubSet& subs() { return _on_mqtt ? _mqtt_subs : _subs; }
+  bool onBroker() const { return _on_mqtt; }
   uint32_t produced() const { return streamsProduced(); }
   void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read
   uint8_t postureNow() const { return _host.posture(_host.user); }
