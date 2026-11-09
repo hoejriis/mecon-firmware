@@ -210,3 +210,22 @@ def test_clock_set_moves_the_clock_forward_only(ether, nodes, kind):
     assert r["status"] == "refused" and r["error"] == "unauthenticated", r
     r = d.send(wrap(d.node_key, "clock.set", {"epoch": now + 7200}, job=next_job(d)))
     assert r["status"] == "ok" and r["result"]["epoch"] >= now + 7200, r
+
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_the_remote_admin_acl_is_listed_and_set(ether, nodes, kind):
+    d = target(nodes, ether, kind, "acl" + kind[:2])
+    who = "ab" * 32
+    r = d.i.request("acl.put", {"key": who, "role": "read-only"})
+    assert r["status"] == "ok" and shaped("acl.put", r["result"]) == {"key": who, "role": "read-only"}, r
+    page = shaped("acl.list", d.i.request("acl.list")["result"])
+    assert {"key": who, "role": "read-only"} in page["clients"], page
+    assert "secret" not in str(page), "never a shared secret"
+    assert d.i.request("acl.put", {"key": who, "role": "owner"})["status"] == "invalid"
+    assert d.i.request("acl.put", {"key": "zz" * 32, "role": "admin"})["status"] == "invalid"
+    assert d.provision()["status"] == "ok"
+    r = d.i.request("acl.put", {"key": who, "role": "admin"})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    r = d.send(wrap(d.node_key, "acl.put", {"key": who, "role": "admin"}, job=next_job(d)))
+    assert r["status"] == "ok" and r["result"]["role"] == "admin", r
+    assert {"key": who, "role": "admin"} in d.i.request("acl.list")["result"]["clients"]

@@ -83,6 +83,9 @@ public:
     bool (*regions_save)(void* user);
     void (*regions_default_changed)(void* user, const RegionEntry* r);
     SnapStore* region_snap;
+    // The remote-admin ACL (acl.list): how many entries, and one entry's key and permissions. Null: the role has none.
+    int (*acl_count)(void* user);
+    bool (*acl_entry)(void* user, int idx, uint8_t key[32], uint8_t* perms);
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |

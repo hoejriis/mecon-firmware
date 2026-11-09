@@ -264,6 +264,7 @@ public:
   void formatPacketStatsReply(char *reply) override;
   void startRegionsLoad() override;
   RegionMap& regions() { return region_map; }   // the device interface's region operations (OPERATIONS.md)
+  ClientACL& clients() { return acl; }   // the remote-admin ACL, for acl.list and acl.put
   bool saveRegions() override;
   void onDefaultRegionChanged(const RegionEntry* r) override;
 

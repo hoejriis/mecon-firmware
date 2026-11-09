@@ -12,3 +12,5 @@ mutate advert_never_floods_companion examples/companion_radio/MeconIface.cpp '  
 mutate identity_get_needs_a_job src/helpers/deployment/DepWrapper.cpp '"identity.get", "identity.rotation", "clock.get"' '"identity.rotation", "clock.get"' "$DO::test_identity_and_clock_are_plain_reads_that_agree_with_hello[companion_standalone]"
 mutate region_list_needs_a_job src/helpers/deployment/DepWrapper.cpp '                                       "region.list" };' '                                       "none" };' "$DO::test_region_list_is_a_plain_read_once_enrolled"
 mutate clock_set_backwards_companion examples/companion_radio/MyMesh.cpp '  if (secs < getRTCClock()->getCurrentTime()) return false;' '' "$DO::test_clock_set_moves_the_clock_forward_only[companion_standalone]"
+mutate acl_role_lost src/helpers/iface/ConsoleIface.cpp '    w.key("role"); w.str(ACL_ROLES[perms & 3]);' '    w.key("role"); w.str(ACL_ROLES[0]);' "$DO::test_the_remote_admin_acl_is_listed_and_set[repeater]"
+mutate acl_put_any_role src/helpers/iface/ConsoleIface.cpp '  if (perms < 0) return ST_INVALID;' '  if (perms < 0) perms = 3;' "$DO::test_the_remote_admin_acl_is_listed_and_set[repeater]"
