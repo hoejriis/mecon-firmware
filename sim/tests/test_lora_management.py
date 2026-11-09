@@ -146,9 +146,17 @@ def test_a_request_for_another_node_is_refused(ether, nodes):
 
 def test_hello_over_lora_offers_only_what_this_link_carries(ether, nodes):
     d, m = enrolled(nodes, ether, "repeater", "lh")
-    r = m.send(d.node_key, wrap(d.node_key, "hello", {}, job=None, rid="h1"))
-    assert r and r["status"] == "ok", r
-    caps = r["result"]["capabilities"]
+    caps, cursor, n = [], None, 0
+    while n < 6:
+        r = m.send(d.node_key, wrap(d.node_key, "hello", {} if cursor is None else {"cursor": cursor}, job=None, rid="h%d" % n))
+        assert r and r["status"] == "ok", r
+        # each page within the LoRa budget (700 bytes of result), so a longer list pages instead of outgrowing a reply
+        assert len(json.dumps(r["result"], separators=(",", ":"))) <= 720, len(json.dumps(r["result"]))
+        caps += r["result"]["capabilities"]
+        cursor, n = r["result"].get("next"), n + 1
+        if cursor is None:
+            break
+    assert cursor is None, "the pages end"
     assert "config.apply" in caps and "identity.rotate" not in caps and not [c for c in caps if c.startswith("stream.")], caps
 
 
