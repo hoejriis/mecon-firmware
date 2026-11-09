@@ -1,5 +1,4 @@
 #include "MessageOps.h"
-#include "ScopeOps.h"
 #include "Wipe.h"
 #include <string.h>
 
@@ -202,8 +201,9 @@ Status opMessageSend(OpContext& c) {
   if (sc >= 0 && jsonIsNull(*c.doc, sc)) {
     scope.mode = SendScope::NONE;
   } else if (sc >= 0) {
-    char name[SCOPE_NAME_MAX + 1];
-    if (!scopeOf(c, sc, sk, name, scope.key)) return ST_INVALID;
+    char name[32];
+    if (!h->scope_of) { c.error = "unsupported"; return ST_FAILED; }
+    if (!h->scope_of(c, sc, sk, name, scope.key)) return ST_INVALID;
     scope.mode = SendScope::KEY;
   }
   char text[257];   // larger than any native limit, so a text too long is told from a malformed one below

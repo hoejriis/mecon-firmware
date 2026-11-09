@@ -94,6 +94,8 @@ struct MessageHost {
                               MessageSent& out);
   uint32_t (*clock)(void* user);                                       // the timestamp of a message that names none
   bool (*identity)(void* user, const Request& req, char* out, size_t cap);   // the request's identity (OPERATIONS.md 3.1)
+  // A named scope's key, as scope.default.set reads it (ScopeOps' scopeOf); null where the build has no scopes.
+  bool (*scope_of)(OpContext& c, int name_tok, int key_tok, char* name, uint8_t* key);
   uint32_t epoch;
   uint32_t now_ms;
   void* user;

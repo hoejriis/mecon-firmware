@@ -508,7 +508,7 @@ MessageHost MeconIface::messageHost(bool create) {
 #else
   const bool channels = false;
 #endif
-  return MessageHost{_messages, MAX_TEXT_LEN, channels, msgDirect, msgChannel, msgClock, confirmJobId, _epoch, millis(), this};
+  return MessageHost{_messages, MAX_TEXT_LEN, channels, msgDirect, msgChannel, msgClock, confirmJobId, scopeOf, _epoch, millis(), this};
 }
 
 // A message event goes where a job event goes: its data names no recipient and no text. One a pass, on the loop's own
