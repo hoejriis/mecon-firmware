@@ -13,7 +13,7 @@ from sim.harness import CompanionClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
 import mecon_schema  # noqa: E402
-from test_deployment_authority import SECRET, Dev, RTC, apply_name, wrap  # noqa: E402
+from test_deployment_authority import SECRET, Dev, RTC, apply_name, update_args, wrap  # noqa: E402
 from test_deployment_authority_server import Srv  # noqa: E402
 from test_provenance import verifies  # noqa: E402
 
@@ -594,6 +594,11 @@ def test_the_settings_schema_and_the_deployment_read_arrive_over_lora(ether, nod
     assert got == whole, (got, whole)
     r = m.send(d.node_key, wrap(d.node_key, "deployment.get", job=job))
     assert r and r["status"] == "ok" and r["result"]["state"] == "provisioned" and r["result"]["members"], r
+    # A two-member set, whose text with everything else would pass what one LoRa reply carries: the answer reports its length
+    assert d.i.request("deployment.authority_update", update_args())["status"] == "ok"   # rev 2, through the rotation
+    r = m.send(d.node_key, wrap(d.node_key, "deployment.get", job=job + 1))
+    assert r and r["status"] == "ok" and len(r["result"]["members"]) == 2, r
+    assert "authority_set_len" in r["result"] and len(r.raw) <= 1024, (len(r.raw), sorted(r["result"]))
 
 
 def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
