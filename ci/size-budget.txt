@@ -4,23 +4,23 @@
 # to a whole KB. The Heltec V3 and V4 rows were set 2026-10-31 for the rebuilt IDF libraries (docs/PLATFORM.md), same rule.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1453056     122880
-Heltec_v3_companion_radio_standalone    1769472     136192
+Heltec_v3_companion_radio_standalone    1776640     136192
 Heltec_v3_companion_radio_usb            712704      41984
 Heltec_v3_companion_radio_wifi          1433600     118784
 Heltec_v3_repeater                      1543168      82944
 Heltec_v3_room_server                   1538048      87040
 heltec_v4_companion_radio_ble           1439744     122880
-heltec_v4_companion_radio_standalone    1758208     136192
+heltec_v4_companion_radio_standalone    1763328     136192
 heltec_v4_companion_radio_usb            698368      41984
 heltec_v4_companion_radio_wifi          1425408     118784
 heltec_v4_repeater                      1530880      82944
 heltec_v4_room_server                   1525760      87040
-t1000e_companion_radio_ble               543744     163840
-t1000e_companion_radio_usb               537600     159744
+t1000e_companion_radio_ble               552960     163840
+t1000e_companion_radio_usb               545792     159744
 t1000e_repeater                           500736      43008
 t1000e_room_server                        494592      49152
-WioTrackerL1_companion_radio_ble         637952      94208
-WioTrackerL1_companion_radio_usb         628736      90112
+WioTrackerL1_companion_radio_ble         646144      94208
+WioTrackerL1_companion_radio_usb         637952      90112
 WioTrackerL1_repeater                     581632      46080
 WioTrackerL1_room_server                  576512      51200
 # NimBLE twins (Issue #68, docs/NIMBLE_EVALUATION.md) and the LilyGo T-LoRa Bluedroid build they are compared with.

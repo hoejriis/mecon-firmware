@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/scope.default.get.result.json",
+  "title": "Result of scope.default.get",
+  "description": "The Companion's default flood scope: its name and kind, both null when there is none. The key is never read back.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "kind"
+  ],
+  "properties": {
+    "name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 31
+    },
+    "kind": {
+      "enum": [
+        "hashtag",
+        "private",
+        null
+      ]
+    }
+  }
+}
