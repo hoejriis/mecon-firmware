@@ -100,7 +100,9 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   addresses take the rest). Each frame carries a message number per sender (`xid`), its index and the frame count,
   as the Companion's `0x7F` frames do (DEVICE_INTERFACE section 7).
 - **A smaller bound than the other links.** A message over LoRa is at most 1,024 bytes (8 frames at most). A longer
-  one is not sent: `rf.request` refuses it (`invalid`, `too-large`), and a frame that claims more is dropped and counted. A
+  one is not sent: `rf.request` refuses it (`invalid`, `too-large`), and a frame that claims more is dropped and counted.
+  Only the last frame fixes the length; an earlier one claims one byte past the full frames before the last. So 7 reply
+  frames of 150 bytes carry up to 1,024, though all full they would be 1,050. A
   result that would be larger is paged by the operation, as on every link. The bound keeps one message's airtime
   within what a duty-limited band allows (section 7).
 - **Checked at the first frame.** A frame count above 8, or an index at or above the count, is dropped at once,

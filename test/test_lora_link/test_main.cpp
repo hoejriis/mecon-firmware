@@ -60,6 +60,27 @@ TEST(LoraLink, TheBlockPaddingOfTheDatagramIsNotMessage) {
   EXPECT_EQ(LoraLink::F_IGNORED, feed(m, KEY_B, empty)) << "only padding";
 }
 
+TEST(LoraLink, AReplyUpToTheBoundCompletesThoughItsFullFramesWouldPassIt) {
+  // 7 reply frames are 1,050 bytes when all are full, past LORA_MSG_MAX; a message of 968 in 7 is within it (#457)
+  const size_t last = 968 - 6 * LORA_REPLY_PAYLOAD;
+  auto rfeed = [](LoraLink& l, const std::vector<uint8_t>& f) {
+    return l.feed(KEY_A, SECRET, NO_PATH, 0, f.data(), f.size(), LORA_REPLY_PAYLOAD, 1000);
+  };
+  LoraLink l;
+  for (uint8_t i = 0; i < 6; i++) EXPECT_EQ(LoraLink::F_PARTIAL, rfeed(l, frame(4, i, 7, LORA_REPLY_PAYLOAD))) << (int)i;
+  EXPECT_EQ(LoraLink::F_COMPLETE, rfeed(l, frame(4, 6, 7, last)));
+  EXPECT_EQ(968u, LoraLink::messageLen(*l.nextComplete()));
+  LoraLink m;   // the last frame first: the others follow it in
+  EXPECT_EQ(LoraLink::F_PARTIAL, rfeed(m, frame(5, 6, 7, last)));
+  for (uint8_t i = 0; i < 5; i++) EXPECT_EQ(LoraLink::F_PARTIAL, rfeed(m, frame(5, i, 7, LORA_REPLY_PAYLOAD))) << (int)i;
+  EXPECT_EQ(LoraLink::F_COMPLETE, rfeed(m, frame(5, 5, 7, LORA_REPLY_PAYLOAD)));
+  LoraLink o;   // one byte past the bound, known at the last frame
+  EXPECT_EQ(LoraLink::F_IGNORED, rfeed(o, frame(6, 6, 7, LORA_MSG_MAX - 6 * LORA_REPLY_PAYLOAD + 1)));
+  EXPECT_EQ(LoraLink::F_PARTIAL, rfeed(o, frame(6, 6, 7, LORA_MSG_MAX - 6 * LORA_REPLY_PAYLOAD)));
+  LoraLink q;   // 8 frames cannot be within it, whatever the last holds
+  EXPECT_EQ(LoraLink::F_IGNORED, rfeed(q, frame(7, 0, 8, LORA_REPLY_PAYLOAD)));
+}
+
 TEST(LoraLink, BadFramesAreDroppedBeforeAnythingIsReserved) {
   LoraLink l;
   EXPECT_EQ(LoraLink::F_IGNORED, feed(l, KEY_A, frame(1, 0, 0, 5))) << "no frames";
