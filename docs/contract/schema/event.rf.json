@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/event.rf.json",
   "title": "Data of an rf event (Companion)",
-  "description": "A managed device's reply to this Companion's rf.request (from, xid, message), or a compact report it sent (from, report: the signed bytes, base64; TELEMETRY.md).",
+  "description": "A managed device's reply to this Companion's rf.request (from, xid, message), or a compact report it sent (from, report: the signed bytes, base64; TELEMETRY.md); or, when a reply arrived whole but would not fit an event once escaped, {from, xid, error: too-large, size}.",
   "oneOf": [
     {
       "type": "object",
@@ -44,6 +44,35 @@
         "report": {
           "type": "string",
           "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "xid",
+        "error",
+        "size"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}([0-9a-f]{48})?$",
+          "description": "The sender's node key, or its 8-byte prefix for a reply on the management channel."
+        },
+        "xid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "const": "too-large"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The reply's length in bytes: it arrived whole but would not fit an event once escaped."
         }
       }
     }
