@@ -26,33 +26,32 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Which environments: on a pull request not labelled full-ci, one per platform family (ESP32-S3, nRF52, RP2040, STM32),
+  # enough to catch a change that breaks a platform; on full-ci, on main and dev, the whole list (#463). The label is read
+  # from the event, so add full-ci before the push it is for: adding it fires no run of its own, which keeps the two
+  # runs of one commit from cancelling each other (reference: the full-ci label race).
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.plan.outputs.envs }}
+    steps:
+      - id: plan
+        env:
+          FULL: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        run: |
+          if [ "$FULL" = "true" ]; then
+            echo 'envs=["Heltec_v3_companion_radio_ble", "Heltec_v3_repeater", "Heltec_v3_room_server", "RAK_4631_companion_radio_ble", "RAK_4631_companion_radio_ethernet", "RAK_4631_repeater", "RAK_4631_repeater_ethernet", "RAK_4631_room_server", "RAK_4631_room_server_ethernet", "PicoW_repeater", "wio-e5-mini_repeater", "LilyGo_Tlora_C6_repeater_", "wio_wm1110_repeater", "Tbeam_SX1276_repeater"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'envs=["Heltec_v3_repeater", "RAK_4631_companion_radio_ble", "PicoW_repeater", "wio-e5-mini_repeater"]' >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: plan
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        environment:
-          # ESP32-S3 (most common platform)
-          - Heltec_v3_companion_radio_ble
-          - Heltec_v3_repeater
-          - Heltec_v3_room_server
-          # nRF52
-          - RAK_4631_companion_radio_ble
-          - RAK_4631_companion_radio_ethernet
-          - RAK_4631_repeater
-          - RAK_4631_repeater_ethernet
-          - RAK_4631_room_server
-          - RAK_4631_room_server_ethernet
-          # RP2040
-          - PicoW_repeater
-          # STM32
-          - wio-e5-mini_repeater
-          # ESP32-C6
-          - LilyGo_Tlora_C6_repeater_
-          # LR1110 (nRF52)
-          - wio_wm1110_repeater
-          # SX1276 (ESP32)
-          - Tbeam_SX1276_repeater
+        environment: ${{ fromJSON(needs.plan.outputs.envs) }}
 
     steps:
       - name: Clone Repo
