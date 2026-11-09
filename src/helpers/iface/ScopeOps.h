@@ -29,6 +29,10 @@ struct ScopeHost {
   void* user;
 };
 
+// A scope named in a request, as scope.default.set takes it: a hashtag name ("#" optional) whose key is derived, or a
+// private "$name" with its key in hex. False with c.error set (bad-name, name-too-long, bad-char, bad-key, key-required).
+bool scopeOf(OpContext& c, int name_tok, int key_tok, char name[SCOPE_NAME_MAX + 1], uint8_t key[SCOPE_KEY_BYTES]);
+
 Status opScopeGet(OpContext& c, ScopeHost& h);
 Status opScopeSet(OpContext& c, ScopeHost& h);
 Status opScopeClear(OpContext& c, ScopeHost& h);

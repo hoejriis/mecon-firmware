@@ -178,7 +178,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `contact.list`, `contact.get` | contact table (name, type, protection flag, last advert, hops, position; `list` paged by up to 6, fewer when a page would not fit); the shared secret and the path bytes never | native contact table | private | no | C | all |
 | `contact.put`, `contact.remove` | add, update, remove; a put names no flags, so it never grants telemetry or the remote CLI, and a full table behaves as for the app | `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` | write | yes | C | all |
 | `contact.protect` | protect from auto-removal (favourite flag) | contact flags | write | yes | C | all |
-| `message.send` | one native direct or channel message; a recipient or slot not there is an answer, and no contact is created | `sendMessage`, `sendGroupMessage`, as `CMD_SEND_TXT_MSG` and `CMD_SEND_CHANNEL_TXT_MSG` | write | yes | C | all |
+| `message.send` | one native direct or channel message, optionally in a flood scope of its own (`scope`, section 5.3); a recipient or slot not there is an answer, and no contact is created | `sendMessage`, `sendGroupMessage`, as `CMD_SEND_TXT_MSG` and `CMD_SEND_CHANNEL_TXT_MSG` | write | yes | C | all |
 | `message.get`, `message.list`, `message.ack` | what became of a send (section 6) | RAM table | read, then private | no | C | all |
 | `inbox.list`, `inbox.ack` | what was received (section 6.4) | a RAM copy, beside the native offline queue | read, then private | no | C | all |
 | `message.deliver` | a message the device missed, to the local stock app; never on the radio (section 6.5) | the native receive queue | write | yes | C | all |
@@ -349,7 +349,11 @@ A Repeater's and a Room server's native region tree, the one the console's `regi
 - **`scope.default.clear`** sends the Companion's floods unscoped again.
 - **Confirmation** as for the region tree: a scope the network does not forward would cut the Companion's reports to its manager, so every caller but the unsigned cable must confirm. The previous name and key are kept in `/scope_snap` until the job ends.
 
-**Not yet on these operations:** LoRa point to point (they are not in its allowlist yet), the console's `region def` and `region load` (batch editors over the same tree, which `region.put` covers), and a per-send scope on `message.send` (stock's frame 54 sets one for the whole device until the next, so a manager setting it would change the app's sends too).
+**Over LoRa** the region operations run point to point, and the region changes also run on the management channel ([LORA_MANAGEMENT](LORA_MANAGEMENT.md)). `scope.default.*` do not run over LoRa: `scope.default.set` can carry a private scope's key, and key material never goes on the air.
+
+**A scope for one send.** `message.send` takes `"scope"`, named as `scope.default.set` names one (`"scope_key"` for a private scope), or `null` for an unscoped flood. It applies to that send only. The device's default, and an override a stock app set with frame 54, are as they were afterwards. A direct message that goes by a known path is not flooded, so its scope does not matter.
+
+**Not on these operations:** the console's `region def` and `region load` (batch editors over the same tree, which `region.put` covers).
 
 ### 5.4 LoRa remote administration (native)
 

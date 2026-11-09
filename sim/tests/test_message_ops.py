@@ -294,3 +294,70 @@ def test_hello_offers_the_family(nodes, ether):
             break
     for op in ("message.send", "message.get", "message.list", "message.ack"):
         assert op in caps, op
+
+
+def _floods(ether, name, since):
+    """The text messages `name` flooded after `since` transmissions: (route type, transport code bytes, payload)."""
+    out = []
+    for t in ether.tx_of(name)[since:]:
+        d = t.data
+        if not d or (d[0] >> 2) & 0x0F != 2 or d[0] & 0x03 not in (0, 1):   # TXT_MSG, flooded
+            continue
+        at = 5 if d[0] & 0x03 == 0 else 1
+        plen = d[at]
+        out.append((d[0] & 0x03, d[1:3] if d[0] & 0x03 == 0 else None, d[at + 1 + (plen & 0x3F) * ((plen >> 6) + 1):]))
+    return out
+
+
+def _wait_floods(ether, name, since, timeout=60.0):
+    end = time.time() + timeout
+    while time.time() < end and not _floods(ether, name, since):
+        time.sleep(0.2)
+    return _floods(ether, name, since)
+
+
+def _code(name, payload):
+    import hashlib, hmac
+    key = hashlib.sha256(name.encode()).digest()[:16]
+    return hmac.new(key, bytes([2]) + payload, hashlib.sha256).digest()[:2]
+
+
+def test_a_send_takes_a_scope_of_its_own_and_the_default_is_untouched(nodes, ether):
+    na, nb, ca, ia, cb = pair(nodes, ether)
+    to = cb.pub_key.hex()
+    assert ia.request("scope.default.set", {"name": "home"})["status"] == "ok"
+
+    def send(rid, ts, **scope):
+        assert ca.add_contact(cb.pub_key, "bob")[0] == 0   # no known path: the send floods
+        before = len(ether.tx_of("ma"))
+        r = ia.request("message.send", dict({"to": to, "text": rid, "timestamp": ts}, **scope), rid=rid)
+        assert r["status"] == "ok" and r["result"]["route"] == "flood", r
+        got = _wait_floods(ether, "ma", before)
+        assert got, rid
+        wait_state(ia, rid, ("acked",))
+        return got[0]
+
+    route, code, payload = send("s1", RTC + 7, scope="#city")
+    assert route == 0 and code == _code("#city", payload), "its own scope, not the default"
+    route, code, payload = send("s2", RTC + 8)
+    assert route == 0 and code == _code("#home", payload), "the next send is in the default again"
+    route, code, payload = send("s3", RTC + 9, scope=None)
+    assert route == 1 and code is None, "unscoped"
+    route, code, payload = send("s4", RTC + 10)
+    assert route == 0 and code == _code("#home", payload)
+    assert [m["text"] for m in cb.sync_messages(timeout=75, want=4)] == ["s1", "s2", "s3", "s4"], "a stock receiver reads all"
+    assert ia.request("scope.default.get")["result"]["name"] == "home"
+
+
+def test_a_scope_for_one_send_is_named_as_the_default_is(nodes, ether):
+    na, nb, ca, ia, cb = pair(nodes, ether)
+    to = cb.pub_key.hex()
+    r = ia.request("message.send", {"channel": 0, "text": "nowhere", "timestamp": RTC + 9, "scope": None}, rid="sn-1")
+    assert r["status"] == "ok", r
+    for args, err in (({"scope": "$ops"}, "key-required"), ({"scope_key": "11" * 16}, "bad-key"),
+                      ({"scope": None, "scope_key": "11" * 16}, "bad-key"), ({"scope": "a b"}, "bad-char"),
+                      ({"scope": "x" * 31}, "name-too-long"), ({"scope": "$ops", "scope_key": "zz"}, "bad-key")):
+        r = ia.request("message.send", dict({"to": to, "text": "x"}, **args))
+        assert r["status"] == "invalid" and r.get("error") == err, (args, r)
+    r = ia.request("message.send", {"to": to, "text": "ops", "scope": "$ops", "scope_key": "22" * 16}, rid="sp-1")
+    assert r["status"] == "ok", r

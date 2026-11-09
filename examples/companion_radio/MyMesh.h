@@ -133,8 +133,18 @@ public:
   bool setClockForward(uint32_t secs);   // CMD_SET_DEVICE_TIME and clock.set: forward only
 #ifdef ENABLE_MECON_IFACE
   // For the device interface (MeconIface): read-only facts, and frame output to one transport of the multiplexed serial.
-  Iface::MessageSend messageSendDirect(const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text, Iface::MessageSent& out);
-  Iface::MessageSend messageSendChannel(int slot, uint32_t ts, const char* text, size_t len, Iface::MessageSent& out);
+  Iface::MessageSend messageSendDirect(const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text,
+                                       const Iface::SendScope& scope, Iface::MessageSent& out);
+  Iface::MessageSend messageSendChannel(int slot, uint32_t ts, const char* text, size_t len, const Iface::SendScope& scope,
+                                        Iface::MessageSent& out);
+  // The app's override (frame 54) is set to this send's scope for the native send, then put back as it was.
+  struct ScopedSend {
+    MyMesh& m;
+    TransportKey scope;
+    bool unscoped;
+    ScopedSend(MyMesh& mesh, const Iface::SendScope& s);
+    ~ScopedSend();
+  };
   bool keepReceived(mesh::Packet* pkt, const uint8_t* from, int channel, uint8_t txt_type, uint32_t ts, const uint8_t* signer,
                     const char* text);
   Iface::DeliverResult messageDeliver(const uint8_t* from, int channel, uint32_t ts, const char* text, size_t len);
