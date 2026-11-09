@@ -209,3 +209,22 @@ def test_the_connectivity_event_times_the_broker_writes(nodes, tmp_path, brokers
             ev = m["data"]["mqtt"]
     assert ev and isinstance(ev["write_ms_max"], int) and ev["slow_writes"] == 0, ev
     assert not mecon_schema.check(m["data"], mecon_schema.load("event.connectivity.json"))
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_clock_set_moves_the_clock_forward_only(ether, nodes, kind):
+    d = target(nodes, ether, kind, "cs" + kind[:2])
+    now = d.i.request("clock.get")["result"]["epoch"]
+    r = d.i.request("clock.set", {"epoch": now + 3600})
+    assert r["status"] == "ok" and now + 3600 <= r["result"]["epoch"] < now + 3700, r
+    import mecon_schema
+    assert not mecon_schema.check(r["result"], mecon_schema.load("clock.set.result.json")), r
+    r = d.i.request("clock.set", {"epoch": now})
+    assert r["status"] == "failed" and r["error"] == "backwards", "never back: %s" % r
+    assert d.i.request("clock.get")["result"]["epoch"] >= now + 3600
+    assert d.i.request("clock.set", {"epoch": "soon"})["status"] == "invalid"
+    assert d.provision()["status"] == "ok"
+    r = d.i.request("clock.set", {"epoch": now + 7200})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    r = d.send(wrap(d.node_key, "clock.set", {"epoch": now + 7200}, job=next_job(d)))
+    assert r["status"] == "ok" and r["result"]["epoch"] >= now + 7200, r

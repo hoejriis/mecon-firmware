@@ -12,3 +12,4 @@ mutate advert_never_floods_companion examples/companion_radio/MeconIface.cpp '  
 mutate identity_get_needs_a_job src/helpers/deployment/DepWrapper.cpp '"identity.get", "identity.rotation", "clock.get"' '"identity.rotation", "clock.get"' "$DO::test_identity_and_clock_are_plain_reads_that_agree_with_hello[companion_standalone]"
 mutate region_list_needs_a_job src/helpers/deployment/DepWrapper.cpp '                                       "region.list" };' '                                       "none" };' "$DO::test_region_list_is_a_plain_read_once_enrolled"
 mutate mqtt_every_write_slow src/helpers/mqtt/MqttController.cpp '  if (ms >= 1000) _slow_writes++;' '  _slow_writes++;' "$DO::test_the_connectivity_event_times_the_broker_writes"
+mutate clock_set_backwards_companion examples/companion_radio/MyMesh.cpp '  if (secs < getRTCClock()->getCurrentTime()) return false;' '' "$DO::test_clock_set_moves_the_clock_forward_only[companion_standalone]"

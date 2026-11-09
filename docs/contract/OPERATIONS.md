@@ -187,7 +187,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `acl.list`, `acl.put` | remote-admin ACL | CLI `setperm`; REQ `GET_ACCESS_LIST` | read / write | `acl.put` | R S | Con, MQTT where built, RF |
 | `password.set` | admin or guest password (write-only) | CLI `password`, `set guest.password` | write; commit-or-revert over RF | yes | R S | Con, RF |
 | `clock.get` | `{"epoch": n}`, wall-clock seconds; `null` while the clock is not set | `CMD_GET_DEVICE_TIME` | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
-| `clock.set` | device clock (forward only) | `CMD_SET_DEVICE_TIME`, CLI `time` | write | yes | C R S | all |
+| `clock.set` | `{"epoch": n}`: sets the device clock, forward only (`backwards` otherwise); the answer is the clock after it | `CMD_SET_DEVICE_TIME`, CLI `time` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `advert.send` | self advert: `{"flood": true}` floods it in the default scope, otherwise zero hop; the result names which | `CMD_SEND_SELF_ADVERT`, CLI `advert`, `advert.zerohop` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `identity.get` | `device_id`, `node_key` and `device_id_sig`, as `hello` gives them | | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `identity.rotate` | new node key on the device | | per [AUTHORITY](AUTHORITY.md) | yes | C R S | per [AUTHORITY](AUTHORITY.md) |
@@ -204,7 +204,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
-**Not built yet.** No build registers `device.reset`, `clock.set`, `identity.key.export`, `acl.list`, `acl.put`, `password.set`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `setperm`, `password`, `set guest.password`, `get prv.key`, the frames `CMD_SET_DEVICE_TIME` and `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
+**Not built yet.** No build registers `device.reset`, `identity.key.export`, `acl.list`, `acl.put`, `password.set`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `setperm`, `password`, `set guest.password`, `get prv.key`, the frame `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
 
 `contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
 
