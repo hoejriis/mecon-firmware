@@ -325,6 +325,9 @@ private:
 #ifdef ENABLE_MECON_IFACE
 public:
   void saveDirtyContacts() { if (dirty_contacts_expiry) saveContacts(); }
+  bool bondsClearPending() { return _store->bondsClearPending(); }
+  // At a BLE start, before advertising: the pending clear ran; the marker goes only when no bond is left.
+  void bondsCleared(bool none_left) { if (none_left) _store->setBondsClearPending(false); }
   // device.reset (OPERATIONS.md 3.5): removes exactly one scope and saves; the interface reboots afterwards.
   bool resetScope(Iface::ResetScope s, uint8_t caller);
 private:

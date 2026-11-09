@@ -77,6 +77,9 @@ public:
    * @param pin_code   the BLE security pin
    */
   void begin(const char* prefix, char* name, uint32_t pin_code);
+  // The bonds this stack holds (ble.bonds, device.reset bonds): -1 when it cannot tell (the stack not started).
+  int bondCount();
+  bool clearBonds();   // false when the stack is not started or the store could not be cleared
 
   // BaseSerialInterface methods
   void enable() override;

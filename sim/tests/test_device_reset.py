@@ -114,12 +114,12 @@ def test_factory_is_the_native_reset(nodes, kind):
 def test_scopes_that_are_not_this_operations_say_where_to_go(nodes, kind):
     d = boot(nodes, kind, "rs" + kind[:2])
     for scope, status, err in (("deployment", "invalid", "use-deployment.reset"), ("identity", "invalid", "use-identity.rotate"),
-                               ("bonds", "failed", "not-built"), ("everything", "invalid", "bad-scope")):
+                               ("everything", "invalid", "bad-scope")):
         r = d.i.request("device.reset", {"scope": scope})
         assert r["status"] == status and r["error"] == err, (scope, r)
     assert d.i.request("device.reset")["error"] == "bad-scope"
     if not isinstance(d, Dev):
-        for scope in ("contacts", "channels"):
+        for scope in ("contacts", "channels", "bonds"):
             r = d.i.request("device.reset", {"scope": scope})
             assert r["status"] == "failed" and r["error"] == "not-on-this-device", (scope, r)
     with pytest.raises(subprocess.TimeoutExpired):
@@ -172,3 +172,43 @@ def test_paired_ble_may_on_a_standalone_device_and_not_once_enrolled(nodes):
     assert r["status"] == "refused", "enrolled, only the cable: %s" % r
     with pytest.raises(subprocess.TimeoutExpired):
         n.wait_exit(2)
+
+
+def bonds(i):
+    r = i.request("ble.bonds")
+    assert r["status"] == "ok", r
+    return shaped("ble.bonds", r["result"])
+
+
+def test_bonds_are_counted_and_cleared_from_the_cable_only_at_the_next_ble_start(nodes):
+    from test_jobs import PIN, ble, ble_boot
+    n = ble_boot(nodes, "rbo", PIN)
+    d = Dev(n)
+    assert bonds(d.i) == {"count": 0, "clear_pending": False}
+    b, i = ble(n)   # a pairing makes a bond
+    assert bonds(d.i)["count"] == 1
+    r = i.request("device.reset", {"scope": "bonds"})
+    assert r["status"] == "refused" and r["error"] == "usb-only", "not over BLE, though the class allows it here: %s" % r
+    b.close()
+    assert reset(d, "bonds")["status"] == "ok"
+    assert bonds(d.i) == {"count": 0, "clear_pending": False}, "cleared at the BLE start, and checked"
+
+
+def test_a_bond_clear_waits_for_a_ble_start(nodes):
+    from test_jobs import PIN, ble, ble_boot
+    n = ble_boot(nodes, "rbw", PIN)
+    d = Dev(n)
+    b, i = ble(n)
+    b.close()
+    assert bonds(d.i)["count"] == 1
+    assert d.c.cli("set connectivity.mode wifi").startswith("OK")   # Wi-Fi mode: the BLE stack never starts
+    assert n.wait_exit(10) == 75
+    n.start()
+    d.attach()
+    assert reset(d, "bonds")["status"] == "ok"
+    assert bonds(d.i) == {"count": None, "clear_pending": True}, "kept until a BLE start"
+    assert d.c.cli("set connectivity.mode ble").startswith("OK")
+    assert n.wait_exit(10) == 75
+    n.start()
+    d.attach()
+    assert bonds(d.i) == {"count": 0, "clear_pending": False}

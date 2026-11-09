@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/ble.bonds.result.json",
+  "title": "Result of ble.bonds",
+  "description": "How many centrals the BLE stack holds a bond for (null while the stack is not running), and whether a clear asked for by device.reset bonds still waits for a BLE start.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["count", "clear_pending"],
+  "properties": {
+    "count": {"type": ["integer", "null"], "minimum": 0},
+    "clear_pending": {"type": "boolean"}
+  }
+}

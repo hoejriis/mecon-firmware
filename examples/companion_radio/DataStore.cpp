@@ -228,6 +228,13 @@ void DataStore::removeRotation() {
   AtomicFile::discard(_fs, "/rotation");
 }
 
+bool DataStore::bondsClearPending() { return AtomicFile::exists(_fs, "/ble_clear"); }
+
+bool DataStore::setBondsClearPending(bool on) {
+  if (!on) { AtomicFile::discard(_fs, "/ble_clear"); return !bondsClearPending(); }
+  return AtomicFile::save(_fs, "/ble_clear", [](Stream& s) { return s.write((uint8_t)1) == 1; });
+}
+
 void DataStore::loadPrefs(NodePrefs& prefs) {
   AtomicFile::recover(_fs, "/prefs.json");   // finish or drop a save that was cut by a power loss
   if (AtomicFile::exists(_fs, "/prefs.json")) {

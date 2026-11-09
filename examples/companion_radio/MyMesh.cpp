@@ -2665,6 +2665,8 @@ bool MyMesh::resetScope(Iface::ResetScope s, uint8_t caller) {
       dirty_contacts_expiry = 0;
       return ok;
     }
+    case Iface::RS_BONDS:   // carried out at the next BLE start, before advertising (main.cpp): the stack holds the store
+      return _store->setBondsClearPending(true);
     case Iface::RS_FACTORY: {   // the native factory reset (CMD_FACTORY_RESET)
       const bool ok = _store->formatFileSystem();
       if (ok) recordFactoryReset(caller);

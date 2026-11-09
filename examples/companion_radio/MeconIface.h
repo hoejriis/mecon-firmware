@@ -78,12 +78,16 @@ public:
   // A cable on an enrolled device in Hardened with no local unlock on this link (AUTHORITY.md section 9).
   bool cableLocked(const BaseSerialInterface* src, const Cli::Context& c);
   Iface::ResetHost resetHost();
+  int (*_ble_bonds)() = nullptr;
   void rebootSoon() { _reboot_at = millis() + (_on_lora ? Iface::LORA_REBOOT_MS : 1500); }
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled
   // The connectivity stream, on builds with a network (set by main.cpp, which owns the controllers): write writes the
   // stream's data; signature changes whenever a link changes state, which sends an event at once.
   typedef void (*ConnWriteFn)(Iface::JsonWriter& w);
   typedef uint64_t (*ConnSignatureFn)();
+  // ble.bonds: the BLE stack's bond count, -1 when the stack is not running. Set by a build with BLE.
+  void setBleBonds(int (*count)()) { _ble_bonds = count; }
+  int (*bleBonds() const)() { return _ble_bonds; }
   void setConnectivity(ConnWriteFn write, ConnSignatureFn signature) {
     _conn_write = write;
     _conn_sig = signature;

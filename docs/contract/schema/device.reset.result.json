@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": ["scope", "reboot"],
   "properties": {
-    "scope": {"type": "string", "enum": ["network", "contacts", "channels", "radio", "factory"]},
+    "scope": {"type": "string", "enum": ["network", "contacts", "channels", "radio", "bonds", "factory"]},
     "reboot": {"type": "boolean", "enum": [true]}
   }
 }

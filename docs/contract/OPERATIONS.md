@@ -139,11 +139,14 @@ A reset scope that removes the caller's own path (`network` over MQTT) is not a 
   - `network`: every stored Wi-Fi and broker profile. A network compiled into the build is not stored, so it stays. Only on builds with Wi-Fi or a broker.
   - `contacts` (Companion): the contact table and the adverts kept with it.
   - `channels` (Companion): every slot emptied, and slot 0 the public channel again.
+  - `bonds` (Companion, BLE builds):
+    - Every BLE bond goes. The request comes from the cable only; any other caller gets `refused` `usb-only`, as SECURITY_AND_AUTHORITY requires.
+    - The clear is kept, and it runs at the next BLE start, after the stack is up and before it advertises. So it waits through a boot in Wi-Fi mode, or in Hardened with the default PIN.
+    - Its marker goes only once the stack reports no bond left. `ble.bonds` shows `clear_pending` until then.
   - `factory`: the native factory reset, as `CMD_FACTORY_RESET` and the console's `erase` do it, with its audit record.
 - **The scopes not on this operation:**
   - `deployment`: answered `invalid` `use-deployment.reset`.
   - `identity`: answered `invalid` `use-identity.rotate`.
-  - `bonds`: answered `failed` `not-built`.
   - `contacts` and `channels` on the Repeater and Room server: `failed` `not-on-this-device`.
   - An unknown or missing scope: `invalid` `bad-scope`.
 - **A save that fails** answers `failed` `io-error`, and the device does not reboot.
@@ -212,7 +215,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `identity.rotate` | new node key on the device | | per [AUTHORITY](AUTHORITY.md) | yes | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `identity.rotation` | the old key's signed statement of the rotation | | read | no | C R S | all |
 | `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per [AUTHORITY](AUTHORITY.md) |
-| `ble.bonds` | bond count | | read | no | C (BLE builds) | all |
+| `ble.bonds` | `{"count","clear_pending"}`: the centrals the BLE stack holds a bond for, `null` while the stack is not running; whether a `device.reset bonds` still waits for a BLE start | NimBLE, Bluefruit and Bluedroid bond stores | read | no | C (BLE builds) | all |
 | `ble.pin.get` | the BLE PIN | device info, CLI | secret | no | C (BLE builds) | USB, MQTT (SECURITY_AND_AUTHORITY) |
 | `posture.set` | `{"posture":"normal"}` or `{"posture":"hardened"}`; the device reboots about 1.5 s after a change, or 60 s over LoRa so that the answer goes out first. `status.get` reports the posture | CLI `set posture` | posture | yes | C R S | standalone: raising a cable or paired BLE, lowering a cable. Enrolled: a signature, with a job id |
 | `deployment.*` | provisioning, authority updates, record, local unlock | | per [AUTHORITY](AUTHORITY.md) | | C R S | per [AUTHORITY](AUTHORITY.md) |
@@ -223,7 +226,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
-**Not built yet.** No build registers `identity.key.export`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `get prv.key`, the frame `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
+**Not built yet.** No build registers `identity.key.export` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `get prv.key`, the frame `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
 
 `contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
 

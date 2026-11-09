@@ -139,7 +139,8 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   #endif
   
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
-  BleStart::report(Bluefruit.begin());
+  _begun = Bluefruit.begin();
+  BleStart::report(_begun);
  
   char dev_name[32+16];
   if (strcmp(name, "@@MAC") == 0) {
@@ -419,4 +420,29 @@ bool SerialBLEInterface::isConnected() const {
 
 bool SerialBLEInterface::isWriteBusy() const {
   return send_queue_len >= (FRAME_QUEUE_SIZE * 2 / 3);
+}
+
+#include <InternalFileSystem.h>
+
+// Bluefruit keeps one file per bonded central under this directory (Bluefruit52Lib utility/bonding.h, BOND_DIR_PRPH).
+static const char BOND_DIR[] = "/adafruit/bond_prph";
+
+int SerialBLEInterface::bondCount() {
+  if (!_begun) return -1;
+  using namespace Adafruit_LittleFS_Namespace;
+  File dir(InternalFS);
+  if (!dir.open(BOND_DIR, FILE_O_READ)) return 0;
+  int n = 0;
+  for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
+    if (!f.isDirectory()) n++;
+    f.close();
+  }
+  dir.close();
+  return n;
+}
+
+bool SerialBLEInterface::clearBonds() {
+  if (!_begun) return false;
+  Bluefruit.Periph.clearBonds();
+  return bondCount() == 0;
 }

@@ -50,6 +50,14 @@ class SerialBLEInterface : public BaseSerialInterface {
 
   static void logLine(const char* what) { fprintf(stderr, "SIMBLE %s\n", what); fflush(stderr); }
 
+  // Bonds: one line per pairing in the node's directory, kept across restarts as a stack keeps them in flash.
+  bool _begun = false;
+  static std::string bondsPath() { return g_sim.dir + "/sim_ble_bonds"; }
+  static void addBond() {
+    FILE* f = fopen(bondsPath().c_str(), "a");
+    if (f) { fputs("bond\n", f); fclose(f); }
+  }
+
   void openListener() {
     _listen = socket(AF_INET, SOCK_STREAM, 0);
     int one = 1;
@@ -113,6 +121,7 @@ class SerialBLEInterface : public BaseSerialInterface {
       const unsigned long given = shaped ? strtoul(_line + 5, &end, 10) : 0;
       if (shaped && end && end != _line + 5 && *end == 0 && (uint32_t)given == _pin) {
         _paired = true;
+        addBond();
         logLine("paired");
         sendText("PAIRED\n");
       } else {
@@ -132,6 +141,21 @@ public:
     const bool start_fails = getenv("SIM_BLE_START_FAILS") != nullptr;   // a stack that does not come up
     BleStart::report(!start_fails);
     if (!start_fails) openListener();
+    _begun = !start_fails;
+  }
+  int bondCount() {
+    if (!_begun) return -1;
+    FILE* f = fopen(bondsPath().c_str(), "r");
+    if (!f) return 0;
+    int n = 0;
+    for (int c; (c = fgetc(f)) != EOF;) n += c == '\n';
+    fclose(f);
+    return n;
+  }
+  bool clearBonds() {
+    if (!_begun) return false;
+    remove(bondsPath().c_str());
+    return bondCount() == 0;
   }
   void enable() override { _enabled = true; }
   void disable() override {
