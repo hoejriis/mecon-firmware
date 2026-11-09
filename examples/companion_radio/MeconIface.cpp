@@ -54,7 +54,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "inbox.list", "inbox.ack", "message.deliver",
                                     "scope.default.get", "scope.default.set", "scope.default.clear"
 #if defined(BLE_PIN_CODE)
-                                    , "ble.bonds"
+                                    , "ble.bonds", "ble.pin.get"
 #endif
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
@@ -70,6 +70,7 @@ Status opAdvertSend(OpContext& c);
 Status opDeviceReboot(OpContext& c);
 Status opDeviceResetW(OpContext& c);
 Status opBleBonds(OpContext& c);
+Status opBlePin(OpContext& c);
 Status opStatus(OpContext& c);
 Status opMsgSend(OpContext& c);
 Status opMsgGet(OpContext& c);
@@ -151,6 +152,8 @@ const OpEntry OPS[] = {
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
   {"ble.bonds", opBleBonds, PRIV_READ, false},
+  // Never answered from the cache: a PIN must not sit in the result cache for a later caller's retry.
+  {"ble.pin.get", opBlePin, PRIV_READ, false},
   // Reading a job and acknowledging its result are of the read class (the result belongs to whoever may read it);
   // cancelling and confirming change the device. The three that change something keep their result (OPERATIONS.md 5.1).
   {"job.get", opJobGet, PRIV_READ, false},
@@ -248,6 +251,20 @@ Status opBleBonds(OpContext& c) {
   JsonWriter& w = *c.out;
   w.key("count"); if (n >= 0) w.unum((uint32_t)n); else w.null();
   w.key("clear_pending"); w.boolean(m->mesh()->bondsClearPending());
+  return ST_OK;
+}
+
+// ble.pin.get: the BLE passkey in use (SECURITY_AND_AUTHORITY: physical USB and authenticated management). The cable may
+// read it on any device, enrolled or not (owner, 2026-11-09: a person at the device needs it to pair a phone); a member's
+// signed request may, with its nonce (DepWrapper: sensitive); a verified broker session only on a device with no
+// Deployment record. Every other caller, a paired phone among them, is refused.
+Status opBlePin(OpContext& c) {
+  MeconIface* m = self(c);
+  const Cli::Principal p = Cli::principalOf(m->callerContext());
+  const bool ok = p == Cli::P_CABLE || p == Cli::P_SIGNED || (p == Cli::P_MQTT && !m->enrolled());
+  if (!ok) { c.error = "not-over-this-link"; return ST_REFUSED; }
+  JsonWriter& w = *c.out;
+  w.key("pin"); w.unum(m->mesh()->getBLEPin());
   return ST_OK;
 }
 

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/ble.pin.get.result.json",
+  "title": "Result of ble.pin.get",
+  "description": "The BLE pairing passkey in use. A secret: never cached, never logged.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pin"],
+  "properties": {"pin": {"type": "integer", "minimum": 0, "maximum": 999999}}
+}
