@@ -104,9 +104,10 @@ public:
     // zeros after its text, which holds no NUL.
     if (cnt != 0 && idx + 1 == cnt) { while (blen && f[LORA_HDR + blen - 1] == 0) blen--; }
     else if (blen >= payload && blen < payload + LORA_CIPHER_BLOCK) blen = payload;
-    // before anything is reserved
+    // before anything is reserved. Only the last frame fixes the length: an earlier one says it is at least one byte past
+    // the full frames before the last, so a message of up to LORA_MSG_MAX whose frames, all full, would exceed it is taken.
     if (cnt == 0 || cnt > LORA_MAX_FRAMES || idx >= cnt || blen == 0 || blen > payload || (idx + 1 < cnt && blen != payload) ||
-        (size_t)(cnt - 1) * payload + blen > LORA_MSG_MAX) {
+        (size_t)(cnt - 1) * payload + (idx + 1 == cnt ? blen : 1) > LORA_MSG_MAX) {
       _c.dropped_bad++;
       return F_IGNORED;
     }
