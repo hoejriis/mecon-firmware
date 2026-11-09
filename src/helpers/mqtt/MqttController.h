@@ -77,6 +77,8 @@ public:
     uint32_t up_s = 0;
     bool browsing = false;
     uint32_t reconnects = 0;            // sessions after the first since boot
+    uint32_t write_ms_max = 0;          // the longest one publish held the main loop, since boot
+    uint32_t slow_writes = 0;           // publishes that held it for a second or more, since boot
   };
   void snapshot(Snapshot* out);
   // The retained status topic ("mecon/<node id>/status") and payload.
@@ -91,6 +93,10 @@ private:
   bool _started = false;
   bool _enabled = false;
   bool _open = false;                // a transport is open and PubSubClient points at it
+  // Every publish goes through pub(), which times it: a TLS write that cannot progress holds the main loop, keepalive
+  // pings included, for up to the socket's timeout (#447).
+  bool pub(const char* topic, const uint8_t* payload, unsigned len, bool retained);
+  uint32_t _write_ms_max = 0, _slow_writes = 0;
 
   // One connect attempt. `req` is a copy of everything the job needs, taken on the main loop, so a profile edited while
   // the job runs is not read by it. The job writes `result` and the main loop reads it after MqttNet::asyncIdle().

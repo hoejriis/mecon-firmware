@@ -87,6 +87,8 @@ A crash record (panic backtrace kept across a reset) is **unsupported** in this 
 | `wifi.last_fail` | text | Wi-Fi core | the reason the last join failed |
 | `mqtt.state`, `.profile`, `.broker`, `.tls`, `.up_s` | | MQTT controller | `tls` is `plain`, `verified` or `unverified` |
 | `mqtt.reconnects` | count | MQTT controller | sessions after the first since boot |
+| `mqtt.write_ms_max` | ms | MQTT controller | the longest one publish held the main loop since boot. A TLS write that cannot progress holds it, keepalive pings included, up to the socket timeout |
+| `mqtt.slow_writes` | count | MQTT controller | publishes since boot that held the loop for 1 s or more |
 | `mqtt.browsing` | bool | MQTT controller | looking for a discovery broker |
 | `ble.connected` | bool | BLE interface | Companion builds with BLE; `false` while the BLE stack is not running (Wi-Fi mode, Hardened with a default PIN). Absent on builds without BLE |
 | `usb.connected` | bool | the USB serial port | Companion builds with a USB interface; `null` where the board cannot tell (below) |

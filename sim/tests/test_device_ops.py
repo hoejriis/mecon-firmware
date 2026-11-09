@@ -191,3 +191,21 @@ def test_region_list_is_a_plain_read_once_enrolled(nodes):
     assert s.provision()["status"] == "ok"
     r = s.send(wrap(s.node_key, "region.list", job=None, rid="rl1"))
     assert r["status"] == "ok", "a signed region.list needs no job id: %s" % r
+
+
+@pytest.mark.timescale(10)
+def test_the_connectivity_event_times_the_broker_writes(nodes, tmp_path, brokers):
+    import mecon_schema
+    from test_server_mqtt import boot as srv_boot, tls_broker, up, verified
+    b = tls_broker(brokers)
+    s = srv_boot(nodes, tmp_path, "repeater_wifi", "wt", verified(b))
+    up(s)
+    assert s.i.request("sub.start", {"stream": "connectivity", "period_s": 10, "lifetime_s": 60})["status"] == "ok"
+    import time as _t
+    end, ev = _t.time() + 20, None
+    while _t.time() < end and ev is None:
+        m = s.i.read_message(0.5)
+        if m and m.get("ev") == "connectivity" and m["data"].get("mqtt", {}).get("state") == "connected":
+            ev = m["data"]["mqtt"]
+    assert ev and isinstance(ev["write_ms_max"], int) and ev["slow_writes"] == 0, ev
+    assert not mecon_schema.check(m["data"], mecon_schema.load("event.connectivity.json"))
