@@ -755,10 +755,122 @@ inline void makeBlobPath(const uint8_t key[], int key_len, char* path, size_t pa
   sprintf(path, "/bl/%s", fname);
 }
 
+// The blob saver runs on ESP32 hardware; the simulator, which defines ESP32 without FreeRTOS, saves inline.
+#if defined(ESP32) && !defined(SIM_FREE_HEAP)
+#define MECON_BLOB_SAVER 1
+#endif
+#if defined(MECON_BLOB_SAVER)
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
+namespace {
+// Advert blobs are saved on a task of their own (#404). On ESP32 a save is AtomicFile's two-step swap on SPIFFS, about
+// 0.5 s, and it ran in the loop for every advert heard. A few blobs wait here, the newest per key; while one waits or is
+// being written, a read of that key is served from here, so the loop sees its own writes. A full queue saves in the
+// loop, as before: nothing is dropped. A power cut loses what still waits: a blob is a copy of the last advert, which
+// the next advert brings back.
+struct PendingBlob { bool used; bool writing; char path[24]; uint8_t len; uint8_t data[255]; };
+const int BLOB_QUEUE = 4;
+PendingBlob g_blobq[BLOB_QUEUE];
+SemaphoreHandle_t g_blobq_lock = nullptr;
+TaskHandle_t g_blob_task = nullptr;
+}  // namespace
+uint32_t blobSaverStackFree() { return g_blob_task ? (uint32_t)uxTaskGetStackHighWaterMark(g_blob_task) : 0; }   // bytes on ESP32
+namespace {
+FILESYSTEM* g_blob_fs = nullptr;
+
+void blobTask(void*) {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    for (;;) {
+      static uint8_t buf[255];
+      char path[24];
+      uint8_t len = 0;
+      int slot = -1;
+      xSemaphoreTake(g_blobq_lock, portMAX_DELAY);
+      for (int i = 0; i < BLOB_QUEUE; i++) {
+        if (g_blobq[i].used && !g_blobq[i].writing) { slot = i; break; }
+      }
+      if (slot >= 0) {
+        g_blobq[slot].writing = true;
+        len = g_blobq[slot].len;
+        memcpy(buf, g_blobq[slot].data, len);
+        strcpy(path, g_blobq[slot].path);
+      }
+      xSemaphoreGive(g_blobq_lock);
+      if (slot < 0) break;
+      AtomicFile::save(g_blob_fs, path, [len](Stream& st) { return st.write(buf, len) == len; });
+      xSemaphoreTake(g_blobq_lock, portMAX_DELAY);
+      // a newer blob for the key may have replaced this one while it was written: then it stays and goes next
+      if (g_blobq[slot].writing && g_blobq[slot].len == len && memcmp(g_blobq[slot].data, buf, len) == 0) g_blobq[slot].used = false;
+      g_blobq[slot].writing = false;
+      xSemaphoreGive(g_blobq_lock);
+    }
+  }
+}
+
+bool blobSaverStart(FILESYSTEM* fs) {
+  if (g_blob_task) return true;
+  g_blobq_lock = xSemaphoreCreateMutex();
+  if (!g_blobq_lock) return false;
+  g_blob_fs = fs;
+  if (xTaskCreatePinnedToCore(blobTask, "blobsave", 4096, nullptr, 1, &g_blob_task, 0) != pdPASS) { g_blob_task = nullptr; return false; }
+  return true;
+}
+
+int blobFind(const char* path) {
+  for (int i = 0; i < BLOB_QUEUE; i++) if (g_blobq[i].used && strcmp(g_blobq[i].path, path) == 0) return i;
+  return -1;
+}
+
+// Drops the waiting saves of path (all of them when path is null), waiting out one being written, which may have been
+// replaced by a newer copy meanwhile: that copy is dropped too. Called with the lock not held.
+void blobDrop(const char* path) {
+  for (int n = 0; n < 400; n++) {   // 400 x 10 ms: well past a save's 0.5 s
+    bool busy = false;
+    xSemaphoreTake(g_blobq_lock, portMAX_DELAY);
+    for (int i = 0; i < BLOB_QUEUE; i++) {
+      if (!g_blobq[i].used || (path && strcmp(g_blobq[i].path, path) != 0)) continue;
+      if (g_blobq[i].writing) busy = true;
+      else g_blobq[i].used = false;
+    }
+    xSemaphoreGive(g_blobq_lock);
+    if (!busy) return;
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+
+// Waits until no save of path is in progress. Called with the lock not held.
+void blobWaitIdle(const char* path) {
+  for (int n = 0; n < 400; n++) {   // 400 x 10 ms: well past a save's 0.5 s
+    bool busy = false;
+    xSemaphoreTake(g_blobq_lock, portMAX_DELAY);
+    for (int i = 0; i < BLOB_QUEUE; i++) if (g_blobq[i].used && g_blobq[i].writing && (!path || strcmp(g_blobq[i].path, path) == 0)) busy = true;
+    xSemaphoreGive(g_blobq_lock);
+    if (!busy) return;
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+}  // namespace
+#endif
+
 uint8_t DataStore::getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_buf[]) {
   char path[64];
   makeBlobPath(key, key_len, path, sizeof(path));
 
+#if defined(MECON_BLOB_SAVER)
+  if (g_blob_task) {
+    xSemaphoreTake(g_blobq_lock, portMAX_DELAY);
+    const int i = blobFind(path);
+    if (i >= 0) {   // waiting or being written: the newest copy is here, and the file must not be recovered under it
+      const uint8_t len = g_blobq[i].len;
+      memcpy(dest_buf, g_blobq[i].data, len);
+      xSemaphoreGive(g_blobq_lock);
+      return len;
+    }
+    xSemaphoreGive(g_blobq_lock);
+  }
+#endif
   AtomicFile::recover(_fs, path);   // finish or drop a save that was cut by a power loss
   if (_fs->exists(path)) {
     File f = openRead(_fs, path);
@@ -775,6 +887,24 @@ bool DataStore::putBlobByKey(const uint8_t key[], int key_len, const uint8_t src
   char path[64];
   makeBlobPath(key, key_len, path, sizeof(path));
 
+#if defined(MECON_BLOB_SAVER)
+  if (blobSaverStart(_fs) && strlen(path) < sizeof(g_blobq[0].path)) {
+    xSemaphoreTake(g_blobq_lock, portMAX_DELAY);
+    int i = blobFind(path);
+    if (i < 0) for (int j = 0; j < BLOB_QUEUE; j++) if (!g_blobq[j].used) { i = j; break; }
+    if (i >= 0) {
+      PendingBlob& b = g_blobq[i];
+      if (!b.used) { b.used = true; b.writing = false; strcpy(b.path, path); }
+      b.len = len;
+      memcpy(b.data, src_buf, len);
+      xSemaphoreGive(g_blobq_lock);
+      xTaskNotifyGive(g_blob_task);
+      return true;
+    }
+    xSemaphoreGive(g_blobq_lock);   // full: save here, as before
+    blobWaitIdle(path);
+  }
+#endif
   // temp file, read-back check, swap: a power cut keeps the previous complete blob (stock rewrote it in place)
   return AtomicFile::save(_fs, path, [src_buf, len](Stream& s) { return s.write(src_buf, len) == len; });
 }
@@ -783,12 +913,18 @@ bool DataStore::deleteBlobByKey(const uint8_t key[], int key_len) {
   char path[64];
   makeBlobPath(key, key_len, path, sizeof(path));
 
+#if defined(MECON_BLOB_SAVER)
+  if (g_blob_task) blobDrop(path);   // a waiting save of this key must not bring the blob back
+#endif
   AtomicFile::discard(_fs, path);
 
   return true; // return true even if file did not exist
 }
 
 void DataStore::deleteAllBlobs() {
+#if defined(MECON_BLOB_SAVER)
+  if (g_blob_task) blobDrop(nullptr);
+#endif
   char names[8][32];
   // A batch at a time, never removing while the directory is open. The bound only guards against a file that cannot go.
   for (int pass = 0; pass < 256; pass++) {
