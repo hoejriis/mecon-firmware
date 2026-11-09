@@ -19,7 +19,8 @@ import sys
 import time
 
 DOWNLOAD_ERROR = re.compile(r"HTTPClientError|ConnectionError|ConnectTimeout|ReadTimeout|Max retries exceeded|"
-                            r"Temporary failure in name resolution|SSLError|Connection reset")
+                            r"Temporary failure in name resolution|SSLError|Connection reset|"
+                            r"unrecognized status code '5\d\d'")   # the host's own error; a 4xx is a wrong URL, a verdict
 DELAYS_S = (30, 120)   # between the three tries
 TRY_TIMEOUT_S = 900    # a download that hangs counts as a failed one
 
