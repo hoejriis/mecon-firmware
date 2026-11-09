@@ -133,7 +133,7 @@ A reset scope that removes the caller's own path (`network` over MQTT) is not a 
 
 **As built.**
 - **Who may ask:** the destructive class of the privilege table. The unsigned cable may ask on any device, enrolled or not. Paired BLE may ask on a device with no Deployment record, in Normal. A signed request is refused whatever its signature, as is a broker session. The operation is not on the LoRa link.
-- **The answer** is `{"scope","reboot":true}`. Each scope is saved before the answer, and the device reboots about 1.5 s after it, so nothing runs half reset. A contact change still waiting for its lazy save is saved first, as the native reboot does.
+- **The answer** is `{"scope","reboot":true}`. Each scope is saved before the answer, and the device reboots about 1.5 s after it, so nothing runs half reset. `factory` answers only once the erase is done: 13.8 s on a Heltec V3, so a caller waits longer than for any other request. A contact change still waiting for its lazy save is saved first, as the native reboot does.
 - **The scopes built:**
   - `radio`: frequency, bandwidth, spreading factor, coding rate and transmit power, back to the build's defaults. Other radio tuning stays.
   - `network`: every stored Wi-Fi and broker profile. A network compiled into the build is not stored, so it stays. Only on builds with Wi-Fi or a broker.
