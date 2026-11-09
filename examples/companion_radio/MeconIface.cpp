@@ -1331,12 +1331,27 @@ void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
     w.key("xid"); w.num(p->xid);
     w.key("message"); w.str(LoraLink::message(*p));
     w.endObject();
+    const uint32_t ts = _mesh->getRTCClock()->knownTime();
+    const uint32_t seq = ++_clock.seq[SID_RF];
+    int m = -1;
     if (w.ok()) {
-      const uint32_t ts = _mesh->getRTCClock()->knownTime();
-      int m = writeEvent(ev, RESULT_MAX, STREAMS[SID_RF].name, ++_clock.seq[SID_RF], _epoch, ts != 0, ts, data);
+      m = writeEvent(ev, RESULT_MAX, STREAMS[SID_RF].name, seq, _epoch, ts != 0, ts, data);
       if (m > 0) m = _prov.sign(STREAMS[SID_RF].name, ev, (size_t)m, RESULT_MAX);
-      if (m > 0) sendEvent(SID_RF, ev, (size_t)m);
     }
+    if (m <= 0) {   // the reply, escaped, outgrew the event: say so, with its size, rather than send nothing
+      JsonWriter e(data, RESULT_MAX);
+      e.beginObject();
+      e.key("from"); e.str(hex);
+      e.key("xid"); e.num(p->xid);
+      e.key("error"); e.str("too-large");
+      e.key("size"); e.unum(LoraLink::messageLen(*p));
+      e.endObject();
+      if (e.ok()) {
+        m = writeEvent(ev, RESULT_MAX, STREAMS[SID_RF].name, seq, _epoch, ts != 0, ts, data);
+        if (m > 0) m = _prov.sign(STREAMS[SID_RF].name, ev, (size_t)m, RESULT_MAX);
+      }
+    }
+    if (m > 0) sendEvent(SID_RF, ev, (size_t)m);
   }
   free(data);
   free(ev);

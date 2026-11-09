@@ -256,7 +256,8 @@ Status MeconIface::opDeployGet(OpContext& c) {
   const bool may_read = Cli::decide(self(c)->_ctx, Cli::C_READ).allow;
   char text[256], sig[89];
   const bool rotated = may_read && self(c)->_mesh->readRotation(text, sizeof(text), sig, sizeof(sig));
-  const Status st = self(c)->_auth.opGet(c, rotated ? Iface::DeployAuth::ROTATION_MEMBER : 0);
+  const Status st = self(c)->_auth.opGet(c, (rotated ? Iface::DeployAuth::ROTATION_MEMBER : 0) +
+                                                (self(c)->onLora() ? Iface::DeployAuth::LORA_RESERVE : 0));
   if (st == ST_OK && rotated) writeRotationMember(*c.out, self(c)->_mesh, "rotation");
   return st;
 }

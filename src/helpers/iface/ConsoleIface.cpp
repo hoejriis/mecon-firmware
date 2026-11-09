@@ -183,7 +183,8 @@ Status opPostureW(OpContext& c) {
 // The stored set is an open read; the rotation statement in it names device_id, so only a caller the table lets read gets it.
 Status opDeployGet(OpContext& c) {
   const bool rotated = self(c)->mayRead() && self(c)->rotationStored();
-  const Status st = self(c)->auth().opGet(c, rotated ? DeployAuth::ROTATION_MEMBER : 0);
+  const Status st = self(c)->auth().opGet(c, (rotated ? DeployAuth::ROTATION_MEMBER : 0) +
+                                                 (self(c)->onLora() ? DeployAuth::LORA_RESERVE : 0));
   if (st == ST_OK && rotated) self(c)->writeRotation(*c.out);
   return st;
 }

@@ -104,6 +104,9 @@ public:
   // ---- the operations (OpContext.user is the host; the host forwards to these)
   // reserve: what the caller adds to the result after this. ROTATION_MEMBER is the rotation statement with its key.
   static const size_t ROTATION_MEMBER = 330;
+  // LORA_RESERVE: added over LoRa, so the answer fits a LoRa reply (1,024 bytes) with room for the manager's escaped copy
+  // in its rf event; a set that would not fit then reports its length, as a long one does elsewhere.
+  static const size_t LORA_RESERVE = 726;
   Status opGet(OpContext& c, size_t reserve = 0);
   Status opProvision(OpContext& c);
   Status opUpdate(OpContext& c);
