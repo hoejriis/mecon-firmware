@@ -837,6 +837,7 @@ int MeconIface::runDispatch(const Cli::Context& ctx, uint8_t caller, Link* link,
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
+  d.setCaller((uint8_t)(Cli::principalOf(ctx) << 4 | (link ? (link - _links) + 1 : 0)));   // the broker: no link
   if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);
   if (mgmtMayChangeBinding(msg, len)) _lora_bound_dirty = true;
   return d.handle(msg, len, out, cap, cache);

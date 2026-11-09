@@ -205,8 +205,10 @@ def assert_case(i, case, answer):
 
 def test_every_request_fixture_against_the_device(nodes):
     n, (c, i) = start(nodes, "fx")
+    import mecon_fixture
+    keys = mecon_fixture.schema_keys(lambda op, args: i.request(op, args))
     for case in fixture("requests.json")["cases"]:
-        if "companion" not in case.get("roles", ["companion"]):
+        if "companion" not in case.get("roles", ["companion"]) or not mecon_fixture.applicable(case, keys)[0]:
             continue
         if "raw" in case:
             i.send_raw(case["raw"].encode())
@@ -522,13 +524,15 @@ def test_status_is_published_under_device_id_only(nodes, tmp_path, broker):
 
 @pytest.mark.timescale(10)
 def test_the_same_request_over_usb_and_mqtt_runs_once(nodes, tmp_path, broker):
+    # The same id from another caller runs nothing, and the stored result stays the cable's (#476)
     b = broker()
     n, c, i, dev = mqtt_boot(nodes, tmp_path, "dd", b)
     first = i.request("config.apply", {"set": {"name": "Once"}}, rid="job-7")
     assert c.cli("set name Meanwhile") == "OK"
     again = b.iface_request(dev, {"v": 1, "id": "job-7", "op": "config.apply", "args": {"set": {"name": "Once"}}})
-    assert again == first, (first, again)
+    assert again["status"] == "invalid" and again["error"] == "id-in-use", (first, again)
     assert c.cli("get name") == "> Meanwhile"
+    assert i.request("config.apply", {"set": {"name": "Once"}}, rid="job-7").raw == first.raw, "the cable still gets it"
 
 
 @pytest.mark.timescale(10)

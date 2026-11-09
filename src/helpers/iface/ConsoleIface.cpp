@@ -849,6 +849,7 @@ int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char
   Dispatcher d(OPS, sizeof(OPS) / sizeof(OPS[0]), authorize, this, this);
   d.setDenyReason(denyReason);
   d.setAnswering(&_auth.answering());
+  d.setCaller((uint8_t)Cli::principalOf(_ctx));   // one console, one broker session: the principal tells them apart
   if (_on_lora) d.setOpFilter(_lora_channel ? loraChannelOpAllowed : loraOpAllowed);
   if (mgmtMayChangeBinding(msg, len)) _lora_key_dirty = true;
   return d.handle(msg, len, out, cap, cache);

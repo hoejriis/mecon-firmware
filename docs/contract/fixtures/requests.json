@@ -1,5 +1,5 @@
 {
-  "description": "Device interface v1 request fixtures. Each case is one request (as JSON, or as raw text when the case is about malformed input) and what a v1.0 device must answer. A client may send them over any transport. 'schema' names the result schema an ok result must satisfy. The value PAD600 stands for a string of 600 'x' characters, to make the request span several frames. A request that is not valid JSON, or breaks the envelope's id rules, cannot be tied to its id: its invalid result carries \"id\":\"\". 'roles', when present, lists the roles a case applies to (as hello reports them); absent means every role.",
+  "description": "Device interface v1 request fixtures. Each case is one request (as JSON, or as raw text when the case is about malformed input) and what a v1.0 device must answer. A client may send them over any transport. 'schema' names the result schema an ok result must satisfy. The value PAD600 stands for a string of 600 'x' characters, to make the request span several frames. A request that is not valid JSON, or breaks the envelope's id rules, cannot be tied to its id: its invalid result carries \"id\":\"\". 'roles', when present, lists the roles a case applies to (as hello reports them); absent means every role. A case may name the setting keys it needs (\"needs_keys\") or must not find (\"absent_keys\"), template keys included; a runner skips it, by name, on a device whose config.schema does not match.",
   "cases": [
     {
       "name": "hello",
@@ -162,7 +162,10 @@
       "expect": {
         "status": "ok",
         "schema": "config.get.result.json"
-      }
+      },
+      "needs_keys": [
+        "wifi.profile.{n}.pwd"
+      ]
     },
     {
       "name": "config get without keys",
@@ -245,7 +248,32 @@
       },
       "roles": [
         "companion"
+      ],
+      "needs_keys": [
+        "wifi.profile.{n}.priority"
       ]
+    },
+    {
+      "name": "config apply, a key this board lacks",
+      "roles": [
+        "companion"
+      ],
+      "absent_keys": [
+        "wifi.profile.{n}.priority"
+      ],
+      "request": {
+        "v": 1,
+        "id": "fx-cfg-apply-nowifi",
+        "op": "config.apply",
+        "args": {
+          "set": {
+            "wifi.profile.3.priority": 42
+          }
+        }
+      },
+      "expect": {
+        "status": "invalid"
+      }
     },
     {
       "name": "config apply (Repeater and Room server)",

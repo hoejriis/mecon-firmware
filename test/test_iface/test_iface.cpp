@@ -354,6 +354,19 @@ TEST(IfaceCache, AnIdHeldByAnotherOperationIsAConflictNeverAHit) {
   EXPECT_EQ(ResultCache::EXPIRED, c.find("big", "config.apply", &d, &l));
 }
 
+TEST(IfaceCache, AnIdHeldByAnotherCallerIsAConflictNeverAHit) {
+  // A hit runs no handler, so a caller check inside one would not see a replayed id: the entry answers only its caller.
+  ResultCache c;
+  const char* d = nullptr; size_t l = 0;
+  c.store("w1", "device.reset", "STORED", 6, 0x11);
+  EXPECT_EQ(ResultCache::CONFLICT, c.find("w1", "device.reset", &d, &l, 0x21));
+  EXPECT_EQ(ResultCache::CONFLICT, c.find("w1", "device.reset", &d, &l, 0x12));   // same principal, another link
+  ASSERT_EQ(ResultCache::HIT, c.find("w1", "device.reset", &d, &l, 0x11));
+  EXPECT_EQ(std::string("STORED"), std::string(d, l));
+  c.store("big", "config.apply", std::string(ResultCache::ENTRY_CAP + 1, 'z').c_str(), ResultCache::ENTRY_CAP + 1, 0x11);
+  EXPECT_EQ(ResultCache::CONFLICT, c.find("big", "config.apply", &d, &l, 0x21));   // before expiry, too
+}
+
 TEST(IfaceCache, HitEvictionAndOversize) {
   ResultCache c;
   const char* d; size_t l;
