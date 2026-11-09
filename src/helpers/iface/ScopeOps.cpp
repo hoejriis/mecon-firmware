@@ -168,25 +168,24 @@ Status opScopeGet(OpContext& c, ScopeHost& h) {
   return ST_OK;
 }
 
-Status opScopeSet(OpContext& c, ScopeHost& h) {
-  char buf[64], name[SCOPE_NAME_MAX + 1];
-  if (!jsonGetString(*c.doc, argOf(c, "name"), buf, sizeof(buf), CS_ANY, 1)) { c.error = "bad-name"; return ST_INVALID; }
+bool scopeOf(OpContext& c, int name_tok, int key_tok, char name[SCOPE_NAME_MAX + 1], uint8_t key[SCOPE_KEY_BYTES]) {
+  char buf[64];
+  if (!jsonGetString(*c.doc, name_tok, buf, sizeof(buf), CS_ANY, 1)) { c.error = "bad-name"; return false; }
   const char* bare = buf[0] == '#' ? buf + 1 : buf;   // "#city" and "city" are one hashtag scope, as region names are
-  if (!*bare) { c.error = "bad-name"; return ST_INVALID; }
-  if (strlen(bare) > SCOPE_NAME_MAX) { c.error = "name-too-long"; return ST_INVALID; }
+  if (!*bare) { c.error = "bad-name"; return false; }
+  if (strlen(bare) > SCOPE_NAME_MAX) { c.error = "name-too-long"; return false; }
   for (const char* q = bare; *q; q++)
-    if (!RegionMap::is_name_char((uint8_t)*q)) { c.error = "bad-char"; return ST_INVALID; }
-  snprintf(name, sizeof(name), "%s", bare);
-  uint8_t key[SCOPE_KEY_BYTES] = {0};
-  const int kt = argOf(c, "key");
-  if (kt >= 0) {
+    if (!RegionMap::is_name_char((uint8_t)*q)) { c.error = "bad-char"; return false; }
+  snprintf(name, SCOPE_NAME_MAX + 1, "%s", bare);
+  memset(key, 0, SCOPE_KEY_BYTES);
+  if (key_tok >= 0) {
     char hex[2 * SCOPE_KEY_BYTES + 1];
-    const bool ok = jsonGetString(*c.doc, kt, hex, sizeof(hex), CS_NAME, 1) && hexKey(hex, key);
+    const bool ok = jsonGetString(*c.doc, key_tok, hex, sizeof(hex), CS_NAME, 1) && hexKey(hex, key);
     wipe(hex, sizeof(hex));
-    if (!ok) { wipe(key, sizeof(key)); c.error = "bad-key"; return ST_INVALID; }
+    if (!ok) { wipe(key, SCOPE_KEY_BYTES); c.error = "bad-key"; return false; }
   } else if (name[0] == '$') {
     c.error = "key-required";   // a private scope's key does not follow from its name
-    return ST_INVALID;
+    return false;
   } else {
     char tagged[SCOPE_NAME_MAX + 2];
     snprintf(tagged, sizeof(tagged), "#%s", name);
@@ -196,6 +195,13 @@ Status opScopeSet(OpContext& c, ScopeHost& h) {
     memcpy(key, k.key, SCOPE_KEY_BYTES);
     wipe(&k, sizeof(k));
   }
+  return true;
+}
+
+Status opScopeSet(OpContext& c, ScopeHost& h) {
+  char name[SCOPE_NAME_MAX + 1];
+  uint8_t key[SCOPE_KEY_BYTES];
+  if (!scopeOf(c, argOf(c, "name"), argOf(c, "key"), name, key)) return ST_INVALID;
   Pending p;
   bool answered;
   const Status st = beginChange(c, h, "scope.default.set", p, &answered);

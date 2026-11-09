@@ -27,7 +27,7 @@ if [ "$ONLY" = "--list" ]; then cat sim/mutants/*.sh | grep -o "^mutate [a-z0-9_
 build() { [ "$FILES" = 1 ] && return 0; BUILD_OK=1; sim/build.sh > .sim-logs/mut_build.log 2>&1; grep -q "^exit=0" .sim-logs/mut_build.log || { BUILD_OK=0; echo "BUILD FAILED"; tail -8 .sim-logs/mut_build.log; }; }
 
 # A download that fails after tools/pio_fetch.py had the packages in place (#258): say so rather than blame the mutant.
-is_outage() { grep -Eq "HTTPClientError|ConnectionError|ConnectTimeout|ReadTimeout|Max retries exceeded|Connection reset" "$1"; }
+is_outage() { grep -Eq "HTTPClientError|ConnectionError|ConnectTimeout|ReadTimeout|Max retries exceeded|Connection reset|unrecognized status code '5[0-9][0-9]'" "$1"; }
 
 # name | file | old text | new text | pytest target
 mutate() {

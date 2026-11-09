@@ -77,7 +77,7 @@ mutate mqtt_profiles_not_persisted src/helpers/net/NetPrefs.h "      key[0] = 'h
 " "" unit:test_mqtt_prefs
 mutate mqtt_profiles_not_persisted_sim src/helpers/net/NetPrefs.h "      key[0] = 'h'; def(key, q.host, sizeof(q.host));
 " "" $MQ_SIM::test_profiles_persist_across_a_reboot_and_can_be_disabled
-mutate mqtt_status_not_published $MQ_CTRL "  _psc.publish(_topic, payload, true);" "  (void)payload;" $MQ_SIM::test_status_topic_is_published_and_retained
+mutate mqtt_status_not_published $MQ_CTRL "  pub(_topic, (const uint8_t*)payload, (unsigned)strlen(payload), true);" "  (void)payload;" $MQ_SIM::test_status_topic_is_published_and_retained
 mutate mqtt_disable_ignored src/helpers/net/NetCommands.h "    mqttController().setEnabled(prefs.mqtt_enabled != 0);
 " "" $MQ_SIM::test_profiles_persist_across_a_reboot_and_can_be_disabled
 # --- the connect runs on a worker (docs/MQTT.md): undo each rule and its tests must go red

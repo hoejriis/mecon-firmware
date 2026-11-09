@@ -130,6 +130,16 @@
         "reconnects": {
           "type": "integer",
           "minimum": 0
+        },
+        "write_ms_max": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The longest time one publish held the main loop since boot, in ms. A TLS write that cannot progress holds it, keepalive pings included."
+        },
+        "slow_writes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Publishes since boot that held the loop for 1 s or more."
         }
       }
     },

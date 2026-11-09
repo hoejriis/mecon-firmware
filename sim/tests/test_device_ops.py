@@ -193,6 +193,24 @@ def test_region_list_is_a_plain_read_once_enrolled(nodes):
     assert r["status"] == "ok", "a signed region.list needs no job id: %s" % r
 
 
+@pytest.mark.timescale(10)
+def test_the_connectivity_event_times_the_broker_writes(nodes, tmp_path, brokers):
+    import mecon_schema
+    from test_server_mqtt import boot as srv_boot, tls_broker, up, verified
+    b = tls_broker(brokers)
+    s = srv_boot(nodes, tmp_path, "repeater_wifi", "wt", verified(b))
+    up(s)
+    assert s.i.request("sub.start", {"stream": "connectivity", "period_s": 10, "lifetime_s": 60})["status"] == "ok"
+    import time as _t
+    end, ev = _t.time() + 20, None
+    while _t.time() < end and ev is None:
+        m = s.i.read_message(0.5)
+        if m and m.get("ev") == "connectivity" and m["data"].get("mqtt", {}).get("state") == "connected":
+            ev = m["data"]["mqtt"]
+    assert ev and isinstance(ev["write_ms_max"], int) and ev["slow_writes"] == 0, ev
+    assert not mecon_schema.check(m["data"], mecon_schema.load("event.connectivity.json"))
+
+
 @pytest.mark.parametrize("kind", KINDS)
 def test_clock_set_moves_the_clock_forward_only(ether, nodes, kind):
     d = target(nodes, ether, kind, "cs" + kind[:2])
@@ -210,3 +228,54 @@ def test_clock_set_moves_the_clock_forward_only(ether, nodes, kind):
     assert r["status"] == "refused" and r["error"] == "unauthenticated", r
     r = d.send(wrap(d.node_key, "clock.set", {"epoch": now + 7200}, job=next_job(d)))
     assert r["status"] == "ok" and r["result"]["epoch"] >= now + 7200, r
+
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_the_remote_admin_acl_is_listed_and_set(ether, nodes, kind):
+    d = target(nodes, ether, kind, "acl" + kind[:2])
+    who = "ab" * 32
+    r = d.i.request("acl.put", {"key": who, "role": "read-only"})
+    assert r["status"] == "ok" and shaped("acl.put", r["result"]) == {"key": who, "role": "read-only"}, r
+    page = shaped("acl.list", d.i.request("acl.list")["result"])
+    assert {"key": who, "role": "read-only"} in page["clients"], page
+    assert "secret" not in str(page), "never a shared secret"
+    assert d.i.request("acl.put", {"key": who, "role": "owner"})["status"] == "invalid"
+    assert d.i.request("acl.put", {"key": "zz" * 32, "role": "admin"})["status"] == "invalid"
+    assert d.provision()["status"] == "ok"
+    r = d.i.request("acl.put", {"key": who, "role": "admin"})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    r = d.send(wrap(d.node_key, "acl.put", {"key": who, "role": "admin"}, job=next_job(d)))
+    assert r["status"] == "ok" and r["result"]["role"] == "admin", r
+    assert {"key": who, "role": "admin"} in d.i.request("acl.list")["result"]["clients"]
+
+
+def test_password_set_is_write_only_and_console_only(nodes, tmp_path, brokers):
+    import json as _json
+    from sim.harness import CliClient
+    from test_deployment_authority_server import RTC as SRTC, Srv
+    n = nodes("repeater_eth", "pws", seed=43, rtc=SRTC).start()
+    d = Srv(n)
+    r = d.i.request("password.set", {"which": "admin", "password": "n3wpass"})
+    assert r["status"] == "ok" and shaped("password.set", r["result"]) == {"which": "admin"}, r
+    assert "n3wpass" not in _json.dumps(r), "write-only: never in the answer"
+    eth = CliClient(n, ethernet=True)
+    assert eth.command("login n3wpass") == "OK - logged in", "the native password changed"
+    assert d.i.request("password.set", {"which": "guest", "password": "gu3st"})["status"] == "ok"
+    r = d.i.request("password.set", {"which": "admin", "password": "x" * 16})
+    assert r["status"] == "invalid" and r["error"] == "too-long", "refused, not cut to the native 15: %s" % r
+    assert d.i.request("password.set", {"which": "root", "password": "abc"})["status"] == "invalid"
+    assert d.provision()["status"] == "ok"
+    r = d.i.request("password.set", {"which": "admin", "password": "an0ther"})
+    assert r["status"] == "refused" and r["error"] == "unauthenticated", r
+    r = d.send(wrap(d.node_key, "password.set", {"which": "admin", "password": "an0ther"}, job=next_job(d)))
+    assert r["status"] == "ok", r
+
+
+@pytest.mark.timescale(10)
+def test_password_set_is_refused_over_the_broker(nodes, tmp_path, brokers):
+    from test_server_mqtt import boot as srv_boot, dev_of, tls_broker, up, verified
+    b = tls_broker(brokers)
+    s = srv_boot(nodes, tmp_path, "repeater_wifi", "pwb", verified(b))
+    up(s)
+    r = b.iface_request(dev_of(s), {"v": 1, "id": "p1", "op": "password.set", "args": {"which": "admin", "password": "viabroker"}})
+    assert r["status"] == "refused" and r["error"] == "not-over-this-link", r

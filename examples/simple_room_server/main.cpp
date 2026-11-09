@@ -67,6 +67,14 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static uint16_t ifaceBattery(void*) { return board.getBattMilliVolts(); }
   static uint32_t ifaceClock(void*) { return the_mesh.getRTCClock()->knownTime(); }
   static const char* const ROT_REMOVED[] = {"acl", "posts", nullptr};
+  static int ifaceAclCount(void*) { return the_mesh.clients().getNumClients(); }
+  static bool ifaceAclEntry(void*, int idx, uint8_t key[32], uint8_t* perms) {
+    if (idx < 0 || idx >= the_mesh.clients().getNumClients()) return false;
+    const ClientInfo* c = the_mesh.clients().getClientByIdx(idx);
+    memcpy(key, c->id.pub_key, 32);
+    *perms = c->permissions;
+    return true;
+  }
   static int ifaceRotate(void*, const char* device_id_hex, uint32_t job_id, const char** err) {
     return the_mesh.rotateIdentity(device_id_hex, job_id, err);
   }
@@ -194,6 +202,7 @@ void setup() {
                                        nullptr, nullptr,
 #endif
                                        &the_mesh.regions(), ifaceRegionsSave, ifaceRegionsDefault, &region_snap_store,
+                                       ifaceAclCount, ifaceAclEntry,
                                      };
     dep_store.setFs(fs);
     job_store.setFs(fs);

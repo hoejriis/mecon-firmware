@@ -178,7 +178,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `contact.list`, `contact.get` | contact table (name, type, protection flag, last advert, hops, position; `list` paged by up to 6, fewer when a page would not fit); the shared secret and the path bytes never | native contact table | private | no | C | all |
 | `contact.put`, `contact.remove` | add, update, remove; a put names no flags, so it never grants telemetry or the remote CLI, and a full table behaves as for the app | `CMD_ADD_UPDATE_CONTACT`, `CMD_REMOVE_CONTACT` | write | yes | C | all |
 | `contact.protect` | protect from auto-removal (favourite flag) | contact flags | write | yes | C | all |
-| `message.send` | one native direct or channel message; a recipient or slot not there is an answer, and no contact is created | `sendMessage`, `sendGroupMessage`, as `CMD_SEND_TXT_MSG` and `CMD_SEND_CHANNEL_TXT_MSG` | write | yes | C | all |
+| `message.send` | one native direct or channel message, optionally in a flood scope of its own (`scope`, section 5.3); a recipient or slot not there is an answer, and no contact is created | `sendMessage`, `sendGroupMessage`, as `CMD_SEND_TXT_MSG` and `CMD_SEND_CHANNEL_TXT_MSG` | write | yes | C | all |
 | `message.get`, `message.list`, `message.ack` | what became of a send (section 6) | RAM table | read, then private | no | C | all |
 | `inbox.list`, `inbox.ack` | what was received (section 6.4) | a RAM copy, beside the native offline queue | read, then private | no | C | all |
 | `message.deliver` | a message the device missed, to the local stock app; never on the radio (section 6.5) | the native receive queue | write | yes | C | all |
@@ -186,8 +186,8 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `channel.put`, `channel.remove` | add, rotate, remove a channel; 128-bit keys only, a key held by another slot refused | `CMD_SET_CHANNEL`; R S: one slot | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `mgmt.channel.get` | the management channel binding: none, bound or stale | the native channel table plus its own record | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `mgmt.channel.bind`, `mgmt.channel.rotate`, `mgmt.channel.unbind` | bind a slot, rotate its key, end the binding; confirm-or-revert for anyone but the cable | `CMD_SET_CHANNEL` for a rotation | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
-| `acl.list`, `acl.put` | remote-admin ACL | CLI `setperm`; REQ `GET_ACCESS_LIST` | read / write | `acl.put` | R S | Con, MQTT where built, RF |
-| `password.set` | admin or guest password (write-only) | CLI `password`, `set guest.password` | write; commit-or-revert over RF | yes | R S | Con, RF |
+| `acl.list`, `acl.put` | remote-admin ACL: `list` gives each client's node key and role, 8 a page, never its shared secret; `put {"key","role"}` sets a role (`guest`, `read-only`, `read-write`, `admin`), adding the key if new | CLI `setperm`; REQ `GET_ACCESS_LIST` | private (list) / write | `acl.put` | R S | Con, MQTT where built. Over the air the native remote admin keeps `setperm` and `GET_ACCESS_LIST`; the LoRa management link does not carry these two |
+| `password.set` | `{"which", "password"}`: `which` is `"admin"` or `"guest"`; sets the admin or guest password, at most 15 characters (`too-long` otherwise, never cut); write-only, the answer names which one and never the value | CLI `password`, `set guest.password` | write | yes | R S | Con only: a broker session is refused (`not-over-this-link`), and the LoRa management link carries no write-only setting. Over the air the native remote admin keeps its own `password` line |
 | `clock.get` | `{"epoch": n}`, wall-clock seconds; `null` while the clock is not set | `CMD_GET_DEVICE_TIME` | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `clock.set` | `{"epoch": n}`: sets the device clock, forward only (`backwards` otherwise); the answer is the clock after it | `CMD_SET_DEVICE_TIME`, CLI `time` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `advert.send` | self advert: `{"flood": true}` floods it in the default scope, otherwise zero hop; the result names which | `CMD_SEND_SELF_ADVERT`, CLI `advert`, `advert.zerohop` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
@@ -206,7 +206,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
-**Not built yet.** No build registers `device.reset`, `identity.key.export`, `acl.list`, `acl.put`, `password.set`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `setperm`, `password`, `set guest.password`, `get prv.key`, the frame `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
+**Not built yet.** No build registers `device.reset`, `identity.key.export`, `ble.bonds` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `get prv.key`, the frame `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
 
 `contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
 
@@ -349,7 +349,11 @@ A Repeater's and a Room server's native region tree, the one the console's `regi
 - **`scope.default.clear`** sends the Companion's floods unscoped again.
 - **Confirmation** as for the region tree: a scope the network does not forward would cut the Companion's reports to its manager, so every caller but the unsigned cable must confirm. The previous name and key are kept in `/scope_snap` until the job ends.
 
-**Not yet on these operations:** LoRa point to point (they are not in its allowlist yet), the console's `region def` and `region load` (batch editors over the same tree, which `region.put` covers), and a per-send scope on `message.send` (stock's frame 54 sets one for the whole device until the next, so a manager setting it would change the app's sends too).
+**Over LoRa** the region operations run point to point, and the region changes also run on the management channel ([LORA_MANAGEMENT](LORA_MANAGEMENT.md)). `scope.default.*` do not run over LoRa: `scope.default.set` can carry a private scope's key, and key material never goes on the air.
+
+**A scope for one send.** `message.send` takes `"scope"`, named as `scope.default.set` names one (`"scope_key"` for a private scope), or `null` for an unscoped flood. It applies to that send only. The device's default, and an override a stock app set with frame 54, are as they were afterwards. A direct message that goes by a known path is not flooded, so its scope does not matter.
+
+**Not on these operations:** the console's `region def` and `region load` (batch editors over the same tree, which `region.put` covers).
 
 ### 5.4 LoRa remote administration (native)
 

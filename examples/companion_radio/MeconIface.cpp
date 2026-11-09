@@ -478,11 +478,13 @@ Status opScopeClearW(OpContext& c) { return withScope(c, opScopeClear); }
 
 // ---- contacts: the native table
 
-static MessageSend msgDirect(void* user, const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text, MessageSent& out) {
-  return static_cast<MeconIface*>(user)->mesh()->messageSendDirect(key, ts, attempt, text, out);
+static MessageSend msgDirect(void* user, const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text,
+                             const SendScope& scope, MessageSent& out) {
+  return static_cast<MeconIface*>(user)->mesh()->messageSendDirect(key, ts, attempt, text, scope, out);
 }
-static MessageSend msgChannel(void* user, int slot, uint32_t ts, const char* text, size_t len, MessageSent& out) {
-  return static_cast<MeconIface*>(user)->mesh()->messageSendChannel(slot, ts, text, len, out);
+static MessageSend msgChannel(void* user, int slot, uint32_t ts, const char* text, size_t len, const SendScope& scope,
+                              MessageSent& out) {
+  return static_cast<MeconIface*>(user)->mesh()->messageSendChannel(slot, ts, text, len, scope, out);
 }
 static uint32_t msgClock(void* user) { return static_cast<MeconIface*>(user)->mesh()->getRTCClock()->getCurrentTimeUnique(); }
 
@@ -506,7 +508,7 @@ MessageHost MeconIface::messageHost(bool create) {
 #else
   const bool channels = false;
 #endif
-  return MessageHost{_messages, MAX_TEXT_LEN, channels, msgDirect, msgChannel, msgClock, confirmJobId, _epoch, millis(), this};
+  return MessageHost{_messages, MAX_TEXT_LEN, channels, msgDirect, msgChannel, msgClock, confirmJobId, scopeOf, _epoch, millis(), this};
 }
 
 // A message event goes where a job event goes: its data names no recipient and no text. One a pass, on the loop's own
