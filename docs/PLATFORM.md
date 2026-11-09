@@ -75,7 +75,15 @@ What is set:
 
 **The mbedTLS libraries need their own copy step.** pioarduino copies the libraries one level under each component, and mbedTLS builds its three a level deeper, so a `CONFIG_MBEDTLS_*` option alone changes the headers and not the code. `bin/idf5_mbedtls_libs.py` copies them for the V3's library set. The package names the TLS library `libmbedtls_2.a`.
 
-**The mbedTLS buffers stay static.** Dynamic mbedTLS buffers (`CONFIG_MBEDTLS_DYNAMIC_BUFFER`) were tried and the radio never left `scanning` once a TLS session started. That trial ran before the copy step, so its mbedTLS code had not been rebuilt, and the cause is not known. Do not add them without measuring again.
+**The mbedTLS buffers stay static.** `CONFIG_MBEDTLS_DYNAMIC_BUFFER` is dropped by Kconfig in this library set, because it needs `CONFIG_MBEDTLS_SSL_PROTO_DTLS` off and Arduino's base config has DTLS on.
+
+*Correction, 2026-11-09:* an earlier trial reported that with dynamic buffers the radio never left `scanning` once a TLS session started. Because of that Kconfig dependency, the trial most likely never had dynamic buffers, and its result is withdrawn.
+
+Measured since, with DTLS off and the option confirmed in the generated config (v3test, an enrolled V3 standalone Companion after a reboot, `wss` to a local broker, every stream on):
+- The session connected and stayed verified.
+- Free heap moved 0.3 KB, and the low-water 1 to 3.5 KB, within the spread between identical runs.
+
+So they stay off: the gain does not pay for the change.
 
 Measured on v3test (V3 standalone Companion, `get mecon.mem` idle and 20 s after a pinned-TLS MQTT session verified, main bafb88d5 against this build in one session, 2026-10-31): idle free heap 98,276 B against 105,228 B, largest block 36,852 B against 42,996 B; with the TLS session free 36,956 B against 50,764 B (about 14 KB more), largest block 14,836 B against 31,732 B, low-water 24,860 B against 38,228 B (about 13 KB more). That is net of the 2 KB the larger IPC stacks take. The largest block moves with the memory layout (an unchanged tree has measured both 14,836 B and 31,732 B), so the free and low-water gains are the ones to rely on. An earlier split (Issue #100) put about 8 KB of free heap on the component removal and about 7 KB on the dynamic TX buffers. Both gains need the rebuilt libraries; there is no runtime-only route, because the prebuilt libraries reserve the static pool from their own sdkconfig.
 
