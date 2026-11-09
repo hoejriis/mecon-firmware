@@ -58,8 +58,10 @@ def test_radio_goes_back_to_the_builds_default_and_nothing_else(nodes, kind):
 def test_network_removes_every_stored_profile_and_keeps_the_rest(nodes, kind):
     d = boot(nodes, kind, "rn" + kind[:2])
     keys = {"wifi.profile.1.ssid": "home", "mqtt.profile.1.host": "broker.example"}
-    r = d.i.request("config.apply", {"set": dict(keys, name="keepnet")})
+    r = d.i.request("config.apply", {"set": dict(keys, name="keepnet", **{"mqtt.profile.1.type": "static"})})
     assert r["status"] == "ok", r
+    before = d.i.request("config.get", {"keys": list(keys)})["result"]["values"]
+    assert all(before[k] for k in keys), "set, so that empty afterwards means removed: %s" % before
     key = d.node_key
     assert reset(d, "network")["status"] == "ok"
     got = d.i.request("config.get", {"keys": list(keys)})["result"]["values"]
@@ -71,6 +73,10 @@ def test_contacts_removes_the_table_and_keeps_the_channels(nodes):
     d = boot(nodes, "companion_standalone", "rct")
     assert d.c.add_contact(bytes([7] * 32), "someone")[0] == 0
     assert d.i.request("channel.put", {"slot": 2, "name": "ops", "secret": CHAN_KEY.hex()})["status"] == "ok"
+    assert d.i.request("device.reboot")["status"] == "ok"   # it saves the contact, so its absence later is the reset's
+    assert d.n.wait_exit(10) == 75
+    d.n.start()
+    d.attach()
     assert d.i.request("contact.list")["result"]["count"] == 1
     key = d.node_key
     assert reset(d, "contacts")["status"] == "ok"
