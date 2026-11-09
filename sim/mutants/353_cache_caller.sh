@@ -1,0 +1,3 @@
+# The result cache answers a duplicate id only to the caller that produced it (#476)
+mutate cache_any_caller src/helpers/iface/IfaceCache.h '      if (strcmp(_e[i].op, op) != 0 || _e[i].caller != caller) return CONFLICT;' '      if (strcmp(_e[i].op, op) != 0) return CONFLICT;' sim/tests/test_cache_caller.py::test_a_phone_reusing_the_cables_id_gets_id_in_use_and_nothing_runs
+mutate cache_companion_no_link src/helpers/iface/IfaceDispatch.cpp '    ResultCache::Lookup l = cache->find(req.id, req.op, &data, &dl, _caller);' '    ResultCache::Lookup l = cache->find(req.id, req.op, &data, &dl, 0);' sim/tests/test_cache_caller.py::test_a_phone_reusing_the_cables_id_gets_id_in_use_and_nothing_runs

@@ -33,12 +33,13 @@ public:
   ResultCache() { clear(); }
 
   // HIT: *data / *len point at the stored result. EXPIRED: the id ran but its result is no longer kept (evicted, or
-  // too big to keep), so it must not run again. CONFLICT: the id is held by another operation's result, which this
-  // request must neither get nor overwrite.
-  Lookup find(const char* id, const char* op, const char** data, size_t* len) const {
+  // too big to keep), so it must not run again. CONFLICT: the id is held by another operation's result, or by another
+  // caller's (the principal, and the link where there is one), which this request must neither get nor overwrite: a hit
+  // runs no handler, so a caller check made inside one would not see a replayed id.
+  Lookup find(const char* id, const char* op, const char** data, size_t* len, uint8_t caller = 0) const {
     for (int i = 0; i < SLOTS; i++) {
       if (!_e[i].used || strcmp(_e[i].id, id) != 0) continue;
-      if (strcmp(_e[i].op, op) != 0) return CONFLICT;
+      if (strcmp(_e[i].op, op) != 0 || _e[i].caller != caller) return CONFLICT;
       if (_e[i].oversize) return EXPIRED;
       *data = _e[i].data; *len = _e[i].len;
       return HIT;
@@ -50,7 +51,7 @@ public:
   }
 
   // Oldest entry is replaced first. An id already present is overwritten in place.
-  void store(const char* id, const char* op, const char* data, size_t len) {
+  void store(const char* id, const char* op, const char* data, size_t len, uint8_t caller = 0) {
     if (strlen(id) > 32 || strlen(op) > OP_CAP) return;
     int slot = -1;
     for (int i = 0; i < SLOTS && slot < 0; i++)
@@ -61,6 +62,7 @@ public:
     }
     Entry& e = _e[slot];
     e.used = true;
+    e.caller = caller;
     strcpy(e.id, id);
     strcpy(e.op, op);
     e.oversize = len > ENTRY_CAP;
@@ -75,6 +77,7 @@ private:
     char id[33];
     char op[OP_CAP + 1];
     bool used, oversize;
+    uint8_t caller;
     uint16_t len;
     char data[IFACE_CACHE_ENTRY_CAP];
   };
