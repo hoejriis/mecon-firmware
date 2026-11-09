@@ -543,3 +543,33 @@ def test_a_native_channel_write_makes_the_companion_read_the_binding(ether, node
     d.c.set_channel(1, "ops", KEY)
     time.sleep(0.2)
     assert reads() > before, "a slot written by a frame can leave the binding stale, and no request said so"
+
+
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_the_region_tree_is_managed_over_lora_with_confirm(ether, nodes, kind):
+    d, m = enrolled(nodes, ether, kind, "rg" + kind[:2])
+    r = m.send(d.node_key, wrap(d.node_key, "region.put", {"name": "city", "confirm": {"within_s": 120}}, job=1))
+    assert r and r["status"] == "ok" and r["result"]["job_state"] == "awaiting-confirm", r
+    assert verifies(r.raw, d.node_key, "result")
+    c = m.send(d.node_key, wrap(d.node_key, "job.confirm", {"job": r["result"]["job"]}, job=2))
+    assert c and c["status"] == "ok", c
+    page = m.send(d.node_key, wrap(d.node_key, "region.list", job=3))   # a job id: accepted whether or not it is a plain read
+    assert page and page["status"] == "ok", page
+    assert [e["name"] for e in page["result"]["regions"]] == ["city"], page
+
+
+def test_a_full_length_region_tree_pages_over_lora(ether, nodes):
+    # Eight 30-byte names do not fit one LoRa reply with the signature; the list pages instead of answering too-large
+    d = target(nodes, ether, "repeater", "rgl")
+    names = ["%s%02d" % ("r" * 28, k) for k in range(8)]
+    for name in names:   # made over the cable before enrolling, so each takes effect at once
+        assert d.i.request("region.put", {"name": name})["status"] == "ok"
+    assert d.provision()["status"] == "ok"
+    m = Radio(nodes, ether, "rgl")
+    got, cursor, job, pages = [], 0, 1, 0
+    while cursor is not None and pages < 8:
+        r = m.send(d.node_key, wrap(d.node_key, "region.list", {"cursor": cursor}, job=job))
+        assert r and r["status"] == "ok", r
+        got += [e["name"] for e in r["result"]["regions"]]
+        cursor, job, pages = r["result"]["next"], job + 1, pages + 1
+    assert got == names and pages >= 2, (pages, got)

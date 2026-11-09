@@ -107,6 +107,7 @@ public:
   void raw(const char* json) { raw(json, strlen_(json)); }
   bool ok() const { return !_fail; }
   size_t size() const { return _n; }
+  size_t cap() const { return _cap; }
   void reset() { _n = 0; _depth = 0; _fail = (_cap == 0); if (_cap) _b[0] = 0; }
   bool balanced() const { return _depth == 0; }
 private:

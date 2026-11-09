@@ -39,6 +39,9 @@ void hexOf(char* out, const uint8_t* b, size_t n) {
 // signature (99), the op and counters it adds (about 60), the closing of the array and result and a `next` member.
 const size_t HELLO_SIGNED_BUDGET = 1350;
 const size_t HELLO_PLAIN_BUDGET = 1500;
+// Over LoRa a whole reply is at most LORA_MSG_MAX (1,024 bytes): the signed envelope, about 230 bytes without a nonce,
+// leaves this much for the hello's body before it pages.
+const size_t HELLO_LORA_BUDGET = 700;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
@@ -238,7 +241,7 @@ Status opHello(OpContext& c) {
   int64_t from = 0;
   const int ct = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "cursor") : -1;
   if (ct >= 0 && !jsonGetInt(*c.doc, ct, 0, 255, &from)) return ST_INVALID;
-  const size_t room = m->enrolled() ? HELLO_SIGNED_BUDGET : HELLO_PLAIN_BUDGET;
+  const size_t room = m->onLora() ? HELLO_LORA_BUDGET : m->enrolled() ? HELLO_SIGNED_BUDGET : HELLO_PLAIN_BUDGET;
   unsigned idx = 0;
   int next = -1;
   const bool lora = m->onLora();
@@ -1196,6 +1199,8 @@ void MeconIface::loraTick(uint32_t now) {
       } else {
         n = writeResult(res, LORA_MSG_MAX + 1, "", ST_REFUSED, nullptr, "unauthenticated");
       }
+      // A result that came out empty or past the LoRa bound is answered, not dropped: the manager learns why, at once.
+      if (n <= 0 || (size_t)n > LORA_MSG_MAX) { n = writeResult(res, LORA_MSG_MAX + 1, "", ST_BUSY, nullptr, "too-large"); verified = false; }
       if (n > 0) _lora.queueReply(*p, res, (size_t)n, verified, now);
       free(res);
     }
