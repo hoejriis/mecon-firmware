@@ -58,3 +58,15 @@ def test_every_env_is_named_to_pio(tmp_path):
 def test_no_env_is_a_usage_error(tmp_path):
     fake_pio(tmp_path, 0)
     assert run(tmp_path).returncode != 0
+
+
+def test_a_server_error_from_the_download_host_is_retried(tmp_path):
+    fake_pio(tmp_path, 1, "PackageException: Got the unrecognized status code '504' when downloaded https://example/p.zip")
+    r = run(tmp_path, "heltec_v4_companion_radio_wifi")
+    assert r.returncode == 0 and calls(tmp_path) == 2 and "try 2 of 3" in r.stdout
+
+
+def test_a_client_error_from_the_download_host_is_a_verdict(tmp_path):
+    fake_pio(tmp_path, 99, "PackageException: Got the unrecognized status code '404' when downloaded https://example/p.zip")
+    r = run(tmp_path, "some_env")
+    assert r.returncode == 0 and calls(tmp_path) == 1 and "not on a download" in r.stdout

@@ -594,3 +594,13 @@ def test_the_settings_schema_and_the_deployment_read_arrive_over_lora(ether, nod
     assert got == whole, (got, whole)
     r = m.send(d.node_key, wrap(d.node_key, "deployment.get", job=job))
     assert r and r["status"] == "ok" and r["result"]["state"] == "provisioned" and r["result"]["members"], r
+
+
+def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
+    # A Companion's signed status.get is near 1 KB: 7 reply frames, which all full would be past the 1,024-byte bound.
+    # The manager took only the last of them until the bound was read from the last frame's length (#457).
+    d, m = enrolled(nodes, ether, "companion_standalone", "rfc")
+    r = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="sg1"), timeout=90.0)
+    assert r and r["status"] == "ok", r
+    assert len(r.raw) > 900, len(r.raw)
+    assert verifies(r.raw, d.node_key, "result"), "read whole: the signature still holds"

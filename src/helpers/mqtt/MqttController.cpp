@@ -118,7 +118,7 @@ void MqttController::publishStatus() {
   uint8_t cur = _core.current();
   const char* tls = !_profiles->p[cur].useTls() ? "plain" : (_core.verified() ? "verified" : "unverified");
   snprintf(payload, sizeof(payload), "{\"online\":true,\"profile\":%u,\"tls\":\"%s\"}", (unsigned)cur, tls);
-  _psc.publish(_topic, payload, true);
+  pub(_topic, (const uint8_t*)payload, (unsigned)strlen(payload), true);
   _next_status = millis() + STATUS_REPUBLISH_MS;
 }
 
@@ -315,12 +315,12 @@ void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
     memcpy(req, payload, len);
     req[len] = 0;
     const size_t n = _iface_fn(_iface_user, sessionContext(), req, len, out, IFACE_PACKET_BUFFER - 64);
-    if (n) _psc.publish(_iface_resp, (const uint8_t*)out, (unsigned)n, false);
+    if (n) pub(_iface_resp, (const uint8_t*)out, (unsigned)n, false);
   } else {
     // Said, not silent: a manager waiting on a timeout cannot tell this from a lost session. No id, because the request
     // could not be read, and no signature, which would want the memory that is missing.
     static const char BUSY[] = "{\"v\":1,\"id\":\"\",\"status\":\"busy\",\"error\":\"no-memory\",\"unsigned\":\"no-memory\"}";
-    _psc.publish(_iface_resp, (const uint8_t*)BUSY, (unsigned)(sizeof(BUSY) - 1), false);
+    pub(_iface_resp, (const uint8_t*)BUSY, (unsigned)(sizeof(BUSY) - 1), false);
   }
   if (req) {
     Iface::wipe(req, len + 1);   // a write may have carried a secret
@@ -329,11 +329,20 @@ void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
   free(out);
 }
 
+bool MqttController::pub(const char* topic, const uint8_t* payload, unsigned len, bool retained) {
+  const uint32_t t0 = millis();
+  const bool ok = _psc.publish(topic, payload, len, retained);
+  const uint32_t ms = millis() - t0;
+  if (ms > _write_ms_max) _write_ms_max = ms;
+  if (ms >= 1000) _slow_writes++;
+  return ok;
+}
+
 bool MqttController::publishIfaceEvent(const char* stream, const char* payload, size_t len) {
   if (!_iface_fn || !sessionUp()) return false;
   char topic[64];
   snprintf(topic, sizeof(topic), "mecon/%s/ev/%s", _device_id, stream);
-  return _psc.publish(topic, (const uint8_t*)payload, (unsigned)len, false);
+  return pub(topic, (const uint8_t*)payload, (unsigned)len, false);
 }
 
 void MqttController::onMessage(const char* topic, const uint8_t* payload, unsigned len) {
@@ -352,7 +361,7 @@ void MqttController::onMessage(const char* topic, const uint8_t* payload, unsign
     const uint8_t status = _cli_fn(_cli_user, ctx, req.cmd, reply, sizeof(reply));
     n = Cli::Mqtt::formatResponse(out, sizeof(out), req.id, status, reply);
   }
-  if (n) _psc.publish(_resp_topic, (const uint8_t*)out, (unsigned)n, false);
+  if (n) pub(_resp_topic, (const uint8_t*)out, (unsigned)n, false);
 }
 
 void MqttController::loop() {
@@ -416,6 +425,8 @@ void MqttController::snapshot(Snapshot* out) {
   *out = Snapshot();
   out->active = _started && _enabled;
   out->reconnects = _sessions > 1 ? _sessions - 1 : 0;
+  out->write_ms_max = _write_ms_max;
+  out->slow_writes = _slow_writes;
   if (!out->active) return;
   out->state = _core.state();
   out->profile = _core.current();
