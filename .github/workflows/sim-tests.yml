@@ -64,7 +64,9 @@ jobs:
           for i in 1 2; do
             timeout 180 $APT update && timeout 180 $APT install -y --no-install-recommends mosquitto mosquitto-clients openssl libssl-dev && break
             [ "$i" = 2 ] && exit 1
-            echo "apt attempt $i failed or timed out; retrying"; sleep 10
+            echo "apt attempt $i failed or timed out; retrying on archive.ubuntu.com"; sleep 10
+            # The runner's mirror list names Azure's Ubuntu mirror, which went unreachable for over an hour on 2026-11-11.
+            echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           done
           sudo systemctl stop mosquitto || true   # the package starts a default broker; the tests start their own
       - run: pip install "platformio==6.2.0" pytest
