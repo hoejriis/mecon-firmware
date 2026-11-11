@@ -292,7 +292,11 @@ TEST(IfaceConfig, ServerTableHasItsOwnKeys) {
   unsigned i;
   EXPECT_NE(nullptr, findKey(SERVER_KEYS, N_SERVER_KEYS, "lat", 3, &i));
   EXPECT_NE(nullptr, findKey(SERVER_KEYS, N_SERVER_KEYS, "advert.interval", 15, &i));
-  EXPECT_EQ(nullptr, findKey(SERVER_KEYS, N_SERVER_KEYS, "wifi.enabled", 12, &i));   // no Wi-Fi CLI on a server
+#ifdef ENABLE_WIFI_INTERFACE   // the Wi-Fi keys are in either table exactly when the build has Wi-Fi
+  EXPECT_NE(nullptr, findKey(SERVER_KEYS, N_SERVER_KEYS, "wifi.enabled", 12, &i));
+#else
+  EXPECT_EQ(nullptr, findKey(SERVER_KEYS, N_SERVER_KEYS, "wifi.enabled", 12, &i));
+#endif
   EXPECT_EQ(nullptr, findKey("lat", 3, &i));                                            // and the Companion's has no lat
 }
 
@@ -309,7 +313,11 @@ TEST(IfaceConfig, ServerSchemaListsTheServerTable) {
   }
   EXPECT_NE(std::string::npos, all.find("\"key\":\"loop.detect\""));
   EXPECT_NE(std::string::npos, all.find("\"format\":\"latitude\""));
+#ifdef ENABLE_WIFI_INTERFACE
+  EXPECT_NE(std::string::npos, all.find("wifi.profile"));
+#else
   EXPECT_EQ(std::string::npos, all.find("wifi.profile"));
+#endif
   size_t listed = 0;
   for (size_t at = all.find("\"key\":"); at != std::string::npos; at = all.find("\"key\":", at + 1)) listed++;
   EXPECT_EQ(N_SERVER_KEYS, listed);   // exactly the server table: no key past its end
