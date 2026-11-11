@@ -100,6 +100,23 @@ Flash and static RAM of the V3 envs, main (bafb88d5) against this build (local b
 
 Flash drops by about 57-63 KB on the BLE, standalone and Wi-Fi Companions and by about 39-40 KB on the USB Companion, the repeater and the room server; static RAM by about 1.3-1.6 KB. The V3 budgets in `ci/size-budget.txt` were set from these builds (use + 4 KB) and have been raised since, in the PRs that needed it.
 
+### The BT controller's memory, in Wi-Fi mode
+
+Arduino-ESP32 hands the BT controller's reserved memory to the heap at start-up only in builds that link no BLE library. The standalone Companion links one, so in Wi-Fi mode, where the BLE stack is never started before a restart, that memory sat unused. The Companion now releases it (`esp_bt_controller_mem_release`) when it boots in Wi-Fi mode. A mode change to BLE takes effect through a restart, which brings the memory back.
+
+Measured on v3test (V3 standalone Companion, enrolled, after a reboot, `wss` to a local broker, every stream on, 10 minutes, 30 reads each, 2026-11-11, v0.3.1 bench builds):
+
+| Build | Lowest `min_free` | Free heap | Largest block |
+|---|---|---|---|
+| v0.3.1 | 40,764 B | 49.6–53.0 KB | 31,732 B |
+| with the release | 44,972 B (+4.2 KB) | 51.3–54.6 KB | 31,732 B |
+
+One run each, and identical runs have spread by up to 3.5 KB.
+
+Two other levers from Issue #100 were measured in the same session and are not used:
+- **4 static Wi-Fi RX buffers** instead of 10 (with `CONFIG_ESP_WIFI_RX_BA_WIN=6`, which ESP-IDF requires): 38,504 B. With the release as well: 36,480 B, which undoes the release's gain.
+- **6 LWIP sockets** instead of 10: 40,312 B, no gain.
+
 ### The Heltec V4 has its own rebuilt libraries
 
 The V4 envs extend `esp32s3_v4_idf5_base`, whose rebuilt set holds the 2,048-byte IPC stack and the same 13 removed components, and nothing else. The V3's dynamic Wi-Fi TX buffers are left out. They need `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n`, which moves Wi-Fi and LWIP out of the V4's PSRAM. Measured on v4test with Wi-Fi + TLS MQTT, the V3's set cost the V4 internal heap: free 101,472 B against 102,568 B on main, largest block 34,804 B against 38,900 B, low-water 91,816 B against 97,832 B. In the V4's set `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` stays on, and the linked `esp_ipc_init` creates the IPC tasks with 2,048 bytes. Measured on v4test (V4.3 OLED, standalone Companion, 2026-11-01): 303 software resets of main gave 6 IPC canary panics (2.0 %; 4 in ipc0, 2 in ipc1), 300 of this build gave none. In one session, `get mecon.mem` idle free 140,916 B on main against 147,612 B; with a pinned-TLS MQTT session free 96,792 B against 103,484 B and low-water 92,020 B against 98,692 B (about 6.7 KB more each, net of the 2 KB the IPC stacks take); PSRAM free unchanged at 2,035,116 B. The largest block, 32,756 B against 38,900 B, moves with the layout and is not relied on.

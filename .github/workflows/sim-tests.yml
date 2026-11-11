@@ -38,14 +38,14 @@ permissions:
 jobs:
   sim:
     runs-on: ubuntu-latest
-    # The suite takes about an hour in one job, so it runs in three: sim/shard.py keeps the split even, and a test in
+    # The suite takes about an hour in one job, so it runs in four: sim/shard.py keeps the split even, and a test in
     # sim/tests/test_shard.py fails if a file is dropped. Lock-step nodes wait on a broker barrier, so a deadlock would
     # otherwise hold the runner for GitHub's 6 h default before anyone saw a result.
-    timeout-minutes: 60
+    timeout-minutes: 75   # the slowest shard ran 53 min of tests at three shards (2026-11-11)
     strategy:
       fail-fast: false   # a failure in one shard says nothing about the others
       matrix:
-        shard: [0, 1, 2]
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
@@ -64,7 +64,9 @@ jobs:
           for i in 1 2; do
             timeout 180 $APT update && timeout 180 $APT install -y --no-install-recommends mosquitto mosquitto-clients openssl libssl-dev && break
             [ "$i" = 2 ] && exit 1
-            echo "apt attempt $i failed or timed out; retrying"; sleep 10
+            echo "apt attempt $i failed or timed out; retrying on an HTTPS mirror"; sleep 10
+            # On 2026-11-11 the hosted runners lost plain HTTP to every Ubuntu archive for hours while HTTPS still worked.
+            echo "https://mirrors.edge.kernel.org/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           done
           sudo systemctl stop mosquitto || true   # the package starts a default broker; the tests start their own
       - run: pip install "platformio==6.2.0" pytest
@@ -80,5 +82,5 @@ jobs:
           if [ -n "$PYTEST_ARGS" ]; then
             if [ "${{ matrix.shard }}" = 0 ]; then python3 -m pytest $PYTEST_ARGS -v; fi
           else
-            python3 -m pytest $(python3 sim/shard.py ${{ matrix.shard }} 3) -v
+            python3 -m pytest $(python3 sim/shard.py ${{ matrix.shard }} 4) -v
           fi
