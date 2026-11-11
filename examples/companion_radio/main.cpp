@@ -6,7 +6,7 @@
 #include "MyMesh.h"
 #include <helpers/net/NetTelemetry.h>
 #include <helpers/HeapFloor.h>
-#if defined(ESP32) && defined(ENABLE_CONNMODE)
+#if defined(ESP32) && defined(ENABLE_CONNMODE) && !defined(SIM_BLE_STUB)   // the simulated board has no BT controller
   #include <esp_bt.h>   // esp_bt_controller_mem_release, in Wi-Fi mode
 #endif
 
@@ -314,7 +314,7 @@ void setup() {
     // Wi-Fi mode: the BLE stack is never initialised, and a mode change takes effect only through a restart. Arduino hands
     // the BT controller's memory to the heap only in builds that link no BLE library; this build links one, so release it
     // here: about 4 KB more heap low-water on a Heltec V3 with a TLS MQTT session (docs/PLATFORM.md).
-#if defined(ESP32)
+#if defined(ESP32) && !defined(SIM_BLE_STUB)
     esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
 #endif
   } else
