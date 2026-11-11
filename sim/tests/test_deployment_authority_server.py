@@ -185,7 +185,7 @@ def test_a_sensitive_operation_needs_the_consoles_nonce_once(nodes):
     assert n1 == d.nonce(), "stable until used"
     assert d.send(wrap(d.node_key, "identity.key.export", job=1))["error"] == "bad_channel_nonce"
     r = d.send(wrap(d.node_key, "identity.key.export", job=2, nonce=n1))
-    assert r["status"] == "unknown-op", "past every check; this build has no such operation: %s" % r
+    assert r["status"] == "ok" and "wrapped" in r["result"], "past every check: the key, wrapped for the signer: %s" % r
     assert d.nonce() != n1, "a nonce is used once"
 
 

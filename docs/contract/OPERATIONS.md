@@ -214,9 +214,9 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `identity.get` | `device_id`, `node_key` and `device_id_sig`, as `hello` gives them | | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `identity.rotate` | new node key on the device | | per [AUTHORITY](AUTHORITY.md) | yes | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `identity.rotation` | the old key's signed statement of the rotation | | read | no | C R S | all |
-| `identity.key.export` | private key under its custody rule | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | per [AUTHORITY](AUTHORITY.md) |
+| `identity.key.export` | the node private key: `{"key"}` in clear with no Deployment record (or a corrupt one); once enrolled `{"wrapped","for","alg"}`, wrapped for the member that signed (mecon-kx-v1, below); never cached | `CMD_EXPORT_PRIVATE_KEY`, CLI `get prv.key` | secret | no | C R S | no record: the cable, and on a Companion a phone paired with its own PIN; enrolled: a member's signed request with the link's nonce, on any wire transport; corrupt record: the cable; Hardened: none; never over LoRa |
 | `ble.bonds` | `{"count","clear_pending"}`: the centrals the BLE stack holds a bond for, `null` while the stack is not running; whether a `device.reset bonds` still waits for a BLE start | NimBLE, Bluefruit and Bluedroid bond stores | read | no | C (BLE builds) | all |
-| `ble.pin.get` | the BLE PIN | device info, CLI | secret | no | C (BLE builds) | USB, MQTT (SECURITY_AND_AUTHORITY) |
+| `ble.pin.get` | `{"pin"}`, the BLE passkey in use; never answered from the result cache | device info, CLI | secret | no | C (BLE builds) | the cable on any device; a verified broker session on a device with no Deployment record; a member's signed request, with its nonce, once enrolled; refused to a paired phone and over LoRa |
 | `posture.set` | `{"posture":"normal"}` or `{"posture":"hardened"}`; the device reboots about 1.5 s after a change, or 60 s over LoRa so that the answer goes out first. `status.get` reports the posture | CLI `set posture` | posture | yes | C R S | standalone: raising a cable or paired BLE, lowering a cable. Enrolled: a signature, with a job id |
 | `deployment.*` | provisioning, authority updates, record, local unlock | | per [AUTHORITY](AUTHORITY.md) | | C R S | per [AUTHORITY](AUTHORITY.md) |
 | `update.*` | firmware update lifecycle ([UPDATES.md](UPDATES.md)) | | per [UPDATES](UPDATES.md) | | C R S | per [UPDATES](UPDATES.md) |
@@ -226,7 +226,13 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `standing.remove` | `{"id"}` | | write | yes | C R S | as the table |
 | `rf.request` | `{"to":"<node key>","message":"<a signed request, as text>","slot":n,"xid":n}`: `xid` re-sends a message under the same number, so the target keeps the frames it has; this Companion carries it to another node over LoRa, on that channel slot or, with no slot, point to point, and the reply comes back on the `rf` stream. It adds no authority: the target verifies the message | | write | no | C | as the caller, per [LORA_MANAGEMENT](LORA_MANAGEMENT.md) |
 
-**Not built yet.** No build registers `identity.key.export` or `ble.pin.get`; a request for one is answered `unknown-op`. Their rows above are the target. The native paths work where the rows name them: CLI `get prv.key`, the frame `CMD_EXPORT_PRIVATE_KEY`, under the CLI and frame rules (sections 5.2 and 5.3).
+**The key wrap, mecon-kx-v1.** Once enrolled, the exported key travels only wrapped for the member that signed the request, so a broker, a log or a relay holding the signed result never holds a usable key.
+- **Shared secret:** X25519 of the node key and that member's key from the stored set. A Backend computes it from the member's Ed25519 seed and the node's public key, as libsodium's `crypto_sign_ed25519_sk_to_curve25519` and `crypto_sign_ed25519_pk_to_curve25519` convert them.
+- **Per-export key:** `K = HMAC-SHA256(shared, "mecon key-export v1" ‖ job_id as 4 bytes big-endian)`.
+- **Cipher and tag:** `ct = AES-128-CTR(K[0..15], counter from zero)`, then `tag = HMAC-SHA256(K[16..31], ct)` cut to 16 bytes.
+- **On the wire:** `wrapped` is base64 of `ct ‖ tag`.
+
+`tools/mecon_kx.py` is a plain-Python reference. `test/fixtures/key_export_v1.json` is a public vector, and the firmware reproduces it exactly (sim/tests/test_key_export.py).
 
 `contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
 

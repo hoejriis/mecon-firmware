@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/sub.start.result.json",
   "title": "Result of sub.start (v1.0)",
-  "description": "Request args: {\"stream\", \"period_s\" within the stream's bounds (TELEMETRY.md section 2), \"lifetime_s\": 10..600 (default 300)}. The subscription belongs to the transport the request came on (an MQTT one lapses with the session); sending sub.start again renews it. A periodic stream runs at the shortest period any subscriber asked for, and the first event follows at once. An event stream (observations) has no period: period_s is refused with no-period and reported as null. An unknown stream is invalid with error unknown-stream.",
+  "description": "Request args: {\"stream\", \"period_s\" within the stream's bounds (TELEMETRY.md section 2), \"lifetime_s\": 10..600 (default 300)}. The subscription belongs to the transport the request came on (an MQTT one lapses with the session); sending sub.start again renews it. A periodic stream runs at the shortest period any subscriber asked for, and the first event follows at once. An event stream (observations) has no period: period_s is refused with no-period and reported as null. An unknown stream is invalid with error unknown-stream; a period_s outside the stream's bounds, or not an integer, is invalid with bad-period; a lifetime_s outside 10..600, or not an integer, is invalid with bad-lifetime.",
   "type": "object",
   "required": ["stream", "period_s", "lifetime_s"],
   "properties": {

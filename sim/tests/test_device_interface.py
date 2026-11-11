@@ -205,8 +205,10 @@ def assert_case(i, case, answer):
 
 def test_every_request_fixture_against_the_device(nodes):
     n, (c, i) = start(nodes, "fx")
+    import mecon_fixture
+    keys = mecon_fixture.schema_keys(lambda op, args: i.request(op, args))
     for case in fixture("requests.json")["cases"]:
-        if "companion" not in case.get("roles", ["companion"]):
+        if "companion" not in case.get("roles", ["companion"]) or not mecon_fixture.applicable(case, keys)[0]:
             continue
         if "raw" in case:
             i.send_raw(case["raw"].encode())

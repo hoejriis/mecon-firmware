@@ -14,6 +14,7 @@
 #include <helpers/iface/MgmtChannel.h>
 #include <helpers/iface/ScopeOps.h>
 #include <helpers/iface/ResetOps.h>
+#include <helpers/iface/KeyExportOps.h>
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/cli/CliPolicy.h>
@@ -155,6 +156,8 @@ public:
   // Whether the device holds a Deployment record, healthy or corrupt: an unsigned caller then changes nothing
   // (AUTHORITY.md section 9). The CLI privilege table takes it as Context.enrolled.
   bool enrolled() const { return _auth.enrolled(); }
+  const Cli::Context& callerContext() const { return _ctx; }
+  const Iface::DeployAuth& authState() const { return _auth; }
   void setRolesListener(Iface::DeployAuth::RolesListener f, void* user) { _auth.setRolesListener(f, user); }   // #218
   bool hasUnlockSecret() const { return _auth.hasUnlockSecret(); }
   // After a factory reset has formatted the storage: the provisioned marker goes with the record, and the state in

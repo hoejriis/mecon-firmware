@@ -205,7 +205,8 @@ inline Reason tableCell(Principal p, bool hardened, uint8_t cls) {
     /* button         H */   CLI_ROW(NOT_PERMITTED,   NOT_PERMITTED,   NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   NOT_PERMITTED, NOT_PERMITTED, NOT_PERMITTED) },
     /* Ethernet admin N */ { CLI_ROW(ALLOW,           ALLOW,           LOCAL_ONLY,      NOT_PERMITTED,   LOCAL_ONLY,      ALLOW, NOT_PERMITTED, NOT_PERMITTED),
     /* Ethernet admin H */   CLI_ROW(NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF,      NETCON_OFF, NETCON_OFF, NETCON_OFF) },
-    // signed: custody (secret) comes with its own change; no remote erase, whatever the signature (AUTHORITY.md section 11)
+    // signed: the secret class stays refused here; identity.key.export and ble.pin.get decide their own callers in their
+    // handlers (KeyExportOps.h, MeconIface.cpp). No remote erase, whatever the signature (AUTHORITY.md section 11)
     /* signed         N */ { CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW, ALLOW, ALLOW),
     /* signed         H */   CLI_ROW(ALLOW,           ALLOW,           NOT_PERMITTED,   ALLOW,           NOT_PERMITTED,   ALLOW, ALLOW, ALLOW) },
   };
