@@ -32,6 +32,7 @@ BIN = {
     "companion_wifi": os.path.join(REPO, ".pio/build/sim_companion_wifi/program"),
     # the standalone Companion: connectivity-mode switching, the real ui-new screens on a recording display
     "companion_standalone": os.path.join(REPO, ".pio/build/sim_companion_standalone/program"),
+    "companion_iface_usb": os.path.join(REPO, ".pio/build/sim_companion_iface_usb/program"),
     # the Companion built with the stock contact array (-D CONTACTS_STOCK_ARRAY): the opt-out of the adaptive contact store
     "companion_stockcontacts": os.path.join(REPO, ".pio/build/sim_companion_stockcontacts/program"),
     # the standalone Companion with the stock contact array: the rescue rebuild formats the file system

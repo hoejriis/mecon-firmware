@@ -80,7 +80,7 @@ Native operations stay native: messaging, contacts, channels, adverts, clock, re
 
 ### 5. Settings: one store, the CLI's
 
-`config.get` and `config.apply` are built on the existing CLI settings, not beside them. Each schema key maps to the CLI `get`/`set` it stands for (`name` → `get name`/`set name`, `wifi.profile.1.ssid` → `set wifi.profile 1 ssid`), so there is one store, one validation and one audit trail. A key the CLI has no line for does not exist in the schema.
+`config.get` and `config.apply` are built on the existing CLI settings, not beside them. Each schema key maps to the CLI `get`/`set` it stands for (`name` → `get name`/`set name`, `wifi.profile.1.ssid` → `set wifi.profile 1 ssid`), so there is one store, one validation and one audit trail. A key the CLI has no line for does not exist in the schema. Nor does a key for hardware the board lacks: a build without Wi-Fi (the Wio Tracker L1 and SenseCAP T1000-E Companions) lists no `wifi.*` key and no `connectivity.mode`, and `config.apply` of one is `invalid`, as for any key the device does not have. *(Corrected 2026-11-11: until v0.3.0 the Companion listed and accepted the Wi-Fi keys on every board.)*
 
 Indexes in keys are **0-based**, as in the CLI: `wifi.profile.0.ssid` is the first profile, `wifi.profile.1.ssid` the second, `mqtt.profile.0.host` the first broker profile.
 

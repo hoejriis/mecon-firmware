@@ -12,9 +12,11 @@ const KeyDef KEYS[] = {
   {"name", K_STRING, 1, 31, nullptr, KF_WRITABLE, 0, "get name", F_WHOLE, "set name %s"},
   {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get tx", F_WHOLE, "set tx %s"},
   {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
+#ifdef ENABLE_WIFI_INTERFACE   // a board without Wi-Fi has neither the mode switch nor the profiles: `invalid`, as any key it lacks
   {"connectivity.mode", K_ENUM, 0, 0, "ble|wifi", KF_WRITABLE | KF_CONFIRM | KF_RESTARTS, 0, "get connectivity.mode", F_WHOLE,
    "set connectivity.mode %s"},
 #include "IfaceNetKeys.inc"
+#endif
 };
 const size_t NKEYS = sizeof(KEYS) / sizeof(KEYS[0]);
 
