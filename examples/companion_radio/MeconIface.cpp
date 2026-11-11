@@ -57,6 +57,12 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
 #if defined(BLE_PIN_CODE)
                                     , "ble.bonds", "ble.pin.get"
 #endif
+#if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
+                                    , "net.profile.clear"
+#endif
+#ifdef ENABLE_MQTT
+                                    , "mqtt.profile.anchor"
+#endif
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -72,6 +78,8 @@ Status opDeviceReboot(OpContext& c);
 Status opDeviceResetW(OpContext& c);
 Status opBleBonds(OpContext& c);
 Status opAuditListW(OpContext& c);
+Status opNetClear(OpContext& c);
+Status opNetAnchor(OpContext& c);
 Status opBlePin(OpContext& c);
 Status opKeyExportW(OpContext& c);
 Status opStatus(OpContext& c);
@@ -157,6 +165,12 @@ const OpEntry OPS[] = {
   {"ble.bonds", opBleBonds, PRIV_READ, false},
   // The posture class (the CLI's `get audit`, the logs stream) is checked in the handler, as for sub.start logs.
   {"audit.list", opAuditListW, PRIV_READ, false},
+#if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
+  {"net.profile.clear", opNetClear, PRIV_WRITE, true},
+#endif
+#ifdef ENABLE_MQTT
+  {"mqtt.profile.anchor", opNetAnchor, PRIV_WRITE, true},
+#endif
   // Never answered from the cache: a PIN must not sit in the result cache for a later caller's retry.
   {"ble.pin.get", opBlePin, PRIV_READ, false},
   // The handler decides who may have it (KeyExportOps.h), so it is never answered from the cache.
@@ -296,6 +310,14 @@ Status opDeviceResetW(OpContext& c) {
 }
 
 Status opAuditListW(OpContext& c) { return opAuditList(c, MeconIface::streamAllow, self(c)); }
+Status opNetClear(OpContext& c) {
+  NetProfileHost h = self(c)->netHost();
+  return opNetProfileClear(c, h);
+}
+Status opNetAnchor(OpContext& c) {
+  NetProfileHost h = self(c)->netHost();
+  return opMqttAnchor(c, h);
+}
 
 Status opHello(OpContext& c) {
   MeconIface* m = self(c);
