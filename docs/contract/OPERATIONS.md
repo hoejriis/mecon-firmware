@@ -237,12 +237,12 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 `contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
 
 **Keys `config.*` reaches.**
-- Companion: 19 key patterns, 96 concrete keys: `name`, `tx`, `radio`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|transport|path|site|user|pwd|priority`. The 22 password and user keys are write-only.
-- Repeater and Room server: 12 keys: `name`, `tx`, `radio`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`. The Heltec builds also have the Wi-Fi and broker keys above; `connectivity.mode` stays on the Companion, because a server has no BLE to choose between.
+- Companion: 29 key patterns, 106 concrete keys on a build with Wi-Fi: `name`, `tx`, `radio`, the radio preferences `af`, `int.thresh`, `cad`, `radio.rxgain`, `rxdelay`, `txdelay`, `direct.txdelay`, `agc.reset.interval`, `path.hash.mode` and `multi.acks`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|transport|path|site|user|pwd|priority`. The 22 password and user keys are write-only. A build without Wi-Fi has 13: `name`, `tx`, `radio` and the radio preferences.
+- Repeater and Room server: 22 keys: `name`, `tx`, `radio`, the radio preferences `af`, `int.thresh`, `cad`, `radio.rxgain`, `rxdelay`, `txdelay`, `direct.txdelay`, `agc.reset.interval`, `path.hash.mode` and `multi.acks`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`. The Heltec builds also have the Wi-Fi and broker keys above; `connectivity.mode` stays on the Companion, because a server has no BLE to choose between.
 
 Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in `src/helpers/iface/IfaceConfig.cpp`) has them, so each is reached by its CLI line only:
-- **Companion:** `mqtt.profile.N.anchor` (with the CA lines as one operation), `tz.offset`, and the remaining radio preferences (`af`, `rxdelay`, `txdelay`, `direct.txdelay`, `int.thresh`, `cad`, `radio.rxgain`, `agc.reset.interval`, `path.hash.mode`, `multi.acks`, `dutycycle`).
-- **Repeater and Room server:** the same radio preferences, plus `flood.max.advert`, `flood.max.unscoped` and `guest.password` (write-only).
+- **Companion:** `mqtt.profile.N.anchor` (with the CA lines as one operation) and `tz.offset`. `dutycycle` is `af` seen as a percentage, so the `af` key reaches it.
+- **Repeater and Room server:** `flood.max.advert`, `flood.max.unscoped` and `guest.password` (write-only).
 - **Stays a separate posture-class operation:** `mqtt.profile.N.manage`, which is set locally, never remotely.
 
 ### 5.2 Native Companion frames

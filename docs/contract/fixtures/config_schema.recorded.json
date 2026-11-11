@@ -46,6 +46,134 @@
             "confirm": true
           },
           {
+            "key": "af",
+            "type": "string",
+            "min_len": 1,
+            "max_len": 8,
+            "format": "airtime-factor",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
+          {
+            "key": "int.thresh",
+            "type": "integer",
+            "min": 0,
+            "max": 255,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
+          {
+            "key": "cad",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          }
+        ],
+        "next": 6
+      }
+    },
+    {
+      "cursor": 6,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
+          {
+            "key": "radio.rxgain",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
+          {
+            "key": "rxdelay",
+            "type": "string",
+            "min_len": 1,
+            "max_len": 8,
+            "format": "rx-delay",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
+          {
+            "key": "txdelay",
+            "type": "string",
+            "min_len": 1,
+            "max_len": 8,
+            "format": "tx-delay",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
+          {
+            "key": "direct.txdelay",
+            "type": "string",
+            "min_len": 1,
+            "max_len": 8,
+            "format": "tx-delay",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
+          {
+            "key": "agc.reset.interval",
+            "type": "integer",
+            "min": 0,
+            "max": 1020,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "path.hash.mode",
+            "type": "integer",
+            "min": 0,
+            "max": 2,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          }
+        ],
+        "next": 12
+      }
+    },
+    {
+      "cursor": 12,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
+          {
+            "key": "multi.acks",
+            "type": "integer",
+            "min": 0,
+            "max": 1,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
             "key": "connectivity.mode",
             "type": "enum",
             "choices": [
@@ -81,16 +209,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 6
-      }
-    },
-    {
-      "cursor": 6,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "wifi.profile.{n}.pwd",
             "type": "string",
@@ -120,7 +239,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 18
+      }
+    },
+    {
+      "cursor": 18,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "mqtt.enabled",
             "type": "boolean",
@@ -176,16 +304,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 12
-      }
-    },
-    {
-      "cursor": 12,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "mqtt.profile.{n}.tls",
             "type": "boolean",
@@ -215,7 +334,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 24
+      }
+    },
+    {
+      "cursor": 24,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "mqtt.profile.{n}.path",
             "type": "string",
@@ -275,16 +403,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 18
-      }
-    },
-    {
-      "cursor": 18,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "mqtt.profile.{n}.priority",
             "type": "integer",
