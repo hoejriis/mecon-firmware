@@ -8,6 +8,7 @@
 // The stock console reads at most 160 characters and echoes each one. Once a line has shown the prefix, this class
 // takes the rest of it without echo, into its own buffer of MAX_LINE bytes, allocated only while such a line is
 // arriving. A longer line is refused with busy (its id unread) and never truncated.
+#include "NetProfileOps.h"
 #include <Arduino.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -159,6 +160,7 @@ public:
   void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read
   uint8_t postureNow() const { return _host.posture(_host.user); }
   ResetHost resetHost();
+  NetProfileHost netHost() { return netProfileHost(cliRun, cliAllow, this, Cli::principalOf(_ctx) == Cli::P_CABLE); }
   void rebootSoon() { _reboot_at = millis() + (_on_lora ? LORA_REBOOT_MS : 1500); }
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);

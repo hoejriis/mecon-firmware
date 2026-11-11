@@ -56,6 +56,12 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
 #if defined(BLE_PIN_CODE)
                                     , "ble.bonds", "ble.pin.get"
 #endif
+#if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
+                                    , "net.profile.clear"
+#endif
+#ifdef ENABLE_MQTT
+                                    , "mqtt.profile.anchor"
+#endif
 #ifdef MAX_GROUP_CHANNELS
                                     , "channel.list", "channel.get", "channel.put", "channel.remove",
                                     "mgmt.channel.get", "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind"
@@ -70,6 +76,8 @@ Status opAdvertSend(OpContext& c);
 Status opDeviceReboot(OpContext& c);
 Status opDeviceResetW(OpContext& c);
 Status opBleBonds(OpContext& c);
+Status opNetClear(OpContext& c);
+Status opNetAnchor(OpContext& c);
 Status opBlePin(OpContext& c);
 Status opKeyExportW(OpContext& c);
 Status opStatus(OpContext& c);
@@ -153,6 +161,12 @@ const OpEntry OPS[] = {
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
   {"ble.bonds", opBleBonds, PRIV_READ, false},
+#if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
+  {"net.profile.clear", opNetClear, PRIV_WRITE, true},
+#endif
+#ifdef ENABLE_MQTT
+  {"mqtt.profile.anchor", opNetAnchor, PRIV_WRITE, true},
+#endif
   // Never answered from the cache: a PIN must not sit in the result cache for a later caller's retry.
   {"ble.pin.get", opBlePin, PRIV_READ, false},
   // The handler decides who may have it (KeyExportOps.h), so it is never answered from the cache.
@@ -289,6 +303,15 @@ Status opKeyExportW(OpContext& c) {
 Status opDeviceResetW(OpContext& c) {
   ResetHost h = self(c)->resetHost();
   return opDeviceReset(c, h);
+}
+
+Status opNetClear(OpContext& c) {
+  NetProfileHost h = self(c)->netHost();
+  return opNetProfileClear(c, h);
+}
+Status opNetAnchor(OpContext& c) {
+  NetProfileHost h = self(c)->netHost();
+  return opMqttAnchor(c, h);
 }
 
 Status opHello(OpContext& c) {

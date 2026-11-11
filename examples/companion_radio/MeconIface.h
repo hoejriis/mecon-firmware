@@ -2,6 +2,7 @@
 // The device interface on the Companion (docs/contract/DEVICE_INTERFACE.md): CMD_MECON (0x7F) frames over USB and
 // BLE are reassembled per transport, dispatched through the interface core (src/helpers/iface/) with the caller's
 // real context, and the results are queued per transport and handed out one frame per loop pass.
+#include <helpers/iface/NetProfileOps.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <helpers/iface/IfaceDispatch.h>
@@ -79,6 +80,9 @@ public:
   // A cable on an enrolled device in Hardened with no local unlock on this link (AUTHORITY.md section 9).
   bool cableLocked(const BaseSerialInterface* src, const Cli::Context& c);
   Iface::ResetHost resetHost();
+  Iface::NetProfileHost netHost() {
+    return Iface::netProfileHost(cliRun, cliAllow, this, Cli::principalOf(_ctx) == Cli::P_CABLE);
+  }
   int (*_ble_bonds)() = nullptr;
   void rebootSoon() { _reboot_at = millis() + (_on_lora ? Iface::LORA_REBOOT_MS : 1500); }
   Iface::SubSet* currentSubs();   // the set of the transport whose request is being handled

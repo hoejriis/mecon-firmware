@@ -55,8 +55,24 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
                                     "update.offer", "update.chunk"};
 // Listed only on a role with a region tree.
+// The network-profile operations, on a build with Wi-Fi or MQTT (NetProfileOps.h).
+const char* const NET_CAPABILITIES[] = {"net.profile.clear"
+#ifdef ENABLE_MQTT
+                                        , "mqtt.profile.anchor"
+#endif
+                                        };
+
 const char* const REGION_CAPABILITIES[] = {"region.list", "region.put", "region.remove", "region.flood", "region.home",
                                            "region.default"};
+
+Status opNetClear(OpContext& c) {
+  NetProfileHost h = self(c)->netHost();
+  return opNetProfileClear(c, h);
+}
+Status opNetAnchor(OpContext& c) {
+  NetProfileHost h = self(c)->netHost();
+  return opMqttAnchor(c, h);
+}
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -107,6 +123,7 @@ Status opHello(OpContext& c) {
   }
   for (size_t i = 1; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
   if (m->hasRegions()) for (const char* rcap : REGION_CAPABILITIES) add(rcap);
+  if (netProfileOpsBuilt()) for (const char* ncap : NET_CAPABILITIES) add(ncap);
   w.endArray();
   if (next >= 0) { w.key("next"); w.num(next); }
   return ST_OK;
@@ -418,6 +435,12 @@ const OpEntry OPS[] = {
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
+#if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
+  {"net.profile.clear", opNetClear, PRIV_WRITE, true},
+#endif
+#ifdef ENABLE_MQTT
+  {"mqtt.profile.anchor", opNetAnchor, PRIV_WRITE, true},
+#endif
   {"identity.key.export", opKeyExportW, PRIV_READ, false},   // the handler decides who may have it: never cached
   // One channel slot, for the management channel (MANAGEMENT_CHANNEL.md section 6); bind, rotate and unbind confirm-or-revert
   // for anyone but the cable.
