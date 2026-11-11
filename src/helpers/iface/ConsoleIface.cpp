@@ -1,4 +1,5 @@
 #include "ConsoleIface.h"
+#include "AuditOps.h"
 #include "../HeapFloor.h"
 #include <helpers/esp32/NativeUsbTx.h>
 #include <helpers/CryptoRNG.h>
@@ -49,7 +50,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set", "audit.list",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -57,6 +58,8 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
 // Listed only on a role with a region tree.
 const char* const REGION_CAPABILITIES[] = {"region.list", "region.put", "region.remove", "region.flood", "region.home",
                                            "region.default"};
+
+Status opAuditListW(OpContext& c) { return opAuditList(c, ConsoleIface::streamAllow, self(c)); }
 
 Status opHello(OpContext& c) {
   ConsoleIface* m = self(c);
@@ -418,6 +421,7 @@ const OpEntry OPS[] = {
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
+  {"audit.list", opAuditListW, PRIV_READ, false},   // the posture class is checked in the handler
   {"identity.key.export", opKeyExportW, PRIV_READ, false},   // the handler decides who may have it: never cached
   // One channel slot, for the management channel (MANAGEMENT_CHANNEL.md section 6); bind, rotate and unbind confirm-or-revert
   // for anyone but the cable.

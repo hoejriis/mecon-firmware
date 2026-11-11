@@ -16,6 +16,7 @@
 #include <helpers/BaseSerialInterface.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/iface/IfaceConfig.h>
+#include <helpers/iface/AuditOps.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/iface/Observe.h>
 #include <new>
@@ -52,7 +53,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
                                     "message.send", "message.get", "message.list", "message.ack",
                                     "inbox.list", "inbox.ack", "message.deliver",
-                                    "scope.default.get", "scope.default.set", "scope.default.clear"
+                                    "scope.default.get", "scope.default.set", "scope.default.clear", "audit.list"
 #if defined(BLE_PIN_CODE)
                                     , "ble.bonds", "ble.pin.get"
 #endif
@@ -70,6 +71,7 @@ Status opAdvertSend(OpContext& c);
 Status opDeviceReboot(OpContext& c);
 Status opDeviceResetW(OpContext& c);
 Status opBleBonds(OpContext& c);
+Status opAuditListW(OpContext& c);
 Status opBlePin(OpContext& c);
 Status opKeyExportW(OpContext& c);
 Status opStatus(OpContext& c);
@@ -153,6 +155,8 @@ const OpEntry OPS[] = {
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
   {"ble.bonds", opBleBonds, PRIV_READ, false},
+  // The posture class (the CLI's `get audit`, the logs stream) is checked in the handler, as for sub.start logs.
+  {"audit.list", opAuditListW, PRIV_READ, false},
   // Never answered from the cache: a PIN must not sit in the result cache for a later caller's retry.
   {"ble.pin.get", opBlePin, PRIV_READ, false},
   // The handler decides who may have it (KeyExportOps.h), so it is never answered from the cache.
@@ -290,6 +294,8 @@ Status opDeviceResetW(OpContext& c) {
   ResetHost h = self(c)->resetHost();
   return opDeviceReset(c, h);
 }
+
+Status opAuditListW(OpContext& c) { return opAuditList(c, MeconIface::streamAllow, self(c)); }
 
 Status opHello(OpContext& c) {
   MeconIface* m = self(c);
