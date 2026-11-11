@@ -53,6 +53,7 @@ A public release on GitHub carries its update set as release assets, so any mana
 - **The index is not trusted.** It only finds the assets. A manager checks `manifest_sig` against `release-keys.json`, then the image's SHA-256 against the manifest's, before offering anything. A wrong or stale index can make a manager offer nothing, never something unsigned.
 - **The device never sees a GitHub URL.** A manager serves the image from its own `source.url` (at most 256 bytes, section 6).
 - A version tag builds, signs and attaches the set (`.github/workflows/signed-release.yml`). v0.2.0 is the first release that carries one.
+- **What a set covers:** the builds listed in `ci/release-variants.json`, every environment of the four hardware-verified boards that carries the managed-device interface. From v0.3.0 that is 14. v0.2.0 and v0.2.1 also signed the Heltec V3 and V4 `_usb`, `_ble` and `_wifi` Companions, upstream builds that cannot take a signed update; a board on one of them moves to the standalone build by cable.
 
 ## 4. The release manifest, and preflight
 
