@@ -32,10 +32,13 @@ def test_the_history_newest_first_as_the_cli_has_it(nodes):
     cli = c.cli("get audit")
     assert cli.startswith("> %d entries" % res["total"]), cli
     assert "key-export" in cli.split("\n")[1] and "x2" in cli.split("\n")[1], "the CLI's newest is the same entry: %s" % cli
-    if res["total"] > 1:
-        page = entries(i, 1)
-        assert page["entries"][0] == res["entries"][1], "the cursor counts from the newest"
-    assert i.request("audit.list", {"cursor": -1})["status"] == "invalid"
+    assert res["total"] >= 2, res
+    first = i.request("audit.list", {"limit": 1})["result"]
+    assert first["entries"] == res["entries"][:1] and first["next"] == 1, "one a page, and where the next starts: %s" % first
+    second = i.request("audit.list", {"cursor": first["next"], "limit": 1})["result"]
+    assert second["entries"] == res["entries"][1:2], "the cursor counts from the newest: %s" % second
+    for bad in ({"cursor": -1}, {"limit": 0}, {"limit": 9}):
+        assert i.request("audit.list", bad)["status"] == "invalid", bad
 
 
 @pytest.mark.timescale(10)

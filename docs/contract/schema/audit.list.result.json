@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/audit.list.result.json",
   "title": "Result of audit.list",
-  "description": "The audit ring's entries, newest first, 8 a page from the cursor, as the CLI's get audit gives them and in the logs stream's names. ts is null while the entry's clock was not set. next is the cursor of the next page, null on the last.",
+  "description": "The audit ring's entries, newest first, up to `limit` (at most 8) a page from the cursor, as the CLI's get audit gives them and in the logs stream's names. ts is null while the entry's clock was not set. next is the cursor of the next page, null on the last.",
   "type": "object",
   "additionalProperties": false,
   "required": ["total", "entries", "next"],
