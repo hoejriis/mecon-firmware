@@ -46,15 +46,15 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "clock.back", "advert.send", "device.reboot", "device.reset", "identity.key.export",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
-                                    "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
+                                    "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect", "contact.capacity",
                                     "message.send", "message.get", "message.list", "message.ack",
                                     "inbox.list", "inbox.ack", "message.deliver",
                                     "scope.default.get", "scope.default.set", "scope.default.clear"
 #if defined(BLE_PIN_CODE)
-                                    , "ble.bonds", "ble.pin.get"
+                                    , "ble.bonds", "ble.pin.get", "ble.pin.set"
 #endif
 #if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
                                     , "net.profile.clear"
@@ -79,6 +79,9 @@ Status opBleBonds(OpContext& c);
 Status opNetClear(OpContext& c);
 Status opNetAnchor(OpContext& c);
 Status opBlePin(OpContext& c);
+Status opBlePinSet(OpContext& c);
+Status opClockBack(OpContext& c);
+Status opContactCapacity(OpContext& c);
 Status opKeyExportW(OpContext& c);
 Status opStatus(OpContext& c);
 Status opMsgSend(OpContext& c);
@@ -157,6 +160,8 @@ const OpEntry OPS[] = {
   {"identity.get", opIdentityGet, PRIV_READ, false},
   {"clock.get", opClockGet, PRIV_READ, false},
   {"clock.set", opClockSet, PRIV_WRITE, true},
+  // The cable alone (owner, 2026-11-04): the handler checks, since a signature passes the destructive class.
+  {"clock.back", opClockBack, PRIV_DESTRUCTIVE, true},
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
@@ -169,6 +174,8 @@ const OpEntry OPS[] = {
 #endif
   // Never answered from the cache: a PIN must not sit in the result cache for a later caller's retry.
   {"ble.pin.get", opBlePin, PRIV_READ, false},
+  // Never answered from the cache either: a retry must not be told a PIN was set by an earlier caller's request.
+  {"ble.pin.set", opBlePinSet, PRIV_WRITE, false},
   // The handler decides who may have it (KeyExportOps.h), so it is never answered from the cache.
   {"identity.key.export", opKeyExportW, PRIV_READ, false},
   // Reading a job and acknowledging its result are of the read class (the result belongs to whoever may read it);
@@ -193,6 +200,7 @@ const OpEntry OPS[] = {
   {"contact.put", opContPut, PRIV_WRITE, true},
   {"contact.remove", opContRemove, PRIV_WRITE, true},
   {"contact.protect", opContProtect, PRIV_WRITE, true},
+  {"contact.capacity", opContactCapacity, PRIV_READ, false},
   // Native messages (OPERATIONS.md section 6): a read of the outcomes shows who a message went to, so it is private.
   {"message.send", opMsgSend, PRIV_WRITE, true},
   {"message.get", opMsgGet, PRIV_READ, false},
@@ -282,6 +290,53 @@ Status opBlePin(OpContext& c) {
   if (!ok) { c.error = "not-over-this-link"; return ST_REFUSED; }
   JsonWriter& w = *c.out;
   w.key("pin"); w.unum(m->mesh()->getBLEPin());
+  return ST_OK;
+}
+
+// ble.pin.set {"pin"}: the CLI's `set pin` and CMD_SET_DEVICE_PIN, of the write class, so the privilege table keeps a
+// phone paired with a published default PIN out. The answer never carries the PIN.
+Status opBlePinSet(OpContext& c) {
+  int64_t pin;
+  if (c.req->args < 0 || !jsonGetInt(*c.doc, jsonFind(*c.doc, c.req->args, "pin"), 0, 999999, &pin)) return ST_INVALID;
+  if (!self(c)->mesh()->setStoredBlePin((uint32_t)pin)) { c.error = "bad-pin"; return ST_INVALID; }
+  c.out->key("reboot_needed"); c.out->boolean(true);
+  return ST_OK;
+}
+
+// clock.back {"epoch"}: the CLI's `clock back`, from the cable only, as decided on 2026-11-04; audited as clock-back.
+Status opClockBack(OpContext& c) {
+  MeconIface* m = self(c);
+  if (Cli::principalOf(m->callerContext()) != Cli::P_CABLE) { c.error = "cable-only"; return ST_REFUSED; }
+  int64_t t;
+  if (c.req->args < 0 || !jsonGetInt(*c.doc, jsonFind(*c.doc, c.req->args, "epoch"), 1, 0xFFFFFFFFLL, &t)) return ST_INVALID;
+  MyMesh* mesh = m->mesh();
+  const uint32_t before = mesh->getRTCClock()->getCurrentTime();
+  if (!mesh->setClockBack((uint32_t)t, m->auditCaller())) { c.error = "not-earlier"; return ST_FAILED; }
+  c.out->key("epoch"); c.out->unum((uint32_t)t);
+  c.out->key("back_s"); c.out->unum(before - (uint32_t)t);
+  return ST_OK;
+}
+
+// contact.capacity: every figure of `get contacts.capacity` (docs/CONTACTS.md), in its names.
+Status opContactCapacity(OpContext& c) {
+  MyMesh* mesh = self(c)->mesh();
+  const ContactStoreStats st = mesh->contactStore().stats();
+  JsonWriter& w = *c.out;
+  w.key("store"); w.str(st.persistent ? "adaptive" : "ram-only");
+  w.key("used"); w.unum(st.used);
+  w.key("capacity"); w.unum(st.capacity);
+  w.key("cache_used"); w.unum(st.cache_used);
+  w.key("cache_slots"); w.unum(st.cache_slots);
+  w.key("pinned"); w.unum(st.pinned);
+  w.key("favourites"); w.unum(st.favourites);
+  w.key("evicted"); w.unum(st.evictions);
+  w.key("refused_full"); w.unum(st.refused_full);
+  w.key("refused_all_favourites"); w.unum(st.refused_all_favourites);
+  w.key("loads"); w.unum(st.loads);
+  w.key("damaged"); w.unum(st.damaged);
+  w.key("write_errors"); w.unum(st.write_errors);
+  w.key("ram_bytes"); w.unum(st.ram_bytes);
+  w.key("unmigrated"); w.unum(mesh->unmigratedContacts());
   return ST_OK;
 }
 

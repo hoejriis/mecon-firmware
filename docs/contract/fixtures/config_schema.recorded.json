@@ -23,6 +23,17 @@
             "confirm": false
           },
           {
+            "key": "tz.offset",
+            "type": "integer",
+            "min": -12,
+            "max": 14,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
             "key": "tx",
             "type": "integer",
             "min": -9,
@@ -66,7 +77,16 @@
             "reboot": true,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 6
+      }
+    },
+    {
+      "cursor": 6,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "wifi.profile.{n}.ssid",
             "type": "string",
@@ -81,16 +101,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 6
-      }
-    },
-    {
-      "cursor": 6,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "wifi.profile.{n}.pwd",
             "type": "string",
@@ -161,7 +172,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 12
+      }
+    },
+    {
+      "cursor": 12,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "mqtt.profile.{n}.port",
             "type": "integer",
@@ -176,16 +196,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 12
-      }
-    },
-    {
-      "cursor": 12,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "mqtt.profile.{n}.tls",
             "type": "boolean",
@@ -260,7 +271,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 18
+      }
+    },
+    {
+      "cursor": 18,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "mqtt.profile.{n}.pwd",
             "type": "string",
@@ -275,16 +295,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 18
-      }
-    },
-    {
-      "cursor": 18,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "mqtt.profile.{n}.priority",
             "type": "integer",
