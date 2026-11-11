@@ -49,7 +49,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "acl.list", "acl.put", "password.set",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -360,6 +360,16 @@ Status opDeviceResetW(OpContext& c) {
   ResetHost h = self(c)->resetHost();
   return opDeviceReset(c, h);
 }
+// identity.key.export: the console's stock path is `get prv.key`; the same custody here (KeyExportOps.h), no phone.
+Status opKeyExportW(OpContext& c) {
+  ConsoleIface* m = self(c);
+  const Cli::Context& ctx = m->callerContext();
+  const Dep::Member* member = m->auth().signingMember();
+  KeyExportHost h{m->host().identity, m->host().identity != nullptr, false, Cli::principalOf(ctx),
+                  ctx.posture != Posture::NORMAL, m->auth().state(), member ? member->public_key : nullptr,
+                  member ? member->instance_id : nullptr, m->auth().signingJob()};
+  return opKeyExport(c, h);
+}
 Status opDeployProvision(OpContext& c) { return self(c)->auth().opProvision(c); }
 Status opDeployUpdate(OpContext& c) { return self(c)->auth().opUpdate(c); }
 Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
@@ -408,6 +418,7 @@ const OpEntry OPS[] = {
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
+  {"identity.key.export", opKeyExportW, PRIV_READ, false},   // the handler decides who may have it: never cached
   // One channel slot, for the management channel (MANAGEMENT_CHANNEL.md section 6); bind, rotate and unbind confirm-or-revert
   // for anyone but the cable.
   {"channel.list", opChanList, PRIV_READ, false},

@@ -75,6 +75,9 @@ public:
   // The member signing the request in hand, as 16 hex digits of its id, "" for an unsigned one; and whether an id so named is
   // still a member. A standing instruction lasts only as long as the member who set it.
   const char* signingIssuer() const { return _signing_issuer; }
+  // During a signed request: the member who signed it (from the stored set) and its job id; null outside one.
+  const Dep::Member* signingMember() const { return _signed && _dep && _signing_member >= 0 ? &_dep->set.members[_signing_member] : nullptr; }
+  uint32_t signingJob() const { return _answering.job; }
   bool issuerValid(const char* hex) const;
   // Whether that link holds a valid local unlock now: unexpired, and issued against the secret the record holds today.
   bool unlocked(const LinkUnlock* l) const;
@@ -146,6 +149,7 @@ public:
 
 private:
   char _signing_issuer[17] = {0};
+  int _signing_member = -1;
   bool _verified = false;
   struct DepWork;
   void load();
