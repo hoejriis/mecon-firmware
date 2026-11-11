@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/net.profile.clear.result.json",
+  "title": "Result of net.profile.clear",
+  "description": "The Wi-Fi or broker profile that was removed. A caller other than the cable may not clear the profile its own session runs on (refused, in-use).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "profile"],
+  "properties": {
+    "kind": {"enum": ["wifi", "mqtt"]},
+    "profile": {"type": "integer", "minimum": 0, "maximum": 9}
+  }
+}
