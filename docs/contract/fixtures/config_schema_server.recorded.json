@@ -126,6 +126,28 @@
         "confirm": false
        },
        {
+        "key": "flood.max.unscoped",
+        "type": "integer",
+        "min": 0,
+        "max": 64,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "flood.max.advert",
+        "type": "integer",
+        "min": 0,
+        "max": 64,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
         "key": "loop.detect",
         "type": "enum",
         "choices": [
@@ -139,7 +161,16 @@
         "reboot": false,
         "restarts": false,
         "confirm": false
-       },
+       }
+      ],
+      "next": 12
+     }
+    },
+    {
+     "cursor": 12,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
        {
         "key": "allow.read.only",
         "type": "boolean",
@@ -291,6 +322,28 @@
         "confirm": false
        },
        {
+        "key": "flood.max.unscoped",
+        "type": "integer",
+        "min": 0,
+        "max": 64,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
+        "key": "flood.max.advert",
+        "type": "integer",
+        "min": 0,
+        "max": 64,
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": false
+       },
+       {
         "key": "loop.detect",
         "type": "enum",
         "choices": [
@@ -304,7 +357,16 @@
         "reboot": false,
         "restarts": false,
         "confirm": false
-       },
+       }
+      ],
+      "next": 12
+     }
+    },
+    {
+     "cursor": 12,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
        {
         "key": "allow.read.only",
         "type": "boolean",
@@ -324,16 +386,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": false
-       }
-      ],
-      "next": 12
-     }
-    },
-    {
-     "cursor": 12,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "wifi.enabled",
         "type": "boolean",
@@ -387,7 +440,16 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       },
+       }
+      ],
+      "next": 18
+     }
+    },
+    {
+     "cursor": 18,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
        {
         "key": "mqtt.enabled",
         "type": "boolean",
@@ -413,16 +475,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       }
-      ],
-      "next": 18
-     }
-    },
-    {
-     "cursor": 18,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "mqtt.profile.{n}.host",
         "type": "string",
@@ -482,7 +535,16 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       },
+       }
+      ],
+      "next": 24
+     }
+    },
+    {
+     "cursor": 24,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
        {
         "key": "mqtt.profile.{n}.path",
         "type": "string",
@@ -512,16 +574,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       }
-      ],
-      "next": 24
-     }
-    },
-    {
-     "cursor": 24,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "mqtt.profile.{n}.user",
         "type": "string",

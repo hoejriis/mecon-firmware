@@ -49,7 +49,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set", "board.get", "board.adc.set", "power.saving.set",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -371,6 +371,69 @@ Status opAdvertSend(OpContext& c) {
   c.out->key("flood"); c.out->boolean(flood);
   return ST_OK;
 }
+// The text after "> " of a CLI get line run as this caller, or nullptr when the line is refused or answers anything else
+// (the board cannot tell, or has no such reading).
+const char* cliValue(OpContext& c, const char* line, char* reply, size_t cap) {
+  const ConsoleIface::Host& h = self(c)->host();
+  reply[0] = 0;
+  if (!h.run(h.user, line, reply, cap) || strncmp(reply, "> ", 2) != 0) return nullptr;
+  return reply + 2;
+}
+void strOrNull(JsonWriter& w, const char* key, const char* v) {
+  w.key(key);
+  if (v) w.str(v); else w.null();
+}
+// board.get: the board reads of the CLI, `get bootloader.ver`, `get adc.multiplier`, `get pwrmgt.support`,
+// `get pwrmgt.source`, `get pwrmgt.bootmv`, `get pwrmgt.bootreason` and `powersaving`, as fields; null where the board
+// cannot tell. `power_source` is the board's isExternalPowered(), the power stream's `external`.
+Status opBoardGet(OpContext& c) {
+  JsonWriter& w = *c.out;
+  char r[160];
+  strOrNull(w, "bootloader", cliValue(c, "get bootloader.ver", r, sizeof(r)));
+  const char* adc = cliValue(c, "get adc.multiplier", r, sizeof(r));
+  w.key("adc_multiplier");
+  if (adc && *adc >= '0' && *adc <= '9') w.raw(adc); else w.null();   // "%.3f", a JSON number
+  const char* mgmt = cliValue(c, "get pwrmgt.support", r, sizeof(r));
+  w.key("power_management"); w.boolean(mgmt && strcmp(mgmt, "supported") == 0);
+  strOrNull(w, "power_source", cliValue(c, "get pwrmgt.source", r, sizeof(r)));
+  const char* mv = cliValue(c, "get pwrmgt.bootmv", r, sizeof(r));
+  w.key("boot_mv"); if (mv && *mv >= '0' && *mv <= '9') w.unum(strtoul(mv, nullptr, 10)); else w.null();
+  strOrNull(w, "boot_reason", cliValue(c, "get pwrmgt.bootreason", r, sizeof(r)));
+  const ConsoleIface::Host& h = self(c)->host();
+  r[0] = 0;
+  const bool ps_read = h.run(h.user, "powersaving", r, sizeof(r)) && (strcmp(r, "on") == 0 || strcmp(r, "off") == 0);
+  w.key("powersaving"); if (ps_read) w.boolean(strcmp(r, "on") == 0); else w.null();
+  return ST_OK;
+}
+// board.adc.set {"multiplier"}: `set adc.multiplier`, a decimal from 0 to 10 with at most three places; 0 is the board's
+// default. `unsupported` on a board without an adjustable battery divider.
+Status opBoardAdcSet(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  char v[12];
+  if (c.req->args < 0 || !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "multiplier"), v, sizeof(v), CS_ANY, 1) ||
+      !checkFormat("multiplier", v))
+    return ST_INVALID;
+  char line[32], reply[80] = {0};
+  snprintf(line, sizeof(line), "set adc.multiplier %s", v);
+  if (!h.run(h.user, line, reply, sizeof(reply))) { c.error = "refused"; return ST_FAILED; }
+  if (strncmp(reply, "OK", 2) != 0) { c.error = strstr(reply, "unsupported") ? "unsupported" : "refused"; return ST_FAILED; }
+  c.out->key("multiplier"); c.out->raw(v);
+  return ST_OK;
+}
+// power.saving.set {"on"}: `powersaving on|off`. `unsupported` where the CLI says the board or a bridge build has none.
+Status opPowerSavingSet(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  bool on;
+  if (c.req->args < 0 || !jsonGetBool(*c.doc, jsonFind(*c.doc, c.req->args, "on"), &on)) return ST_INVALID;
+  char reply[80] = {0};
+  if (!h.run(h.user, on ? "powersaving on" : "powersaving off", reply, sizeof(reply))) { c.error = "refused"; return ST_FAILED; }
+  if (strncmp(reply, on ? "on" : "off", on ? 2 : 3) != 0) {
+    c.error = strstr(reply, "not supported") ? "unsupported" : "refused";
+    return ST_FAILED;
+  }
+  c.out->key("on"); c.out->boolean(on);
+  return ST_OK;
+}
 // device.reboot: answered first, then the reboot (1.5 s, or the LoRa delay so that the answer goes out).
 Status opDeviceReboot(OpContext& c) { self(c)->rebootSoon(); return ST_OK; }
 Status opDeviceResetW(OpContext& c) {
@@ -432,6 +495,9 @@ const OpEntry OPS[] = {
   {"acl.list", opAclList, PRIV_READ, false},
   {"acl.put", opAclPut, PRIV_WRITE, true},
   {"password.set", opPasswordSet, PRIV_WRITE, true},
+  {"board.get", opBoardGet, PRIV_READ, false},
+  {"board.adc.set", opBoardAdcSet, PRIV_WRITE, true},
+  {"power.saving.set", opPowerSavingSet, PRIV_WRITE, true},
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},

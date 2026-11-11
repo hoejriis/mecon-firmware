@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/power.saving.set.result.json",
+  "title": "Result of power.saving.set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "on"
+  ],
+  "properties": {
+    "on": {
+      "type": "boolean"
+    }
+  }
+}
