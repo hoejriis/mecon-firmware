@@ -81,7 +81,7 @@ public:
   bool cableLocked(const BaseSerialInterface* src, const Cli::Context& c);
   Iface::ResetHost resetHost();
   Iface::NetProfileHost netHost() {
-    return Iface::netProfileHost(cliRun, cliAllow, this, Cli::principalOf(_ctx) == Cli::P_CABLE);
+    return Iface::netProfileHost(cliRun, this, Cli::principalOf(_ctx) == Cli::P_CABLE);
   }
   int (*_ble_bonds)() = nullptr;
   void rebootSoon() { _reboot_at = millis() + (_on_lora ? Iface::LORA_REBOOT_MS : 1500); }

@@ -21,9 +21,10 @@ const size_t CA_B64_MAX = 1920;     // MqttProfile::CA_B64_MAX
 
 bool cliOk(const char* reply) { return strncmp(reply, "OK", 2) == 0 || strncmp(reply, "> ", 2) == 0; }
 
-// Runs one line as the caller: refused when the privilege table says no, invalid when the CLI rejects the value.
+// Runs one line as the caller; invalid when the CLI rejects it. The operation's own class (write) is checked before the
+// handler runs, and every line these operations send has that class: the one stricter profile line, `manage`, is never
+// sent. The CLI still authorizes and audits each line as the caller.
 Status runLine(OpContext& c, NetProfileHost& h, const char* line) {
-  if (!h.allow || !h.allow(h.user, line)) { c.error = "not-permitted"; return ST_REFUSED; }
   char reply[LINE];
   reply[0] = 0;
   if (!h.run(h.user, line, reply, sizeof(reply)) || !cliOk(reply)) { c.error = "rejected"; return ST_INVALID; }
@@ -43,9 +44,8 @@ Status profileArg(OpContext& c, NetProfileHost& h, uint8_t count, uint8_t in_use
 
 }  // namespace
 
-NetProfileHost netProfileHost(bool (*run)(void*, const char*, char*, size_t), bool (*allow)(void*, const char*), void* user,
-                              bool cable) {
-  NetProfileHost h{run, allow, user, cable, 0, 0, NET_NONE, NET_NONE};
+NetProfileHost netProfileHost(bool (*run)(void*, const char*, char*, size_t), void* user, bool cable) {
+  NetProfileHost h{run, user, cable, 0, 0, NET_NONE, NET_NONE};
 #ifdef ENABLE_WIFI_INTERFACE
   WifiController::Snapshot ws;
   wifiController().snapshot(&ws);

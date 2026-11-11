@@ -15,7 +15,6 @@ const uint8_t NET_NONE = 0xFF;
 
 struct NetProfileHost {
   bool (*run)(void* user, const char* line, char* reply, size_t cap);   // a CLI line as the caller; false: unknown line
-  bool (*allow)(void* user, const char* line);                         // the privilege table's answer for that line
   void* user;
   bool cable;                // the caller is the unsigned or signed cable
   uint8_t wifi_count;        // profiles of each kind; 0 when the build has none
@@ -26,8 +25,7 @@ struct NetProfileHost {
 
 // The host for this build: the profile counts and the profiles in use come from the Wi-Fi and MQTT controllers, on the
 // builds that have them.
-NetProfileHost netProfileHost(bool (*run)(void*, const char*, char*, size_t), bool (*allow)(void*, const char*), void* user,
-                              bool cable);
+NetProfileHost netProfileHost(bool (*run)(void*, const char*, char*, size_t), void* user, bool cable);
 bool netProfileOpsBuilt();   // a build with Wi-Fi or MQTT: the two operations are offered
 
 Status opNetProfileClear(OpContext& c, NetProfileHost& h);   // {"kind":"wifi"|"mqtt","profile":n}

@@ -160,7 +160,7 @@ public:
   void attachScreen(DisplayDriver* d) { _screen.attach(d); }   // the screen stream, on a board whose display can be read
   uint8_t postureNow() const { return _host.posture(_host.user); }
   ResetHost resetHost();
-  NetProfileHost netHost() { return netProfileHost(cliRun, cliAllow, this, Cli::principalOf(_ctx) == Cli::P_CABLE); }
+  NetProfileHost netHost() { return netProfileHost(cliRun, this, Cli::principalOf(_ctx) == Cli::P_CABLE); }
   void rebootSoon() { _reboot_at = millis() + (_on_lora ? LORA_REBOOT_MS : 1500); }
   void scheduleStream(int stream, uint32_t now) {
     _clock.scheduleNow(stream, now);
