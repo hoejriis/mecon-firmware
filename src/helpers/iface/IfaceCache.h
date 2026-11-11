@@ -6,14 +6,17 @@
 //
 // Each entry also keeps the operation that produced it, and a duplicate id under another operation is a conflict, never a
 // hit: otherwise a caller allowed an open read could fetch a stored write result by naming its id under that read.
-// Memory: 8 * (IFACE_CACHE_ENTRY_CAP + 69) = 8 * 453 = 3,624 bytes with the default 384 byte cap (id 33 + op 33 + length
-// 2 + flags 1). 384 holds the result of a config.apply of about eight keys with a 32-character id; 128 did not
-// hold even a one-key apply (found on v3test), so its retry got result-expired. Override with -D IFACE_CACHE_ENTRY_CAP=n.
+// Memory: each kept result is allocated at its own length, up to IFACE_CACHE_ENTRY_CAP (384 by default: a config.apply of
+// about eight keys with a 32-character id; 128 did not hold even a one-key apply, found on v3test, so its retry got
+// result-expired), beside 8 * 72 bytes of ids, ops and lengths. A full fixed array was 8 * 453 = 3,624 bytes whatever the
+// results held; most hold well under 200 (#100). An allocation that fails keeps the id as expired, so a retry still never
+// runs twice. Override the cap with -D IFACE_CACHE_ENTRY_CAP=n.
 // Beside them, an 8-byte hash of each of the last 64 ids stored (512 bytes): a duplicate whose result is gone is
 // recognised (EXPIRED) and must not run again. A hash collision can only make a fresh request look expired, never
 // run a request twice.
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef IFACE_CACHE_ENTRY_CAP
@@ -30,7 +33,10 @@ public:
   enum Lookup { MISS, HIT, EXPIRED, CONFLICT };
   static constexpr size_t OP_CAP = 32;
 
-  ResultCache() { clear(); }
+  ResultCache() { memset(_e, 0, sizeof(_e)); clear(); }
+  ~ResultCache() { clear(); }
+  ResultCache(const ResultCache&) = delete;
+  ResultCache& operator=(const ResultCache&) = delete;
 
   // HIT: *data / *len point at the stored result. EXPIRED: the id ran but its result is no longer kept (evicted, or
   // too big to keep), so it must not run again. CONFLICT: the id is held by another operation's result, or by another
@@ -65,12 +71,17 @@ public:
     e.caller = caller;
     strcpy(e.id, id);
     strcpy(e.op, op);
-    e.oversize = len > ENTRY_CAP;
+    free(e.data);
+    e.data = len <= ENTRY_CAP ? static_cast<char*>(malloc(len ? len : 1)) : nullptr;
+    e.oversize = !e.data;   // too big to keep, or no memory: the id is kept as expired, never run again
     e.len = e.oversize ? 0 : (uint16_t)len;
     if (!e.oversize) memcpy(e.data, data, len);
   }
 
-  void clear() { memset(_e, 0, sizeof(_e)); memset(_h, 0, sizeof(_h)); _next = 0; _hnext = 0; _nh = 0; }
+  void clear() {
+    for (Entry& e : _e) free(e.data);
+    memset(_e, 0, sizeof(_e)); memset(_h, 0, sizeof(_h)); _next = 0; _hnext = 0; _nh = 0;
+  }
 
 private:
   struct Entry {
@@ -79,7 +90,7 @@ private:
     bool used, oversize;
     uint8_t caller;
     uint16_t len;
-    char data[IFACE_CACHE_ENTRY_CAP];
+    char* data;   // its own length, or null
   };
   static uint64_t hash(const char* s) {   // FNV-1a
     uint64_t h = 1469598103934665603ULL;
