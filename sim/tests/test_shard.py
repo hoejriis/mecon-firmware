@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import shard  # noqa: E402
 
-SHARDS = 3   # as the matrix in .github/workflows/sim-tests.yml
+SHARDS = 4   # as the matrix in .github/workflows/sim-tests.yml
 
 
 def test_every_file_is_in_exactly_one_shard():
