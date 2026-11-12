@@ -137,6 +137,7 @@ Reading a release on a Heltec V3 or V4 includes `tools/mecon_latency_hw.py <port
 | v0.3.3 Repeater and Room server writes over an unsigned cable (enrolled) | each refused `unauthenticated`, as the enrolled-board rule requires: `stats.clear`, `clock.reset`, `log.start`, `log.read`, `log.stop`, `log.erase`, `power.saving.set`, `board.adc.set`, `radio.temp`, `neighbour.remove`, `room.post`, `net.profile.clear` | 2026-11-12, v0.3.3 (829db04b) |
 | v0.3.3 by a signed update from the production Backend (Repeater, enrolled, F2 row 694, from v0.3.2) | F2's signed offer at 20:56:42Z, the device fetched the image from F2 and stood awaiting confirmation at about 21:04:37Z, confirmed at 21:05:38Z, then ran v1.18.0-mecon.0.3.3: about 9 minutes end to end | 2026-11-12, v0.3.3 (829db04b) |
 | Flood limits by a signed `config.apply` from the production Backend (v0.3.3 Repeater, enrolled, F2 row 694) | read `flood.max.unscoped` 64 and `flood.max.advert` 8; `flood.max.advert` set to 9 and read back 9 (21:06:04Z), restored to 8 and read back 8 (21:06:13Z), each answered `ok` | 2026-11-12, v0.3.3 (829db04b) |
+| `stats.clear` signed by the production Backend over MQTT (v0.3.3 Repeater, enrolled, F2 row 694) | answered `ok` at about 23:55:48Z; the radio stream before it (epoch 61) read `rx.flood` 109, `rx.total` 109, `tx.flood` 109, `tx.direct` 1, `tx.total` 110, and the first after it (same epoch, so no reboot) read every counter 0 | 2026-11-12, v0.3.3 (829db04b) |
 
 ## Seeed Wio Tracker L1 (wiotest)
 
@@ -198,7 +199,7 @@ Builds b6d0a50e, d23437d5, adaf9fed, f0067d70 and a76e33d7 were bench merges of 
 
 ## Not yet verified on hardware
 
-- The Repeater and Room server settings and actions that v0.3.3 added, run for real on an enrolled board, apart from the flood limits (above): they need a signed request, and the production Backend cannot send one for them yet. Verified only in the simulator.
+- The Repeater and Room server settings and actions that v0.3.3 added, run for real on an enrolled board, apart from the flood limits and `stats.clear` (above): they need a signed request, and the production Backend cannot send one for them yet. Verified only in the simulator.
 - Setting v0.3.3's new Companion and server config keys on hardware (read on all four boards; set only in the simulator).
 - Wi-Fi failover when the access point itself goes off the air (the verified run breaks the joined profile instead).
 - MQTT broker discovery by mDNS on a real ESP32 (verified only in the simulator).
