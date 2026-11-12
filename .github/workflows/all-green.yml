@@ -1,0 +1,33 @@
+name: ci
+
+# The one check branch protection requires (ci/all_green.py): it waits for every other check run and workflow run on the
+# pull request's head commit, and passes only when each passed, was skipped or was neutral. The other workflows' names
+# change per pull request (matrix groups, planned builds) and a path-filtered workflow may not run at all, so none of
+# them can be required directly.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: all-green-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  checks: read
+  actions: read
+  contents: read
+
+jobs:
+  all-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: ci/all_green.py
+          sparse-checkout-cone-mode: false
+      - name: Wait for every other check on the head commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ci/all_green.py "${{ github.repository }}" "${{ github.event.pull_request.head.sha }}" "${{ github.run_id }}"
