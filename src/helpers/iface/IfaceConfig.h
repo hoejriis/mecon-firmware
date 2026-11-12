@@ -54,6 +54,7 @@ struct KeyDef {
 
 // A string value with a fixed shape: "freq,bw,sf,cr" for radio (MHz, kHz, spreading factor 5-12, coding rate 5-8);
 // "latitude" and "longitude": a signed decimal within +-90 and +-180.
+// "multiplier": the battery divider, a decimal from 0 to 10 with at most three places.
 bool checkFormat(const char* format, const char* value);
 
 // The Companion's keys, the default when a host names no table.

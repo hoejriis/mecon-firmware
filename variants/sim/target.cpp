@@ -33,6 +33,48 @@ bool SimSensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& t
 
 static SimLocationProvider sim_gps;
 
+namespace {
+const int SIM_PLAIN_SETTINGS = 12;
+#if ENV_INCLUDE_GPS == 1
+const int SIM_GPS_SETTINGS = 1;
+#else
+const int SIM_GPS_SETTINGS = 0;
+#endif
+char g_setting_name[SIM_PLAIN_SETTINGS][8];
+char g_setting_value[SIM_GPS_SETTINGS + SIM_PLAIN_SETTINGS][8];
+bool g_settings_ready = false;
+void settingsInit() {
+  if (g_settings_ready) return;
+  g_settings_ready = true;
+  if (SIM_GPS_SETTINGS) strcpy(g_setting_value[0], "0");
+  for (int i = 0; i < SIM_PLAIN_SETTINGS; i++) {
+    snprintf(g_setting_name[i], sizeof(g_setting_name[i]), "sim.s%d", i);
+    snprintf(g_setting_value[SIM_GPS_SETTINGS + i], sizeof(g_setting_value[0]), "value%d", i);
+  }
+}
+}  // namespace
+
+int SimSensorManager::getNumSettings() const { return SIM_GPS_SETTINGS + SIM_PLAIN_SETTINGS; }
+const char* SimSensorManager::getSettingName(int i) const {
+  settingsInit();
+  if (i < 0 || i >= getNumSettings()) return nullptr;
+  return i < SIM_GPS_SETTINGS ? "gps" : g_setting_name[i - SIM_GPS_SETTINGS];
+}
+const char* SimSensorManager::getSettingValue(int i) const {
+  settingsInit();
+  return i >= 0 && i < getNumSettings() ? g_setting_value[i] : nullptr;
+}
+bool SimSensorManager::setSettingValue(const char* name, const char* value) {
+  settingsInit();
+  for (int i = 0; i < getNumSettings(); i++) {
+    if (strcmp(getSettingName(i), name) != 0) continue;
+    if (strlen(value) >= sizeof(g_setting_value[i])) return false;
+    strcpy(g_setting_value[i], value);
+    return true;
+  }
+  return false;
+}
+
 LocationProvider* SimSensorManager::getLocationProvider() {
   FILE* f = fopen((g_sim.dir + ".gps").c_str(), "r");
   if (!f) return nullptr;

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/gps.advert.set.result.json",
+  "title": "Result of gps.advert.set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy"
+  ],
+  "properties": {
+    "policy": {
+      "enum": [
+        "none",
+        "share",
+        "prefs"
+      ]
+    }
+  }
+}
