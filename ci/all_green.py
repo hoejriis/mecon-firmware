@@ -72,7 +72,9 @@ def main():
     poll = float(sys.argv[4]) if len(sys.argv) > 4 else 60
     grace = float(sys.argv[5]) if len(sys.argv) > 5 else 120
     time.sleep(grace)   # every workflow of the push or label event has registered its run by then
-    end = time.time() + 175 * 60
+    # 175 min by default; a full-ci pull request runs every mutant and gets more (all-green.yml), under the job's timeout
+    limit = float(os.environ.get("ALL_GREEN_LIMIT_MIN") or 175)
+    end = time.time() + limit * 60
     while time.time() < end:
         checks = pages("/repos/%s/commits/%s/check-runs" % (repo, sha), "check_runs")
         runs = pages("/repos/%s/actions/runs?head_sha=%s" % (repo, sha), "workflow_runs")
@@ -85,7 +87,7 @@ def main():
             print("all green")
             return 0
         time.sleep(poll)
-    print("timed out waiting for the other checks")
+    print("timed out waiting for the other checks, after %.0f min" % limit)
     return 2
 
 

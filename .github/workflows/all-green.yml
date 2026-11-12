@@ -21,7 +21,9 @@ permissions:
 jobs:
   all-green:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # A full-ci pull request runs the whole mutation matrix, which can sit in the hosted queue for hours: it gets the
+    # most a hosted job may run (360 min), polling to 350. Others keep 175 under 180. A timeout still fails the check.
+    timeout-minutes: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') && 360 || 180 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,4 +32,5 @@ jobs:
       - name: Wait for every other check on the head commit
         env:
           GH_TOKEN: ${{ github.token }}
+          ALL_GREEN_LIMIT_MIN: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') && '350' || '175' }}
         run: python3 ci/all_green.py "${{ github.repository }}" "${{ github.event.pull_request.head.sha }}" "${{ github.run_id }}"
