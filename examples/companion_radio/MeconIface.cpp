@@ -1661,6 +1661,12 @@ bool MeconIface::cableLocked(const BaseSerialInterface* src, const Cli::Context&
   return !x.unlocked;
 }
 
+bool MeconIface::rxPartial() const {
+  for (const Link& l : _links)
+    if (l.src && l.rx.active()) return true;
+  return false;
+}
+
 void MeconIface::loop(uint32_t now) {
   if (!_standing_begun) {
     _standing_begun = true;
@@ -1673,15 +1679,20 @@ void MeconIface::loop(uint32_t now) {
     _mesh->saveDirtyContacts();   // as the native CMD_REBOOT does: a contact change still waiting for its lazy save
     board.reboot();
   }
-  streamTick(now);
-  tellMessages();
-  tellInbox();
-  drainLogs();   // beside streamTick, not inside it: a signed log event on top of its frame overran the loop stack (#234)
-  inventoryTick(now);
+  // While a request is arriving in frames, build no event: signing one holds the loop off the port long enough for a
+  // V3's 1 KB receive ring to overflow and lose the request (#519). Bounded by the reassembly timeout.
+  const bool receiving = rxPartial();
+  if (!receiving) {
+    streamTick(now);
+    tellMessages();
+    tellInbox();
+    drainLogs();   // beside streamTick, not inside it: a signed log event on top of its frame overran the loop stack (#234)
+    inventoryTick(now);
+  }
   loraTick(now);
   rfTick(now);
   _standing.tick(now);
-  screenTick(now);
+  if (!receiving) screenTick(now);
   const bool cable_up = cableLineUp();
   for (Link& l : _links) {
     if (!l.src) continue;

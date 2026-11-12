@@ -260,6 +260,7 @@ private:
   SessionUpFn _ev_up = nullptr;
   Iface::StreamClock _clock;                // per stream per device: seq (design section 3) and pacing
   void streamTick(uint32_t now);
+  bool rxPartial() const;    // a request is part-way through arriving on some link
   static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
   Iface::ObsLimiter _obs;
   Iface::LoopGap _gap;
