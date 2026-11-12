@@ -1197,10 +1197,11 @@ void MeconIface::streamTick(uint32_t now) {
     if (!(due & (1u << s))) continue;
     if (s == SID_INVENTORY) { startInventory(now); continue; }   // paged: inventoryTick sends it
     if (s == SID_SCREEN) { _screen.start(now); continue; }       // in parts: screenTick sends it
-    char data[512];
+    // static: 1.3 KB next to the signer took an nRF52 loop stack to 424 B free (#517), as the boot event below (#234); loop only
+    static char data[512];
     JsonWriter w(data, sizeof(data));
     if (!writeStream(s, w)) continue;
-    char ev[800];   // an event of up to 640 bytes, and its signature
+    static char ev[800];   // an event of up to 640 bytes, and its signature
     int n = writeEvent(ev, sizeof(ev), STREAMS[s].name, ++_clock.seq[s], _epoch, ts_known, ts, data);
     if (n > 0) n = _prov.sign(STREAMS[s].name, ev, (size_t)n, sizeof(ev));   // -1: not signable, so not sent
     if (n <= 0) continue;
