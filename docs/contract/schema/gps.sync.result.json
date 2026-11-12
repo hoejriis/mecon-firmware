@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/gps.sync.result.json",
+  "title": "Result of gps.sync",
+  "description": "An empty result: the clock is set from the receiver's next fix.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

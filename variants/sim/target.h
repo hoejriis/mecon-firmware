@@ -120,10 +120,16 @@ private:
   State read() const;
 };
 
+// The settings `sensor list/get/set` reach: "gps" on a build with GPS (as the environment sensor manager has it), and twelve
+// plain ones, "sim.s0" to "sim.s11", so that a list runs over more than one CLI page.
 class SimSensorManager : public SensorManager {
 public:
   bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) override;
   LocationProvider* getLocationProvider() override;
+  int getNumSettings() const override;
+  const char* getSettingName(int i) const override;
+  const char* getSettingValue(int i) const override;
+  bool setSettingValue(const char* name, const char* value) override;
 };
 extern SimSensorManager sensors;
 

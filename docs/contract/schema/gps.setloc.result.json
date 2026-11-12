@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/gps.setloc.result.json",
+  "title": "Result of gps.setloc: the saved position",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "lat",
+    "lon"
+  ],
+  "properties": {
+    "lat": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lon": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}
