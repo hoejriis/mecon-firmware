@@ -1,4 +1,5 @@
 #include "IfaceDispatch.h"
+#include "../HeapWatch.h"
 #include <new>
 #include <stdlib.h>
 #include <string.h>
@@ -62,7 +63,10 @@ int Dispatcher::handleWith(JsonDoc& doc, const char* msg, size_t len, char* out,
       w.key("id"); w.str(req.id);
       w.key("status"); w.str("ok");
       w.key("result"); w.beginObject();
-      st = op->handler(ctx);
+      {
+        HeapScope hs(op->name);   // what the operation leaves on the heap, by its name (HeapWatch.h)
+        st = op->handler(ctx);
+      }
       w.endObject();
       w.endObject();
       if (st == ST_OK && w.ok() && w.balanced()) n = (int)w.size();

@@ -1,4 +1,5 @@
 #include "Streams.h"
+#include "../HeapWatch.h"
 #include "CompactReport.h"
 #include "helpers/MemStats.h"
 #include <ctype.h>
@@ -277,7 +278,23 @@ void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low,
   w.key("loop_gap_ms"); w.beginObject();
   w.key("max"); w.unum(gap.take());
   w.endObject();
-  if (heap_low >= 0) { w.key("heap_low"); w.boolean(heap_low != 0); }
+  if (heap_low >= 0) {
+    w.key("heap_low"); w.boolean(heap_low != 0);
+    // What was running at the lowest of each figure (HeapWatch.h): null until the first look.
+    const HeapWatch::Low* lows[2] = {&heapWatch().largest(), &heapWatch().minFree()};
+    static const char* const NAMES[2] = {"largest", "min_free"};
+    w.key("heap_lows"); w.beginObject();
+    for (int i = 0; i < 2; i++) {
+      w.key(NAMES[i]);
+      if (!lows[i]->seen) { w.null(); continue; }
+      w.beginObject();
+      w.key("bytes"); w.unum(lows[i]->bytes);
+      w.key("by"); w.str(lows[i]->by);
+      w.key("at_s"); w.unum(lows[i]->at_s);
+      w.endObject();
+    }
+    w.endObject();
+  }
   if (stale) {
     w.key("stale_logins"); w.unum(stale->count);
     w.key("stale_login_last");

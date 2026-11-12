@@ -9,6 +9,7 @@
 #include <helpers/MemStats.h>
 #include <helpers/NrfWorker.h>
 #include <helpers/HeapFloor.h>
+#include <helpers/HeapWatch.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/cli/MeconCli.h>
@@ -968,6 +969,7 @@ int MeconIface::dispatch(const Cli::Context& ctx, uint8_t caller, Link* link, co
 
 __attribute__((noinline)) int MeconIface::dispatchNow(const Cli::Context& ctx, uint8_t caller, Link* link, const char* msg,
                                                       size_t len, char* out, size_t cap) {
+  HeapScope hs("request");   // the envelope, the signature check and the signed result, around the operation's own scope
   _auth.answering().clear();
   const bool was_enrolled = _auth.enrolled();
   int n = dispatchInner(ctx, caller, link, msg, len, out, cap);
@@ -1009,6 +1011,17 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   observeSink().user = this;
   loraSink().fn = onLoraFrame;
   loraSink().user = this;
+#ifdef ENABLE_CONNMODE
+  // In Wi-Fi mode the long-lived tables are made now, before Wi-Fi and TLS take their buffers. Made on first use in the
+  // middle of a session, each split what was left of the largest free block, and a TLS reconnect needs about 16 KB of
+  // it in one piece (#513). In BLE mode they are still made on first use: there is no TLS session to keep room for.
+  if (_mesh->getConnectivityMode() == ConnMode::WIFI) {
+    if (!_cache) _cache = new (std::nothrow) ResultCache();
+    _jobs.table();
+    _inbox.alloc();
+    if (!_messages) _messages = new (std::nothrow) MessageTable();
+  }
+#endif
 }
 
 // Whether the caller of the request being handled may use a stream of this class: the CLI privilege table with its
@@ -1191,6 +1204,7 @@ void MeconIface::streamTick(uint32_t now) {
   sets[LINKS] = &_mqtt_subs;
   const uint32_t due = _clock.due(sets, LINKS + 1, now);
   if (!due && !_boot_pending) return;
+  HeapScope hs("stream");   // only on a pass that sends: a look at the heap may walk it (HeapWatch.h)
   const uint32_t ts = _mesh->getRTCClock()->knownTime();
   const bool ts_known = ts != 0;
   for (int s = 0; s < STREAM_COUNT; s++) {
@@ -1232,7 +1246,10 @@ void MeconIface::sendEvent(int s, const char* ev, size_t n) {
     if (!l.subs.s[s].active || !ensureQueue(l)) continue;
     l.q->push(OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), n);
   }
-  if (_mqtt_subs.s[s].active && _ev_publish) _ev_publish(STREAMS[s].name, ev, n);
+  if (_mqtt_subs.s[s].active && _ev_publish) {
+    HeapScope hs("mqtt.publish");
+    _ev_publish(STREAMS[s].name, ev, n);
+  }
 }
 
 // The audit entries queued since the last pass, as logs events (their own early return in streamTick: there is no
@@ -1248,6 +1265,7 @@ void MeconIface::drainLogs() {
   uint32_t dropped = 0;
   const int k = _logs.poll(millis(), Posture::audit(), a, &dropped);
   if (!k) return;
+  HeapScope hs("stream.logs");
   const uint32_t ts = _mesh->getRTCClock()->knownTime();
   for (int j = 0; j < k; j++) {
     static char ev[480];   // the event and its signature; static for the loop task's stack (#234), loop only
@@ -1277,6 +1295,7 @@ void MeconIface::inventoryTick(uint32_t now) {
     if (l.q && !l.q->eventFits(INV_EVENT)) { _inv_next = now + INV_PAGE_MS; return; }   // wait until the page fits
   }
   if (!any) { _inv_active = false; _inv_again = false; return; }
+  HeapScope hs("stream.inventory");
   char* data = static_cast<char*>(malloc(INV_DATA));
   char* ev = static_cast<char*>(malloc(INV_EVENT));
   if (!data || !ev) { free(data); free(ev); _inv_next = now + 1000; return; }   // no heap now: try again in a second
@@ -1469,6 +1488,7 @@ Status MeconIface::rfRequest(OpContext& c) {
 
 void MeconIface::rfTick(uint32_t now) {
   if (!_rf_out || (int32_t)(now - _rf_next) < 0) return;
+  HeapScope hs("stream.rf");
   uint8_t f[LORA_HDR + LORA_REQ_PAYLOAD];
   const size_t take = _rf_len - _rf_off < LORA_REQ_PAYLOAD ? _rf_len - _rf_off : LORA_REQ_PAYLOAD;
   f[0] = LORA_MARKER; f[1] = _rf_xid; f[2] = _rf_idx; f[3] = _rf_count;
@@ -1616,6 +1636,7 @@ void MeconIface::screenTick(uint32_t now) {
   bool any = _mqtt_subs.s[SID_SCREEN].active;
   for (Link& l : _links) any = any || l.subs.s[SID_SCREEN].active;
   if (!any) { _screen.cancel(); return; }
+  HeapScope hs("stream.screen");
   char* data = static_cast<char*>(malloc(ScreenFeed::DATA_CAP));
   char* ev = static_cast<char*>(malloc(ScreenFeed::EVENT_CAP));
   if (data && ev && _screen.next(now, data, ScreenFeed::DATA_CAP)) {

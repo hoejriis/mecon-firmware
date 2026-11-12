@@ -1,5 +1,6 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <helpers/HeapFloor.h>
+#include <helpers/HeapWatch.h>
 #include <helpers/AuditLog.h>
 #include <helpers/BootTimes.h>
 #include <helpers/BootPresence.h>
@@ -260,6 +261,7 @@ void setup() {
 
 void loop() {
   heapFloor().loop(millis(), rtc_clock.getCurrentTime());
+  heapWatchTick();   // what the heap was doing at its lowest (helpers/HeapWatch.h)
   int len = strlen(command);
   // `command` must stay NUL-terminated within its bounds. If it ever isn't,
   // strlen() above can return >= sizeof(command) and the loop below would then

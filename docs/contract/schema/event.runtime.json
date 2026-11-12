@@ -88,6 +88,71 @@
       "type": "boolean",
       "description": "the low-memory state the Companion's display shows (HeapFloor); absent where the build does not check the heap floor"
     },
+    "heap_lows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "largest",
+        "min_free"
+      ],
+      "description": "beside heap_low, what was running when each figure was at its lowest since boot (HeapWatch); null until the first look",
+      "properties": {
+        "largest": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "bytes",
+            "by",
+            "at_s"
+          ],
+          "properties": {
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by": {
+              "type": "string",
+              "description": "what was running: an operation's name, request, stream.<name>, mqtt.connect, mqtt.request, mqtt.publish, or idle"
+            },
+            "at_s": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "seconds since boot"
+            }
+          }
+        },
+        "min_free": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "bytes",
+            "by",
+            "at_s"
+          ],
+          "properties": {
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by": {
+              "type": "string",
+              "description": "what was running: an operation's name, request, stream.<name>, mqtt.connect, mqtt.request, mqtt.publish, or idle"
+            },
+            "at_s": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "seconds since boot"
+            }
+          }
+        }
+      }
+    },
     "stale_logins": {
       "type": "integer",
       "minimum": 0,
