@@ -49,7 +49,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set", "board.get", "board.adc.set", "power.saving.set",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set", "board.get", "board.adc.set", "power.saving.set", "sensor.list", "sensor.get", "sensor.set",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -61,6 +61,11 @@ const char* const NET_CAPABILITIES[] = {"net.profile.clear"
                                         , "mqtt.profile.anchor"
 #endif
                                         };
+
+// Listed only on a build with GPS (ENV_INCLUDE_GPS), as the CLI's `gps` lines are.
+#if ENV_INCLUDE_GPS == 1
+const char* const GPS_CAPABILITIES[] = {"gps.get", "gps.set", "gps.sync", "gps.setloc", "gps.advert.set"};
+#endif
 
 const char* const REGION_CAPABILITIES[] = {"region.list", "region.put", "region.remove", "region.flood", "region.home",
                                            "region.default"};
@@ -124,6 +129,9 @@ Status opHello(OpContext& c) {
   for (size_t i = 1; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
   if (m->hasRegions()) for (const char* rcap : REGION_CAPABILITIES) add(rcap);
   if (netProfileOpsBuilt()) for (const char* ncap : NET_CAPABILITIES) add(ncap);
+#if ENV_INCLUDE_GPS == 1
+  for (const char* gcap : GPS_CAPABILITIES) add(gcap);
+#endif
   w.endArray();
   if (next >= 0) { w.key("next"); w.num(next); }
   return ST_OK;
@@ -434,6 +442,141 @@ Status opPowerSavingSet(OpContext& c) {
   c.out->key("on"); c.out->boolean(on);
   return ST_OK;
 }
+// sensor.list {"cursor"}: `sensor list <cursor>`, the board's sensor settings from that index, as many as the CLI's page
+// holds: {"total","settings":[{"name","value"}],"next"}, `next` null on the last page.
+Status opSensorList(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  int64_t cursor = 0;
+  const int ct = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "cursor") : -1;
+  if (ct >= 0 && !jsonGetInt(*c.doc, ct, 0, 255, &cursor)) return ST_INVALID;
+  char line[24], reply[200] = {0};
+  snprintf(line, sizeof(line), "sensor list %u", (unsigned)cursor);
+  if (!h.run(h.user, line, reply, sizeof(reply))) { c.error = "refused"; return ST_FAILED; }
+  JsonWriter& w = *c.out;
+  if (strcmp(reply, "no custom var") == 0) {   // the cursor is at or past the end, or there are none
+    if (cursor > 0) { c.error = "bad-cursor"; return ST_INVALID; }
+    w.key("total"); w.unum(0);
+    w.key("settings"); w.beginArray(); w.endArray();
+    w.key("next"); w.null();
+    return ST_OK;
+  }
+  char* p = reply;
+  const unsigned long total = strtoul(p, &p, 10);
+  if (strncmp(p, " vars\n", 6) != 0) { c.error = "unreadable"; return ST_FAILED; }
+  p += 6;
+  long next = -1;
+  w.key("total"); w.unum(total);
+  w.key("settings"); w.beginArray();
+  while (*p) {
+    char* end = strchr(p, '\n');
+    if (end) *end = 0;
+    if (strncmp(p, "... next:", 9) == 0) next = strtol(p + 9, nullptr, 10);
+    else if (char* eq = strchr(p, '=')) {
+      *eq = 0;
+      w.beginObject(); w.key("name"); w.str(p); w.key("value"); w.str(eq + 1); w.endObject();
+    }
+    if (!end) break;
+    p = end + 1;
+  }
+  w.endArray();
+  w.key("next"); if (next >= 0) w.unum((uint32_t)next); else w.null();
+  return ST_OK;
+}
+// sensor.get {"name"}: `sensor get <name>`; `unknown-setting` when the board has none of that name.
+Status opSensorGet(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  char name[24];
+  if (c.req->args < 0 || !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "name"), name, sizeof(name), CS_NAME, 1))
+    return ST_INVALID;
+  char line[40], reply[160] = {0};
+  snprintf(line, sizeof(line), "sensor get %s", name);
+  if (!h.run(h.user, line, reply, sizeof(reply))) { c.error = "refused"; return ST_FAILED; }
+  if (strncmp(reply, "> ", 2) != 0) { c.error = "unknown-setting"; return ST_FAILED; }
+  c.out->key("name"); c.out->str(name);
+  c.out->key("value"); c.out->str(reply + 2);
+  return ST_OK;
+}
+// sensor.set {"name","value"}: `sensor set <name> <value>`. The CLI splits the line at spaces, so a value holds none.
+Status opSensorSet(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  char name[24], value[64];
+  if (c.req->args < 0 || !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "name"), name, sizeof(name), CS_NAME, 1) ||
+      !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "value"), value, sizeof(value), CS_ANY, 1))
+    return ST_INVALID;
+  if (strchr(value, ' ')) { c.error = "bad-value"; return ST_INVALID; }
+  char line[100], reply[80] = {0};
+  snprintf(line, sizeof(line), "sensor set %s %s", name, value);
+  if (!h.run(h.user, line, reply, sizeof(reply))) { c.error = "refused"; return ST_FAILED; }
+  if (strcmp(reply, "ok") != 0) { c.error = "unknown-setting"; return ST_FAILED; }
+  c.out->key("name"); c.out->str(name);
+  c.out->key("value"); c.out->str(value);
+  return ST_OK;
+}
+#if ENV_INCLUDE_GPS == 1
+// A CLI line that answers "ok" when done; `no-gps` for anything else (the board has no receiver or no GPS toggle).
+Status gpsLine(OpContext& c, const char* line) {
+  const ConsoleIface::Host& h = self(c)->host();
+  char reply[80] = {0};
+  if (!h.run(h.user, line, reply, sizeof(reply))) { c.error = "refused"; return ST_FAILED; }
+  if (strcmp(reply, "ok") != 0) { c.error = "no-gps"; return ST_FAILED; }
+  return ST_OK;
+}
+// gps.get: `gps`, `gps advert` and `gps diag` as fields. `receiver` false, and the rest null, on a board with no GPS.
+// The CLI classes `gps advert` and `gps diag` with the writes (neither is registered): each runs as this caller, so its
+// gate refuses them to a caller limited to reads, and the field is null.
+Status opGpsGet(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  char r[160] = {0};
+  if (!h.run(h.user, "gps", r, sizeof(r))) { c.error = "refused"; return ST_FAILED; }
+  JsonWriter& w = *c.out;
+  const bool receiver = strcmp(r, "Can't find GPS") != 0;
+  const bool powered = receiver && strncmp(r, "on, ", 4) == 0;
+  w.key("receiver"); w.boolean(receiver);
+  w.key("powered"); if (receiver) w.boolean(powered); else w.null();
+  w.key("active"); if (powered) w.boolean(strstr(r, ", active,") != nullptr); else w.null();
+  w.key("fix"); if (powered) w.boolean(strstr(r, ", fix,") != nullptr); else w.null();
+  const char* sats = powered ? strrchr(r, ',') : nullptr;
+  w.key("sats"); if (sats) w.unum(strtoul(sats + 1, nullptr, 10)); else w.null();
+  r[0] = 0;
+  const bool policy = h.run(h.user, "gps advert", r, sizeof(r)) && strncmp(r, "> ", 2) == 0;
+  w.key("advert"); if (policy) w.str(r + 2); else w.null();
+  r[0] = 0;
+  const bool diag = receiver && h.run(h.user, "gps diag", r, sizeof(r)) && strncmp(r, "req:", 4) == 0;
+  w.key("diag"); if (diag) w.str(r); else w.null();
+  return ST_OK;
+}
+// gps.set {"on"}: `gps on|off`, saved, as the CLI saves it.
+Status opGpsSet(OpContext& c) {
+  bool on;
+  if (c.req->args < 0 || !jsonGetBool(*c.doc, jsonFind(*c.doc, c.req->args, "on"), &on)) return ST_INVALID;
+  const Status st = gpsLine(c, on ? "gps on" : "gps off");
+  if (st == ST_OK) { c.out->key("on"); c.out->boolean(on); }
+  return st;
+}
+// gps.sync: `gps sync`, the clock set from the receiver's next fix.
+Status opGpsSync(OpContext& c) { return gpsLine(c, "gps sync"); }
+// gps.setloc: `gps setloc`, the receiver's position into the saved lat and lon; the answer is what was saved.
+Status opGpsSetloc(OpContext& c) {
+  const Status st = gpsLine(c, "gps setloc");
+  if (st != ST_OK) return st;
+  char r[40];
+  strOrNull(*c.out, "lat", cliValue(c, "get lat", r, sizeof(r)));
+  strOrNull(*c.out, "lon", cliValue(c, "get lon", r, sizeof(r)));
+  return ST_OK;
+}
+// gps.advert.set {"policy"}: `gps advert none|share|prefs`, which position the self advert carries.
+Status opGpsAdvertSet(OpContext& c) {
+  char p[8];
+  if (c.req->args < 0 || !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "policy"), p, sizeof(p), CS_NAME, 1) ||
+      (strcmp(p, "none") != 0 && strcmp(p, "share") != 0 && strcmp(p, "prefs") != 0))
+    return ST_INVALID;
+  char line[24];
+  snprintf(line, sizeof(line), "gps advert %s", p);
+  const Status st = gpsLine(c, line);
+  if (st == ST_OK) { c.out->key("policy"); c.out->str(p); }
+  return st;
+}
+#endif
 // device.reboot: answered first, then the reboot (1.5 s, or the LoRa delay so that the answer goes out).
 Status opDeviceReboot(OpContext& c) { self(c)->rebootSoon(); return ST_OK; }
 Status opDeviceResetW(OpContext& c) {
@@ -498,6 +641,16 @@ const OpEntry OPS[] = {
   {"board.get", opBoardGet, PRIV_READ, false},
   {"board.adc.set", opBoardAdcSet, PRIV_WRITE, true},
   {"power.saving.set", opPowerSavingSet, PRIV_WRITE, true},
+  {"sensor.list", opSensorList, PRIV_READ, false},
+  {"sensor.get", opSensorGet, PRIV_READ, false},
+  {"sensor.set", opSensorSet, PRIV_WRITE, true},
+#if ENV_INCLUDE_GPS == 1
+  {"gps.get", opGpsGet, PRIV_READ, false},
+  {"gps.set", opGpsSet, PRIV_WRITE, true},
+  {"gps.sync", opGpsSync, PRIV_WRITE, true},
+  {"gps.setloc", opGpsSetloc, PRIV_WRITE, true},
+  {"gps.advert.set", opGpsAdvertSet, PRIV_WRITE, true},
+#endif
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},

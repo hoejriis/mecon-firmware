@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/gps.get.result.json",
+  "title": "Result of gps.get",
+  "description": "powered, active, fix and sats are null without a receiver; advert and diag are null for a caller the CLI gate refuses those lines (they are of the write class), and diag also without a receiver.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receiver",
+    "powered",
+    "active",
+    "fix",
+    "sats",
+    "advert",
+    "diag"
+  ],
+  "properties": {
+    "receiver": {
+      "type": "boolean"
+    },
+    "powered": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "active": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "fix": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "sats": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "advert": {
+      "enum": [
+        "none",
+        "share",
+        "prefs",
+        null
+      ]
+    },
+    "diag": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}
