@@ -4,7 +4,7 @@ A manager is any application that manages mecon-firmware devices through the pub
 
 ## Start with capabilities
 
-Send `hello` first. It reports the interface version, `device_id` and the node key with a signature binding them, the role, the hardware and the firmware, and lists every operation (`op.<name>`) and stream (`stream.<name>`) this device can run. Do not infer behaviour from the board name, role or firmware version. An operation that is not listed answers `unknown-op`, and a listed one can still be `refused` for the caller ([device interface](contract/DEVICE_INTERFACE.md)).
+Send `hello` first. It reports the interface version, `device_id` and the node key with a signature binding them, the role, the hardware and the firmware, and lists every operation (by its bare name, `channel.get`) and stream (`stream.<name>`) this device can run. Do not infer behaviour from the board name, role or firmware version. An operation that is not listed answers `unknown-op`, and a listed one can still be `refused` for the caller ([device interface](contract/DEVICE_INTERFACE.md)).
 
 ## Paths to a device
 
