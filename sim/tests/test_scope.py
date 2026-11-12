@@ -10,6 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 from test_deployment_authority import RTC, Dev, wrap  # noqa: E402
+from test_regions import capabilities  # noqa: E402
 
 CMD_GET_DEFAULT_FLOOD_SCOPE, RESP_CODE_DEFAULT_FLOOD_SCOPE = 64, 28
 PRIVATE = bytes(range(0x40, 0x50))
@@ -52,7 +53,7 @@ def test_set_get_clear_on_the_native_prefs(nodes):
     r = shaped("scope.default.get", d.i.request("scope.default.get"))
     assert r["status"] == "ok" and r["result"] == {"name": None, "kind": None}, r
     assert native(d) is None
-    caps = d.i.request("hello")["result"]["capabilities"]
+    caps = capabilities(d)   # every page: the list pages once it outgrows one
     assert {"scope.default.get", "scope.default.set", "scope.default.clear"} <= set(caps), caps
     r = shaped("scope.default.set", d.i.request("scope.default.set", {"name": "#city"}))
     assert r["status"] == "ok" and r["result"] == {"name": "city", "kind": "hashtag"}, r
