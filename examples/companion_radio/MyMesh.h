@@ -133,7 +133,9 @@ public:
   bool setClockForward(uint32_t secs);   // CMD_SET_DEVICE_TIME and clock.set: forward only
   bool setClockBack(uint32_t secs, uint8_t caller);   // `clock back` and clock.back: backward only, audited
   bool setStoredBlePin(uint32_t pin);   // ble.pin.set: 0 or six digits, as CMD_SET_DEVICE_PIN; in use from the next BLE start
+#ifdef ENABLE_MECON_IFACE
   bool handleContactPolicyCommand(const char* command, char* reply);   // frames 38 and 58 as CLI lines
+#endif
 #ifdef ENABLE_MECON_IFACE
   // For the device interface (MeconIface): read-only facts, and frame output to one transport of the multiplexed serial.
   Iface::MessageSend messageSendDirect(const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text,
