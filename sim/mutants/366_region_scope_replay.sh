@@ -6,4 +6,12 @@ mutate scope_replay_runs src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV
 mutate scope_duplicate_not_answered_from_the_cache src/helpers/iface/DeployAuth.cpp '      if (cache && cache->find(key, SIGNED_OP, &data, &dl) == ResultCache::HIT && dl < cap) {' '      if (false) {' $RR::test_a_scope_change_resent_under_its_job_id_changes_nothing_twice
 mutate scope_ble_replay_runs src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_TOO_OLD) {' '    if (false) {' $RR::test_a_scope_change_over_paired_ble_runs_as_it_does_on_the_cable
 mutate scope_mqtt_replay_runs src/helpers/iface/DeployAuth.cpp '    if (rv == Dep::RV_TOO_OLD) {' '    if (false) {' $RR::test_a_scope_change_over_a_verified_mqtt_session_runs_as_it_does_on_the_cable
-mutate scope_set_echoes_its_key src/helpers/iface/ScopeOps.cpp '    w.key("name"); w.str(name);' '    w.key("name"); w.str(name); { char hx[2 * SCOPE_KEY_BYTES + 1]; for (unsigned q = 0; q < SCOPE_KEY_BYTES; q++) snprintf(hx + 2 * q, 3, "%02x", key[q]); w.key("echo"); w.str(hx); }' $RR::test_a_private_scope_key_is_in_no_log_event_audit_entry_or_job_record
+mutate scope_set_echoes_its_key src/helpers/iface/ScopeOps.cpp '  const bool ok = h.set(h.role_user, name, key);
+  wipe(key, sizeof(key));
+  if (ok) {
+    JsonWriter& w = *c.out;
+    w.key("name"); w.str(name);' '  const bool ok = h.set(h.role_user, name, key);
+  if (ok) {
+    JsonWriter& w = *c.out;
+    w.key("name"); w.str(name);
+    { char hx[2 * SCOPE_KEY_BYTES + 1]; for (unsigned q = 0; q < SCOPE_KEY_BYTES; q++) snprintf(hx + 2 * q, 3, "%02x", key[q]); w.key("echo"); w.str(hx); }' $RR::test_a_private_scope_key_is_in_no_log_event_audit_entry_or_job_record
