@@ -123,6 +123,37 @@ def test_native_frames_interleave_with_interface_traffic(nodes):
     assert i.wait_result(env["id"])["status"] == "ok"
 
 
+
+def test_no_event_is_built_while_a_request_is_arriving_in_frames(nodes):
+    # Signing an event holds the loop off the port; on a Heltec V3 that overflowed the 1 KB receive ring and lost the
+    # request being received (#519). So an event that falls due mid-request waits until the request is whole.
+    n, (c, i) = start(nodes, "rxhold")
+    r = i.request("sub.start", {"stream": "radio", "period_s": 5, "lifetime_s": 60})
+    assert r["status"] == "ok", r
+    t0 = time.time()
+    while time.time() < t0 + 3:                      # the first event comes at once; the next falls due at about +5 s
+        i.read_message(0.2)
+    env = i.envelope("clock.get", {"pad": "z" * 600})   # a small result: a large one leaves no queue room for the event
+    frames = mecon_iface.fragment(json.dumps(env).encode(), 7)
+    assert len(frames) > 1
+    c._send(frames[0])                               # half a request, from +3 s
+    held = []
+    while time.time() < t0 + 7.5:                    # past the due time, inside the 5 s reassembly timeout
+        m = i.read_message(0.2)
+        if m and m.get("ev") == "radio":
+            held.append(m)
+    assert not held, "an event was built while a request was arriving: %s" % held
+    for f in frames[1:]:
+        c._send(f)
+    assert i.wait_result(env["id"])["status"] == "ok"
+    end, got = time.time() + 4, None
+    while time.time() < end and got is None:
+        got = next((e for e in i.events if e.get("ev") == "radio"), None)
+        m = i.read_message(0.2)
+        if m and m.get("ev") == "radio":
+            got = m
+    assert got, "the event held back is sent once the request is whole"
+
 # ------------------------------------------------------------------ authorization follows the CLI table, per transport
 
 PIN = 271828
