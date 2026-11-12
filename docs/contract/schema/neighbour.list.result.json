@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/neighbour.list.result.json",
+  "title": "Result of neighbour.list: one page of the heard neighbours, newest first",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "neighbours",
+    "next"
+  ],
+  "properties": {
+    "neighbours": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "heard_s_ago",
+          "snr"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "heard_s_ago": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "snr": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "next": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    }
+  }
+}

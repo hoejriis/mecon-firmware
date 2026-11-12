@@ -208,6 +208,15 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `mgmt.channel.bind`, `mgmt.channel.rotate`, `mgmt.channel.unbind` | bind a slot, rotate its key, end the binding; confirm-or-revert for anyone but the cable | `CMD_SET_CHANNEL` for a rotation | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `acl.list`, `acl.put` | remote-admin ACL: `list` gives each client's node key and role, 8 a page, never its shared secret; `put {"key","role"}` sets a role (`guest`, `read-only`, `read-write`, `admin`), adding the key if new | CLI `setperm`; REQ `GET_ACCESS_LIST` | private (list) / write | `acl.put` | R S | Con, MQTT where built. Over the air the native remote admin keeps `setperm` and `GET_ACCESS_LIST`; the LoRa management link does not carry these two |
 | `password.set` | `{"which", "password"}`: `which` is `"admin"` or `"guest"`; sets the admin or guest password, at most 15 characters (`too-long` otherwise, never cut); write-only, the answer names which one and never the value | CLI `password`, `set guest.password` | write | yes | R S | Con only: a broker session is refused (`not-over-this-link`), and the LoRa management link carries no write-only setting. Over the air the native remote admin keeps its own `password` line |
+| `clock.reset` | the clock set to the CLI's guess (2024-05-15), then a reboot about 1.5 s after the answer | CLI `clkreboot` | write | yes | R S | Con, MQTT where built; not over LoRa |
+| `stats.clear` | the packet and radio counters back to zero | CLI `clear stats` | write | yes | R S | Con, MQTT where built; not over LoRa |
+| `log.start`, `log.stop`, `log.erase` | the packet log on, off, or removed | CLI `log start`, `log stop`, `log erase` | write | yes | R S | Con, MQTT where built; not over LoRa |
+| `log.read` | `{"offset"}`: the packet log's text from there, at most 512 bytes: `{"size","offset","text","next"}`, `next` null at the end; an empty log reads `size` 0. Of the write class, as the CLI's `log`, which runs from the console only; a broker session is refused (`not-over-this-link`) | CLI `log` (prints the file to the serial port) | write | no | R S | Con only; not over LoRa |
+| `radio.temp` | `{"radio":"freq,bw,sf,cr","minutes"}`: radio settings for 1 to 1,440 minutes, then the saved ones again. It reverts itself, and never cuts its caller's path, since it does not go over LoRa, so it is not confirm-or-revert | CLI `tempradio` | write | yes | R S | Con, MQTT where built; not over LoRa |
+| `neighbour.list` | `{"cursor"}`: the heard neighbours, newest first, 8 a page: `{"neighbours":[{"key","heard_s_ago","snr"}],"next"}`, the whole node key (the CLI shows 4 bytes), the SNR in dB | CLI `neighbors` | read | no | R | Con, MQTT where built; not over LoRa |
+| `neighbour.remove` | `{"key"}`, one whole node key in lower-case hex (the CLI also takes a prefix, which can match several) | CLI `neighbor.remove` | write | yes | R | Con, MQTT where built; not over LoRa |
+| `neighbour.discover` | a zero-hop discovery request on the air, within the radio's own duty-cycle rules | CLI `discover.neighbors` | write | yes | R | Con, MQTT where built; not over LoRa |
+| `room.post` | `{"text"}`, 1 to 149 characters: a system post to the room's clients | CLI `room.post` | write | yes | S | Con, MQTT where built; not over LoRa |
 | `clock.get` | `{"epoch": n}`, wall-clock seconds; `null` while the clock is not set | `CMD_GET_DEVICE_TIME` | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `clock.set` | `{"epoch": n}`: sets the device clock, forward only (`backwards` otherwise); the answer is the clock after it | `CMD_SET_DEVICE_TIME`, CLI `time` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `advert.send` | self advert: `{"flood": true}` floods it in the default scope, otherwise zero hop; the result names which | `CMD_SEND_SELF_ADVERT`, CLI `advert`, `advert.zerohop` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
@@ -238,6 +247,8 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 `tools/mecon_kx.py` is a plain-Python reference. `test/fixtures/key_export_v1.json` is a public vector, and the firmware reproduces it exactly (sim/tests/test_key_export.py).
 
 `contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
+
+`neighbour.*` are the Repeater's, which keeps a neighbour table, and `room.post` the Room server's, which keeps the posts. The other role does not list them, and answers `failed` `not-on-this-device`.
 
 **Keys `config.*` reaches.**
 - Companion: 29 key patterns, 106 concrete keys on a build with Wi-Fi: `name`, `tx`, `radio`, the radio preferences `af`, `int.thresh`, `cad`, `radio.rxgain`, `rxdelay`, `txdelay`, `direct.txdelay`, `agc.reset.interval`, `path.hash.mode` and `multi.acks`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|transport|path|site|user|pwd|priority`. The 22 password and user keys are write-only. A build without Wi-Fi has 13: `name`, `tx`, `radio` and the radio preferences.
@@ -334,10 +345,10 @@ Every CLI line is classed by the registry; a line the registry does not name is 
 | power | `poweroff`, `shutdown` | destructive | refused (local only) | refused | none (needs someone on site) |
 | erase | `erase` (console only) | destructive | refused | refused | `device.reset factory` |
 | ACL and passwords | `setperm`, `password`, `set guest.password` | write | yes | refused | `acl.put`, `password.set` |
-| radio test | `tempradio` | write | yes | refused | none |
-| actions | `advert`, `advert.zerohop`, `clock sync`, `time`, `clkreboot`, `neighbor.remove`, `discover.neighbors`, `clear stats`, `log start/stop/erase` | write (unregistered) | yes | refused | `advert.send`, `clock.set`; the rest stay CLI |
+| radio test | `tempradio` | write | yes | refused | `radio.temp` |
+| actions | `advert`, `advert.zerohop`, `clock sync`, `time`, `clkreboot`, `neighbor.remove`, `discover.neighbors`, `clear stats`, `log start/stop/erase`, `log` (console only), `room.post` (Room server) | write (unregistered) | yes | refused | `advert.send`, `clock.set`, `clock.reset`, `neighbour.remove`, `neighbour.discover`, `stats.clear`, `log.start`, `log.stop`, `log.erase`, `log.read`, `room.post`; `clock sync` stays CLI, since it takes the remote admin's own clock |
 | region | `region` (list), `region get`, and the region writes | read; write | yes | reads only | `config.*` (region keys) |
-| reads | `ver`, `board`, `clock`, `neighbors`, `power`, `get mecon.*`, `sensor get/list` | read | yes | yes | `hello`, `status.get`, telemetry |
+| reads | `ver`, `board`, `clock`, `neighbors`, `power`, `get mecon.*`, `sensor get/list` | read | yes | yes | `hello`, `status.get`, telemetry; `neighbors` is `neighbour.list` |
 | OTA | `start ota` | write | yes | refused | `update.*` |
 
 Notes the matrix depends on, as the code stands:

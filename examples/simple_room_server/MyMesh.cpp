@@ -977,6 +977,20 @@ void MyMesh::updateFloodAdvertTimer() {
   }
 }
 
+int MyMesh::readLog(uint32_t offset, uint8_t* buf, size_t cap, uint32_t* size) {
+#if defined(RP2040_PLATFORM)
+  File f = _fs->open(PACKET_LOG_FILE, "r");
+#else
+  File f = _fs->open(PACKET_LOG_FILE);
+#endif
+  if (!f) return -1;
+  *size = f.size();
+  int n = 0;
+  if (offset < *size && f.seek(offset)) n = (int)f.read(buf, cap);
+  f.close();
+  return n < 0 ? 0 : n;
+}
+
 void MyMesh::dumpLogFile() {
 #if defined(RP2040_PLATFORM)
   File f = _fs->open(PACKET_LOG_FILE, "r");

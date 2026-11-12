@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/log.read.result.json",
+  "title": "Result of log.read: one page of the packet log",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "size",
+    "offset",
+    "text",
+    "next"
+  ],
+  "properties": {
+    "size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "next": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    }
+  }
+}

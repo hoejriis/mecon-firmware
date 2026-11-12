@@ -243,6 +243,9 @@ public:
   }
 
   void dumpLogFile() override;
+  // log.read: up to cap bytes of the packet log from offset, the whole file's size in *size; -1 when there is no log.
+  int readLog(uint32_t offset, uint8_t* buf, size_t cap, uint32_t* size);
+  void guessClockForReboot() { getRTCClock()->setGuess(1715770351); }   // clkreboot's clock, as the CLI sets it
   void setTxPower(int8_t power_dbm) override;
   bool setRxBoostedGain(bool enable) override;
 
