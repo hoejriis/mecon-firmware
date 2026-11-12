@@ -1,6 +1,7 @@
 #include "MqttController.h"
 #include "../iface/Wipe.h"
 #include "../MemStats.h"
+#include "../HeapWatch.h"
 #include "../CryptoRNG.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -173,6 +174,7 @@ void MqttController::attempt(const MqttAction& a) {
   _job_cancel = false;
   _job_profile = a.profile;
   _job_active = true;
+  heapWatch().setBackground("mqtt.connect");   // the handshake runs on the worker (HeapWatch.h)
   if (!_net->asyncStart(&MqttController::connectEntry, this)) {
     // No worker (it could not be created, or the previous job is somehow still running): this attempt fails like a
     // connect that could not open, and the profile cools down before the next try.
@@ -240,6 +242,10 @@ void MqttController::cancelAttempt() { _job_cancel = true; }
 // The finished job's result, on the main loop. A result nobody wants any more (cancelled, or the core has since left
 // Connecting: profile edited, link lost, disabled) is dropped, closing the session if the job got that far.
 void MqttController::takeResult() {
+  {
+    HeapScope hs("mqtt.connect");   // the connect's low (its handshake's peak, its buffers held), before the name is cleared
+  }
+  heapWatch().setBackground(nullptr);
   _job_active = false;
   ConnectJob& j = _job;
   free(j.ca);   // the CA copy is the job's: nothing holds it once the job is over
@@ -309,6 +315,7 @@ Cli::Context MqttController::sessionContext() const {
 // payload sits in PubSubClient's one buffer, and a job's state change publishes its event while the request is still being
 // handled, which writes over that buffer. So the request is handled from a copy of its own.
 void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
+  HeapScope hs("mqtt.request");
   char* out = static_cast<char*>(ifaceAlloc(IFACE_PACKET_BUFFER));
   uint8_t* req = static_cast<uint8_t*>(ifaceAlloc(len + 1));
   if (out && req) {
@@ -330,6 +337,7 @@ void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
 }
 
 bool MqttController::pub(const char* topic, const uint8_t* payload, unsigned len, bool retained) {
+  HeapScope hs("mqtt.publish");
   const uint32_t t0 = millis();
   const bool ok = _psc.publish(topic, payload, len, retained);
   const uint32_t ms = millis() - t0;
