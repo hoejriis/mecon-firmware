@@ -94,7 +94,7 @@ def mecon_literals():
     """Command literals this project added, found in the source by pattern."""
     names = set()
     pat = re.compile(r'"((?:get|set) (?:posture|audit|connectivity\.mode|dutycycle|mecon\.[a-z.]+|'
-                     r'wifi\.[a-z]+|mqtt\.[a-z]+|contacts\.[a-z]+))')
+                     r'wifi\.[a-z]+|mqtt\.[a-z]+|contacts\.[a-z_.]*[a-z]|telemetry\.[a-z]+|advert\.location))')
     for rel in ("src/helpers/cli/MeconCli.h", "src/helpers/Posture.h", "src/helpers/connmode/ConnMode.h",
                 "src/helpers/wifi/WifiProfiles.cpp", "src/helpers/mqtt/MqttProfiles.cpp",
                 "examples/companion_radio/MyMesh.cpp", "src/helpers/net/NetCommands.h"):

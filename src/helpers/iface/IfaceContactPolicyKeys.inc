@@ -1,0 +1,23 @@
+// The Companion's contact auto-add, telemetry and advert-location settings, which the app sets with frames 38 and 58
+// (CMD_SET_OTHER_PARAMS, CMD_SET_AUTOADD_CONFIG). contacts.manual_add on: a heard advert is stored only for the types
+// whose contacts.autoadd key is on, within contacts.autoadd.max_hops (0: no limit). Companion table only.
+  {"contacts.manual_add", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get contacts.manual_add", F_WHOLE,
+   "set contacts.manual_add %s"},
+  {"contacts.autoadd.chat", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get contacts.autoadd.chat", F_WHOLE,
+   "set contacts.autoadd.chat %s"},
+  {"contacts.autoadd.repeater", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get contacts.autoadd.repeater", F_WHOLE,
+   "set contacts.autoadd.repeater %s"},
+  {"contacts.autoadd.room", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get contacts.autoadd.room", F_WHOLE,
+   "set contacts.autoadd.room %s"},
+  {"contacts.autoadd.sensor", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get contacts.autoadd.sensor", F_WHOLE,
+   "set contacts.autoadd.sensor %s"},
+  {"contacts.autoadd.overwrite", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get contacts.autoadd.overwrite", F_WHOLE,
+   "set contacts.autoadd.overwrite %s"},
+  {"contacts.autoadd.max_hops", K_INT, 0, 64, nullptr, KF_WRITABLE, 0, "get contacts.autoadd.max_hops", F_WHOLE,
+   "set contacts.autoadd.max_hops %s"},
+  {"telemetry.base", K_ENUM, 0, 0, "deny|flags|all", KF_WRITABLE, 0, "get telemetry.base", F_WHOLE, "set telemetry.base %s"},
+  {"telemetry.location", K_ENUM, 0, 0, "deny|flags|all", KF_WRITABLE, 0, "get telemetry.location", F_WHOLE,
+   "set telemetry.location %s"},
+  {"telemetry.environment", K_ENUM, 0, 0, "deny|flags|all", KF_WRITABLE, 0, "get telemetry.environment", F_WHOLE,
+   "set telemetry.environment %s"},
+  {"advert.location", K_ENUM, 0, 0, "none|share", KF_WRITABLE, 0, "get advert.location", F_WHOLE, "set advert.location %s"},
