@@ -8,6 +8,8 @@
 //   get mecon.cli.check <line>    what the table would say to <line> for this caller, without running it or auditing it
 //   get mecon.mem                 heap free now, largest allocatable block, lowest free since boot (where tracked), and the
 //                                 heap floor check: heap_low=1|0 and floor=<bytes> (0 = no check on this role or platform)
+//   get mecon.heaplow             what was running when the largest free block and the free heap were at their lowest, and
+//                                 when (helpers/HeapWatch.h)
 //   get mecon.version             the build's full identity and the upstream base it carries (helpers/MeconVersion.h)
 //   get mecon.boot                millis() when the store was loaded, the mesh started and setup ended (helpers/BootTimes.h)
 //
@@ -18,6 +20,7 @@
 #include "CliRegistry.h"
 #include "../MemStats.h"
 #include "../HeapFloor.h"
+#include "../HeapWatch.h"
 #include "../MeconVersion.h"
 #include "../BootTimes.h"
 
@@ -119,10 +122,28 @@ inline void formatMem(const MemStats& m, const HeapFloor& floor, char* reply, si
   }
 }
 
+// The reply to `get mecon.heaplow`: "> largest=<n> by=<what> at=<s>s min_free=<n> by=<what> at=<s>s", a figure with no
+// look yet reading "none". Split out so the native unit tests can feed it.
+inline void formatHeapLow(const HeapWatch& h, char* reply, size_t max) {
+  const HeapWatch::Low& l = h.largest();
+  const HeapWatch::Low& m = h.minFree();
+  int n = snprintf(reply, max, "> largest=");
+  if (n > 0 && (size_t)n < max)
+    n += l.seen ? snprintf(reply + n, max - n, "%lu by=%s at=%lus", (unsigned long)l.bytes, l.by, (unsigned long)l.at_s)
+                : snprintf(reply + n, max - n, "none");
+  if (n > 0 && (size_t)n < max)
+    snprintf(reply + n, max - n, m.seen ? " min_free=%lu by=%s at=%lus" : " min_free=none", (unsigned long)m.bytes,
+             m.seen ? m.by : "", (unsigned long)m.at_s);
+}
+
 // Returns true when `cmd` is one of the MECON commands and `reply` holds the answer.
 inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char* reply, size_t max) {
   if (strcmp(cmd, "get mecon.mem") == 0) {
     formatMem(memStats(), heapFloor(), reply, max);
+    return true;
+  }
+  if (strcmp(cmd, "get mecon.heaplow") == 0) {
+    formatHeapLow(heapWatch(), reply, max);
     return true;
   }
   if (strcmp(cmd, "get mecon.boot") == 0) {

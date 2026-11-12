@@ -6,6 +6,7 @@
 #include "MyMesh.h"
 #include <helpers/net/NetTelemetry.h>
 #include <helpers/HeapFloor.h>
+#include <helpers/HeapWatch.h>
 #if defined(ESP32) && defined(ENABLE_CONNMODE) && !defined(SIM_BLE_STUB)   // the simulated board has no BT controller
   #include <esp_bt.h>   // esp_bt_controller_mem_release, in Wi-Fi mode
 #endif
@@ -440,6 +441,7 @@ void setup() {
 void loop() {
   the_mesh.loop();
   heapFloor().loop(millis(), rtc_clock.getCurrentTime());
+  heapWatchTick();   // what the heap was doing at its lowest (helpers/HeapWatch.h)
   interface_manager.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS

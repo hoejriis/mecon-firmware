@@ -30,7 +30,7 @@ mutate iface_cli_line_never_remote examples/companion_radio/MeconIface.cpp '  co
 mutate iface_mqtt_request_topic_not_subscribed src/helpers/mqtt/MqttController.cpp '  if (_iface_fn) _psc.subscribe(_iface_req);' '' sim/tests/test_device_interface.py::test_hello_and_config_over_a_verified_broker
 mutate iface_subscription_never_lapses src/helpers/iface/Streams.cpp '      if (sub.active && (int32_t)(now - sub.until) >= 0) sub.active = false;' '' sim/tests/test_device_interface.py::test_a_subscription_lapses_at_its_lifetime
 mutate iface_sub_stop_does_not_stop src/helpers/iface/Streams.cpp '  if (set) set->s[s].active = false;' '' sim/tests/test_device_interface.py::test_health_events_follow_a_subscription_and_stop_with_it
-mutate iface_mqtt_events_not_published examples/companion_radio/MeconIface.cpp '  if (_mqtt_subs.s[s].active && _ev_publish) _ev_publish(STREAMS[s].name, ev, n);' '' sim/tests/test_device_interface.py::test_health_events_over_mqtt
+mutate iface_mqtt_events_not_published examples/companion_radio/MeconIface.cpp '    _ev_publish(STREAMS[s].name, ev, n);' '' sim/tests/test_device_interface.py::test_health_events_over_mqtt
 mutate config_apply_skips_the_authority_check src/helpers/iface/IfaceConfig.cpp '    if (!allowed) { c.error = keyError("refused", key); return ST_REFUSED; }' '' unit:test_iface_config
 mutate config_index_unbounded src/helpers/iface/IfaceConfig.cpp 'if (matches(table[i].key, key, len, index) && *index <= table[i].idx_max) return &table[i];' 'if (matches(table[i].key, key, len, index)) return &table[i];' unit:test_iface_config
 mutate config_leading_zero_accepted src/helpers/iface/IfaceConfig.cpp '  if (dn > 3 || (dn > 1 && d[0] == ' '  if (dn > 3 || (false && d[0] == ' unit:test_iface_config

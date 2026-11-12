@@ -242,7 +242,7 @@ private:
   bool ensureQueue(Link& l);
 
   Link _links[LINKS];
-  Iface::MessageTable* _messages = nullptr;   // allocated on the first message.send
+  Iface::MessageTable* _messages = nullptr;   // allocated on the first message.send, or at begin() in Wi-Fi mode
   uint32_t _msg_ev_seq = 0;
   void tellMessages();
   Iface::Inbox _inbox;
@@ -250,7 +250,7 @@ private:
   bool _inbox_tried = false;
   void tellInbox();
   void tellReaders(const char* ev_name, uint32_t seq, const char* data);
-  Iface::ResultCache* _cache = nullptr;     // one for the device (design section 3), allocated on the first request
+  Iface::ResultCache* _cache = nullptr;     // one for the device (design section 3), allocated on the first request, or at begin() in Wi-Fi mode
   MyMesh* _mesh = nullptr;
   Cli::Context _ctx;                        // the caller of the request being handled (a transport, or the broker)
   Link* _cur_link = nullptr;                // its transport, or nullptr for the broker

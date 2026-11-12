@@ -1,6 +1,7 @@
 #include "ConsoleIface.h"
 #include "AuditOps.h"
 #include "../HeapFloor.h"
+#include "../HeapWatch.h"
 #include <helpers/esp32/NativeUsbTx.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/Uptime.h>
@@ -1229,6 +1230,7 @@ const char* ConsoleIface::denyReason(void* user) { return static_cast<ConsoleIfa
 // One request through the dispatcher as the caller ctx: the cable or the broker session, or the signed principal on
 // either. The posture is read again each time, so a posture change takes effect on the next line.
 int ConsoleIface::run(const Cli::Context& ctx, const char* msg, size_t len, char* out, size_t cap, ResultCache* cache) {
+  HeapScope hs("request");
   _ctx = ctx;
   _ctx.posture = _host.posture(_host.user);
   _auth.setLink(_on_mqtt ? &_mqtt_unlock : &_unlock);
