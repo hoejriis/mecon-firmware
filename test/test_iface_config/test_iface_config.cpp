@@ -336,6 +336,19 @@ TEST(IfaceConfig, OnOffKeysReachTheCliAsOnOff) {
   EXPECT_NE(std::string::npos, res.find("\"loop.detect\":\"minimal\"")) << res;
 }
 
+TEST(IfaceConfig, RadioPreferenceDecimalsAreChecked) {   // af, rxdelay, txdelay and direct.txdelay (#489)
+  EXPECT_TRUE(checkFormat("airtime-factor", "9"));
+  EXPECT_TRUE(checkFormat("airtime-factor", "0.5"));
+  EXPECT_FALSE(checkFormat("airtime-factor", "9.1"));
+  EXPECT_TRUE(checkFormat("rx-delay", "20"));
+  EXPECT_FALSE(checkFormat("rx-delay", "20.5"));
+  EXPECT_TRUE(checkFormat("tx-delay", "2"));
+  EXPECT_FALSE(checkFormat("tx-delay", "2.1"));
+  EXPECT_FALSE(checkFormat("tx-delay", "-0.5"));
+  EXPECT_FALSE(checkFormat("tx-delay", "1,5"));
+  EXPECT_FALSE(checkFormat("tx-delay", ""));
+}
+
 TEST(IfaceConfig, CoordinatesAreChecked) {
   EXPECT_TRUE(checkFormat("latitude", "56.1572"));
   EXPECT_TRUE(checkFormat("latitude", "-33.9"));
