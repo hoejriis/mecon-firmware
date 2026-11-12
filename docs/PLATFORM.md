@@ -117,6 +117,22 @@ Two other levers from Issue #100 were measured in the same session and are not u
 - **4 static Wi-Fi RX buffers** instead of 10 (with `CONFIG_ESP_WIFI_RX_BA_WIN=6`, which ESP-IDF requires): 38,504 B. With the release as well: 36,480 B, which undoes the release's gain.
 - **6 LWIP sockets** instead of 10: 40,312 B, no gain.
 
+### The broker's certificate chain, freed once the session is authenticated
+
+mbedTLS keeps the peer's whole certificate chain for the life of a TLS session. The broker is authenticated after the handshake, by the profile's anchor (a leaf fingerprint, or a chain to a CA), and nothing reads the chain after that, so the MQTT client frees it then. The library's own option (`MBEDTLS_SSL_KEEP_PEER_CERTIFICATE` off) cannot be used: it drops the chain before the anchor check runs, and every anchored profile would fail closed.
+
+Measured on v3test (V3 standalone Companion), against a bench broker serving a chain like F2's of three RSA-2048 certificates (leaf, intermediate, root). The session was anchored and verified, no streams, 60 s each, 2026-11-11:
+
+| Build, anchor | Steady free heap | Lowest `min_free` |
+|---|---|---|
+| v0.3.2, CA | 54,020 B | 44,100 B |
+| with the chain freed, CA | 59,532 B | 44,968 B |
+| with the chain freed, leaf fingerprint | 60,596 B | 46,768 B |
+
+The steady heap of a session rises by 5.5 to 6.6 KB. The low-water hardly moves: it is set during the handshake, while the chain is still held, together with the handshake's own working set (the RSA verification, and the 16 KB TLS input buffer a broker may fill with a full record).
+
+**Why the Heltec V3 does not reach the 2.0.17 low-water.** Against F2 (wss, every stream on, the pilot on v0.3.2), the lowest `min_free` measured is about 25 KB, against 51.7 KB on Arduino-ESP32 2.0.17. The levers tried that move it are in this page: the TLS output buffer, dynamic Wi-Fi TX buffers, the removed components, the BT controller's memory in Wi-Fi mode and this one. Fewer Wi-Fi RX buffers and fewer LWIP sockets did not help. A shorter chain from the broker (two certificates instead of three) is worth about 1.6 KB of steady heap and is the broker's setting. What remains is ESP-IDF 5.3's larger Wi-Fi and TLS working set during a handshake, which no setting found here reduces.
+
 ### The Heltec V4 has its own rebuilt libraries
 
 The V4 envs extend `esp32s3_v4_idf5_base`, whose rebuilt set holds the 2,048-byte IPC stack and the same 13 removed components, and nothing else. The V3's dynamic Wi-Fi TX buffers are left out. They need `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n`, which moves Wi-Fi and LWIP out of the V4's PSRAM. Measured on v4test with Wi-Fi + TLS MQTT, the V3's set cost the V4 internal heap: free 101,472 B against 102,568 B on main, largest block 34,804 B against 38,900 B, low-water 91,816 B against 97,832 B. In the V4's set `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` stays on, and the linked `esp_ipc_init` creates the IPC tasks with 2,048 bytes. Measured on v4test (V4.3 OLED, standalone Companion, 2026-11-01): 303 software resets of main gave 6 IPC canary panics (2.0 %; 4 in ipc0, 2 in ipc1), 300 of this build gave none. In one session, `get mecon.mem` idle free 140,916 B on main against 147,612 B; with a pinned-TLS MQTT session free 96,792 B against 103,484 B and low-water 92,020 B against 98,692 B (about 6.7 KB more each, net of the 2 KB the IPC stacks take); PSRAM free unchanged at 2,035,116 B. The largest block, 32,756 B against 38,900 B, moves with the layout and is not relied on.
