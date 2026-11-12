@@ -131,6 +131,8 @@ public:
   void loop();
   bool sendSelfAdvert(bool flood);   // CMD_SEND_SELF_ADVERT, and advert.send where the interface is built
   bool setClockForward(uint32_t secs);   // CMD_SET_DEVICE_TIME and clock.set: forward only
+  bool setClockBack(uint32_t secs, uint8_t caller);   // `clock back` and clock.back: backward only, audited
+  bool setStoredBlePin(uint32_t pin);   // ble.pin.set: 0 or six digits, as CMD_SET_DEVICE_PIN; in use from the next BLE start
 #ifdef ENABLE_MECON_IFACE
   // For the device interface (MeconIface): read-only facts, and frame output to one transport of the multiplexed serial.
   Iface::MessageSend messageSendDirect(const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text,
@@ -326,6 +328,7 @@ private:
 public:
   void saveDirtyContacts() { if (dirty_contacts_expiry) saveContacts(); }
   bool bondsClearPending() { return _store->bondsClearPending(); }
+  uint16_t unmigratedContacts() const { return _unmigrated; }   // contact.capacity, as get contacts.capacity
   // At a BLE start, before advertising: the pending clear ran; the marker goes only when no bond is left.
   void bondsCleared(bool none_left) { if (none_left) _store->setBondsClearPending(false); }
   // device.reset (OPERATIONS.md 3.5): removes exactly one scope and saves; the interface reboots afterwards.

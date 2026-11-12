@@ -161,6 +161,7 @@ public:
   // (AUTHORITY.md section 9). The CLI privilege table takes it as Context.enrolled.
   bool enrolled() const { return _auth.enrolled(); }
   const Cli::Context& callerContext() const { return _ctx; }
+  uint8_t auditCaller() const { return _caller; }   // the caller's audit identity (Posture::CALLER_*)
   const Iface::DeployAuth& authState() const { return _auth; }
   void setRolesListener(Iface::DeployAuth::RolesListener f, void* user) { _auth.setRolesListener(f, user); }   // #218
   bool hasUnlockSecret() const { return _auth.hasUnlockSecret(); }

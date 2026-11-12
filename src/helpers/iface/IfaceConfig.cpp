@@ -10,6 +10,7 @@ namespace Iface {
 // The keys of the interface's settings profile config/1.0. Indexes are 0-based, as in the CLI.
 const KeyDef KEYS[] = {
   {"name", K_STRING, 1, 31, nullptr, KF_WRITABLE, 0, "get name", F_WHOLE, "set name %s"},
+  {"tz.offset", K_INT, -12, 14, nullptr, KF_WRITABLE, 0, "get tz.offset", F_WHOLE, "set tz.offset %s"},   // whole hours
   {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get tx", F_WHOLE, "set tx %s"},
   {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
 #include "IfaceRadioKeys.inc"

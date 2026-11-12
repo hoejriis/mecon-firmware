@@ -110,7 +110,7 @@ A direct message is noted for text messages the Companion sends (`sendMessage`) 
 
 ### Status
 
-`get contacts.capacity` (USB console, BLE console, and a remote CLI reader as a read):
+`get contacts.capacity` (USB console, BLE console, and a remote CLI reader as a read; the device interface's `contact.capacity` gives the same figures as named fields):
 
 ```
 > adaptive store 412/1000 cache 38/48 pinned 6 fav 6 evicted 12 refused 0+0 loads 91 damaged 0 werr 0 ram 28113
