@@ -16,6 +16,7 @@
 #include <helpers/BaseSerialInterface.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/iface/IfaceConfig.h>
+#include <helpers/iface/AuditOps.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/iface/Observe.h>
 #include <new>
@@ -52,7 +53,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect",
                                     "message.send", "message.get", "message.list", "message.ack",
                                     "inbox.list", "inbox.ack", "message.deliver",
-                                    "scope.default.get", "scope.default.set", "scope.default.clear"
+                                    "scope.default.get", "scope.default.set", "scope.default.clear", "audit.list"
 #if defined(BLE_PIN_CODE)
                                     , "ble.bonds", "ble.pin.get"
 #endif
@@ -76,6 +77,7 @@ Status opAdvertSend(OpContext& c);
 Status opDeviceReboot(OpContext& c);
 Status opDeviceResetW(OpContext& c);
 Status opBleBonds(OpContext& c);
+Status opAuditListW(OpContext& c);
 Status opNetClear(OpContext& c);
 Status opNetAnchor(OpContext& c);
 Status opBlePin(OpContext& c);
@@ -161,6 +163,8 @@ const OpEntry OPS[] = {
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
   {"ble.bonds", opBleBonds, PRIV_READ, false},
+  // The posture class (the CLI's `get audit`, the logs stream) is checked in the handler, as for sub.start logs.
+  {"audit.list", opAuditListW, PRIV_READ, false},
 #if defined(ENABLE_WIFI_INTERFACE) || defined(ENABLE_MQTT)
   {"net.profile.clear", opNetClear, PRIV_WRITE, true},
 #endif
@@ -305,6 +309,7 @@ Status opDeviceResetW(OpContext& c) {
   return opDeviceReset(c, h);
 }
 
+Status opAuditListW(OpContext& c) { return opAuditList(c, MeconIface::streamAllow, self(c)); }
 Status opNetClear(OpContext& c) {
   NetProfileHost h = self(c)->netHost();
   return opNetProfileClear(c, h);

@@ -1,6 +1,7 @@
 // ESP32 network for the MQTT controller: Arduino WiFi / WiFiClientSecure (mbedTLS) and the ESP-IDF mDNS component's
 // asynchronous query. Not exercised on hardware yet; compiled for the Heltec V3 and V4 Wi-Fi builds.
 #if defined(ESP32) && defined(ENABLE_MQTT)
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS   // SecClient::dropPeerChain reaches the session's stored peer chain
 #include "MqttNet.h"
 #include "MqttProfiles.h"
 #include <WiFi.h>
@@ -12,6 +13,7 @@
 #include <atomic>
 #include <time.h>
 #include <mbedtls/ssl.h>
+#include <mbedtls/platform.h>
 #include <mbedtls/x509_crt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -96,6 +98,18 @@ public:
     if (!WiFiClientSecure::connect(ip, port, nullptr, nullptr, nullptr, nullptr)) return 0;
     if (mbedtls_ssl_set_hostname(&sslclient->ssl_ctx, nullptr) != 0) { stop(); return 0; }
     return startTLS();
+  }
+  // Frees the peer's certificate chain the session keeps after the handshake. The broker is authenticated (or found
+  // unanchored) before this runs, and nothing reads the chain later: no renegotiation, no resumption. With F2's chain of
+  // three RSA certificates that is about 10 KB of heap for the whole session (#100). It is what mbedTLS does itself
+  // with MBEDTLS_SSL_KEEP_PEER_CERTIFICATE off, done after our own checks rather than before them.
+  void dropPeerChain() {
+    if (!sslclient) return;
+    mbedtls_ssl_session* s = sslclient->ssl_ctx.MBEDTLS_PRIVATE(session);
+    if (!s || !s->MBEDTLS_PRIVATE(peer_cert)) return;
+    mbedtls_x509_crt_free(s->MBEDTLS_PRIVATE(peer_cert));
+    mbedtls_free(s->MBEDTLS_PRIVATE(peer_cert));
+    s->MBEDTLS_PRIVATE(peer_cert) = nullptr;
   }
   static MqttCertTime certTime(const mbedtls_x509_time& t) { return {t.year, t.mon, t.day, t.hour, t.min, t.sec}; }
 
@@ -227,8 +241,9 @@ public:
       _sec->setInsecure();
       _sec->setHandshakeTimeout((a.timeout_ms + 999) / 1000);
       if (!_sec->connectNamed(ip, a.port, a.name, (int32_t)a.timeout_ms)) return MqttOpen::Tls;
-      if (a.ca_b64) return _sec->chainsTo(a.ca_b64, a.name, a.dates_unknown) ? MqttOpen::Ok : MqttOpen::Pin;
-      if (a.anchor_hex && !_sec->verify(a.anchor_hex, nullptr)) return MqttOpen::Pin;
+      if (a.ca_b64 && !_sec->chainsTo(a.ca_b64, a.name, a.dates_unknown)) return MqttOpen::Pin;
+      if (!a.ca_b64 && a.anchor_hex && !_sec->verify(a.anchor_hex, nullptr)) return MqttOpen::Pin;
+      _sec->dropPeerChain();   // authenticated: the chain is not needed again
       return MqttOpen::Ok;
     }
     _plain = new WiFiClient();

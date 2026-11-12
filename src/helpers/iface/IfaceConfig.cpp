@@ -12,6 +12,7 @@ const KeyDef KEYS[] = {
   {"name", K_STRING, 1, 31, nullptr, KF_WRITABLE, 0, "get name", F_WHOLE, "set name %s"},
   {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get tx", F_WHOLE, "set tx %s"},
   {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
+#include "IfaceRadioKeys.inc"
 #ifdef ENABLE_WIFI_INTERFACE   // a board without Wi-Fi has neither the mode switch nor the profiles: `invalid`, as any key it lacks
   {"connectivity.mode", K_ENUM, 0, 0, "ble|wifi", KF_WRITABLE | KF_CONFIRM | KF_RESTARTS, 0, "get connectivity.mode", F_WHOLE,
    "set connectivity.mode %s"},
@@ -26,6 +27,7 @@ const KeyDef SERVER_KEYS[] = {
   {"name", K_STRING, 1, 31, nullptr, KF_WRITABLE, 0, "get name", F_WHOLE, "set name %s"},
   {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get tx", F_WHOLE, "set tx %s"},
   {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
+#include "IfaceRadioKeys.inc"
   {"lat", K_STRING, 1, 12, nullptr, KF_WRITABLE, 0, "get lat", F_WHOLE, "set lat %s", "latitude"},
   {"lon", K_STRING, 1, 12, nullptr, KF_WRITABLE, 0, "get lon", F_WHOLE, "set lon %s", "longitude"},
   {"repeat", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get repeat", F_WHOLE, "set repeat %s"},
@@ -77,6 +79,13 @@ bool checkFormat(const char* format, const char* value) {
     const char* p = value;
     const char* dot = strchr(value, '.');
     return decimal(p, &p, 0, 10) && *p == 0 && (!dot || strlen(dot + 1) <= 3);
+  }
+  // af, rxdelay, txdelay and direct.txdelay: one plain decimal within the CLI's own range.
+  const double top = strcmp(format, "airtime-factor") == 0 ? 9 : strcmp(format, "rx-delay") == 0 ? 20
+                   : strcmp(format, "tx-delay") == 0 ? 2 : -1;
+  if (top >= 0) {
+    const char* p = value;
+    return decimal(p, &p, 0, top) && *p == 0;
   }
   if (strcmp(format, "freq,bw,sf,cr") != 0) return false;
   const char* p = value;
