@@ -131,6 +131,7 @@ public:
   void loop();
   bool sendSelfAdvert(bool flood);   // CMD_SEND_SELF_ADVERT, and advert.send where the interface is built
   bool setClockForward(uint32_t secs);   // CMD_SET_DEVICE_TIME and clock.set: forward only
+  bool handleContactPolicyCommand(const char* command, char* reply);   // frames 38 and 58 as CLI lines
 #ifdef ENABLE_MECON_IFACE
   // For the device interface (MeconIface): read-only facts, and frame output to one transport of the multiplexed serial.
   Iface::MessageSend messageSendDirect(const uint8_t key[32], uint32_t ts, uint8_t attempt, const char* text,

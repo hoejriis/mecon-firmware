@@ -240,7 +240,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 `contact.*`, `message.*`, `inbox.*`, `message.deliver` and `rf.request` are Companion only. This is a recorded exception to the rule that the firmware works the same way in all modes, and it follows from the roles: they act on a user's own contacts, messages and app, and only a Companion has those. A Repeater keeps neighbours, not contacts; a Room server's posts belong to its clients and are served through the room.
 
 **Keys `config.*` reaches.**
-- Companion: 29 key patterns, 106 concrete keys on a build with Wi-Fi: `name`, `tx`, `radio`, the radio preferences `af`, `int.thresh`, `cad`, `radio.rxgain`, `rxdelay`, `txdelay`, `direct.txdelay`, `agc.reset.interval`, `path.hash.mode` and `multi.acks`, `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|transport|path|site|user|pwd|priority`. The 22 password and user keys are write-only. A build without Wi-Fi has 13: `name`, `tx`, `radio` and the radio preferences.
+- Companion: 40 key patterns, 117 concrete keys on a build with Wi-Fi: `name`, `tx`, `radio`, the radio preferences `af`, `int.thresh`, `cad`, `radio.rxgain`, `rxdelay`, `txdelay`, `direct.txdelay`, `agc.reset.interval`, `path.hash.mode` and `multi.acks`, the contact and telemetry settings of frames 38 and 58 (`contacts.manual_add`, `contacts.autoadd.chat|repeater|room|sensor|overwrite` on or off, `contacts.autoadd.max_hops` 0 to 64 with 0 no limit, `telemetry.base|location|environment` `deny`, `flags` or `all`, `advert.location` `none` or `share`), `connectivity.mode`, `wifi.enabled`, `wifi.profile.{0-9}.ssid|pwd|priority`, `mqtt.enabled` and `mqtt.profile.{0-5}.type|host|port|tls|transport|path|site|user|pwd|priority`. The 22 password and user keys are write-only. A build without Wi-Fi has 24: `name`, `tx`, `radio`, the radio preferences and the contact and telemetry settings.
 - Repeater and Room server: 22 keys: `name`, `tx`, `radio`, the radio preferences `af`, `int.thresh`, `cad`, `radio.rxgain`, `rxdelay`, `txdelay`, `direct.txdelay`, `agc.reset.interval`, `path.hash.mode` and `multi.acks`, `lat`, `lon`, `repeat`, `advert.interval`, `flood.advert.interval`, `flood.max`, `loop.detect`, `allow.read.only` and `owner.info`. The Heltec builds also have the Wi-Fi and broker keys above; `connectivity.mode` stays on the Companion, because a server has no BLE to choose between.
 
 Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in `src/helpers/iface/IfaceConfig.cpp`) has them, so each is reached by its CLI line only:
@@ -289,7 +289,7 @@ Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in 
 | 33-35 | `CMD_SIGN_START`, `_DATA`, `_FINISH` | write (signs with the node key) | refused | none |
 | 36 | `CMD_SEND_TRACE_PATH` | messaging | served | native |
 | 37 | `CMD_SET_DEVICE_PIN` | write | refused | `config.apply` (PIN key) |
-| 38 | `CMD_SET_OTHER_PARAMS` | write | refused | `config.apply` (its keys) |
+| 38 | `CMD_SET_OTHER_PARAMS` | write | refused | `config.apply`: `contacts.manual_add`, `telemetry.*`, `advert.location`, `multi.acks` |
 | 39 | `CMD_SEND_TELEMETRY_REQ` | messaging | served | native; `rf.request` |
 | 40 | `CMD_GET_CUSTOM_VARS` | read | served | `config.get` (its keys) |
 | 41 | `CMD_SET_CUSTOM_VAR` | write | refused | `config.apply` (its keys) |
@@ -302,7 +302,7 @@ Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in 
 | 55 | `CMD_SEND_CONTROL_DATA` | write | refused | none |
 | 56 | `CMD_GET_STATS` | read | served | `status.get`, telemetry |
 | 57 | `CMD_SEND_ANON_REQ` | messaging (anonymous) | served | `rf.request` |
-| 58 | `CMD_SET_AUTOADD_CONFIG` | write | refused | `config.apply` (its keys) |
+| 58 | `CMD_SET_AUTOADD_CONFIG` | write | refused | `config.apply`: `contacts.autoadd.*` |
 | 59 | `CMD_GET_AUTOADD_CONFIG` | read | served | `config.get` |
 | 60 | `CMD_GET_ALLOWED_REPEAT_FREQ` | read | served | `config.schema` |
 | 61 | `CMD_SET_PATH_HASH_MODE` | write | refused | `config.apply path.hash.mode` |

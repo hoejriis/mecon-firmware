@@ -2913,6 +2913,8 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
 
+  if (handleContactPolicyCommand(command, reply)) return true;
+
   if (strcmp(command, "get tz.offset") == 0) {
     sprintf(reply, "> %d", _prefs.tz_offset);
     return true;
@@ -2930,6 +2932,92 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
 
   return false;  // not handled
+}
+
+// The contact auto-add, telemetry and advert-location settings that only the app frames 38 and 58 set
+// (CMD_SET_OTHER_PARAMS, CMD_SET_AUTOADD_CONFIG), as CLI lines, so the device interface's config keys reach them.
+bool MyMesh::handleContactPolicyCommand(const char* command, char* reply) {
+  static const struct { const char* name; uint8_t bit; } AUTOADD[] = {
+    {"chat", AUTO_ADD_CHAT}, {"repeater", AUTO_ADD_REPEATER}, {"room", AUTO_ADD_ROOM_SERVER},
+    {"sensor", AUTO_ADD_SENSOR}, {"overwrite", AUTO_ADD_OVERWRITE_OLDEST}};
+  static const char* const TELEM[] = {"deny", "flags", "all"};
+  const bool get = strncmp(command, "get ", 4) == 0, set = strncmp(command, "set ", 4) == 0;
+  if (!get && !set) return false;
+  const char* key = command + 4;
+  const char* val = nullptr;
+  char name[32];
+  {
+    const char* sp = set ? strchr(key, ' ') : nullptr;
+    const size_t n = sp ? (size_t)(sp - key) : strlen(key);
+    if (n >= sizeof(name) || (set && !sp)) return false;
+    memcpy(name, key, n);
+    name[n] = 0;
+    if (sp) val = sp + 1;
+  }
+  auto onoff = [&](bool* out) {
+    if (strcmp(val, "on") == 0) *out = true;
+    else if (strcmp(val, "off") == 0) *out = false;
+    else return false;
+    return true;
+  };
+  if (strcmp(name, "contacts.manual_add") == 0) {
+    bool on;
+    if (get) { sprintf(reply, "> %s", (_prefs.manual_add_contacts & 1) ? "on" : "off"); return true; }
+    if (!onoff(&on)) { strcpy(reply, "Error, on or off"); return true; }
+    _prefs.manual_add_contacts = on ? (_prefs.manual_add_contacts | 1) : (_prefs.manual_add_contacts & ~1);
+    savePrefs();
+    strcpy(reply, "OK");
+    return true;
+  }
+  if (strncmp(name, "contacts.autoadd.", 17) == 0) {
+    const char* what = name + 17;
+    if (strcmp(what, "max_hops") == 0) {
+      if (get) { sprintf(reply, "> %u", (unsigned)_prefs.autoadd_max_hops); return true; }
+      char* end = nullptr;
+      const long v = strtol(val, &end, 10);
+      if (!*val || *end || v < 0 || v > 64) { strcpy(reply, "Error, 0 to 64"); return true; }
+      _prefs.autoadd_max_hops = (uint8_t)v;
+      savePrefs();
+      strcpy(reply, "OK");
+      return true;
+    }
+    for (const auto& a : AUTOADD) {
+      if (strcmp(what, a.name) != 0) continue;
+      bool on;
+      if (get) { sprintf(reply, "> %s", (_prefs.autoadd_config & a.bit) ? "on" : "off"); return true; }
+      if (!onoff(&on)) { strcpy(reply, "Error, on or off"); return true; }
+      _prefs.autoadd_config = on ? (_prefs.autoadd_config | a.bit) : (_prefs.autoadd_config & ~a.bit);
+      savePrefs();
+      strcpy(reply, "OK");
+      return true;
+    }
+    return false;
+  }
+  uint8_t* mode = strcmp(name, "telemetry.base") == 0       ? &_prefs.telemetry_mode_base
+                  : strcmp(name, "telemetry.location") == 0  ? &_prefs.telemetry_mode_loc
+                  : strcmp(name, "telemetry.environment") == 0 ? &_prefs.telemetry_mode_env : nullptr;
+  if (mode) {
+    if (get) { sprintf(reply, "> %s", *mode < 3 ? TELEM[*mode] : "deny"); return true; }
+    for (uint8_t m = 0; m < 3; m++) {
+      if (strcmp(val, TELEM[m]) != 0) continue;
+      *mode = m;
+      savePrefs();
+      strcpy(reply, "OK");
+      return true;
+    }
+    strcpy(reply, "Error, deny, flags or all");
+    return true;
+  }
+  if (strcmp(name, "advert.location") == 0) {
+    if (get) { sprintf(reply, "> %s", _prefs.advert_loc_policy == ADVERT_LOC_SHARE ? "share" : "none"); return true; }
+    if (strcmp(val, "share") == 0) _prefs.advert_loc_policy = ADVERT_LOC_SHARE;
+    else if (strcmp(val, "none") == 0) _prefs.advert_loc_policy = ADVERT_LOC_NONE;
+    else { strcpy(reply, "Error, none or share"); return true; }
+    savePrefs();
+    strcpy(reply, "OK");
+    return true;
+  }
+  return false;
 }
 
 bool MyMesh::rescueFilesLocked() {

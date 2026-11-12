@@ -174,6 +174,144 @@
             "confirm": false
           },
           {
+            "key": "contacts.manual_add",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "contacts.autoadd.chat",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "contacts.autoadd.repeater",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "contacts.autoadd.room",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "contacts.autoadd.sensor",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          }
+        ],
+        "next": 18
+      }
+    },
+    {
+      "cursor": 18,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
+          {
+            "key": "contacts.autoadd.overwrite",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "contacts.autoadd.max_hops",
+            "type": "integer",
+            "min": 0,
+            "max": 64,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "telemetry.base",
+            "type": "enum",
+            "choices": [
+              "deny",
+              "flags",
+              "all"
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "telemetry.location",
+            "type": "enum",
+            "choices": [
+              "deny",
+              "flags",
+              "all"
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "telemetry.environment",
+            "type": "enum",
+            "choices": [
+              "deny",
+              "flags",
+              "all"
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
+            "key": "advert.location",
+            "type": "enum",
+            "choices": [
+              "none",
+              "share"
+            ],
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          }
+        ],
+        "next": 24
+      }
+    },
+    {
+      "cursor": 24,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
+          {
             "key": "connectivity.mode",
             "type": "enum",
             "choices": [
@@ -239,16 +377,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 18
-      }
-    },
-    {
-      "cursor": 18,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "mqtt.enabled",
             "type": "boolean",
@@ -257,7 +386,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 30
+      }
+    },
+    {
+      "cursor": 30,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "mqtt.profile.{n}.type",
             "type": "enum",
@@ -334,16 +472,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 24
-      }
-    },
-    {
-      "cursor": 24,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "mqtt.profile.{n}.path",
             "type": "string",
@@ -358,7 +487,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 36
+      }
+    },
+    {
+      "cursor": 36,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "mqtt.profile.{n}.site",
             "type": "string",
