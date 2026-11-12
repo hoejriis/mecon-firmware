@@ -332,8 +332,8 @@ Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in 
 | 60 | `CMD_GET_ALLOWED_REPEAT_FREQ` | read | served | `config.schema` |
 | 61 | `CMD_SET_PATH_HASH_MODE` | write | refused | `config.apply path.hash.mode` |
 | 62 | `CMD_SEND_CHANNEL_DATA` | messaging | served | native |
-| 63 | `CMD_SET_DEFAULT_FLOOD_SCOPE` | write | refused | `config.apply` (its keys) |
-| 64 | `CMD_GET_DEFAULT_FLOOD_SCOPE` | read | served | `config.get` |
+| 63 | `CMD_SET_DEFAULT_FLOOD_SCOPE` | write | refused | `scope.default.set`, `scope.default.clear` |
+| 64 | `CMD_GET_DEFAULT_FLOOD_SCOPE` | read | served | `scope.default.get` |
 | 65 | `CMD_SEND_RAW_PACKET` | write | refused | none |
 | 66 | `CMD_RUN_CLI_COMMAND` | read to reach the CLI; then the line's class | refused | none (the interface has no CLI-line operation) |
 | 0x7F | `CMD_MECON` | per operation | refused (every operation) | the device interface |
@@ -361,7 +361,7 @@ Every CLI line is classed by the registry; a line the registry does not name is 
 | ACL and passwords | `setperm`, `password`, `set guest.password` | write | yes | refused | `acl.put`, `password.set` |
 | radio test | `tempradio` | write | yes | refused | `radio.temp` |
 | actions | `advert`, `advert.zerohop`, `clock sync`, `time`, `clkreboot`, `neighbor.remove`, `discover.neighbors`, `clear stats`, `log start/stop/erase`, `log` (console only), `room.post` (Room server) | write (unregistered) | yes | refused | `advert.send`, `clock.set`, `clock.reset`, `neighbour.remove`, `neighbour.discover`, `stats.clear`, `log.start`, `log.stop`, `log.erase`, `log.read`, `room.post`; `clock sync` stays CLI, since it takes the remote admin's own clock |
-| region | `region` (list), `region get`, and the region writes | read; write | yes | reads only | `config.*` (region keys) |
+| region | `region` (list), `region get`, and the region writes | read; write | yes | reads only | `region.*` (see Region scopes) |
 | reads | `ver`, `board`, `clock`, `neighbors`, `power`, `get mecon.*`, `sensor get/list` | read | yes | yes | `hello`, `status.get`, telemetry; `neighbors` is `neighbour.list` |
 | OTA | `start ota` | write | yes | refused | `update.*` |
 
@@ -407,7 +407,32 @@ A Repeater's and a Room server's native region tree, the one the console's `regi
 
 **A scope for one send.** `message.send` takes `"scope"`, named as `scope.default.set` names one (`"scope_key"` for a private scope), or `null` for an unscoped flood. It applies to that send only. The device's default, and an override a stock app set with frame 54, are as they were afterwards. A direct message that goes by a known path is not flooded, so its scope does not matter.
 
-**Not on these operations:** the console's `region def` and `region load` (batch editors over the same tree, which `region.put` covers).
+**Every stock region and scope command and frame, and where it goes.** The console column is `CommonCLI::handleRegionCmd` (`region ...`, a Repeater or Room server) and the Companion's frames in `MyMesh.cpp`.
+
+| Stock command or frame | Operation | Note |
+|---|---|---|
+| `region` (no argument) | `region.list` | The whole tree, paged. |
+| `region get <name>` | `region.list` | One entry of the list: `name`, `parent`, `flood`, `kind`. There is no single-entry read. |
+| `region list allowed`, `region list denied` | `region.list` | Excluded as a separate operation: every entry carries `flood` (`allow` or `deny`), so a manager filters the list itself, and the wildcard's flag is `wildcard.flood`. |
+| `region home` (query) | `region.list`, first page, `home` | A name or `null`. No config key reads it. |
+| `region default` (query) | `region.list`, first page, `default` | A name or `null`. No config key reads it. |
+| `region home <name>` | `region.home` | `null` clears it. |
+| `region default <name>`, `region default <null>` | `region.default` | `null` for none. A name that does not exist is created by the console and is `not-found` here: put it first. |
+| `region put <name> [parent]` | `region.put` | Exact names, and the checks listed above. |
+| `region remove <name>` | `region.remove` | `busy` `not-empty` or `referenced` where the console would orphan something. |
+| `region allowf <name>`, `region denyf <name>` | `region.flood` | `"flood":"allow"` and `"deny"`; `name` may be `"*"`, which the console cannot do. |
+| `region save` | none | Excluded: every managed change is saved at once (see above), so there is nothing left to save. The console's `region save` also stamps the discovery modification time and the prefs; no operation does, because a managed change is not an edit the stock discovery reply needs to announce. |
+| `region def <path...>`, `region load` | `region.put` (one call per region) | Excluded as batch editors over the same tree. |
+| Frame 54 `CMD_SET_FLOOD_SCOPE_KEY` | `message.send {scope}` for one send | The stock app's override is the app's own and is not persisted. |
+| Frame 63 `CMD_SET_DEFAULT_FLOOD_SCOPE` | `scope.default.set`, `scope.default.clear` | The same prefs. The key is never read back. |
+| Frame 64 `CMD_GET_DEFAULT_FLOOD_SCOPE` | `scope.default.get` | Name and kind; the key is excluded on purpose. |
+| `get`/`set flood.max.unscoped` | `config.*` | An ordinary setting (5.1). |
+
+**Why the cable stands for each transport.** The same dispatcher runs these operations on the cable, over paired BLE, over a verified MQTT session and over LoRa, with the same privilege table, so a transport adds no semantics of its own. The Companion's `scope.default.*` are exercised over the cable, over paired BLE and over a verified MQTT session in `sim/tests/test_region_scope_replay.py`, each with a resend under the same job id and a replay. The region operations are exercised on the cable and over LoRa (`test_regions.py`, `test_lora_management`); a Repeater's or Room server's region operations over MQTT run the same dispatcher and are not exercised on that transport separately.
+
+**A resent change changes nothing twice.** The same signed bytes get the stored answer and open no second job; an older job id is refused `replay` and changes nothing, across a reboot too.
+
+**The scope key never leaves the device.** It is read from the request and written to the prefs; it is in no result, job record, audit entry (`audit.list` and the `logs` stream carry fixed event fields only) or telemetry event.
 
 ### 5.4 LoRa remote administration (native)
 
