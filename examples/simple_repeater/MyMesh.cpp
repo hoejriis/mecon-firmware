@@ -1287,6 +1287,39 @@ void MyMesh::formatNeighborsReply(char *reply) {
   *dp = 0; // null terminator
 }
 
+bool MyMesh::neighbourAt(int idx, uint8_t key[32], uint32_t* heard_ago_s, int8_t* snr4) {
+#if MAX_NEIGHBOURS
+  const NeighbourInfo* sorted[MAX_NEIGHBOURS];
+  int n = 0;
+  for (int i = 0; i < MAX_NEIGHBOURS; i++)
+    if (neighbours[i].heard_timestamp > 0) sorted[n++] = &neighbours[i];
+  if (idx < 0 || idx >= n) return false;
+  std::sort(sorted, sorted + n, [](const NeighbourInfo* a, const NeighbourInfo* b) {
+    return a->heard_timestamp > b->heard_timestamp;
+  });
+  memcpy(key, sorted[idx]->id.pub_key, PUB_KEY_SIZE);
+  *heard_ago_s = getRTCClock()->getCurrentTime() - sorted[idx]->heard_timestamp;
+  *snr4 = sorted[idx]->snr;
+  return true;
+#else
+  return false;
+#endif
+}
+
+int MyMesh::readLog(uint32_t offset, uint8_t* buf, size_t cap, uint32_t* size) {
+#if defined(RP2040_PLATFORM)
+  File f = _fs->open(PACKET_LOG_FILE, "r");
+#else
+  File f = _fs->open(PACKET_LOG_FILE);
+#endif
+  if (!f) return -1;
+  *size = f.size();
+  int n = 0;
+  if (offset < *size && f.seek(offset)) n = (int)f.read(buf, cap);
+  f.close();
+  return n < 0 ? 0 : n;
+}
+
 void MyMesh::removeNeighbor(const uint8_t *pubkey, int key_len) {
 #if MAX_NEIGHBOURS
   for (int i = 0; i < MAX_NEIGHBOURS; i++) {

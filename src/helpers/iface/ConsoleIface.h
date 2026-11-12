@@ -91,6 +91,13 @@ public:
     bool (*acl_entry)(void* user, int idx, uint8_t key[32], uint8_t* perms);
     // device.reset: the role removes one scope (radio, network, factory) and saves it; the interface reboots afterwards.
     bool (*reset)(void* user, ResetScope s, uint8_t caller);
+    // The role's actions whose CLI lines answer nothing a caller can read back (neighbors cuts its list at one reply, log
+    // prints to the serial port). neighbour: heard neighbour idx, newest first, false past the last; null on a role with
+    // none. log_read: up to cap bytes of the packet log from offset and the file's size, -1 with no log. clock_guess: the
+    // clock clkreboot sets before its reboot.
+    bool (*neighbour)(void* user, int idx, uint8_t key[32], uint32_t* heard_ago_s, int8_t* snr4);
+    int (*log_read)(void* user, uint32_t offset, uint8_t* buf, size_t cap, uint32_t* size);
+    void (*clock_guess)(void* user);
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |

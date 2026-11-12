@@ -50,7 +50,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
-                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set", "audit.list", "board.get", "board.adc.set", "power.saving.set", "sensor.list", "sensor.get", "sensor.set",
+                                    "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set", "audit.list", "board.get", "board.adc.set", "power.saving.set", "sensor.list", "sensor.get", "sensor.set", "clock.reset", "stats.clear", "log.start", "log.stop", "log.erase", "log.read", "radio.temp",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
@@ -63,6 +63,8 @@ const char* const NET_CAPABILITIES[] = {"net.profile.clear"
 #endif
                                         };
 
+// Listed only on the role that has them: the Repeater's neighbour table, the Room server's posts.
+const char* const NEIGHBOUR_CAPABILITIES[] = {"neighbour.list", "neighbour.remove", "neighbour.discover"};
 // Listed only on a build with GPS (ENV_INCLUDE_GPS), as the CLI's `gps` lines are.
 #if ENV_INCLUDE_GPS == 1
 const char* const GPS_CAPABILITIES[] = {"gps.get", "gps.set", "gps.sync", "gps.setloc", "gps.advert.set"};
@@ -131,6 +133,8 @@ Status opHello(OpContext& c) {
   for (size_t i = 1; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
   if (m->hasRegions()) for (const char* rcap : REGION_CAPABILITIES) add(rcap);
   if (netProfileOpsBuilt()) for (const char* ncap : NET_CAPABILITIES) add(ncap);
+  if (m->host().neighbour) for (const char* ncap : NEIGHBOUR_CAPABILITIES) add(ncap);
+  if (strcmp(m->host().role, "room") == 0) add("room.post");
 #if ENV_INCLUDE_GPS == 1
   for (const char* gcap : GPS_CAPABILITIES) add(gcap);
 #endif
@@ -380,6 +384,134 @@ Status opAdvertSend(OpContext& c) {
   }
   c.out->key("flood"); c.out->boolean(flood);
   return ST_OK;
+}
+// One action CLI line that answers with ok_prefix when done; `refused` for anything else (the CLI gate, or the line's own
+// refusal).
+Status actionLine(OpContext& c, const char* line, const char* ok_prefix) {
+  const ConsoleIface::Host& h = self(c)->host();
+  char reply[160] = {0};
+  if (!h.run(h.user, line, reply, sizeof(reply)) || strncmp(reply, ok_prefix, strlen(ok_prefix)) != 0) {
+    c.error = "refused";
+    return ST_FAILED;
+  }
+  return ST_OK;
+}
+// clock.reset: `clkreboot`, the clock set to the CLI's guess (2024-05-15) at once, then the reboot, after the answer.
+Status opClockReset(OpContext& c) {
+  ConsoleIface* m = self(c);
+  if (!m->host().clock_guess) { c.error = "unsupported"; return ST_FAILED; }
+  m->host().clock_guess(m->host().user);
+  m->rebootSoon();
+  return ST_OK;
+}
+// stats.clear: `clear stats`, the packet and radio counters back to zero.
+Status opStatsClear(OpContext& c) { return actionLine(c, "clear stats", "(OK - stats reset)"); }
+// log.start, log.stop, log.erase: the packet log's `log start`, `log stop` and `log erase`.
+Status opLogStart(OpContext& c) { return actionLine(c, "log start", "   logging on"); }
+Status opLogStop(OpContext& c) { return actionLine(c, "log stop", "   logging off"); }
+Status opLogErase(OpContext& c) { return actionLine(c, "log erase", "   log erased"); }
+// log.read {"offset"}: the packet log's text from offset, at most LOG_PAGE bytes: {"size","offset","text","next"}, next null
+// at the end. The CLI's `log` prints the file to the serial port, from the console only (a remote line never runs it), so
+// this is of the write class, as that line is, and a broker session is refused.
+const size_t LOG_PAGE = 512;
+Status opLogRead(OpContext& c) {
+  ConsoleIface* m = self(c);
+  if (m->onBroker()) {   // as `log`, the console only
+    c.error = "not-over-this-link";
+    return ST_REFUSED;
+  }
+  const ConsoleIface::Host& h = m->host();
+  if (!h.log_read) { c.error = "unsupported"; return ST_FAILED; }
+  int64_t offset = 0;
+  const int ot = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "offset") : -1;
+  if (ot >= 0 && !jsonGetInt(*c.doc, ot, 0, 0x7FFFFFFF, &offset)) return ST_INVALID;
+  uint8_t buf[LOG_PAGE];
+  uint32_t size = 0;
+  const int n = h.log_read(h.user, (uint32_t)offset, buf, sizeof(buf), &size);
+  JsonWriter& w = *c.out;
+  if (n < 0) size = 0;   // no log yet: an empty one
+  if ((uint32_t)offset > size) { c.error = "bad-offset"; return ST_INVALID; }
+  const size_t got = n > 0 ? (size_t)n : 0;
+  w.key("size"); w.unum(size);
+  w.key("offset"); w.unum((uint32_t)offset);
+  w.key("text"); w.str((const char*)buf, got);
+  w.key("next"); if ((uint32_t)offset + got < size) w.unum((uint32_t)offset + got); else w.null();
+  return ST_OK;
+}
+// radio.temp {"radio":"freq,bw,sf,cr","minutes"}: `tempradio`, radio settings for that many minutes (1 to 1,440), then the
+// saved ones again. Not over LoRa, so the change never cuts its caller's own path; it reverts itself.
+Status opRadioTemp(OpContext& c) {
+  char radio[41];
+  int64_t mins;
+  if (c.req->args < 0 || !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "radio"), radio, sizeof(radio), CS_ANY, 7) ||
+      !checkFormat("freq,bw,sf,cr", radio) || !jsonGetInt(*c.doc, jsonFind(*c.doc, c.req->args, "minutes"), 1, 1440, &mins))
+    return ST_INVALID;
+  char line[64];
+  snprintf(line, sizeof(line), "tempradio %s,%u", radio, (unsigned)mins);
+  const Status st = actionLine(c, line, "OK - temp params");
+  if (st == ST_OK) { c.out->key("radio"); c.out->str(radio); c.out->key("minutes"); c.out->unum((uint32_t)mins); }
+  return st;
+}
+// neighbour.list {"cursor"}: the heard neighbours, newest first as `neighbors` orders them, NEIGHBOUR_PAGE a page, each
+// {"key","heard_s_ago","snr"} with the whole node key (the CLI shows four bytes) and the SNR in dB.
+const int NEIGHBOUR_PAGE = 8;
+Status opNeighbourList(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  if (!h.neighbour) { c.error = "not-on-this-device"; return ST_FAILED; }   // the Room server keeps no neighbour table
+  int64_t cursor = 0;
+  const int ct = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "cursor") : -1;
+  if (ct >= 0 && !jsonGetInt(*c.doc, ct, 0, 255, &cursor)) return ST_INVALID;
+  JsonWriter& w = *c.out;
+  w.key("neighbours"); w.beginArray();
+  int i = (int)cursor, shown = 0;
+  uint8_t key[32];
+  uint32_t ago;
+  int8_t snr4;
+  for (; shown < NEIGHBOUR_PAGE && h.neighbour(h.user, i, key, &ago, &snr4); i++, shown++) {
+    char hex[65];
+    for (int b = 0; b < 32; b++) snprintf(hex + 2 * b, 3, "%02x", key[b]);
+    w.beginObject();
+    w.key("key"); w.str(hex);
+    w.key("heard_s_ago"); w.unum(ago);
+    char snr[12];
+    snprintf(snr, sizeof(snr), "%.2f", snr4 / 4.0);
+    w.key("snr"); w.raw(snr);
+    w.endObject();
+  }
+  w.endArray();
+  w.key("next"); if (shown == NEIGHBOUR_PAGE && h.neighbour(h.user, i, key, &ago, &snr4)) w.unum((uint32_t)i); else w.null();
+  return ST_OK;
+}
+// neighbour.remove {"key"}: `neighbor.remove`, one whole node key (the CLI also takes a prefix, which can match several).
+Status opNeighbourRemove(OpContext& c) {
+  if (!self(c)->host().neighbour) { c.error = "not-on-this-device"; return ST_FAILED; }
+  char hex[65];
+  if (c.req->args < 0 || !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "key"), hex, sizeof(hex), CS_NAME, 64))
+    return ST_INVALID;
+  for (const char* p = hex; *p; p++)
+    if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f'))) return ST_INVALID;
+  char line[90];
+  snprintf(line, sizeof(line), "neighbor.remove %s", hex);
+  const Status st = actionLine(c, line, "OK");
+  if (st == ST_OK) { c.out->key("key"); c.out->str(hex); }
+  return st;
+}
+// neighbour.discover: `discover.neighbors`, a zero-hop discovery request on the air, under the radio's own duty-cycle rules.
+Status opNeighbourDiscover(OpContext& c) {
+  if (!self(c)->host().neighbour) { c.error = "not-on-this-device"; return ST_FAILED; }
+  return actionLine(c, "discover.neighbors", "OK - Discover sent");
+}
+// room.post {"text"}: `room.post`, a system post to the room's clients. The role's CLI line holds 159 characters, so the
+// text holds 149 after "room.post ".
+const size_t MAX_ROOM_POST = 149;
+Status opRoomPost(OpContext& c) {
+  if (strcmp(self(c)->host().role, "room") != 0) { c.error = "not-on-this-device"; return ST_FAILED; }
+  char text[MAX_ROOM_POST + 1];
+  if (c.req->args < 0 || !jsonGetString(*c.doc, jsonFind(*c.doc, c.req->args, "text"), text, sizeof(text), CS_ANY, 1))
+    return ST_INVALID;
+  char line[MAX_ROOM_POST + 16];
+  snprintf(line, sizeof(line), "room.post %s", text);
+  return actionLine(c, line, "OK");
 }
 // The text after "> " of a CLI get line run as this caller, or nullptr when the line is refused or answers anything else
 // (the board cannot tell, or has no such reading).
@@ -640,6 +772,18 @@ const OpEntry OPS[] = {
   {"acl.list", opAclList, PRIV_READ, false},
   {"acl.put", opAclPut, PRIV_WRITE, true},
   {"password.set", opPasswordSet, PRIV_WRITE, true},
+  // The role's actions (#492), each of its CLI line's class: none of those lines is registered, so all are writes.
+  {"clock.reset", opClockReset, PRIV_WRITE, true},
+  {"stats.clear", opStatsClear, PRIV_WRITE, true},
+  {"log.start", opLogStart, PRIV_WRITE, true},
+  {"log.stop", opLogStop, PRIV_WRITE, true},
+  {"log.erase", opLogErase, PRIV_WRITE, true},
+  {"log.read", opLogRead, PRIV_WRITE, false},
+  {"radio.temp", opRadioTemp, PRIV_WRITE, true},
+  {"neighbour.list", opNeighbourList, PRIV_READ, false},   // `neighbors` is registered as a read
+  {"neighbour.remove", opNeighbourRemove, PRIV_WRITE, true},
+  {"neighbour.discover", opNeighbourDiscover, PRIV_WRITE, true},
+  {"room.post", opRoomPost, PRIV_WRITE, true},
   {"board.get", opBoardGet, PRIV_READ, false},
   {"board.adc.set", opBoardAdcSet, PRIV_WRITE, true},
   {"power.saving.set", opPowerSavingSet, PRIV_WRITE, true},

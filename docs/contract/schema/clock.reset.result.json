@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/clock.reset.result.json",
+  "title": "Result of clock.reset: nothing; the device reboots about 1.5 s after the answer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {}
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/log.erase.result.json",
+  "title": "Result of log.erase",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {}
+}

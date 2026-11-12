@@ -207,6 +207,11 @@ public:
 
   void begin(FILESYSTEM* fs);
   void sendNodeDiscoverReq();
+  // neighbour.list: heard neighbour idx, newest first as `neighbors` orders them; false past the last.
+  bool neighbourAt(int idx, uint8_t key[32], uint32_t* heard_ago_s, int8_t* snr4);
+  // log.read: up to cap bytes of the packet log from offset, the whole file's size in *size; -1 when there is no log.
+  int readLog(uint32_t offset, uint8_t* buf, size_t cap, uint32_t* size);
+  void guessClockForReboot() { getRTCClock()->setGuess(1715770351); }   // clkreboot's clock, as the CLI sets it
   // Inventory counts for the device interface's telemetry (docs/contract/TELEMETRY.md).
   int neighbourCount() const {
     int n = 0;

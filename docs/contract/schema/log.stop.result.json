@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/log.stop.result.json",
+  "title": "Result of log.stop",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {}
+}

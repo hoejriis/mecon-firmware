@@ -69,6 +69,10 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static const char* const ROT_REMOVED[] = {"acl", "posts", nullptr};
   static bool ifaceReset(void*, Iface::ResetScope s, uint8_t caller) { return the_mesh.resetScope(s, caller); }
   static int ifaceAclCount(void*) { return the_mesh.clients().getNumClients(); }
+  static int ifaceLogRead(void*, uint32_t offset, uint8_t* buf, size_t cap, uint32_t* size) {
+    return the_mesh.readLog(offset, buf, cap, size);
+  }
+  static void ifaceClockGuess(void*) { the_mesh.guessClockForReboot(); }
   static bool ifaceAclEntry(void*, int idx, uint8_t key[32], uint8_t* perms) {
     if (idx < 0 || idx >= the_mesh.clients().getNumClients()) return false;
     const ClientInfo* c = the_mesh.clients().getClientByIdx(idx);
@@ -204,6 +208,7 @@ void setup() {
 #endif
                                        &the_mesh.regions(), ifaceRegionsSave, ifaceRegionsDefault, &region_snap_store,
                                        ifaceAclCount, ifaceAclEntry, ifaceReset,
+                                       nullptr, ifaceLogRead, ifaceClockGuess,
                                      };
     dep_store.setFs(fs);
     job_store.setFs(fs);
