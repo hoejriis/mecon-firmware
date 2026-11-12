@@ -23,6 +23,17 @@
             "confirm": false
           },
           {
+            "key": "tz.offset",
+            "type": "integer",
+            "min": -12,
+            "max": 14,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
+          {
             "key": "tx",
             "type": "integer",
             "min": -9,
@@ -67,15 +78,6 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
-          {
-            "key": "cad",
-            "type": "boolean",
-            "writable": true,
-            "write_only": false,
-            "reboot": false,
-            "restarts": false,
-            "confirm": true
           }
         ],
         "next": 6
@@ -86,6 +88,15 @@
       "result": {
         "profile": "config/1.0",
         "keys": [
+          {
+            "key": "cad",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
           {
             "key": "radio.rxgain",
             "type": "boolean",
@@ -141,17 +152,6 @@
             "reboot": false,
             "restarts": false,
             "confirm": false
-          },
-          {
-            "key": "path.hash.mode",
-            "type": "integer",
-            "min": 0,
-            "max": 2,
-            "writable": true,
-            "write_only": false,
-            "reboot": false,
-            "restarts": false,
-            "confirm": true
           }
         ],
         "next": 12
@@ -162,6 +162,17 @@
       "result": {
         "profile": "config/1.0",
         "keys": [
+          {
+            "key": "path.hash.mode",
+            "type": "integer",
+            "min": 0,
+            "max": 2,
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
           {
             "key": "multi.acks",
             "type": "integer",
@@ -208,15 +219,6 @@
             "reboot": false,
             "restarts": false,
             "confirm": false
-          },
-          {
-            "key": "contacts.autoadd.sensor",
-            "type": "boolean",
-            "writable": true,
-            "write_only": false,
-            "reboot": false,
-            "restarts": false,
-            "confirm": false
           }
         ],
         "next": 18
@@ -227,6 +229,15 @@
       "result": {
         "profile": "config/1.0",
         "keys": [
+          {
+            "key": "contacts.autoadd.sensor",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": false
+          },
           {
             "key": "contacts.autoadd.overwrite",
             "type": "boolean",
@@ -288,7 +299,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": false
-          },
+          }
+        ],
+        "next": 24
+      }
+    },
+    {
+      "cursor": 24,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "advert.location",
             "type": "enum",
@@ -301,16 +321,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": false
-          }
-        ],
-        "next": 24
-      }
-    },
-    {
-      "cursor": 24,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "connectivity.mode",
             "type": "enum",
@@ -377,15 +388,6 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
-          {
-            "key": "mqtt.enabled",
-            "type": "boolean",
-            "writable": true,
-            "write_only": false,
-            "reboot": false,
-            "restarts": false,
-            "confirm": true
           }
         ],
         "next": 30
@@ -396,6 +398,15 @@
       "result": {
         "profile": "config/1.0",
         "keys": [
+          {
+            "key": "mqtt.enabled",
+            "type": "boolean",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
           {
             "key": "mqtt.profile.{n}.type",
             "type": "enum",
@@ -472,7 +483,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 36
+      }
+    },
+    {
+      "cursor": 36,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "mqtt.profile.{n}.path",
             "type": "string",
@@ -487,16 +507,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 36
-      }
-    },
-    {
-      "cursor": 36,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "mqtt.profile.{n}.site",
             "type": "string",

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/contact.capacity.result.json",
+  "title": "Result of contact.capacity",
+  "description": "Every figure of the CLI's get contacts.capacity (docs/CONTACTS.md), as named fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "store",
+    "used",
+    "capacity",
+    "cache_used",
+    "cache_slots",
+    "pinned",
+    "favourites",
+    "evicted",
+    "refused_full",
+    "refused_all_favourites",
+    "loads",
+    "damaged",
+    "write_errors",
+    "ram_bytes",
+    "unmigrated"
+  ],
+  "properties": {
+    "store": {
+      "enum": [
+        "adaptive",
+        "ram-only"
+      ]
+    },
+    "used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "capacity": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cache_used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cache_slots": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "pinned": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "favourites": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "evicted": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "refused_full": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "refused_all_favourites": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "loads": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "damaged": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "write_errors": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ram_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unmigrated": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

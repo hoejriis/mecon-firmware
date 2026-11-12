@@ -1454,6 +1454,25 @@ bool MyMesh::setClockForward(uint32_t secs) {
   return true;
 }
 
+// `clock back` and clock.back: set a clock that ran ahead back to secs, which must be at or above the floor every "clock is
+// set" check uses and earlier than the clock now. Audited as clock-back for caller. false, and nothing changed, otherwise.
+bool MyMesh::setClockBack(uint32_t secs, uint8_t caller) {
+  if (secs < 1704067200UL || secs >= getRTCClock()->getCurrentTime()) return false;
+  getRTCClock()->setCurrentTime(secs);
+  getRTCClock()->restartUnique();
+  Posture::audit().add(secs, Posture::EV_CLOCK_BACK, caller, Posture::W_NONE);
+  return true;
+}
+
+// ble.pin.set: as CMD_SET_DEVICE_PIN, 0 (a PIN shown per session, where a screen can show one) or six digits. Saved; the
+// BLE stack takes it at its next start.
+bool MyMesh::setStoredBlePin(uint32_t pin) {
+  if (pin != 0 && (pin < 100000 || pin > 999999)) return false;
+  _prefs.ble_pin = pin;
+  savePrefs();
+  return true;
+}
+
 // The self advert of CMD_SEND_SELF_ADVERT and of advert.send: flooded in the default scope, or zero hop. false when no
 // packet could be allocated.
 bool MyMesh::sendSelfAdvert(bool flood) {
@@ -2810,13 +2829,10 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   if (memcmp(command, "clock back", 10) == 0 && (command[10] == 0 || command[10] == ' ')) {
     const uint32_t curr = getRTCClock()->getCurrentTime();
     const uint32_t secs = command[10] ? strtoul(&command[11], nullptr, 10) : 0;
-    if (secs < 1704067200UL || secs >= curr) {   // the same "clock is set" floor as the rest of the firmware
+    if (!setClockBack(secs, _cli_caller)) {
       strcpy(reply, "ERR: clock back <epoch seconds>, earlier than the clock now");
       return true;
     }
-    getRTCClock()->setCurrentTime(secs);
-    getRTCClock()->restartUnique();
-    Posture::audit().add(secs, Posture::EV_CLOCK_BACK, _cli_caller, Posture::W_NONE);
     snprintf(reply, 150, "OK - clock back %lu s; peers that hold this contact ignore its adverts for that long",
              (unsigned long)(curr - secs));
     return true;
@@ -2920,11 +2936,11 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
   if (memcmp(command, "set tz.offset ", 14) == 0) {
-    int8_t tz = atof(&command[14]);
+    const float tz = atof(&command[14]);   // checked before the cast: 250 must not wrap to -6
     if (tz < -12 || tz > 14) {
       strcpy(reply, "Error, must be from -12 to +14");
     } else {
-      _prefs.tz_offset = tz;
+      _prefs.tz_offset = (int8_t)tz;
       savePrefs();
       strcpy(reply, "OK");
     }
