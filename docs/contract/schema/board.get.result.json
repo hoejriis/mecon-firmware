@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/board.get.result.json",
+  "title": "Result of board.get: the board's own readings",
+  "description": "Each field is null where the board cannot tell. power_source is the same board call as the power stream's external.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bootloader",
+    "adc_multiplier",
+    "power_management",
+    "power_source",
+    "boot_mv",
+    "boot_reason",
+    "powersaving"
+  ],
+  "properties": {
+    "bootloader": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "adc_multiplier": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 10
+    },
+    "power_management": {
+      "type": "boolean"
+    },
+    "power_source": {
+      "enum": [
+        "external",
+        "battery",
+        null
+      ]
+    },
+    "boot_mv": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "boot_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "powersaving": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    }
+  }
+}

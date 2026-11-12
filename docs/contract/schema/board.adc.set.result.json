@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/board.adc.set.result.json",
+  "title": "Result of board.adc.set: the multiplier set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "multiplier"
+  ],
+  "properties": {
+    "multiplier": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10
+    }
+  }
+}

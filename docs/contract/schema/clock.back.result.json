@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/clock.back.result.json",
+  "title": "Result of clock.back: the clock after it, and how far it went back",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["epoch", "back_s"],
+  "properties": {
+    "epoch": {"type": "integer", "minimum": 1704067200},
+    "back_s": {"type": "integer", "minimum": 1}
+  }
+}

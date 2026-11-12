@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/ble.pin.set.result.json",
+  "title": "Result of ble.pin.set",
+  "description": "The PIN is saved and taken by the BLE stack at its next start. The answer never carries the PIN.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reboot_needed"],
+  "properties": {"reboot_needed": {"const": true}}
+}

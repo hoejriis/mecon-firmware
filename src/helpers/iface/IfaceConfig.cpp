@@ -10,6 +10,7 @@ namespace Iface {
 // The keys of the interface's settings profile config/1.0. Indexes are 0-based, as in the CLI.
 const KeyDef KEYS[] = {
   {"name", K_STRING, 1, 31, nullptr, KF_WRITABLE, 0, "get name", F_WHOLE, "set name %s"},
+  {"tz.offset", K_INT, -12, 14, nullptr, KF_WRITABLE, 0, "get tz.offset", F_WHOLE, "set tz.offset %s"},   // whole hours
   {"tx", K_INT, -9, 30, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get tx", F_WHOLE, "set tx %s"},
   {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
 #include "IfaceRadioKeys.inc"
@@ -36,6 +37,8 @@ const KeyDef SERVER_KEYS[] = {
   {"flood.advert.interval", K_INT, 0, 168, nullptr, KF_WRITABLE, 0, "get flood.advert.interval", F_WHOLE,
    "set flood.advert.interval %s"},
   {"flood.max", K_INT, 0, 64, nullptr, KF_WRITABLE, 0, "get flood.max", F_WHOLE, "set flood.max %s"},
+  {"flood.max.unscoped", K_INT, 0, 64, nullptr, KF_WRITABLE, 0, "get flood.max.unscoped", F_WHOLE, "set flood.max.unscoped %s"},
+  {"flood.max.advert", K_INT, 0, 64, nullptr, KF_WRITABLE, 0, "get flood.max.advert", F_WHOLE, "set flood.max.advert %s"},
   {"loop.detect", K_ENUM, 0, 0, "off|minimal|moderate|strict", KF_WRITABLE, 0, "get loop.detect", F_WHOLE,
    "set loop.detect %s"},
   {"allow.read.only", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get allow.read.only", F_WHOLE,
@@ -72,6 +75,11 @@ bool checkFormat(const char* format, const char* value) {
     if (*p == '-') p++;
     const double lim = lat ? 90 : 180;
     return decimal(p, &p, 0, lim) && *p == 0;
+  }
+  if (strcmp(format, "multiplier") == 0) {   // the battery divider: 0 to 10, at most three places, as the CLI prints it
+    const char* p = value;
+    const char* dot = strchr(value, '.');
+    return decimal(p, &p, 0, 10) && *p == 0 && (!dot || strlen(dot + 1) <= 3);
   }
   // af, rxdelay, txdelay and direct.txdelay: one plain decimal within the CLI's own range.
   const double top = strcmp(format, "airtime-factor") == 0 ? 9 : strcmp(format, "rx-delay") == 0 ? 20
