@@ -289,16 +289,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": false
-       }
-      ],
-      "next": 12
-     }
-    },
-    {
-     "cursor": 12,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "allow.read.only",
         "type": "boolean",
@@ -613,16 +604,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": false
-       }
-      ],
-      "next": 12
-     }
-    },
-    {
-     "cursor": 12,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "allow.read.only",
         "type": "boolean",
@@ -642,7 +624,16 @@
         "reboot": false,
         "restarts": false,
         "confirm": false
-       },
+       }
+      ],
+      "next": 24
+     }
+    },
+    {
+     "cursor": 24,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
        {
         "key": "wifi.enabled",
         "type": "boolean",
@@ -666,16 +657,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       }
-      ],
-      "next": 24
-     }
-    },
-    {
-     "cursor": 24,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "wifi.profile.{n}.pwd",
         "type": "string",
@@ -705,16 +687,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       }
-      ],
-      "next": 18
-     }
-    },
-    {
-     "cursor": 18,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "mqtt.enabled",
         "type": "boolean",
@@ -740,7 +713,16 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       },
+       }
+      ],
+      "next": 30
+     }
+    },
+    {
+     "cursor": 30,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
        {
         "key": "mqtt.profile.{n}.host",
         "type": "string",
@@ -770,16 +752,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       }
-      ],
-      "next": 30
-     }
-    },
-    {
-     "cursor": 30,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "mqtt.profile.{n}.tls",
         "type": "boolean",
@@ -809,16 +782,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       }
-      ],
-      "next": 24
-     }
-    },
-    {
-     "cursor": 24,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "mqtt.profile.{n}.path",
         "type": "string",
@@ -848,7 +812,16 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       },
+       }
+      ],
+      "next": 36
+     }
+    },
+    {
+     "cursor": 36,
+     "result": {
+      "profile": "config/1.0",
+      "keys": [
        {
         "key": "mqtt.profile.{n}.user",
         "type": "string",
@@ -878,16 +851,7 @@
         "reboot": false,
         "restarts": false,
         "confirm": true
-       }
-      ],
-      "next": 36
-     }
-    },
-    {
-     "cursor": 36,
-     "result": {
-      "profile": "config/1.0",
-      "keys": [
+       },
        {
         "key": "mqtt.profile.{n}.priority",
         "type": "integer",
