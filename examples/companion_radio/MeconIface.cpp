@@ -468,6 +468,7 @@ Status opStatus(OpContext& c) {
   m->writeDeploymentStatus(w, Posture::isHardened(mesh->postureValue()));
   m->jobs().writeStatus(w);
   m->lora().writeCounts(w);
+  m->writeRfCounts(w);   // the manager side: replies to this Companion's rf.request (#531)
   w.key("messages"); w.beginObject();   // a manager that reconnects learns there are outcomes to collect
   w.key("open"); w.num(m->messages() ? m->messages()->open() : 0);
   w.key("owed"); w.num(m->messages() ? m->messages()->owed() : 0);
@@ -1507,7 +1508,21 @@ void MeconIface::rfTick(uint32_t now) {
 }
 
 // A reply frame for this Companion's rf.request: when it completes it goes out on the rf stream as it came.
+// status.get's "rf": what became of replies to this Companion's rf.request, so a manager that hears nothing can see where
+// they stopped. replies: reply frames handed to onRfReply; completed: messages they made; then the link's own counts.
+// Only once a reply frame has come: a status.get answered over LoRa sits close to the reply's bound, and a Companion
+// that never sent rf.request has nothing to say here.
+void MeconIface::writeRfCounts(Iface::JsonWriter& w) const {
+  if (!_rf_frames_in) return;
+  w.key("rf"); w.beginObject();
+  w.key("replies"); w.unum(_rf_frames_in);
+  w.key("completed"); w.unum(_rf_completed);
+  _rf.writeCountFields(w);
+  w.endObject();
+}
+
 void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
+  _rf_frames_in++;
   if (n <= LORA_REPLY_HDR) return;
   uint8_t* f = static_cast<uint8_t*>(malloc(n));
   if (!f) return;
@@ -1519,6 +1534,7 @@ void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
   if (r != LoraLink::F_COMPLETE) return;
   LoraLink::Peer* p = _rf.nextComplete();
   if (!p) return;
+  _rf_completed++;
   char* data = static_cast<char*>(malloc(RESULT_MAX));
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
   if (data && ev) {

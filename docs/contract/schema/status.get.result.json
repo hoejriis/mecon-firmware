@@ -32,6 +32,7 @@
     "ble_started": {"type": "boolean", "description": "Companion: whether this boot's BLE stack came up. Absent when this boot did not start BLE."},
     "posture": {"type": "string", "enum": ["normal", "hardened"]},
     "lora": {"type": "object", "description": "The LoRa link's counts since boot (LORA_MANAGEMENT.md section 7)", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "rf": {"type": "object", "description": "Companion, once a reply frame has come: what became of replies to its rf.request since boot: replies (reply frames received), completed (messages they made), and the lora counts for that side (LORA_MANAGEMENT.md section 7)", "additionalProperties": {"type": "integer", "minimum": 0}},
     "inbox": {
       "description": "What was received for the manager (OPERATIONS.md section 6.4): receptions this boot, those held and not acknowledged, and those lost.",
       "type": "object",

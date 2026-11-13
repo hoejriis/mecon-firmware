@@ -72,6 +72,7 @@ public:
 public:
   Iface::Status rfRequest(Iface::OpContext& c);
   void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
+  void writeRfCounts(Iface::JsonWriter& w) const;
   bool onLora() const { return _on_lora; }
   bool onLoraChannel(int slot, const uint8_t* data, size_t n);
   void onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n);
@@ -300,6 +301,7 @@ private:
   int _lora_bound_slot = -1;    // the binding, read on the main pass
   bool _lora_bound_read = false, _lora_bound_dirty = false;
   uint32_t _rf_next = 0;
+  uint32_t _rf_frames_in = 0, _rf_completed = 0;   // status.get's rf counts (#531)
   void screenTick(uint32_t now);
   Iface::ScreenFeed _screen;
   static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits

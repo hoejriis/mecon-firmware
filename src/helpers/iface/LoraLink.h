@@ -82,6 +82,11 @@ public:
   // status.get's "lora" (LORA_MANAGEMENT.md section 7): what was dropped, so a manager can see why nothing came back.
   template <class W> void writeCounts(W& w) const {
     w.key("lora"); w.beginObject();
+    writeCountFields(w);
+    w.endObject();
+  }
+  // The same counts as fields of an object the caller has opened (the manager's rf object adds its own beside them).
+  template <class W> void writeCountFields(W& w) const {
     w.key("frames"); w.unum(_c.frames);
     w.key("incomplete"); w.unum(_c.incomplete);
     w.key("dropped_bad"); w.unum(_c.dropped_bad);
@@ -90,7 +95,6 @@ public:
     w.key("dropped_memory"); w.unum(_c.dropped_memory);
     w.key("evicted"); w.unum(_c.evicted);
     w.key("binding_reads"); w.unum(_c.binding_reads);
-    w.endObject();
   }
 
   // One frame from this peer, without any tag: marker, xid, index, count, bytes. payload is the size every frame but the last

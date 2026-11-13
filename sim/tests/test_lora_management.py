@@ -617,3 +617,5 @@ def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
     assert r and r["status"] == "ok", r
     assert len(r.raw) > 900, len(r.raw)
     assert verifies(r.raw, d.node_key, "result"), "read whole: the signature still holds"
+    rf = m.i.request("status.get")["result"]["rf"]   # the manager's side, where a lost reply would be seen (#531)
+    assert rf["replies"] >= 6 and rf["completed"] >= 1, rf

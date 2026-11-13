@@ -146,3 +146,5 @@ mutate iface_queue_full_without_its_id examples/companion_radio/MeconIface.cpp '
 mutate iface_result_id_not_bounded src/helpers/iface/IfaceEnvelope.cpp "if (n < left && n <= ID_MAX && from[n] == '\"')" "if (n < left && from[n] == '\"')" unit:test_iface
 mutate iface_events_built_mid_request examples/companion_radio/MeconIface.cpp '  const bool receiving = rxPartial();' '  const bool receiving = false;' sim/tests/test_device_interface.py
 mutate contacts_saved_mid_request examples/companion_radio/MyMesh.cpp '  if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry) && !receiving) {' '  if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {' sim/tests/test_contacts.py
+mutate rf_replies_not_counted examples/companion_radio/MeconIface.cpp '  _rf_frames_in++;' '' sim/tests/test_lora_management.py
+mutate rf_completed_not_counted examples/companion_radio/MeconIface.cpp '  _rf_completed++;' '' sim/tests/test_lora_management.py
