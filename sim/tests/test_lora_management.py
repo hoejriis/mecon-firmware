@@ -725,3 +725,22 @@ def test_a_companion_that_has_managed_still_answers_its_whole_status_over_lora(e
     assert back["status"] == "ok", "the manager's whole status over LoRa: %s" % back
     assert "rf" not in back["result"] and "events_dropped" not in back["result"], sorted(back["result"])
     assert verifies(got["data"]["message"], m_key, "result")
+
+
+def test_a_reply_missing_frames_expires_counted_with_the_frames_that_came(ether, nodes):
+    # In the night run wiotest took 10 reply frames and made no message, yet counted nothing: the manager's side was never
+    # ticked, so a reply missing a frame never met its deadline (#539). Here the target's reply is cut after its first frame.
+    d, m = enrolled(nodes, ether, "companion_standalone", "rfx")
+    msg = json.dumps(wrap(d.node_key, "status.get", job=None, rid="x1"), separators=(",", ":"))
+    sent = len(ether.tx_log)
+    assert m.i.request("rf.request", {"to": d.node_key, "message": msg})["status"] == "ok"
+    end = time.time() + 90
+    while time.time() < end and not any(t.src == "rfx" and t.length > 100 and "mgrrfx" in t.delivered_to
+                                        for t in ether.tx_log[sent:]):   # a reply frame, delivered
+        time.sleep(0.02)
+    ether.set_loss("rfx", "mgrrfx", 1.0, both=False)           # the rest of the reply never reaches the manager
+    time.sleep(75)                                            # past the 60 s reassembly deadline
+    rf = m.i.request("status.get")["result"]["rf"]
+    assert rf["incomplete"] == 1 and rf["completed"] == 0, rf
+    li = rf["last_incomplete"]
+    assert li["count"] >= 6 and li["have"] & 1 and li["have"] != (1 << li["count"]) - 1, li
