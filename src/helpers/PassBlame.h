@@ -6,13 +6,16 @@
 //
 // The loop marks the start and end of each pass, and names its sections (the mesh, the screen, Wi-Fi, MQTT, ...) with a
 // TimeScope. When a pass is the longest yet, its duration is kept with its longest section: the name and how long that
-// section took. Time outside every section is put down to "unscoped".
+// section took. Time outside every section is put down to "unscoped". Each section also keeps its own longest run, so a
+// section that is slow inside a pass another section made longer still shows. Passes in the first SETTLE_S seconds after
+// boot are left out (the boot's own passes are long by design, and get mecon.boot already reports them).
 //
 // Names are string literals (or other static storage): only the pointer is kept.
 //
 // Pure logic: the caller passes the time, so it runs in the native unit tests.
 
 #include <stdint.h>
+#include <string.h>
 
 class PassBlame {
 public:
@@ -24,12 +27,22 @@ public:
     bool seen = false;
   };
 
-  void begin(uint32_t now_ms) { _start = now_ms; _longest = 0; _by = nullptr; }
+  static const uint32_t SETTLE_S = 60;
+  static const int SECTIONS = 8;
+  struct Section {
+    const char* name = nullptr;
+    uint32_t max_ms = 0;
+  };
+
+  void begin(uint32_t now_ms) { _start = now_ms; _longest = 0; _by = nullptr; _n = 0; }
   // A section of the current pass ended, after ms.
   void section(const char* what, uint32_t ms) {
     if (!_by || ms > _longest) { _longest = ms; _by = what; }
+    if (_n < SECTIONS) { _pass[_n].name = what; _pass[_n].max_ms = ms; _n++; }
   }
   void end(uint32_t now_ms, uint32_t uptime_s) {
+    if (uptime_s < SETTLE_S) return;
+    for (int i = 0; i < _n; i++) fold(_pass[i].name, _pass[i].max_ms);
     const uint32_t pass = now_ms - _start;
     if (_slowest.seen && pass <= _slowest.pass_ms) return;
     _slowest.pass_ms = pass;
@@ -39,11 +52,24 @@ public:
     _slowest.seen = true;
   }
   const Slowest& slowest() const { return _slowest; }
+  // Each section's longest run since the first counted pass, in the order first seen; count() of them.
+  int count() const { return _count; }
+  const Section& sectionAt(int i) const { return _max[i]; }
 
 private:
+  void fold(const char* name, uint32_t ms) {
+    for (int i = 0; i < _count; i++)
+      if (_max[i].name == name || (_max[i].name && name && strcmp(_max[i].name, name) == 0)) {
+        if (ms > _max[i].max_ms) _max[i].max_ms = ms;
+        return;
+      }
+    if (_count < SECTIONS) { _max[_count].name = name; _max[_count].max_ms = ms; _count++; }
+  }
   uint32_t _start = 0, _longest = 0;
   const char* _by = nullptr;
   Slowest _slowest;
+  Section _pass[SECTIONS], _max[SECTIONS];
+  int _n = 0, _count = 0;
 };
 
 // One per device. Function-local, as heapWatch().

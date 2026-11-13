@@ -147,9 +147,22 @@ inline void formatSlowPass(const PassBlame& p, char* reply, size_t max) {
            (unsigned long)s.section_ms, (unsigned long)s.at_s);
 }
 
+// The reply to `get mecon.slowsections`: "> <section>=<ms> ..." for each named section's longest run since the first
+// counted pass, or "> none" (helpers/PassBlame.h).
+inline void formatSlowSections(const PassBlame& p, char* reply, size_t max) {
+  if (!p.count()) { snprintf(reply, max, "> none"); return; }
+  size_t n = (size_t)snprintf(reply, max, ">");
+  for (int i = 0; i < p.count() && n < max; i++)
+    n += (size_t)snprintf(reply + n, max - n, " %s=%lu", p.sectionAt(i).name, (unsigned long)p.sectionAt(i).max_ms);
+}
+
 inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char* reply, size_t max) {
   if (strcmp(cmd, "get mecon.mem") == 0) {
     formatMem(memStats(), heapFloor(), reply, max);
+    return true;
+  }
+  if (strcmp(cmd, "get mecon.slowsections") == 0) {
+    formatSlowSections(passBlame(), reply, max);
     return true;
   }
   if (strcmp(cmd, "get mecon.slowpass") == 0) {
