@@ -2,6 +2,7 @@
 #include "../iface/Wipe.h"
 #include "../MemStats.h"
 #include "../HeapWatch.h"
+#include "../PassBlame.h"
 #include "../CryptoRNG.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -316,6 +317,7 @@ Cli::Context MqttController::sessionContext() const {
 // handled, which writes over that buffer. So the request is handled from a copy of its own.
 void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
   HeapScope hs("mqtt.request");
+  TimeScope ts("mqtt.request");   // a section of the loop pass (helpers/PassBlame.h)
   char* out = static_cast<char*>(ifaceAlloc(IFACE_PACKET_BUFFER));
   uint8_t* req = static_cast<uint8_t*>(ifaceAlloc(len + 1));
   if (out && req) {
@@ -338,6 +340,7 @@ void MqttController::onIfaceMessage(const uint8_t* payload, unsigned len) {
 
 bool MqttController::pub(const char* topic, const uint8_t* payload, unsigned len, bool retained) {
   HeapScope hs("mqtt.publish");
+  TimeScope ts("mqtt.publish");
   const uint32_t t0 = millis();
   const bool ok = _psc.publish(topic, payload, len, retained);
   const uint32_t ms = millis() - t0;

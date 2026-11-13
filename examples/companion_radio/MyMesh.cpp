@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/PassBlame.h>
 #include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
 #include <helpers/iface/Observe.h>
@@ -3309,8 +3310,8 @@ bool MyMesh::requestConnectivityMode(uint8_t want, uint8_t caller) {
 
 void MyMesh::loop() {
   Uptime::ms(millis());   // every pass, so the 64-bit uptime never misses a wrap of millis() (#165)
-  BaseChatMesh::loop();
-  auditStore().service(millis());
+  { TimeScope ts("mesh.radio"); BaseChatMesh::loop(); }   // the sections of a loop pass (helpers/PassBlame.h)
+  { TimeScope ts("mesh.audit"); auditStore().service(millis()); }
 #ifdef ENABLE_CONNMODE
   if (_connmode_restart_at != 0 && millisHasNowPassed(_connmode_restart_at)) {
     _connmode_restart_at = 0;
@@ -3321,9 +3322,9 @@ void MyMesh::loop() {
   if (_cli_rescue) {
     checkCLIRescueCmd();
   } else {
-    checkSerialInterface();
+    { TimeScope ts("mesh.serial"); checkSerialInterface(); }
 #ifdef ENABLE_MECON_IFACE
-    _iface.loop(millis());
+    { TimeScope ts("mesh.iface"); _iface.loop(millis()); }
 #endif
 #if defined(ENABLE_WIFI_INTERFACE) && defined(RP2040_PLATFORM) && !defined(ENABLE_USB_INTERFACE)
     // RP2040 WiFi builds are headless and have no way into the rescue CLI (that needs a
@@ -3340,6 +3341,7 @@ void MyMesh::loop() {
   receiving = _iface.rxPartial();
 #endif
   if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry) && !receiving) {
+    TimeScope ts("mesh.contacts");
 #ifdef CONTACTS_STOCK_ARRAY
     saveContacts();
     dirty_contacts_expiry = 0;
