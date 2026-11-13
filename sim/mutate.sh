@@ -102,6 +102,8 @@ for f in sim/mutants/*.sh; do TOPIC="$f"; . "./$f"; done
 if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
+# One mutant: no suite, but the restored source is built, or the next test runs the mutant's binary and fails for nothing
+if [ -n "$ONLY" ] && [ "$DRY" = 0 ]; then build; [ "$BUILD_OK" = 1 ] && echo "rebuilt from the restored source"; fi
 if [ -n "$ONLY" ] && [ "$DRY" = 0 ] && [ "$MATCHED" = 0 ]; then
   echo "NOT RUN: mutant '$ONLY' was listed but never reached (is it after the end of the list?)"; SURVIVED=1
 fi
