@@ -392,6 +392,13 @@ Status opHello(OpContext& c) {
   w.key("variant"); w.str(MECON_VARIANT);
   w.key("upstream"); w.str(MECON_UPSTREAM_BASE);
   w.key("epoch"); w.unum(m->epoch());
+#ifdef MECON_IFACE_SERIAL_RX
+  if (m->curLinkIsCable()) {   // what a request may take on the wire and still arrive whole (DEVICE_INTERFACE section 2)
+    w.key("limits"); w.beginObject();
+    w.key("rx_bytes"); w.unum(MECON_IFACE_SERIAL_RX - (MAX_FRAME_SIZE + 3));   // the ring less one frame and its header
+    w.endObject();
+  }
+#endif
   m->updates().writeAttestation(w);   // the image of an update job, while it awaits confirmation (UPDATES.md section 7)
   // The channel nonce of the link this reply goes to, only once a Deployment record exists (AUTHORITY.md section 7.1).
   const char* nonce = m->helloNonce();
@@ -1661,6 +1668,8 @@ bool MeconIface::cableLocked(const BaseSerialInterface* src, const Cli::Context&
   _auth.stampContext(x, l ? &l->unlock : nullptr);
   return !x.unlocked;
 }
+
+bool MeconIface::curLinkIsCable() const { return _cur_link && _cur_link->src && _cur_link->src->isCableTransport(); }
 
 bool MeconIface::rxPartial() const {
   for (const Link& l : _links)

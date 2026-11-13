@@ -66,6 +66,9 @@ def test_hello_reports_identity_versions_and_capabilities(nodes):
     assert h["upstream"] == "v1.18.0"
     assert h["epoch"] >= 1
     assert set(h["capabilities"]) >= {"hello", "status.get"}
+    # The cable's receive ring (2 KB, as a Heltec V3's) less one 176-byte frame and its 3-byte header: what a request may
+    # take and still arrive whole however long the device is busy (#519).
+    assert h["limits"] == {"rx_bytes": 2048 - 179}, h.get("limits")
 
 
 def test_device_id_is_kept_and_epoch_counts_boots(nodes):
@@ -176,6 +179,7 @@ def test_a_paired_ble_phone_gets_hello(nodes):
     b.app_start()
     r = mecon_iface.IfaceClient(b._send, b._read_frame).request("hello")
     assert r["status"] == "ok", r
+    assert "limits" not in r["result"], "the receive limit is the cable's; BLE has no such ring"
 
 
 @pytest.mark.timescale(10)
