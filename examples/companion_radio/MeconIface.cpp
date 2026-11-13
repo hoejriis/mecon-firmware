@@ -476,6 +476,7 @@ Status opStatus(OpContext& c) {
   m->jobs().writeStatus(w);
   m->lora().writeCounts(w);
   m->writeRfCounts(w);   // the manager side: replies to this Companion's rf.request (#531)
+  if (const uint32_t d = m->eventsDropped()) { w.key("events_dropped"); w.unum(d); }   // a usig_seq gap's cause (#536)
   w.key("messages"); w.beginObject();   // a manager that reconnects learns there are outcomes to collect
   w.key("open"); w.num(m->messages() ? m->messages()->open() : 0);
   w.key("owed"); w.num(m->messages() ? m->messages()->owed() : 0);
@@ -1519,6 +1520,14 @@ void MeconIface::rfTick(uint32_t now) {
 // they stopped. replies: reply frames handed to onRfReply; completed: messages they made; then the link's own counts.
 // Only once a reply frame has come: a status.get answered over LoRa sits close to the reply's bound, and a Companion
 // that never sent rf.request has nothing to say here.
+// Events the links' queues had no room for since boot, all links together: each is a usig_seq gap a reader sees. Only
+// when there were some, as rf: a status.get over LoRa sits close to the reply's bound.
+uint32_t MeconIface::eventsDropped() const {
+  uint32_t n = 0;
+  for (const Link& l : _links) if (l.q) n += l.q->droppedEvents();
+  return n;
+}
+
 void MeconIface::writeRfCounts(Iface::JsonWriter& w) const {
   if (!_rf_frames_in) return;
   w.key("rf"); w.beginObject();

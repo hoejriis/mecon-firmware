@@ -79,6 +79,7 @@ public:
                                            (1u << Iface::SID_LOGS) | (1u << Iface::SID_RF);
 public:
   Iface::Status rfRequest(Iface::OpContext& c);
+  uint32_t eventsDropped() const;
   void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
   void writeRfCounts(Iface::JsonWriter& w) const;
   bool onLora() const { return _on_lora; }

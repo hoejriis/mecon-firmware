@@ -635,6 +635,7 @@ def test_an_rf_reply_waits_for_room_behind_observations(ether, nodes, tmp_path):
     r = m.i.request("rf.request", {"to": d.node_key, "message": msg})
     assert r["status"] == "ok", r
     xid = r["result"]["xid"]
+    assert "events_dropped" not in m.i.request("status.get")["result"], "nothing dropped yet, so nothing said"
     hold.write_text("")                                        # the host stops reading
     sent = len(ether.tx_log)
     end, last = time.time() + 90, (0, time.time())
@@ -659,3 +660,5 @@ def test_an_rf_reply_waits_for_room_behind_observations(ether, nodes, tmp_path):
     assert "message" in got["data"], got["data"]
     assert verifies(got["data"]["message"], d.node_key, "result")
     assert any(e.get("ev") == "observations" for e in m.i.events), "the queue held observations, as on the board"
+    st = m.i.request("status.get")["result"]
+    assert st.get("events_dropped", 0) >= 1, "the observations with no room are counted, a usig_seq gap's cause (#536)"
