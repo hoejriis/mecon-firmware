@@ -6,7 +6,7 @@ mutate iface_reassembly_timeout_ignored src/helpers/iface/IfaceFrames.cpp "if (_
 mutate iface_id_charset_unchecked src/helpers/iface/IfaceEnvelope.cpp "req.id, sizeof(req.id), CS_ID, 1)" "req.id, sizeof(req.id), CS_ANY, 1)" unit:test_iface
 mutate iface_duplicate_keys_accepted src/helpers/iface/IfaceJson.cpp "if (keyEq(d, keys[j], c)) return J_DUP_KEY;" "if (false) return J_DUP_KEY;" unit:test_iface
 mutate iface_new_xid_does_not_discard src/helpers/iface/IfaceFrames.cpp "if (_active && xid != _xid) drop();   // one message at a time: the newer one wins" "" unit:test_iface
-mutate iface_events_take_the_result_slot src/helpers/iface/IfaceFrames.cpp '    if (_count >= QUEUE_MESSAGES - 1 ||' '    if (_count >= QUEUE_MESSAGES ||' unit:test_iface
+mutate iface_events_take_the_result_slot src/helpers/iface/IfaceFrames.h '    return _count < QUEUE_MESSAGES - 1 && _cap >= keep' '    return _count < QUEUE_MESSAGES && _cap >= keep' unit:test_iface
 mutate iface_reads_are_cached src/helpers/iface/IfaceDispatch.cpp '  if (n > 0 && cache && op && op->mutating && (st == ST_OK || st == ST_FAILED))' '  if (n > 0 && cache && op && (st == ST_OK || st == ST_FAILED))' unit:test_iface
 mutate iface_dropped_message_keeps_its_buffer src/helpers/iface/IfaceFrames.h ' _mask = 0; _have_last = false; release(); }' ' _mask = 0; _have_last = false; }' unit:test_iface
 mutate iface_duplicate_skips_the_authority_check src/helpers/iface/IfaceDispatch.cpp '      if (dop && (!_auth || !_auth(_auth_user, *dop, req)))' '      if (false)' unit:test_iface
@@ -150,3 +150,6 @@ mutate rf_replies_not_counted examples/companion_radio/MeconIface.cpp '  _rf_fra
 mutate rf_completed_not_counted examples/companion_radio/MeconIface.cpp '  _rf_completed++;' '' sim/tests/test_lora_management.py::test_a_companions_whole_status_reaches_a_companion_manager
 mutate hello_limit_on_every_link examples/companion_radio/MeconIface.cpp '  if (m->curLinkIsCable()) {   // what a request may take on the wire and still arrive whole (DEVICE_INTERFACE section 2)' '  if (true) {' sim/tests/test_device_interface.py
 mutate hello_limit_no_headroom examples/companion_radio/MeconIface.cpp '    w.key("rx_bytes"); w.unum(MECON_IFACE_SERIAL_RX - (MAX_FRAME_SIZE + 3));   // the ring less one frame and its header' '    w.key("rx_bytes"); w.unum(MECON_IFACE_SERIAL_RX);' sim/tests/test_device_interface.py
+mutate rf_reply_not_held examples/companion_radio/MeconIface.cpp '      if (rfFitsAll((size_t)m)) {' '      if (true) {' sim/tests/test_lora_management.py::test_an_rf_reply_waits_for_room_behind_observations
+mutate rf_held_reply_never_retried examples/companion_radio/MeconIface.cpp '    rfPendingTick(now);   // first:' '    // rfPendingTick(now);   // first:' sim/tests/test_lora_management.py::test_an_rf_reply_waits_for_room_behind_observations
+mutate queue_hold_ignored src/helpers/iface/IfaceFrames.h '    const size_t keep = RESULT_RESERVE + _held;' '    const size_t keep = RESULT_RESERVE;' unit:test_iface

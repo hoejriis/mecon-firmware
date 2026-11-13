@@ -27,6 +27,8 @@ struct SimConfig {
   uint32_t fs_size = 1536 * 1024;  // size of the simulated file system (--fs-size)
   bool fs_enforce = false;          // a write that would take the files past fs_size fails, as on a full flash (--fs-enforce)
   std::string fs_calls;       // file rewritten after every file system call with the running counts (--fs-calls)
+  std::string tx_hold_file;   // --tx-hold-file: while this file exists the cable reads as write-busy (a host not reading)
+  uint32_t loop_ms = 0;       // --loop-ms: each loop pass also holds the node this long, as a slow pass on hardware does
   uint32_t fs_write_ms = 0;   // --fs-write-ms: each written file's close holds the node this long, as a flash save does
   std::string fault_path;     // fault injection: file path (as the app sees it) ...
   long fault_after = -1;      // ... and bytes after which the process is killed

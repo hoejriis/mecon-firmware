@@ -108,9 +108,12 @@ public:
   int count() const { return _count; }
   // Whether an event of len bytes would be taken now (the same test push() makes).
   bool eventFits(size_t len) const {
-    return _count < QUEUE_MESSAGES - 1 && _cap >= RESULT_RESERVE && _used <= _cap - RESULT_RESERVE &&
-           len <= _cap - RESULT_RESERVE - _used;
+    const size_t keep = RESULT_RESERVE + _held;
+    return _count < QUEUE_MESSAGES - 1 && _cap >= keep && _used <= _cap - keep && len <= _cap - keep - _used;
   }
+  // Room kept for one event waiting to be pushed (0: none): other events must leave it free as well, so a stream of small
+  // events cannot keep taking each slot the queue frees before the waiting one gets it. Lifted (0) before that one's push.
+  void hold(size_t n) { _held = n; }
   // Everything queued is dropped, a message half sent included: the link dropped and its next client starts afresh.
   void clear() { _head = 0; _used = 0; _count = 0; _first = 0; _next_frame = 0; }
   uint32_t droppedEvents() const { return _dropped; }
@@ -125,6 +128,7 @@ private:
   unsigned _next_frame = 0;
   uint8_t _xid = 0;
   uint32_t _dropped = 0, _refused = 0;
+  size_t _held = 0;
 };
 
 }  // namespace Iface
