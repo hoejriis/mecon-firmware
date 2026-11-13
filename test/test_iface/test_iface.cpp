@@ -792,6 +792,23 @@ TEST(IfaceQueue, EventsLeaveRoomForAResult) {
   EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::RESULT, busy.data(), busy.size()));
 }
 
+// A held event's room: small events must leave it free, so a stream of them cannot take each slot the queue frees before
+// the held one gets it (an rf reply behind observations, #531). Lifted, the held event itself fits; a result still does.
+TEST(IfaceQueue, AHoldKeepsRoomFromOtherEvents) {
+  uint8_t store[2048];
+  OutQueue q(store, sizeof store);
+  auto obs = msgOf(600), reply = msgOf(1400), busy = msgOf(60);
+  EXPECT_TRUE(q.eventFits(obs.size()));
+  q.hold(reply.size());
+  EXPECT_FALSE(q.eventFits(obs.size())) << "600 B would leave less than the held 1,400 B";
+  EXPECT_EQ(OutQueue::PUSH_DROPPED, q.push(OutQueue::EVENT, obs.data(), obs.size()));
+  EXPECT_TRUE(q.eventFits(100)) << "what lies beyond the held room is still free";
+  EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::RESULT, busy.data(), busy.size())) << "results are not held back";
+  q.hold(0);
+  EXPECT_TRUE(q.eventFits(reply.size()));
+  EXPECT_EQ(OutQueue::PUSH_OK, q.push(OutQueue::EVENT, reply.data(), reply.size()));
+}
+
 TEST(IfaceEnvelopeId, AResultGivesBackTheIdItAnswers) {
   char buf[128], id[ID_MAX + 1];
   const int n = writeResult(buf, sizeof buf, "r-17", ST_OK, "{}", nullptr);

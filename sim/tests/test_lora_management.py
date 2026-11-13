@@ -619,3 +619,43 @@ def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
     assert verifies(r.raw, d.node_key, "result"), "read whole: the signature still holds"
     rf = m.i.request("status.get")["result"]["rf"]   # the manager's side, where a lost reply would be seen (#531)
     assert rf["replies"] >= 6 and rf["completed"] >= 1, rf
+
+
+def test_an_rf_reply_waits_for_room_behind_observations(ether, nodes, tmp_path):
+    # Each reply frame the manager hears is also an observations event of about 600 B, so with that stream subscribed the
+    # queue's 1,536 B for events was full when the reply completed, and its 1.4 KB event was dropped after it had been
+    # signed: the manager never heard it, and a usig_seq gap was all that showed (#531, wiotest on v0.3.5). Here the host
+    # stops reading while the reply comes back, so the observations stay queued; the reply must wait and then arrive.
+    d = target(nodes, ether, "companion_standalone", "rfo")
+    assert d.provision()["status"] == "ok"
+    hold = tmp_path / "tx-hold"
+    m = Radio(nodes, ether, "rfo", extra=["--tx-hold-file", str(hold)])
+    assert m.i.request("sub.start", {"stream": "observations", "lifetime_s": 300})["status"] == "ok"
+    msg = json.dumps(wrap(d.node_key, "status.get", job=None, rid="ro1"), separators=(",", ":"))
+    r = m.i.request("rf.request", {"to": d.node_key, "message": msg})
+    assert r["status"] == "ok", r
+    xid = r["result"]["xid"]
+    hold.write_text("")                                        # the host stops reading
+    sent = len(ether.tx_log)
+    end, last = time.time() + 90, (0, time.time())
+    while time.time() < end:                                   # until the target's reply frames have all gone out
+        n = sum(1 for t in ether.tx_log[sent:] if t.src == "rfo")
+        if n != last[0]:
+            last = (n, time.time())
+        if n >= 6 and time.time() - last[1] > 3:
+            break
+        time.sleep(0.2)
+    assert last[0] >= 6, "the target did not answer: %d frames" % last[0]
+    hold.unlink()                                              # the host reads again, well inside the 10 s a reply waits
+    got, end = None, time.time() + 20
+    while time.time() < end and got is None:
+        for e in list(m.i.events):
+            if e.get("ev") == "rf" and e["data"].get("xid") == xid:
+                got = e
+        msg_in = m.i.read_message(0.5)
+        if msg_in and "ev" in msg_in:
+            m.i.events.append(msg_in)
+    assert got, "the reply was lost behind the observations"
+    assert "message" in got["data"], got["data"]
+    assert verifies(got["data"]["message"], d.node_key, "result")
+    assert any(e.get("ev") == "observations" for e in m.i.events), "the queue held observations, as on the board"

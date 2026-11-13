@@ -18,7 +18,14 @@ bool ArduinoSerialInterface::isConnected() const {
   return true;   // no way of knowing, so assume yes
 }
 
+#if defined(SIM_FREE_HEAP)
+bool sim_serial_tx_held();   // the simulator: --tx-hold-file, a host that stops reading for a while (sim_main.cpp)
+#endif
+
 bool ArduinoSerialInterface::isWriteBusy() const {
+#if defined(SIM_FREE_HEAP)
+  if (sim_serial_tx_held()) return true;
+#endif
 #ifdef MECON_NATIVE_USB_TX
   // A frame waits with its sender rather than overrun the ring, which discards when it overruns (NativeUsbTx.h). With no host
   // nothing drains, so nothing waits either.

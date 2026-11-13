@@ -291,6 +291,7 @@ private:
   // behind periodic events (#531). One at a time, for at most RF_PEND_MS; then a short queue-full event says it was lost.
   static const uint32_t RF_PEND_MS = 10000;
   bool rfFitsAll(size_t n) const;
+  void rfHold(size_t n);
   void rfPendingTick(uint32_t now);
   void rfLost(const char* from, uint32_t xid, size_t size, uint32_t seq, const char* why);
   Iface::StandingService _standing;

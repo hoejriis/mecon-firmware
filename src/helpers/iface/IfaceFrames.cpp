@@ -42,7 +42,7 @@ RxResult Reassembler::feed(const uint8_t* f, size_t len, uint32_t now_ms) {
 OutQueue::Push OutQueue::push(Kind k, const uint8_t* msg, size_t len) {
   if (!msg || !frameCount(len)) return PUSH_BAD;
   if (k == EVENT) {
-    if (_count >= QUEUE_MESSAGES - 1 || _cap < RESULT_RESERVE || _used > _cap - RESULT_RESERVE || len > _cap - RESULT_RESERVE - _used) {
+    if (!eventFits(len)) {
       _dropped++;
       return PUSH_DROPPED;
     }

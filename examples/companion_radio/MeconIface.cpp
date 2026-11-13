@@ -1585,6 +1585,7 @@ void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
         _rf_pend_xid = p->xid;
         _rf_pend_size = LoraLink::messageLen(*p);
         memcpy(_rf_pend_from, hex, sizeof(_rf_pend_from));
+        rfHold(_rf_pend_len);   // room for it, which observations and periodic events no longer take (#531)
       } else {
         rfLost(hex, p->xid, LoraLink::messageLen(*p), seq, "queue-full");   // one is already held: say this one is lost
       }
@@ -1602,13 +1603,21 @@ bool MeconIface::rfFitsAll(size_t n) const {
   return true;
 }
 
+// Every subscribed link's queue keeps n bytes for the held reply (0: none).
+void MeconIface::rfHold(size_t n) {
+  for (Link& l : _links)
+    if (l.q) l.q->hold(l.subs.s[SID_RF].active ? n : 0);
+}
+
 void MeconIface::rfPendingTick(uint32_t now) {
   if (!_rf_pend) return;
+  rfHold(0);   // the room kept is the held reply's own
   if (rfFitsAll(_rf_pend_len)) {
     sendEvent(SID_RF, _rf_pend, _rf_pend_len);
   } else if ((int32_t)(now - _rf_pend_until) >= 0) {
     rfLost(_rf_pend_from, _rf_pend_xid, _rf_pend_size, _rf_pend_seq, "queue-full");
   } else {
+    rfHold(_rf_pend_len);
     return;
   }
   free(_rf_pend);
