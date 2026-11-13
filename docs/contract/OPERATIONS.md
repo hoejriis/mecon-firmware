@@ -69,7 +69,7 @@ A change that can cut the path its caller uses is applied **tentatively**, and r
 - the Wi-Fi profile in use or its credentials;
 - the broker profile in use, or its host, port, TLS, anchor or credentials;
 - `connectivity.mode`;
-- the radio (`radio`, `tx`, and any key that changes frequency, bandwidth, spreading factor or coding rate);
+- the radio (`radio`, `tx`, `radio.rxgain`, and any key that changes frequency, bandwidth, spreading factor or coding rate; a wrong receive gain can leave the radio deaf);
 - over LoRa, the admin password and the management channel.
 
 Rules:
@@ -88,7 +88,7 @@ The bound on any pending change is therefore `within_s` plus at most one reboot.
 
 **How the reference firmware does it.**
 - **Which keys.** `config.schema` marks them `"confirm": true`:
-  - `radio` and `tx` on every role;
+  - `radio`, `tx` and `radio.rxgain` on every role;
   - on the Companion, also `connectivity.mode`; on every build with those links, `wifi.enabled`, `mqtt.enabled` and every `wifi.profile.*` and `mqtt.profile.*` key.
 
   This is stricter than rule 1 on one point. No controller reports which profile it is using, so a change to *any* Wi-Fi or broker profile counts, not only the one in use.
