@@ -21,6 +21,7 @@
 #include "../MemStats.h"
 #include "../HeapFloor.h"
 #include "../HeapWatch.h"
+#include "../PassBlame.h"
 #include "../MeconVersion.h"
 #include "../BootTimes.h"
 
@@ -137,11 +138,43 @@ inline void formatHeapLow(const HeapWatch& h, char* reply, size_t max) {
 }
 
 // Returns true when `cmd` is one of the MECON commands and `reply` holds the answer.
+// The reply to `get mecon.slowpass`: "> pass=<ms>ms by=<section> section=<ms>ms at=<s>s", or "> none" before the first
+// pass ends: the longest loop pass since boot and its longest section (helpers/PassBlame.h).
+inline void formatSlowPass(const PassBlame& p, char* reply, size_t max) {
+  const PassBlame::Slowest& s = p.slowest();
+  if (!s.seen) { snprintf(reply, max, "> none"); return; }
+  snprintf(reply, max, "> pass=%lums by=%s section=%lums at=%lus", (unsigned long)s.pass_ms, s.by,
+           (unsigned long)s.section_ms, (unsigned long)s.at_s);
+}
+
+// The reply to `get mecon.slowsections`: "> <section>=<ms> ..." for each named section whose longest run since the first
+// counted pass reached SLOW_SECTION_MS, "> all under 10ms" when none did, or "> none" before the first counted pass
+// (helpers/PassBlame.h). The faster ones are left out: they cannot cost a request, and a CLI reply holds 150 characters.
+static const uint32_t SLOW_SECTION_MS = 10;
+inline void formatSlowSections(const PassBlame& p, char* reply, size_t max) {
+  if (!p.count()) { snprintf(reply, max, "> none"); return; }
+  size_t n = (size_t)snprintf(reply, max, ">");
+  for (int i = 0; i < p.count() && n < max; i++)
+    if (p.sectionAt(i).max_ms >= SLOW_SECTION_MS)
+      n += (size_t)snprintf(reply + n, max - n, " %s=%lu", p.sectionAt(i).name, (unsigned long)p.sectionAt(i).max_ms);
+  if (n == 1) snprintf(reply, max, "> all under %lums", (unsigned long)SLOW_SECTION_MS);
+}
+
 inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char* reply, size_t max) {
   if (strcmp(cmd, "get mecon.mem") == 0) {
     formatMem(memStats(), heapFloor(), reply, max);
     return true;
   }
+#ifdef ENABLE_MECON_IFACE   // measured only where the loop names its sections
+  if (strcmp(cmd, "get mecon.slowsections") == 0) {
+    formatSlowSections(passBlame(), reply, max);
+    return true;
+  }
+  if (strcmp(cmd, "get mecon.slowpass") == 0) {
+    formatSlowPass(passBlame(), reply, max);
+    return true;
+  }
+#endif
   if (strcmp(cmd, "get mecon.heaplow") == 0) {
     formatHeapLow(heapWatch(), reply, max);
     return true;
