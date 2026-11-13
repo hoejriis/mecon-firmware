@@ -14,6 +14,7 @@
     "variant": {"type": "string", "description": "The build this image is, as a release's update set names it, for example Heltec_v3_companion_radio_standalone. Absent on v0.2.0 and earlier."},
     "upstream": {"type": "string", "description": "The MeshCore release it is built on, for example v1.18.0."},
     "epoch": {"type": "integer", "minimum": 1},
+    "limits": {"type": "object", "additionalProperties": false, "description": "Over the cable only, where the device knows its receive ring: what a request may take and still arrive whole however long the device is busy.", "properties": {"rx_bytes": {"type": "integer", "minimum": 180, "description": "Framed bytes on the wire, each frame counted with its 3-byte header: the receive ring less one frame of headroom."}}},
     "device_id_sig": {"type": "string", "description": "The device id signed with the node key (AUTHORITY.md). Absent where the build cannot sign it."},
     "nonce": {"type": "string", "description": "The caller's nonce, echoed when the request carried one."},
     "device_id_sig_nonce": {"type": "string", "description": "The device id and the caller's nonce, signed with the node key. Present only with nonce."},

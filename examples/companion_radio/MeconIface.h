@@ -46,6 +46,13 @@ private:
 
 #define CMD_MECON 0x7F   // the one Companion code the interface uses, both directions
 
+// The cable's receive ring on an ESP32 Companion (main.cpp sets it). A request whose frames fit it whole arrives whole
+// however long a loop pass holds the port; hello reports what fits as limits.rx_bytes. 2 KB on a UART (a Heltec V3: a
+// 4.6 KB ring cost more heap than the board has, #519); a board with native USB sets its own (the Heltec V4: 4,608).
+#if defined(ESP32) && !defined(MECON_IFACE_SERIAL_RX)
+  #define MECON_IFACE_SERIAL_RX 2048
+#endif
+
 class MeconIface {
 public:
   // epoch_saved: false when this boot's epoch could not be written, so it may repeat and nothing is signed (AUTHORITY.md 3.4).
@@ -54,6 +61,7 @@ public:
   void onFrame(const BaseSerialInterface* src, const uint8_t* frame, size_t len, uint32_t now);
   // Hands out pending frames, at most one per transport per call, and drops stale partial messages.
   void loop(uint32_t now);
+  bool curLinkIsCable() const;   // the request being handled came over the cable
   bool rxPartial() const;    // a request is part-way through arriving on some link
   // One request envelope from the MQTT session (its context built by the controller); writes the result envelope and
   // returns its length.
