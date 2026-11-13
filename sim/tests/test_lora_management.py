@@ -619,18 +619,37 @@ def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
     assert verifies(r.raw, d.node_key, "result"), "read whole: the signature still holds"
 
 
-def test_an_rf_reply_waits_for_room_behind_inventory_pages(ether, nodes):
-    # On a Heltec V3 a loop pass can take hundreds of ms and the out-queue sends one frame per pass, so the periodic events
-    # on a link keep its queue full; a reply's 1.4 KB event that did not fit was dropped, and the manager never heard it
-    # (#531, seen on F2's relay to wiotest). It now waits for room, ahead of the next inventory page.
+def test_an_rf_reply_waits_for_room_behind_inventory_pages(ether, nodes, tmp_path):
+    # On a Heltec V3 the out-queue sends one frame per loop pass, and passes are slow, so the periodic events on a link
+    # keep its queue full; a reply's 1.4 KB event that did not fit was dropped and the manager never heard it (#531, seen
+    # on F2's relay to wiotest). Here the host stops reading while the reply comes back, as a busy link does: inventory
+    # pages fill the queue, and the reply must wait for room and arrive once the host reads again.
     d = target(nodes, ether, "companion_standalone", "rfq")
     assert d.provision()["status"] == "ok"
-    m = Radio(nodes, ether, "rfq", extra=["--loop-ms", "30"])   # slow passes, as on the board
-    for k in range(100):                                       # about 25 inventory pages of up to 1.5 KB
+    hold = tmp_path / "tx-hold"
+    m = Radio(nodes, ether, "rfq", extra=["--tx-hold-file", str(hold)])
+    for k in range(40):                                        # about 10 inventory pages of up to 1.5 KB
         key = bytes([k, 0x5A]) + bytes([0x31]) * 30
         assert m.c.add_contact_full(key, "inv-%d" % k)[0] == 0, k
-    r = m.i.request("sub.start", {"stream": "inventory", "lifetime_s": 300})
+    msg = json.dumps(wrap(d.node_key, "status.get", job=None, rid="rq1"), separators=(",", ":"))
+    r = m.i.request("rf.request", {"to": d.node_key, "message": msg})
     assert r["status"] == "ok", r
-    reply = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="rq1"), timeout=90.0)
-    assert reply and reply["status"] == "ok", "the reply was lost behind the inventory pages"
-    assert verifies(reply.raw, d.node_key, "result")
+    xid = r["result"]["xid"]
+    hold.write_text("")                                        # the host stops reading
+    sub = m.i.envelope("sub.start", {"stream": "inventory", "lifetime_s": 300})
+    m.i.send_raw(json.dumps(sub).encode())                     # its first page fills the queue; its result waits
+    time.sleep(6)                                              # the reply comes back over LoRa meanwhile
+    hold.unlink()                                              # the host reads again
+    end, got = time.time() + 30, None
+    while time.time() < end and got is None:
+        for e in list(m.i.events):
+            if e.get("ev") == "rf" and e["data"].get("xid") == xid:
+                got = e
+        msg_in = m.i.read_message(0.5)
+        if msg_in and msg_in.get("ev") == "rf" and msg_in["data"].get("xid") == xid:
+            got = msg_in
+        elif msg_in and "ev" in msg_in:
+            m.i.events.append(msg_in)
+    assert got, "the reply was lost while the queue was full"
+    assert "message" in got["data"], got["data"]
+    assert verifies(got["data"]["message"], d.node_key, "result")
