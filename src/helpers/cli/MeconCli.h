@@ -21,6 +21,7 @@
 #include "../MemStats.h"
 #include "../HeapFloor.h"
 #include "../HeapWatch.h"
+#include "../PassBlame.h"
 #include "../MeconVersion.h"
 #include "../BootTimes.h"
 
@@ -137,9 +138,22 @@ inline void formatHeapLow(const HeapWatch& h, char* reply, size_t max) {
 }
 
 // Returns true when `cmd` is one of the MECON commands and `reply` holds the answer.
+// The reply to `get mecon.slowpass`: "> pass=<ms>ms by=<section> section=<ms>ms at=<s>s", or "> none" before the first
+// pass ends: the longest loop pass since boot and its longest section (helpers/PassBlame.h).
+inline void formatSlowPass(const PassBlame& p, char* reply, size_t max) {
+  const PassBlame::Slowest& s = p.slowest();
+  if (!s.seen) { snprintf(reply, max, "> none"); return; }
+  snprintf(reply, max, "> pass=%lums by=%s section=%lums at=%lus", (unsigned long)s.pass_ms, s.by,
+           (unsigned long)s.section_ms, (unsigned long)s.at_s);
+}
+
 inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char* reply, size_t max) {
   if (strcmp(cmd, "get mecon.mem") == 0) {
     formatMem(memStats(), heapFloor(), reply, max);
+    return true;
+  }
+  if (strcmp(cmd, "get mecon.slowpass") == 0) {
+    formatSlowPass(passBlame(), reply, max);
     return true;
   }
   if (strcmp(cmd, "get mecon.heaplow") == 0) {

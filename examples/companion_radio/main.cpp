@@ -1,5 +1,6 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <helpers/BootTimes.h>
+#include <helpers/PassBlame.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/BootPresence.h>
 #include <Mesh.h>
@@ -439,16 +440,17 @@ void setup() {
 }
 
 void loop() {
-  the_mesh.loop();
+  passBlame().begin(millis());   // which section of the longest pass took its time (helpers/PassBlame.h)
+  { TimeScope ts("mesh"); the_mesh.loop(); }
   heapFloor().loop(millis(), rtc_clock.getCurrentTime());
   heapWatchTick();   // what the heap was doing at its lowest (helpers/HeapWatch.h)
-  interface_manager.loop();
-  sensors.loop();
+  { TimeScope ts("interfaces"); interface_manager.loop(); }
+  { TimeScope ts("sensors"); sensors.loop(); }
 #ifdef DISPLAY_CLASS
-  ui_task.loop();
+  { TimeScope ts("screen"); ui_task.loop(); }
 #endif
   rtc_clock.tick();
-  board.loop();
+  { TimeScope ts("board"); board.loop(); }
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
 #endif
@@ -461,10 +463,11 @@ void loop() {
 
 #ifdef ENABLE_WIFI_INTERFACE
   if (wifi_enabled) {
-    wifiController().loop();
+    { TimeScope ts("wifi"); wifiController().loop(); }
 #ifdef ENABLE_MQTT
-    mqttController().loop();
+    { TimeScope ts("mqtt"); mqttController().loop(); }
 #endif
   }
 #endif
+  passBlame().end(millis(), millis() / 1000);
 }
