@@ -3334,7 +3334,13 @@ void MyMesh::loop() {
   }
 
   // is there are pending dirty contacts write needed?
-  if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
+  // Not while a request is arriving in frames: one bucket's write holds the loop for up to about a second on a Heltec
+  // V3, which overflows its UART's 1 KB receive ring and loses the request (#519). The save waits for the next pass.
+  bool receiving = false;
+#ifdef ENABLE_MECON_IFACE
+  receiving = _iface.rxPartial();
+#endif
+  if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry) && !receiving) {
     TimeScope ts("mesh.contacts");
 #ifdef CONTACTS_STOCK_ARRAY
     saveContacts();

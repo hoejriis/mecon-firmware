@@ -54,6 +54,7 @@ public:
   void onFrame(const BaseSerialInterface* src, const uint8_t* frame, size_t len, uint32_t now);
   // Hands out pending frames, at most one per transport per call, and drops stale partial messages.
   void loop(uint32_t now);
+  bool rxPartial() const;    // a request is part-way through arriving on some link
   // One request envelope from the MQTT session (its context built by the controller); writes the result envelope and
   // returns its length.
   size_t onMqtt(const Cli::Context& ctx, const uint8_t* msg, size_t len, char* out, size_t cap);
@@ -260,7 +261,6 @@ private:
   SessionUpFn _ev_up = nullptr;
   Iface::StreamClock _clock;                // per stream per device: seq (design section 3) and pacing
   void streamTick(uint32_t now);
-  bool rxPartial() const;    // a request is part-way through arriving on some link
   static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
   Iface::ObsLimiter _obs;
   Iface::LoopGap _gap;
