@@ -28,7 +28,7 @@ public:
   };
 
   static const uint32_t SETTLE_S = 60;
-  static const int SECTIONS = 8;
+  static const int SECTIONS = 16;
   struct Section {
     const char* name = nullptr;
     uint32_t max_ms = 0;

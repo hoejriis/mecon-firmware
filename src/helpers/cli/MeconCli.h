@@ -147,13 +147,17 @@ inline void formatSlowPass(const PassBlame& p, char* reply, size_t max) {
            (unsigned long)s.section_ms, (unsigned long)s.at_s);
 }
 
-// The reply to `get mecon.slowsections`: "> <section>=<ms> ..." for each named section's longest run since the first
-// counted pass, or "> none" (helpers/PassBlame.h).
+// The reply to `get mecon.slowsections`: "> <section>=<ms> ..." for each named section whose longest run since the first
+// counted pass reached SLOW_SECTION_MS, "> all under 10ms" when none did, or "> none" before the first counted pass
+// (helpers/PassBlame.h). The faster ones are left out: they cannot cost a request, and a CLI reply holds 150 characters.
+static const uint32_t SLOW_SECTION_MS = 10;
 inline void formatSlowSections(const PassBlame& p, char* reply, size_t max) {
   if (!p.count()) { snprintf(reply, max, "> none"); return; }
   size_t n = (size_t)snprintf(reply, max, ">");
   for (int i = 0; i < p.count() && n < max; i++)
-    n += (size_t)snprintf(reply + n, max - n, " %s=%lu", p.sectionAt(i).name, (unsigned long)p.sectionAt(i).max_ms);
+    if (p.sectionAt(i).max_ms >= SLOW_SECTION_MS)
+      n += (size_t)snprintf(reply + n, max - n, " %s=%lu", p.sectionAt(i).name, (unsigned long)p.sectionAt(i).max_ms);
+  if (n == 1) snprintf(reply, max, "> all under %lums", (unsigned long)SLOW_SECTION_MS);
 }
 
 inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char* reply, size_t max) {

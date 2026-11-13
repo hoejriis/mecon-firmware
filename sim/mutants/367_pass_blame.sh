@@ -6,3 +6,4 @@ mutate pb_last_section_wins $F '    if (!_by || ms > _longest) { _longest = ms; 
 mutate pb_unscoped_misnamed $F '    _slowest.by = _by ? _by : "unscoped";' '    _slowest.by = _by ? _by : "mesh";' "$U"
 mutate pb_boot_passes_counted $F '    if (uptime_s < SETTLE_S) return;' '' "$U"
 mutate pb_section_max_not_kept $F '        if (ms > _max[i].max_ms) _max[i].max_ms = ms;' '        _max[i].max_ms = ms;' "$U"
+mutate pb_fast_sections_listed src/helpers/cli/MeconCli.h '    if (p.sectionAt(i).max_ms >= SLOW_SECTION_MS)' '    if (true)' "$U"

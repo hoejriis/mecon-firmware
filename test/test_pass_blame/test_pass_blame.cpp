@@ -71,6 +71,18 @@ TEST(PassBlame, EachSectionKeepsItsOwnLongestRun) {
   EXPECT_STREQ(r, "> mesh=450 mqtt=873");
 }
 
+TEST(PassBlame, SectionsUnderTenMillisecondsAreLeftOutOfTheReply) {
+  PassBlame p;
+  p.begin(0); p.section("wifi", 1); p.section("mesh.radio", 12); p.section("board", 9); p.end(30, 61);
+  char r[160];
+  Cli::formatSlowSections(p, r, sizeof(r));
+  EXPECT_STREQ(r, "> mesh.radio=12");
+  PassBlame q;
+  q.begin(0); q.section("wifi", 1); q.end(5, 61);
+  Cli::formatSlowSections(q, r, sizeof(r));
+  EXPECT_STREQ(r, "> all under 10ms");
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
