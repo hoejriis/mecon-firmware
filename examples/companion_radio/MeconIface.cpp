@@ -1525,7 +1525,7 @@ void MeconIface::rfTick(uint32_t now) {
 uint32_t MeconIface::eventsDropped() const {
   uint32_t n = 0;
   for (const Link& l : _links) if (l.q) n += l.q->droppedEvents();
-  return n;
+  return n + _held_lost;
 }
 
 void MeconIface::writeRfCounts(Iface::JsonWriter& w) const {
@@ -1594,7 +1594,7 @@ void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
         _rf_pend_xid = p->xid;
         _rf_pend_size = LoraLink::messageLen(*p);
         memcpy(_rf_pend_from, hex, sizeof(_rf_pend_from));
-        rfHold(_rf_pend_len);   // room for it, which observations and periodic events no longer take (#531)
+        applyHolds(true);   // room for it, which observations and periodic events no longer take (#531)
       } else {
         rfLost(hex, p->xid, LoraLink::messageLen(*p), seq, "queue-full");   // one is already held: say this one is lost
       }
@@ -1612,25 +1612,61 @@ bool MeconIface::rfFitsAll(size_t n) const {
   return true;
 }
 
-// Every subscribed link's queue keeps n bytes for the held reply (0: none).
-void MeconIface::rfHold(size_t n) {
-  for (Link& l : _links)
-    if (l.q) l.q->hold(l.subs.s[SID_RF].active ? n : 0);
+void MeconIface::applyHolds(bool on) {
+  for (Link& l : _links) {
+    if (!l.q) continue;
+    size_t n = 0;
+    if (on && _rf_pend && l.subs.s[SID_RF].active) n += _rf_pend_len;
+    if (on && _job_pend && jobLink(l)) n += _job_pend_len;
+    l.q->hold(n);
+  }
 }
 
 void MeconIface::rfPendingTick(uint32_t now) {
   if (!_rf_pend) return;
-  rfHold(0);   // the room kept is the held reply's own
+  applyHolds(false);   // the room kept is the held reply's own
   if (rfFitsAll(_rf_pend_len)) {
     sendEvent(SID_RF, _rf_pend, _rf_pend_len);
   } else if ((int32_t)(now - _rf_pend_until) >= 0) {
     rfLost(_rf_pend_from, _rf_pend_xid, _rf_pend_size, _rf_pend_seq, "queue-full");
   } else {
-    rfHold(_rf_pend_len);
+    applyHolds(true);
     return;
   }
   free(_rf_pend);
   _rf_pend = nullptr;
+  applyHolds(true);
+}
+
+bool MeconIface::jobLink(const Link& l) { return l.src && l.may_read && l.src->isConnected(); }
+
+bool MeconIface::jobFitsAll(size_t n) const {
+  for (const Link& l : _links)
+    if (jobLink(l) && l.q && !l.q->eventFits(n)) return false;
+  return true;
+}
+
+void MeconIface::jobSend(const char* ev, size_t n) {
+  for (Link& l : _links) {
+    if (!jobLink(l) || !ensureQueue(l)) continue;
+    l.q->push(Iface::OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), n);
+  }
+}
+
+void MeconIface::jobPendingTick(uint32_t now) {
+  if (!_job_pend) return;
+  applyHolds(false);
+  if (jobFitsAll(_job_pend_len)) {
+    jobSend(_job_pend, _job_pend_len);
+  } else if ((int32_t)(now - _job_pend_until) >= 0) {
+    _held_lost++;   // given up: its state is still in job.get and job.list
+  } else {
+    applyHolds(true);
+    return;
+  }
+  free(_job_pend);
+  _job_pend = nullptr;
+  applyHolds(true);
 }
 
 // A short signed rf event saying a reply was lost, and why: {from, xid, error, size}, under the reply's own seq.
@@ -1780,6 +1816,7 @@ void MeconIface::loop(uint32_t now) {
   const bool receiving = rxPartial();
   if (!receiving) {
     rfPendingTick(now);   // first: a held rf reply takes the room the queue has before periodic pages refill it (#531)
+    jobPendingTick(now);  // and a held job event (#536)
     streamTick(now);
     tellMessages();
     tellInbox();
