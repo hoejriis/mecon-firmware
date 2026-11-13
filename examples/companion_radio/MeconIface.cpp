@@ -475,8 +475,10 @@ Status opStatus(OpContext& c) {
   m->writeDeploymentStatus(w, Posture::isHardened(mesh->postureValue()));
   m->jobs().writeStatus(w);
   m->lora().writeCounts(w);
-  m->writeRfCounts(w);   // the manager side: replies to this Companion's rf.request (#531)
-  if (const uint32_t d = m->eventsDropped()) { w.key("events_dropped"); w.unum(d); }   // a usig_seq gap's cause (#536)
+  if (!m->onLora()) {   // over LoRa the whole status is near what one signed reply carries: these would tip it over (#539)
+    m->writeRfCounts(w);   // the manager side: replies to this Companion's rf.request (#531)
+    if (const uint32_t d = m->eventsDropped()) { w.key("events_dropped"); w.unum(d); }   // a usig_seq gap's cause (#536)
+  }
   w.key("messages"); w.beginObject();   // a manager that reconnects learns there are outcomes to collect
   w.key("open"); w.num(m->messages() ? m->messages()->open() : 0);
   w.key("owed"); w.num(m->messages() ? m->messages()->owed() : 0);
@@ -1534,6 +1536,14 @@ void MeconIface::writeRfCounts(Iface::JsonWriter& w) const {
   w.key("replies"); w.unum(_rf_frames_in);
   w.key("completed"); w.unum(_rf_completed);
   _rf.writeCountFields(w);
+  const LoraLink::LastIncomplete& li = _rf.lastIncomplete();
+  if (li.any) {   // which frames of the last reply that expired arrived: the rest were lost on the way (#539)
+    w.key("last_incomplete"); w.beginObject();
+    w.key("xid"); w.unum(li.xid);
+    w.key("count"); w.unum(li.count);
+    w.key("have"); w.unum(li.have);
+    w.endObject();
+  }
   w.endObject();
 }
 
@@ -1825,6 +1835,7 @@ void MeconIface::loop(uint32_t now) {
   }
   loraTick(now);
   rfTick(now);
+  _rf.expireReplies(now);   // a reply still missing frames at its deadline is counted and freed (#539)
   _standing.tick(now);
   if (!receiving) screenTick(now);
   const bool cable_up = cableLineUp();

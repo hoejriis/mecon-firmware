@@ -178,6 +178,23 @@ public:
     return true;
   }
 
+  // The receiving end of replies (a manager's link): a message still missing frames at its deadline is counted, its frames
+  // kept as a mask, and freed. Nothing is sent: parts-missing is the answer of the end a request was sent to.
+  void expireReplies(uint32_t now) {
+    for (Peer& p : _p) {
+      if (!p.used) continue;
+      if (p.rx && !p.complete && (int32_t)(now - p.first_ms) >= (int32_t)LORA_REASSEMBLY_MS) {
+        _c.incomplete++;
+        _last_inc = { p.xid, p.count, p.have, true };
+        freeRx(p);
+      }
+      if (!p.tx && !p.rx && (int32_t)(now - p.last_ms) >= (int32_t)LORA_SESSION_MS) clear(p);
+    }
+  }
+  // The last message that expired with frames missing: its xid, how many frames it had, and which arrived (bit i: frame i).
+  struct LastIncomplete { uint8_t xid, count, have; bool any; };
+  const LastIncomplete& lastIncomplete() const { return _last_inc; }
+
   // Deadlines, and at most one frame of a reply on this pass. A frame the send cannot take now stays for the next pass.
   void tick(uint32_t now, SendFn send, void* user) {
     for (Peer& p : _p) {
@@ -221,6 +238,7 @@ public:
 private:
   Peer _p[LORA_PEERS];
   Counts _c;
+  LastIncomplete _last_inc = { 0, 0, 0, false };
   uint32_t _next_send = 0, _tok = 0, _tok_ms = 0;
   bool _tok_init = false;
 
