@@ -5,8 +5,10 @@ worn a real flash is, and the heap a board reports at boot is a number the test 
 
 Storage faults use the SimFS hook: a power cut after N bytes of a named file, or just before a rename/remove.
 """
+import json
 import os
 import struct
+import sys
 import time
 
 import pytest
@@ -819,3 +821,27 @@ def test_a_good_write_resets_the_retry_count(nodes, tmp_path):
     assert os.path.exists(p(node, "/ct1")) and os.path.exists(p(node, "/ct2"))
     fail.unlink()
     assert _wait(lambda: os.path.exists(p(node, "/ct0")), 10), "bucket 0 waited for a later retry than the first"
+
+
+def test_the_lazy_save_waits_while_a_request_is_arriving_in_frames(nodes):
+    # One bucket's write held a Heltec V3's loop for about a second, enough to overflow its UART's 1 KB receive ring and
+    # lose a request arriving in frames (#519). The save that falls due mid-request waits until the request is whole.
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
+    import mecon_iface
+    node = start(nodes, name="lzrx", kind="companion_standalone").start()
+    c = connect(node)
+    i = mecon_iface.IfaceClient(c._send, c._read_frame)
+    t0 = time.time()
+    assert c.add_contact_full(key(1), "lazy-rx", lastmod=RTC + 1)[0] == 0    # its bucket is saved 5 s later
+    while time.time() < t0 + 3.5:
+        time.sleep(0.1)
+    env = i.envelope("clock.get", {"pad": "q" * 600})
+    frames = mecon_iface.fragment(json.dumps(env).encode(), 5)
+    c._send(frames[0])                                # half a request, from 3.5 s, inside the 5 s reassembly timeout
+    while time.time() < t0 + 7.0:                     # past the save's due time
+        time.sleep(0.1)
+    assert not os.path.exists(p(node, "/ct0")), "the bucket was written while a request was arriving"
+    for f in frames[1:]:
+        c._send(f)
+    assert i.wait_result(env["id"])["status"] == "ok"
+    assert _wait(lambda: os.path.exists(p(node, "/ct0")), 4), "the save never followed once the request was whole"
