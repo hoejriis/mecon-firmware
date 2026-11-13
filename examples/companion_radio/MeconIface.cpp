@@ -1574,11 +1574,63 @@ void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
         if (m > 0) m = _prov.sign(STREAMS[SID_RF].name, ev, (size_t)m, RESULT_MAX);
       }
     }
-    if (m > 0) sendEvent(SID_RF, ev, (size_t)m);
+    if (m > 0) {
+      if (rfFitsAll((size_t)m)) {
+        sendEvent(SID_RF, ev, (size_t)m);
+      } else if (!_rf_pend && (_rf_pend = static_cast<char*>(malloc((size_t)m))) != nullptr) {
+        memcpy(_rf_pend, ev, (size_t)m);   // held until every subscribed link can take it (rfPendingTick)
+        _rf_pend_len = (size_t)m;
+        _rf_pend_until = millis() + RF_PEND_MS;
+        _rf_pend_seq = seq;
+        _rf_pend_xid = p->xid;
+        _rf_pend_size = LoraLink::messageLen(*p);
+        memcpy(_rf_pend_from, hex, sizeof(_rf_pend_from));
+      } else {
+        rfLost(hex, p->xid, LoraLink::messageLen(*p), seq, "queue-full");   // one is already held: say this one is lost
+      }
+    }
   }
   free(data);
   free(ev);
   _rf.release(*p);
+}
+
+// Whether every link subscribed to rf can take an event of n bytes now (a link with no queue yet allocates one on push).
+bool MeconIface::rfFitsAll(size_t n) const {
+  for (const Link& l : _links)
+    if (l.subs.s[SID_RF].active && l.q && !l.q->eventFits(n)) return false;
+  return true;
+}
+
+void MeconIface::rfPendingTick(uint32_t now) {
+  if (!_rf_pend) return;
+  if (rfFitsAll(_rf_pend_len)) {
+    sendEvent(SID_RF, _rf_pend, _rf_pend_len);
+  } else if ((int32_t)(now - _rf_pend_until) >= 0) {
+    rfLost(_rf_pend_from, _rf_pend_xid, _rf_pend_size, _rf_pend_seq, "queue-full");
+  } else {
+    return;
+  }
+  free(_rf_pend);
+  _rf_pend = nullptr;
+}
+
+// A short signed rf event saying a reply was lost, and why: {from, xid, error, size}, under the reply's own seq.
+void MeconIface::rfLost(const char* from, uint32_t xid, size_t size, uint32_t seq, const char* why) {
+  char data[200];
+  char ev[480];
+  JsonWriter e(data, sizeof(data));
+  e.beginObject();
+  e.key("from"); e.str(from);
+  e.key("xid"); e.num(xid);
+  e.key("error"); e.str(why);
+  e.key("size"); e.unum(size);
+  e.endObject();
+  if (!e.ok()) return;
+  const uint32_t ts = _mesh->getRTCClock()->knownTime();
+  int m = writeEvent(ev, sizeof(ev), STREAMS[SID_RF].name, seq, _epoch, ts != 0, ts, data);
+  if (m > 0) m = _prov.sign(STREAMS[SID_RF].name, ev, (size_t)m, sizeof(ev));
+  if (m > 0) sendEvent(SID_RF, ev, (size_t)m);
 }
 
 uint8_t MeconIface::reportProduced(void*) {
@@ -1709,6 +1761,7 @@ void MeconIface::loop(uint32_t now) {
   // V3's 1 KB receive ring to overflow and lose the request (#519). Bounded by the reassembly timeout.
   const bool receiving = rxPartial();
   if (!receiving) {
+    rfPendingTick(now);   // first: a held rf reply takes the room the queue has before periodic pages refill it (#531)
     streamTick(now);
     tellMessages();
     tellInbox();

@@ -150,3 +150,4 @@ mutate rf_replies_not_counted examples/companion_radio/MeconIface.cpp '  _rf_fra
 mutate rf_completed_not_counted examples/companion_radio/MeconIface.cpp '  _rf_completed++;' '' sim/tests/test_lora_management.py::test_a_companions_whole_status_reaches_a_companion_manager
 mutate hello_limit_on_every_link examples/companion_radio/MeconIface.cpp '  if (m->curLinkIsCable()) {   // what a request may take on the wire and still arrive whole (DEVICE_INTERFACE section 2)' '  if (true) {' sim/tests/test_device_interface.py
 mutate hello_limit_no_headroom examples/companion_radio/MeconIface.cpp '    w.key("rx_bytes"); w.unum(MECON_IFACE_SERIAL_RX - (MAX_FRAME_SIZE + 3));   // the ring less one frame and its header' '    w.key("rx_bytes"); w.unum(MECON_IFACE_SERIAL_RX);' sim/tests/test_device_interface.py
+mutate rf_reply_not_held examples/companion_radio/MeconIface.cpp '      if (rfFitsAll((size_t)m)) {' '      if (true) {' sim/tests/test_lora_management.py

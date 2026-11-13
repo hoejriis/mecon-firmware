@@ -27,7 +27,7 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 | `observations` | each received packet: raw bytes, RSSI, SNR | read | event per packet, at most 10/s (no period) |
 | `logs` | each new audit-ring entry: posture changes, refusals, failed logins, resets, mode changes, low memory | posture | event per entry, at most 5/s (no period) |
 | `inventory` | contacts, channels, neighbours, clients: counts; on the Companion a paged snapshot of the entries | private | 3600 s / 300 s |
-| `rf` | the replies to this Companion's `rf.request`: `{"from","xid","message"}`, as they came. Companion only | private | event |
+| `rf` | the replies to this Companion's `rf.request`: `{"from","xid","message"}`, as they came. A reply is never dropped silently: one too large for an event once escaped is `{"from","xid","error":"too-large","size"}`; one whose event waits for room on a subscribed link's queue is held up to 10 s (one at a time), then sent as `"error":"queue-full"` if it still cannot go. Companion only | private | event |
 | `screen` | framebuffer snapshots of the device's own display | private | 60 s; at most 1 per 5 s |
 
 ## 3. Fields

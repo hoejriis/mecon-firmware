@@ -56,6 +56,7 @@ int main(int argc, char** argv) {
     else if (a == "--fs-size") g_sim.fs_size = strtoul(next(), nullptr, 10);
     else if (a == "--fs-enforce") g_sim.fs_enforce = true;
     else if (a == "--fs-calls") g_sim.fs_calls = next();
+    else if (a == "--loop-ms") g_sim.loop_ms = strtoul(next(), nullptr, 10);
     else if (a == "--fs-write-ms") g_sim.fs_write_ms = strtoul(next(), nullptr, 10);
     else if (a == "--write-fail") g_sim.write_fail = next();
     else if (a == "--rtc") g_sim.rtc_epoch = strtoul(next(), nullptr, 10);
@@ -83,6 +84,7 @@ int main(int argc, char** argv) {
   for (;;) {
     simLoopProbe();
     loop();
+    if (g_sim.loop_ms) sim_clock()->sleepUs((uint64_t)g_sim.loop_ms * 1000);   // a slow pass, as on a Heltec V3
     sim_poll();
     if (g_sim.lockstep) sim_lockstep_step();   // one loop() per quantum, then wait at the barrier
     else usleep(200);

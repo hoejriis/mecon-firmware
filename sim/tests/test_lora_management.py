@@ -24,10 +24,10 @@ FAST = "869.525,250,7,5"   # the 10% band and short packets: the default's 1% wo
 class Radio:
     """The manager's Companion."""
 
-    def __init__(self, nodes, ether, target):
+    def __init__(self, nodes, ether, target, extra=None):
         name = "mgr" + target
         ether.set_link(name, target)
-        n = nodes("companion_standalone", name, seed=7, rtc=RTC, ether_path=ether.path).start()
+        n = nodes("companion_standalone", name, seed=7, rtc=RTC, ether_path=ether.path, extra=extra).start()
         c = CompanionClient(n)
         c.app_start()
         assert c.cli("set radio " + FAST).startswith("OK")
