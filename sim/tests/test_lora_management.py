@@ -71,8 +71,8 @@ class Reply(dict):
         self.raw = raw
 
 
-def target(nodes, ether, kind, name, seed=31):
-    n = nodes(kind, name, seed=seed, rtc=RTC, ether_path=ether.path).start()
+def target(nodes, ether, kind, name, seed=31, extra=None):
+    n = nodes(kind, name, seed=seed, rtc=RTC, ether_path=ether.path, extra=extra).start()
     d = Dev(n) if kind == "companion_standalone" else Srv(n)
     line = d.c.cli if kind == "companion_standalone" else d.cli.command
     assert line("set radio " + FAST).startswith("OK")
@@ -635,6 +635,7 @@ def test_an_rf_reply_waits_for_room_behind_observations(ether, nodes, tmp_path):
     r = m.i.request("rf.request", {"to": d.node_key, "message": msg})
     assert r["status"] == "ok", r
     xid = r["result"]["xid"]
+    assert "events_dropped" not in m.i.request("status.get")["result"], "nothing dropped yet, so nothing said"
     hold.write_text("")                                        # the host stops reading
     sent = len(ether.tx_log)
     end, last = time.time() + 90, (0, time.time())
@@ -659,3 +660,41 @@ def test_an_rf_reply_waits_for_room_behind_observations(ether, nodes, tmp_path):
     assert "message" in got["data"], got["data"]
     assert verifies(got["data"]["message"], d.node_key, "result")
     assert any(e.get("ev") == "observations" for e in m.i.events), "the queue held observations, as on the board"
+    st = m.i.request("status.get")["result"]
+    assert st.get("events_dropped", 0) >= 1, "the observations with no room are counted, a usig_seq gap's cause (#536)"
+
+
+def test_a_job_event_waits_for_room_on_a_full_queue(ether, nodes, tmp_path):
+    # A job's state goes out once, as an event. With a link's queue full of other events it was dropped after it had been
+    # signed, and the manager never learned the job had ended (F2 kept v3test's update job awaiting-confirm, #536). Here the
+    # host stops reading while three subscriptions' results and snapshots fill the queue, then a signed job.confirm runs on
+    # that link: its event must wait and arrive once the host reads again.
+    hold = tmp_path / "tx-hold"
+    d = target(nodes, ether, "companion_standalone", "rfj", extra=["--tx-hold-file", str(hold)])
+    assert d.provision()["status"] == "ok"
+    tx = d.i.request("config.get", {"keys": ["tx"]})["result"]["values"]["tx"]
+    r = d.send(wrap(d.node_key, "config.apply", {"set": {"tx": tx - 1}, "confirm": {"within_s": 300}}, job=7), 10)
+    assert r["status"] == "ok" and r["result"]["state"] == "awaiting-confirm", r
+    job = r["result"]["job"]
+    time.sleep(1)
+    while d.i.read_message(0.5):                               # the apply's own job events
+        pass
+    hold.write_text("")                                        # the host stops reading
+    for stream in ("health", "radio", "connectivity"):         # their results and first snapshots: what is left of the
+        d.i.send_raw(json.dumps(d.i.envelope("sub.start", {"stream": stream, "lifetime_s": 300})).encode())
+        time.sleep(1)                                          # events' room is under a job event
+    w = wrap(d.node_key, "job.confirm", {"job": job}, job=8)
+    d.i.send_raw(json.dumps(w, separators=(",", ":")).encode())   # runs now; its result and the job event wait
+    time.sleep(2)
+    hold.unlink()                                              # the host reads again, inside the 10 s a job event waits
+    r = d.i.wait_result(json.loads(w["body"])["id"], 20)
+    assert r and r["status"] == "ok" and r["result"]["state"] == "confirmed", r
+    got, end = None, time.time() + 20
+    while time.time() < end and got is None:
+        got = next((e for e in d.i.events if e.get("ev") == "job" and e["data"]["job"] == job
+                    and e["data"]["state"] == "confirmed"), None)
+        msg_in = d.i.read_message(0.5)
+        if msg_in and "ev" in msg_in:
+            d.i.events.append(msg_in)
+    assert got, "the job's confirmed state was lost on the full queue: %s" % [e.get("ev") for e in d.i.events]
+    assert d.i.request("status.get")["result"].get("events_dropped", 0) >= 1, "the queue was full: a snapshot was dropped"

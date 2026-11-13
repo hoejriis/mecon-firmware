@@ -161,11 +161,32 @@ void MeconIface::jobChanged(void* user, const Iface::Job& j) {
   int n = m->_jobs.writeEvent(ev, RESULT_MAX, m->_epoch, ts != 0, ts, j);
   if (n > 0) n = m->_prov.sign("job", ev, (size_t)n, RESULT_MAX);
   if (n > 0) {
-    for (Link& l : m->_links) {
-      if (!l.src || !l.may_read || !l.src->isConnected() || !m->ensureQueue(l)) continue;
-      l.q->push(Iface::OutQueue::EVENT, reinterpret_cast<const uint8_t*>(ev), (size_t)n);
+    if (m->_job_pend && strcmp(m->_job_pend_id, j.id) == 0) {   // a newer state of the held one: it takes the held place
+      free(m->_job_pend);
+      m->_job_pend = nullptr;
+      m->_held_lost++;
     }
-    if (m->_mqtt_may_read && m->_ev_publish && m->_ev_up && m->_ev_up()) m->_ev_publish("job", ev, (size_t)n);
+    m->applyHolds(false);
+    const bool fits = m->jobFitsAll((size_t)n);
+    m->applyHolds(true);
+    if (fits && !m->_job_pend) {
+      m->jobSend(ev, (size_t)n);
+    } else if (!m->_job_pend) {   // a full queue would drop it: held until it fits, as an rf reply (#536)
+      char* held = static_cast<char*>(realloc(ev, (size_t)n));   // only its own length is kept while it waits
+      m->_job_pend = held ? held : ev;
+      m->_job_pend_len = (size_t)n;
+      m->_job_pend_until = millis() + JOB_PEND_MS;
+      strncpy(m->_job_pend_id, j.id, sizeof(m->_job_pend_id) - 1);
+      m->_job_pend_id[sizeof(m->_job_pend_id) - 1] = 0;
+      ev = nullptr;   // kept as the held copy
+      m->applyHolds(true);
+    } else {
+      m->jobSend(ev, (size_t)n);   // another job's event is held: this one goes now if it can, or is dropped and counted
+    }
+    if (m->_mqtt_may_read && m->_ev_publish && m->_ev_up && m->_ev_up()) {
+      const char* out = ev ? ev : m->_job_pend;
+      m->_ev_publish("job", out, (size_t)n);
+    }
   }
   free(ev);
 }

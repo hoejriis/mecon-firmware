@@ -79,6 +79,7 @@ public:
                                            (1u << Iface::SID_LOGS) | (1u << Iface::SID_RF);
 public:
   Iface::Status rfRequest(Iface::OpContext& c);
+  uint32_t eventsDropped() const;
   void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
   void writeRfCounts(Iface::JsonWriter& w) const;
   bool onLora() const { return _on_lora; }
@@ -291,8 +292,17 @@ private:
   // behind periodic events (#531). One at a time, for at most RF_PEND_MS; then a short queue-full event says it was lost.
   static const uint32_t RF_PEND_MS = 10000;
   bool rfFitsAll(size_t n) const;
-  void rfHold(size_t n);
   void rfPendingTick(uint32_t now);
+  // A job event no reading link's queue could take yet: held like an rf reply, one at a time, for at most JOB_PEND_MS; a
+  // newer event of the same job replaces it (its state is the newer). Lost after that, counted: job.get still has the state.
+  static const uint32_t JOB_PEND_MS = 10000;
+  static bool jobLink(const Link& l);   // a connected link whose last caller may read: it gets job events
+  bool jobFitsAll(size_t n) const;
+  void jobSend(const char* ev, size_t n);
+  void jobPendingTick(uint32_t now);
+  // Every link's queue keeps the room of the events held for it; lifted (false) while a held one is tried, so that two held
+  // events never keep each other out.
+  void applyHolds(bool on);
   void rfLost(const char* from, uint32_t xid, size_t size, uint32_t seq, const char* why);
   Iface::StandingService _standing;
   Iface::SnapStore* standingStore();
@@ -321,6 +331,11 @@ private:
   size_t _rf_pend_len = 0, _rf_pend_size = 0;
   uint32_t _rf_pend_until = 0, _rf_pend_seq = 0, _rf_pend_xid = 0;
   char _rf_pend_from[65] = {0};
+  char* _job_pend = nullptr;          // the held job event (signed), its job, and until when
+  size_t _job_pend_len = 0;
+  uint32_t _job_pend_until = 0;
+  char _job_pend_id[Iface::Job::ID_CAP + 1] = {0};
+  uint32_t _held_lost = 0;            // held events given up, or replaced by a newer state: in events_dropped
   void screenTick(uint32_t now);
   Iface::ScreenFeed _screen;
   static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
