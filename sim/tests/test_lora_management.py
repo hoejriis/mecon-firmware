@@ -24,10 +24,10 @@ FAST = "869.525,250,7,5"   # the 10% band and short packets: the default's 1% wo
 class Radio:
     """The manager's Companion."""
 
-    def __init__(self, nodes, ether, target):
+    def __init__(self, nodes, ether, target, extra=None):
         name = "mgr" + target
         ether.set_link(name, target)
-        n = nodes("companion_standalone", name, seed=7, rtc=RTC, ether_path=ether.path).start()
+        n = nodes("companion_standalone", name, seed=7, rtc=RTC, ether_path=ether.path, extra=extra).start()
         c = CompanionClient(n)
         c.app_start()
         assert c.cli("set radio " + FAST).startswith("OK")
@@ -617,3 +617,20 @@ def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
     assert r and r["status"] == "ok", r
     assert len(r.raw) > 900, len(r.raw)
     assert verifies(r.raw, d.node_key, "result"), "read whole: the signature still holds"
+
+
+def test_an_rf_reply_waits_for_room_behind_inventory_pages(ether, nodes):
+    # On a Heltec V3 a loop pass can take hundreds of ms and the out-queue sends one frame per pass, so the periodic events
+    # on a link keep its queue full; a reply's 1.4 KB event that did not fit was dropped, and the manager never heard it
+    # (#531, seen on F2's relay to wiotest). It now waits for room, ahead of the next inventory page.
+    d = target(nodes, ether, "companion_standalone", "rfq")
+    assert d.provision()["status"] == "ok"
+    m = Radio(nodes, ether, "rfq", extra=["--loop-ms", "30"])   # slow passes, as on the board
+    for k in range(100):                                       # about 25 inventory pages of up to 1.5 KB
+        key = bytes([k, 0x5A]) + bytes([0x31]) * 30
+        assert m.c.add_contact_full(key, "inv-%d" % k)[0] == 0, k
+    r = m.i.request("sub.start", {"stream": "inventory", "lifetime_s": 300})
+    assert r["status"] == "ok", r
+    reply = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="rq1"), timeout=90.0)
+    assert reply and reply["status"] == "ok", "the reply was lost behind the inventory pages"
+    assert verifies(reply.raw, d.node_key, "result")

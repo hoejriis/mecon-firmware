@@ -278,6 +278,12 @@ private:
   static bool loraSend(void* user, const Iface::LoraLink::Peer& p, const uint8_t* frame, size_t n, bool flood_ok);
   void loraTick(uint32_t now);
   void rfTick(uint32_t now);
+  // An rf reply whose event no subscribed link's queue could take yet: held, as inventory pages are, rather than dropped
+  // behind periodic events (#531). One at a time, for at most RF_PEND_MS; then a short queue-full event says it was lost.
+  static const uint32_t RF_PEND_MS = 10000;
+  bool rfFitsAll(size_t n) const;
+  void rfPendingTick(uint32_t now);
+  void rfLost(const char* from, uint32_t xid, size_t size, uint32_t seq, const char* why);
   Iface::StandingService _standing;
   Iface::SnapStore* standingStore();
   bool _standing_begun = false;
@@ -300,6 +306,10 @@ private:
   int _lora_bound_slot = -1;    // the binding, read on the main pass
   bool _lora_bound_read = false, _lora_bound_dirty = false;
   uint32_t _rf_next = 0;
+  char* _rf_pend = nullptr;           // the held rf event (signed), and what is needed to report it lost
+  size_t _rf_pend_len = 0, _rf_pend_size = 0;
+  uint32_t _rf_pend_until = 0, _rf_pend_seq = 0, _rf_pend_xid = 0;
+  char _rf_pend_from[65] = {0};
   void screenTick(uint32_t now);
   Iface::ScreenFeed _screen;
   static const size_t INV_DATA = 1000, INV_EVENT = 1500;   // a page, and its event: under the queue's and MQTT's limits
