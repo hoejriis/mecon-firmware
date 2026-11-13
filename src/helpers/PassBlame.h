@@ -78,7 +78,7 @@ inline PassBlame& passBlame() {
   return p;
 }
 
-#if defined(ARDUINO) || defined(SIM_FREE_HEAP)
+#if (defined(ARDUINO) || defined(SIM_FREE_HEAP)) && defined(ENABLE_MECON_IFACE)   // none on the smallest builds
   #include <Arduino.h>
   // A named section of the loop pass: its time is given to passBlame() when it ends. Cheap (two millis() reads), so it
   // may wrap work that runs on every pass.

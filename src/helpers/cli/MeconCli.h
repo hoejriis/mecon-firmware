@@ -165,6 +165,7 @@ inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char*
     formatMem(memStats(), heapFloor(), reply, max);
     return true;
   }
+#ifdef ENABLE_MECON_IFACE   // measured only where the loop names its sections
   if (strcmp(cmd, "get mecon.slowsections") == 0) {
     formatSlowSections(passBlame(), reply, max);
     return true;
@@ -173,6 +174,7 @@ inline bool handleMecon(const char* cmd, const Context& ctx, uint8_t role, char*
     formatSlowPass(passBlame(), reply, max);
     return true;
   }
+#endif
   if (strcmp(cmd, "get mecon.heaplow") == 0) {
     formatHeapLow(heapWatch(), reply, max);
     return true;

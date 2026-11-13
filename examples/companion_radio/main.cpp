@@ -440,7 +440,9 @@ void setup() {
 }
 
 void loop() {
+#ifdef ENABLE_MECON_IFACE
   passBlame().begin(millis());   // which section of the longest pass took its time (helpers/PassBlame.h)
+#endif
   { TimeScope ts("mesh"); the_mesh.loop(); }
   heapFloor().loop(millis(), rtc_clock.getCurrentTime());
   heapWatchTick();   // what the heap was doing at its lowest (helpers/HeapWatch.h)
@@ -469,5 +471,7 @@ void loop() {
 #endif
   }
 #endif
+#ifdef ENABLE_MECON_IFACE
   passBlame().end(millis(), millis() / 1000);
+#endif
 }
