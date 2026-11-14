@@ -326,7 +326,11 @@ private:
   int _lora_bound_slot = -1;    // the binding, read on the main pass
   bool _lora_bound_read = false, _lora_bound_dirty = false;
   uint32_t _rf_next = 0;
-  uint32_t _rf_frames_in = 0, _rf_completed = 0;   // status.get's rf counts (#531)
+  uint32_t _rf_frames_in = 0, _rf_completed = 0;
+  struct RfHeard { uint8_t xid, idx; uint32_t ms; };
+  static const int RF_HEARD = 8;
+  RfHeard _rf_heard[RF_HEARD] = {};
+  int _rf_hnext = 0, _rf_hcount = 0;   // status.get's rf counts (#531)
   char* _rf_pend = nullptr;           // the held rf event (signed), and what is needed to report it lost
   size_t _rf_pend_len = 0, _rf_pend_size = 0;
   uint32_t _rf_pend_until = 0, _rf_pend_seq = 0, _rf_pend_xid = 0;

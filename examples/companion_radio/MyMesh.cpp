@@ -479,7 +479,7 @@ void MyMesh::onMessagePacket(const mesh::Packet* pkt) {
 void MyMesh::logTx(mesh::Packet* packet, int len) {
   uint8_t hash[MAX_HASH_SIZE];
   packet->calculatePacketHash(hash);
-  _lora_tx.sent(hash);
+  _lora_tx.sent(hash, millis());
   if (!_iface.messages() || !_iface.messages()->anyOpen()) return;
   _iface.messages()->onTx(hash, millis());
 }
@@ -949,7 +949,7 @@ bool MyMesh::loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t*
   mesh::Identity to(key);
   mesh::Packet* reply = createDatagram(PAYLOAD_TYPE_RESPONSE, to, secret, frame, n);
   if (!reply) return false;
-  traceQueued(reply, n > 5 && frame[5] == 0);   // a reply frame: magic, xid, index, count
+  traceQueued(reply, n > 5 ? frame[5] : 0xFF);   // a reply frame: magic, xid, index, count
   if (path_len != Iface::LoraLink::PATH_UNKNOWN) sendDirect(reply, path, path_len, 300);
   else sendFlood(reply, 300);
   return true;
@@ -994,16 +994,16 @@ bool MyMesh::rfSend(const uint8_t* to, const uint8_t* frame, size_t n) {
   memcpy(&temp[4], frame, n);
   mesh::Packet* pkt = createAnonDatagram(PAYLOAD_TYPE_ANON_REQ, self_id, recipient->id, recipient->getSharedSecret(self_id), temp, 4 + n);
   if (!pkt) return false;
-  traceQueued(pkt, n > 2 && frame[2] == 0);   // a request frame: marker, xid, index, count
+  traceQueued(pkt, n > 2 ? frame[2] : 0xFF);   // a request frame: marker, xid, index, count
   if (recipient->out_path_len == OUT_PATH_UNKNOWN) sendFloodScoped(*recipient, pkt);
   else sendDirect(pkt, recipient->out_path, recipient->out_path_len);
   return true;
 }
 
-void MyMesh::traceQueued(mesh::Packet* pkt, bool first) {
+void MyMesh::traceQueued(mesh::Packet* pkt, uint8_t idx) {
   uint8_t hash[MAX_HASH_SIZE];
   pkt->calculatePacketHash(hash);
-  _lora_tx.queued(hash, first);
+  _lora_tx.queued(hash, idx);
 }
 #endif
 
