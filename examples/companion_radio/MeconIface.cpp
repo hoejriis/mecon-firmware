@@ -54,7 +54,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect", "contact.capacity",
                                     "message.send", "message.get", "message.list", "message.ack",
-                                    "inbox.list", "inbox.ack", "message.deliver",
+                                    "inbox.list", "inbox.ack", "message.deliver", "lora.trace",
                                     "scope.default.get", "scope.default.set", "scope.default.clear", "audit.list"
 #if defined(BLE_PIN_CODE)
                                     , "ble.bonds", "ble.pin.get", "ble.pin.set"
@@ -88,6 +88,7 @@ Status opClockBack(OpContext& c);
 Status opContactCapacity(OpContext& c);
 Status opKeyExportW(OpContext& c);
 Status opStatus(OpContext& c);
+Status opLoraTrace(OpContext& c);
 Status opMsgSend(OpContext& c);
 Status opMsgGet(OpContext& c);
 Status opMsgList(OpContext& c);
@@ -136,6 +137,7 @@ Status opScopeClearW(OpContext& c);
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
   {"status.get", opStatus, PRIV_READ, false},
+  {"lora.trace", opLoraTrace, PRIV_READ, false},
   {"config.schema", opSchema, PRIV_READ, false},
   {"config.get", opGet, PRIV_READ, false},
   {"config.apply", opApply, PRIV_WRITE, true},
@@ -469,11 +471,6 @@ void writeLoraTx(JsonWriter& w, const Iface::LoraTxTrace& t) {
   if (!t.any()) return;
   const Iface::LoraTxTrace::Counts& c = t.counts();
   w.key("lora_tx"); w.beginObject();
-  w.key("now_ms"); w.unum((uint32_t)millis());
-  w.key("recent"); w.beginArray();   // the newest first: [frame index, millis when it went on the air]
-  Iface::LoraTxTrace::Sent sent;
-  for (int i = 0; t.recent(i, &sent); i++) { w.beginArray(); w.unum(sent.idx); w.unum(sent.ms); w.endArray(); }
-  w.endArray();
   w.key("first_queued"); w.unum(c.first_queued);
   w.key("first_sent"); w.unum(c.first_sent);
   w.key("rest_queued"); w.unum(c.rest_queued);
@@ -482,6 +479,12 @@ void writeLoraTx(JsonWriter& w, const Iface::LoraTxTrace& t) {
   w.key("held"); w.unum(c.held);
   w.key("untracked"); w.unum(c.untracked);
   w.endObject();
+}
+
+// lora.trace: the frame timing, apart from status.get (#542).
+Status opLoraTrace(OpContext& c) {
+  self(c)->writeLoraTrace(*c.out);
+  return ST_OK;
 }
 
 Status opStatus(OpContext& c) {
@@ -1561,13 +1564,6 @@ void MeconIface::writeRfCounts(Iface::JsonWriter& w) const {
   w.key("rf"); w.beginObject();
   w.key("replies"); w.unum(_rf_frames_in);
   w.key("completed"); w.unum(_rf_completed);
-  w.key("now_ms"); w.unum((uint32_t)millis());
-  w.key("heard"); w.beginArray();   // the newest first: [xid, frame index, millis when it was heard]
-  for (int k = 0; k < _rf_hcount; k++) {
-    const RfHeard& h = _rf_heard[(_rf_hnext - 1 - k + RF_HEARD) % RF_HEARD];
-    w.beginArray(); w.unum(h.xid); w.unum(h.idx); w.unum(h.ms); w.endArray();
-  }
-  w.endArray();
   _rf.writeCountFields(w);
   const LoraLink::LastIncomplete& li = _rf.lastIncomplete();
   if (li.any) {   // which frames of the last reply that expired arrived: the rest were lost on the way (#539)
@@ -1578,6 +1574,24 @@ void MeconIface::writeRfCounts(Iface::JsonWriter& w) const {
     w.endObject();
   }
   w.endObject();
+}
+
+// lora.trace: when the last LoRa management frames went on the air here, and when the last reply frames were heard, against
+// the clock now, so a lost frame can be placed against its neighbours (#542). Apart from status.get, whose signed result an
+// enrolled manager with both rings full outgrew (busy too-large-to-sign on v0.3.6).
+void MeconIface::writeLoraTrace(Iface::JsonWriter& w) const {
+  const Iface::LoraTxTrace& t = _mesh->loraTx();
+  w.key("now_ms"); w.unum((uint32_t)millis());
+  w.key("sent"); w.beginArray();    // the newest first: [frame index, millis when it went on the air]
+  Iface::LoraTxTrace::Sent sent;
+  for (int i = 0; t.recent(i, &sent); i++) { w.beginArray(); w.unum(sent.idx); w.unum(sent.ms); w.endArray(); }
+  w.endArray();
+  w.key("heard"); w.beginArray();   // the newest first: [xid, frame index, millis when it was heard]
+  for (int k = 0; k < _rf_hcount; k++) {
+    const RfHeard& h = _rf_heard[(_rf_hnext - 1 - k + RF_HEARD) % RF_HEARD];
+    w.beginArray(); w.unum(h.xid); w.unum(h.idx); w.unum(h.ms); w.endArray();
+  }
+  w.endArray();
 }
 
 void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
