@@ -47,7 +47,7 @@ inline const char* checkRawPacket(const uint8_t* b, size_t n, RawPacketInfo* inf
   const uint8_t path_len = b[i++];
   if (!mesh::Packet::isValidPathLen(path_len)) return "malformed";
   const size_t path_bytes = (size_t)(path_len & 63) * ((path_len >> 6) + 1);
-  if (n - i < path_bytes) return "malformed";
+  if (n - i < path_bytes) return "malformed";   // the payload bound below would also catch it, by the wrapped length
   const size_t path_at = i;
   i += path_bytes;
   const size_t payload_len = n - i;
