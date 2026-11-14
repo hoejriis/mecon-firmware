@@ -10,6 +10,9 @@
 #include "Wipe.h"
 #include <helpers/cli/CliCaller.h>
 #include <helpers/deployment/DepHmac.h>
+#include <helpers/deployment/DepContinuity.h>
+#include <helpers/updates/UpdB64.h>
+#include "Provenance.h"
 #include <helpers/deployment/DepMarker.h>
 #include <helpers/deployment/DepProvision.h>
 #include <helpers/deployment/DepReplay.h>
@@ -226,6 +229,11 @@ void DeployAuth::begin(const Env& env) {
     Cli::serverCaller().has_secret_user = this;
   }
   load();
+  if (continuityBuilt()) {   // only whether a key is there: the package is read when asked for
+    uint8_t key[Dep::CONT_KEY];
+    _cont_key_present = _env.cont_key->load(key, sizeof(key)) == sizeof(key);
+    wipe(key, sizeof(key));
+  }
 }
 
 // The two facts the servers' command handlers read (Cli::ServerCaller): kept equal to the state in memory.
@@ -317,6 +325,8 @@ DeployAuth::Pre DeployAuth::preAuthorize(const OpEntry& op, const char** deny) {
   if (strcmp(op.name, "deployment.get") == 0 || strcmp(op.name, "deployment.authority_update") == 0) return PRE_ALLOW;
   // The unlock handshake is for the unsigned cable, and its handlers decide the transport, the secret and the lockout.
   if (strcmp(op.name, "deployment.unlock_challenge") == 0 || strcmp(op.name, "deployment.unlock") == 0) return PRE_ALLOW;
+  // The continuity export likewise: its handler takes the unsigned cable in Normal only (section 10a).
+  if (strcmp(op.name, "deployment.continuity.export") == 0) return PRE_ALLOW;
   // A chunk of an update is authorised by its job's transfer token, which the handler checks, in place of the class
   // check: a member's signed offer opened the job, and whoever it gave the token may push (UPDATES.md sections 5 and 6).
   if (strcmp(op.name, "update.chunk") == 0) return PRE_ALLOW;
@@ -573,7 +583,10 @@ Status DeployAuth::opGet(OpContext& c, size_t reserve) {
   DepWork* k = new (std::nothrow) DepWork();
   if (!k) { c.error = "no-memory"; return ST_BUSY; }
   Status st = ST_OK;
-  if (readCurrent(k)) writeFields(w, *_dep, k->cur.rec, k->cur.set_text, true, nullptr, reserve);
+  if (readCurrent(k)) {
+    writeFields(w, *_dep, k->cur.rec, k->cur.set_text, true, nullptr, reserve + (continuityBuilt() ? 48 : 0));
+    writeContinuity(w);
+  }
   else { c.error = "storage"; st = ST_FAILED; }
   delete k;
   return st;
@@ -986,10 +999,12 @@ Status DeployAuth::opReset(OpContext& c) {
   const bool had_marks = anyCopy(st, Dep::SF_MARKS);
   const bool had_unlock = _dep && _dep_ls == Dep::LS_OK && _dep->rec.has_unlock;
   const bool had_marker = Dep::markerRead() == Dep::MK_PRESENT;
+  const bool had_continuity = _cont_key_present;
   // The record first, the older copy first within it; the marker last, so a step that fails leaves the device reading as
   // enrolled or corrupt, never as a device with no Deployment while part of it remains.
   const bool ok = st->removeBoth(rec_slot, Dep::SF_RECORD) &&
                   st->removeBoth(marks_slot, Dep::SF_MARKS) && Dep::markerClear();
+  if (ok) continuityDestroy();   // a package belongs to the Deployment it was made for
   if (_dep) Dep::depFree(_dep);
   load();   // the state in memory is what is now stored
   if (!ok) { c.error = "storage"; return ST_FAILED; }
@@ -999,6 +1014,7 @@ Status DeployAuth::opReset(OpContext& c) {
   if (had_marks) w.str("marks");
   if (had_unlock) w.str("unlock_secret");
   if (had_marker) w.str("marker");
+  if (had_continuity) w.str("continuity");
   w.endArray();
   w.key("kept"); w.beginArray();
   w.str("node_key"); w.str("device_id"); w.str("configuration"); w.str("contacts"); w.str("channels");
@@ -1007,6 +1023,7 @@ Status DeployAuth::opReset(OpContext& c) {
 }
 
 void DeployAuth::onFactoryReset() {
+  continuityDestroy();   // the format takes the files too; this holds where the key would outlive it
   Dep::markerClear();   // the format already takes it on ESP32 (NVS erase) and the sim; kept for a platform whose format does not
   _secret_epoch++;
   if (_dep) Dep::depFree(_dep);
@@ -1081,5 +1098,134 @@ bool DeployAuth::restoreRecord(RecordSnapshot* s) {
 }
 
 void DeployAuth::freeSnapshot(RecordSnapshot* s) { delete s; }
+
+// ---- the continuity package (AUTHORITY section 10a; #118)
+
+void DeployAuth::continuityDestroy() {
+  if (!continuityBuilt()) return;
+  _env.cont_key->discard();
+  _env.cont_blob->discard();
+  _cont_key_present = false;
+}
+
+void DeployAuth::continuityReconcile(bool hardened) {
+  if (hardened && _cont_key_present) continuityDestroy();   // within one pass of entering Hardened, and at boot
+}
+
+bool DeployAuth::continuityRead(uint8_t* pkg, size_t cap, size_t* n, uint32_t* gen) {
+  if (!continuityBuilt() || !_cont_key_present) return false;
+  uint8_t key[Dep::CONT_KEY];
+  uint8_t* sealed = static_cast<uint8_t*>(malloc(Dep::CONT_SEALED_MAX));
+  bool ok = sealed && _env.cont_key->load(key, sizeof(key)) == sizeof(key);
+  if (ok) {
+    const size_t len = _env.cont_blob->load(sealed, Dep::CONT_SEALED_MAX);
+    ok = len && Dep::contOpen(key, sealed, len, pkg, cap, n, gen);
+  }
+  wipe(key, sizeof(key));
+  if (sealed) { wipe(sealed, Dep::CONT_SEALED_MAX); free(sealed); }
+  return ok;
+}
+
+// deployment.get's "continuity": whether a package is held and its generation, never what it holds.
+void DeployAuth::writeContinuity(JsonWriter& w) {
+  if (!continuityBuilt()) return;
+  uint8_t* pkg = static_cast<uint8_t*>(malloc(Dep::CONT_MAX));
+  size_t n = 0;
+  uint32_t gen = 0;
+  const bool present = pkg && continuityRead(pkg, Dep::CONT_MAX, &n, &gen);
+  if (pkg) { wipe(pkg, Dep::CONT_MAX); free(pkg); }
+  w.key("continuity"); w.beginObject();
+  w.key("present"); w.boolean(present);
+  w.key("generation"); w.unum(present ? gen : 0);
+  w.endObject();
+}
+
+// A member's signed package, in Normal: {"package": base64 of at most 768 bytes, "generation": above the one held}. The
+// manager has already encrypted it under the user's passphrase; the device seals it again under its own key.
+Status DeployAuth::opContinuityPut(OpContext& c) {
+  if (!continuityBuilt()) { c.error = "not-on-this-device"; return ST_FAILED; }
+  if (_dep_ls == Dep::LS_ABSENT) { c.error = "not_enrolled"; return ST_REFUSED; }
+  if (!_signed) {
+    if (_dep) _dep->auth_rejections++;
+    c.error = _dep_ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";
+    return ST_REFUSED;
+  }
+  if (_dep_ls != Dep::LS_OK || !_dep) { c.error = "deployment_record_corrupt"; return ST_REFUSED; }
+  if (Posture::isHardened(_ctx.posture)) { c.error = "hardened"; return ST_REFUSED; }   // Hardened holds none
+  const JsonDoc& d = *c.doc;
+  const int tp = isObject(d, c.req->args) ? jsonFind(d, c.req->args, "package") : -1;
+  const int tg = isObject(d, c.req->args) ? jsonFind(d, c.req->args, "generation") : -1;
+  int64_t gen64 = 0;
+  if (tp < 0 || tg < 0 || !jsonGetInt(d, tg, 1, 0xFFFFFFFFLL, &gen64)) { c.error = "bad-args"; return ST_INVALID; }
+  char* b64 = static_cast<char*>(malloc(1028));
+  uint8_t* pkg = static_cast<uint8_t*>(malloc(Dep::CONT_MAX));
+  uint8_t* sealed = static_cast<uint8_t*>(malloc(Dep::CONT_SEALED_MAX));
+  uint8_t key[Dep::CONT_KEY], nonce[Dep::CONT_NONCE];
+  Status st = ST_FAILED;
+  long n = -1;
+  size_t old_n = 0, len = 0;
+  uint32_t old_gen = 0;
+  if (!b64 || !pkg || !sealed) { c.error = "no-memory"; st = ST_BUSY; goto done; }
+  if (!jsonGetString(d, tp, b64, 1028, CS_ANY, 4) || (n = Upd::base64Decode(b64, strlen(b64), pkg, Dep::CONT_MAX)) <= 0) {
+    c.error = "bad-args"; st = ST_INVALID; goto done;
+  }
+  // Generations only rise: a package once replaced cannot be put back, by replaying a signed request or otherwise.
+  if (continuityRead(sealed, Dep::CONT_MAX, &old_n, &old_gen) && (uint32_t)gen64 <= old_gen) {
+    c.error = "stale_generation"; st = ST_REFUSED; goto done;
+  }
+  if (_cont_key_present) {
+    if (_env.cont_key->load(key, sizeof(key)) != sizeof(key)) { c.error = "storage"; goto done; }
+  } else {
+    CryptoRNG rng;   // no fallback: a predictable wrapping key would be worse than none
+    rng.random(key, sizeof(key));
+    bool nonzero = false;
+    for (uint8_t x : key) nonzero = nonzero || x != 0;
+    if (!nonzero) { c.error = "rng"; st = ST_BUSY; goto done; }
+    if (!_env.cont_key->save(key, sizeof(key))) { c.error = "storage"; st = ST_BUSY; goto done; }
+    _cont_key_present = true;
+  }
+  {
+    CryptoRNG rng;
+    rng.random(nonce, sizeof(nonce));
+  }
+  len = Dep::contSeal(key, nonce, (uint32_t)gen64, pkg, (size_t)n, sealed, Dep::CONT_SEALED_MAX);
+  if (!len || !_env.cont_blob->save(sealed, len)) { c.error = "storage"; st = ST_BUSY; goto done; }
+  c.out->key("continuity"); c.out->str("stored");
+  c.out->key("generation"); c.out->unum((uint32_t)gen64);
+  st = ST_OK;
+done:
+  wipe(key, sizeof(key));
+  if (b64) { wipe(b64, 1028); free(b64); }
+  if (pkg) { wipe(pkg, Dep::CONT_MAX); free(pkg); }
+  if (sealed) { wipe(sealed, Dep::CONT_SEALED_MAX); free(sealed); }
+  return st;
+}
+
+// The package as it was put, to the unsigned cable, in Normal: someone present with the device, who still needs the
+// passphrase to read it (section 10a). Never over BLE, a broker, TCP or LoRa, and never cached.
+Status DeployAuth::opContinuityExport(OpContext& c) {
+  if (!continuityBuilt()) { c.error = "not-on-this-device"; return ST_FAILED; }
+  const bool cable = !_signed && _ctx.transport == Cli::T_USB && _ctx.auth == Cli::A_CABLE && !_ctx.remote &&
+                     Cli::principalOf(_ctx) == Cli::P_CABLE;
+  if (!cable) { c.error = "usb_only"; return ST_REFUSED; }
+  if (Posture::isHardened(_ctx.posture)) { c.error = "hardened"; return ST_REFUSED; }
+  uint8_t* pkg = static_cast<uint8_t*>(malloc(Dep::CONT_MAX));
+  char* b64 = static_cast<char*>(malloc(1028));
+  size_t n = 0;
+  uint32_t gen = 0;
+  Status st = ST_FAILED;
+  if (!pkg || !b64) { c.error = "no-memory"; st = ST_BUSY; }
+  else if (!_cont_key_present) { c.error = "no_continuity"; st = ST_FAILED; }
+  else if (!continuityRead(pkg, Dep::CONT_MAX, &n, &gen)) { c.error = "continuity_corrupt"; st = ST_FAILED; }
+  else {
+    base64Encode(b64, pkg, n);
+    c.out->key("package"); c.out->str(b64);
+    c.out->key("generation"); c.out->unum(gen);
+    st = ST_OK;
+  }
+  if (pkg) { wipe(pkg, Dep::CONT_MAX); free(pkg); }
+  if (b64) { wipe(b64, 1028); free(b64); }
+  return st;
+}
 
 }  // namespace Iface

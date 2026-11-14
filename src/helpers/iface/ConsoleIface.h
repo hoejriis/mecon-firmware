@@ -99,6 +99,10 @@ public:
     bool (*neighbour)(void* user, int idx, uint8_t key[32], uint32_t* heard_ago_s, int8_t* snr4);
     int (*log_read)(void* user, uint32_t offset, uint8_t* buf, size_t cap, uint32_t* size);
     void (*clock_guess)(void* user);
+    // The Deployment continuity package and its wrapping key (AUTHORITY section 10a), two files apart from the record.
+    // Null: the role holds none, and the continuity operations are neither listed nor answered.
+    SnapStore* cont_blob;
+    SnapStore* cont_key;
   };
   static const uint32_t STREAMS_PRODUCED = (1u << SID_HEALTH) | (1u << SID_RADIO) | (1u << SID_POWER) |
                                            (1u << SID_RUNTIME) | (1u << SID_OBSERVATIONS) | (1u << SID_INVENTORY) |

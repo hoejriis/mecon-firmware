@@ -8,6 +8,7 @@
 #include <new>
 #include <helpers/iface/Wipe.h>
 #include <helpers/iface/JobFsStore.h>
+#include <helpers/iface/MgmtFsStore.h>
 #include <helpers/cli/CliRegistry.h>
 
 using namespace Iface;
@@ -215,10 +216,20 @@ MeconIface* self(OpContext& c) { return static_cast<MeconIface*>(c.user); }
 
 // ---- boot
 
+namespace {
+// The continuity package and its wrapping key, two files apart from the record (AUTHORITY section 10a; #118).
+Iface::PathFsStore g_cont_blob("/mecon_cont");
+Iface::PathFsStore g_cont_key("/mecon_contk");
+}  // namespace
+
 void MeconIface::deployLoad() {
   _copies.set(_mesh->_store);
   DeployAuth::Env env;
   env.store = &_copies;
+  g_cont_blob.setFs(_mesh->_store->getPrimaryFS());
+  g_cont_key.setFs(_mesh->_store->getPrimaryFS());
+  env.cont_blob = &g_cont_blob;
+  env.cont_key = &g_cont_key;
   env.node_key = _mesh->self_id.pub_key;
   env.profile_exists = profileExists;
   env.user = _mesh;
@@ -320,6 +331,8 @@ Status MeconIface::opDeployProvision(OpContext& c) { return self(c)->_auth.opPro
 Status MeconIface::opDeployUpdate(OpContext& c) { return self(c)->_auth.opUpdate(c); }
 Status MeconIface::opDeployReset(OpContext& c) { return self(c)->_auth.opReset(c); }
 Status MeconIface::opDeploySetUnlock(OpContext& c) { return self(c)->_auth.opSetUnlock(c); }
+Status MeconIface::opContinuityPut(OpContext& c) { return self(c)->_auth.opContinuityPut(c); }
+Status MeconIface::opContinuityExport(OpContext& c) { return self(c)->_auth.opContinuityExport(c); }
 Status MeconIface::opDeployUnlockChallenge(OpContext& c) { return self(c)->_auth.opUnlockChallenge(c); }
 Status MeconIface::opDeployUnlock(OpContext& c) { return self(c)->_auth.opUnlock(c); }
 
