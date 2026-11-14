@@ -22,6 +22,8 @@
 #include "Observe.h"
 #include "Wipe.h"
 
+#include "helpers/updates/UpdB64.h"
+
 namespace Iface {
 
 namespace {
@@ -136,6 +138,7 @@ Status opHello(OpContext& c) {
   if (netProfileOpsBuilt()) for (const char* ncap : NET_CAPABILITIES) add(ncap);
   if (m->host().neighbour) for (const char* ncap : NEIGHBOUR_CAPABILITIES) add(ncap);
   if (strcmp(m->host().role, "room") == 0) add("room.post");
+  if (m->rawTxBuilt()) add("packet.transmit");   // the Repeater: its main gives the sender (#537)
 #if ENV_INCLUDE_GPS == 1
   for (const char* gcap : GPS_CAPABILITIES) add(gcap);
 #endif
@@ -373,6 +376,8 @@ Status opClockSet(OpContext& c) {
 }
 // advert.send: {"flood": true} floods the self advert; without it, zero hop. The native CLI line sends it, so the CLI's
 // gate decides it as this caller too.
+Status opPacketTransmit(OpContext& c) { return self(c)->rawTransmit(c); }
+
 Status opAdvertSend(OpContext& c) {
   const ConsoleIface::Host& h = self(c)->host();
   bool flood = false;
@@ -799,6 +804,7 @@ const OpEntry OPS[] = {
   {"gps.advert.set", opGpsAdvertSet, PRIV_WRITE, true},
 #endif
   {"advert.send", opAdvertSend, PRIV_WRITE, true},
+  {"packet.transmit", opPacketTransmit, PRIV_WRITE, true},
   {"device.reboot", opDeviceReboot, PRIV_REBOOT, true},
   {"device.reset", opDeviceResetW, PRIV_DESTRUCTIVE, true},
   {"audit.list", opAuditListW, PRIV_READ, false},   // the posture class is checked in the handler
@@ -1132,6 +1138,11 @@ bool ConsoleIface::jobRevert(void* user, Job& j) {
     RegionHost rh = s->regionHost();
     if (!regionRevert(rh, j)) return false;
     s->_jobs.table()->setState(&j, JOB_REVERTED);
+    return true;
+  }
+  if (strcmp(j.op, "packet.transmit") == 0) {   // cut while queued: the queue is gone, and whether it went out is not known
+    static const char UNKNOWN[] = "{\"outcome\":\"unknown\"}";
+    s->_jobs.table()->setState(&j, JOB_FAILED, UNKNOWN, sizeof(UNKNOWN) - 1);
     return true;
   }
   if (strcmp(j.op, "config.apply") != 0) return false;
@@ -1577,6 +1588,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   if (!cableLineUp()) _unlock.clear();   // the cable's host went (AUTHORITY.md section 10)
   _gap.tick(now);
   _jobs.tick(now);
+  rawTick(now);   // a held packet.transmit, when the duty window has room (#537)
   _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0 && _host.board) _host.board->reboot();
   refreshEnvironment(now);
@@ -1637,6 +1649,119 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
       if (n > 0) emit(SID_LOGS, ev, (size_t)n);
     }
   }
+}
+
+// ---- packet.transmit (OPERATIONS.md, "Packet transmission")
+
+bool ConsoleIface::rawTake(uint32_t now) {
+  const uint32_t full = RAW_BURST * 1000;
+  if (!_raw_tok_init) { _raw_tok_init = true; _raw_tok_ms = now; _raw_tokens = full; }
+  const uint32_t dt = now - _raw_tok_ms;
+  _raw_tok_ms = now;
+  const uint64_t add = (uint64_t)dt * RAW_RATE_PER_MIN * 1000 / 60000;
+  _raw_tokens = _raw_tokens + add > full ? full : _raw_tokens + (uint32_t)add;
+  if (_raw_tokens < 1000) return false;
+  _raw_tokens -= 1000;
+  return true;
+}
+
+Status ConsoleIface::rawTransmit(OpContext& c) {
+  if (!rawTxBuilt()) { c.error = "not-on-this-device"; return ST_FAILED; }
+  // RF injection takes the Deployment's authority: no caller is trusted for it by its link alone, the cable included.
+  if (_ctx.auth != Cli::A_SIGNED) { c.error = "signature-required"; return ST_REFUSED; }
+  const JsonDoc& d = *c.doc;
+  const int tp = c.req->args >= 0 ? jsonFind(d, c.req->args, "packet") : -1;
+  if (tp < 0) return ST_INVALID;
+  char b64[348];
+  if (!jsonGetString(d, tp, b64, sizeof(b64), CS_ANY, 4)) return ST_INVALID;
+  uint8_t raw[MAX_TRANS_UNIT + 2];
+  const long n = Upd::base64Decode(b64, strlen(b64), raw, sizeof(raw));
+  if (n <= 0) { c.error = "malformed"; return ST_INVALID; }
+  int64_t within = 60;
+  const int tw = jsonFind(d, c.req->args, "within_s");
+  if (tw >= 0 && !jsonGetInt(d, tw, 5, 120, &within)) return ST_INVALID;
+  mesh::Packet pkt;
+  RawPacketInfo info;
+  if (const char* e = checkRawPacket(raw, (size_t)n, &info, &pkt)) { c.error = e; return ST_INVALID; }
+  // The same signed job id never reaches here: DeployAuth answers it from the result cache, or duplicate/replay. Kept for
+  // a job id the table still holds after its cached result is gone, which must get its job and no second send.
+  char jid[Job::ID_CAP + 1];
+  if (!confirmJobId(this, *c.req, jid, sizeof(jid))) return ST_INVALID;
+  JobTable* t = _jobs.table();
+  if (!t) { c.error = "no-memory"; return ST_BUSY; }
+  Job* known = nullptr;
+  const JobTable::Lookup l = t->find(jid, &known);
+  if (l == JobTable::FOUND) { JobService::writeSummary(*c.out, *known); return ST_OK; }
+  if (l == JobTable::EXPIRED) { c.error = "result-expired"; return ST_FAILED; }
+  if (t->openJob() || _raw_p.active) { c.error = "queue-full"; return ST_BUSY; }
+  const uint32_t now = millis();
+  if (_raw.seen(_raw.user, pkt)) { c.error = "already-heard"; return ST_REFUSED; }
+  const uint32_t est = _raw.airtime_ms(_raw.user, (size_t)n);
+  if (est > _raw.limit_ms(_raw.user)) { c.error = "over-duty-limit"; return ST_REFUSED; }
+  if (!rawTake(now)) { c.error = "rate"; return ST_BUSY; }
+  Job* j = t->open(jid, "packet.transmit");
+  if (!j) { c.error = "storage"; return ST_BUSY; }
+  j->cls = (uint8_t)(1u << Cli::C_WRITE);
+  confirmRecordCaller(this, *j);
+  if (!_jobs.persist()) { t->setState(j, JOB_FAILED); c.error = "storage"; return ST_BUSY; }
+  _raw_p.active = true;
+  _raw_p.submitted = false;
+  _raw_p.pkt = pkt;
+  _raw_p.raw_len = (size_t)n;
+  _raw_p.pkt.calculatePacketHash(_raw_p.hash);
+  _raw_p.deadline = now + (uint32_t)within * 1000;
+  snprintf(_raw_p.job, sizeof(_raw_p.job), "%s", jid);
+  const uint32_t budget = _raw.budget_ms(_raw.user);
+  JsonWriter& w = *c.out;
+  w.key("job"); w.str(jid);
+  w.key("job_state"); w.str("accepted");
+  char hex[17];
+  for (int i = 0; i < 8; i++) snprintf(hex + 2 * i, 3, "%02x", _raw_p.hash[i]);
+  w.key("hash"); w.str(hex);
+  w.key("est_airtime_ms"); w.unum(est);
+  w.key("duty_held"); w.boolean(budget < est);
+  rawTick(now);   // at once when the window allows
+  return ST_OK;
+}
+
+// The held packet goes when the duty window has room for it now and the pool can spare a packet, or its job ends.
+void ConsoleIface::rawTick(uint32_t now) {
+  if (!_raw_p.active) return;
+  if (_raw_p.submitted) {   // queued: logTx ends it; a queue that dropped it says nothing, so it ends unknown after a grace
+    if ((int32_t)(now - _raw_p.deadline - RAW_SENT_GRACE_MS) >= 0) rawFinish(JOB_FAILED, "unknown");
+    return;
+  }
+  if ((int32_t)(now - _raw_p.deadline) >= 0) { rawFinish(JOB_FAILED, "expired"); return; }
+  if (_raw.budget_ms(_raw.user) < _raw.airtime_ms(_raw.user, _raw_p.raw_len)) return;
+  if (_raw.free_packets(_raw.user) < (int)RAW_MIN_FREE) return;   // repeating keeps its packets
+  if (!_raw.send(_raw.user, _raw_p.pkt)) return;
+  _raw_p.submitted = true;
+  JobTable* t = _jobs.table();
+  Job* j = nullptr;
+  if (t && t->find(_raw_p.job, &j) == JobTable::FOUND) { t->setState(j, JOB_PROGRESS); _jobs.persist(); }
+}
+
+void ConsoleIface::onRawTx(const mesh::Packet* p, bool ok) {
+  if (!_raw_p.active || !_raw_p.submitted || !p) return;
+  uint8_t h[8];
+  const_cast<mesh::Packet*>(p)->calculatePacketHash(h);
+  if (memcmp(h, _raw_p.hash, 8) != 0) return;
+  rawFinish(ok ? JOB_APPLIED : JOB_FAILED, ok ? "transmitted" : "failed");
+}
+
+// transmitted is on the air, never delivered or acknowledged: those are the native receiver's and the manager's.
+void ConsoleIface::rawFinish(uint8_t state, const char* outcome) {
+  JobTable* t = _jobs.table();
+  Job* j = nullptr;
+  if (t && t->find(_raw_p.job, &j) == JobTable::FOUND) {
+    char r[40];
+    const int n = snprintf(r, sizeof(r), "{\"outcome\":\"%s\"}", outcome);
+    t->setState(j, state, r, (size_t)n);
+    _jobs.persist();
+  }
+  _raw_p.active = false;
+  _raw_p.submitted = false;
+  memset(&_raw_p.pkt, 0, sizeof(_raw_p.pkt));
 }
 
 }  // namespace Iface

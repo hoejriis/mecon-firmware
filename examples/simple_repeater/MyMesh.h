@@ -202,6 +202,13 @@ public:
                  bool flood_ok);
   bool loraChannelReply(const uint8_t* to_key, const uint8_t* frame, size_t n);
   bool reportSend(const uint8_t* to, int slot, const uint8_t* bytes, size_t n);
+  // packet.transmit (#537): the seen table, the pool and the duty window as the interface needs them, and the send.
+  bool rawSeen(const mesh::Packet& p) { return getTables()->wasSeen(&p); }
+  bool rawSend(const mesh::Packet& p);
+  int rawFreePackets() const { return _mgr->getFreeCount(); }
+  uint32_t rawAirtimeMs(size_t raw_len) { return _radio->getEstAirtimeFor((int)raw_len); }
+  typedef void (*RawTxDoneFn)(void* user, const mesh::Packet* p, bool ok);
+  void setRawTxDone(RawTxDoneFn fn, void* user) { _raw_done = fn; _raw_done_user = user; }
 #endif
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
 
@@ -321,4 +328,8 @@ public:
   virtual bool configSideDetectors(const uint8_t sideDetSFs[], uint8_t num, float bw) override;
   #endif
 
+#ifdef ENABLE_MECON_IFACE
+  RawTxDoneFn _raw_done = nullptr;
+  void* _raw_done_user = nullptr;
+#endif
 };

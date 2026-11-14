@@ -28,6 +28,7 @@
 #include "MgmtChannel.h"
 #include "RegionOps.h"
 #include "MgmtSlot.h"
+#include "PacketTransmit.h"
 
 namespace Iface {
 
@@ -129,6 +130,23 @@ public:
   typedef bool (*ReportSendFn)(void* user, const uint8_t* to, int slot, const uint8_t* bytes, size_t n);
   void setReportSend(ReportSendFn fn, void* user, SnapStore* store);
   StandingService& standing() { return _standing; }
+  // packet.transmit (OPERATIONS.md, "Packet transmission"): the Repeater's way to put a manager's native packet on the air.
+  // seen: the packet's hash is in the mesh's seen table (heard over RF, or sent). send: a pool packet, marked seen and
+  // queued as given; false when none is free. Unset (the Room server): the operation is neither listed nor answered.
+  struct RawTxHost {
+    bool (*seen)(void* user, const mesh::Packet& p);
+    uint32_t (*airtime_ms)(void* user, size_t raw_len);
+    uint32_t (*budget_ms)(void* user);   // airtime the duty window has left now
+    uint32_t (*limit_ms)(void* user);    // the whole window's limit
+    int (*free_packets)(void* user);
+    bool (*send)(void* user, const mesh::Packet& p);
+    void* user;
+  };
+  void setRawTx(const RawTxHost& h) { _raw = h; }
+  bool rawTxBuilt() const { return _raw.send != nullptr; }
+  // From the role's logTx / logTxFail: a packet went on the air, or the radio refused it.
+  void onRawTx(const mesh::Packet* p, bool ok);
+  Status rawTransmit(OpContext& c);   // the packet.transmit operation
   const LoraLink& lora() const { return _lora; }
   bool onLora() const { return _on_lora; }
   typedef bool (*EventPublishFn)(const char* stream, const char* payload, size_t len);
@@ -290,6 +308,23 @@ private:
   bool _boot_sent = false, _boot_pending = false;   // the runtime boot event: once per epoch
   LogFeed _logs;
   Print* _out = nullptr;   // the console, for events raised outside loop()
+  // packet.transmit: one packet at a time, held here until the duty window lets it go now, so that its deadline is the
+  // interface's to keep (a queued packet has none); its job ends transmitted, expired, failed or unknown.
+  RawTxHost _raw = {};
+  struct RawPending {
+    bool active = false, submitted = false;
+    mesh::Packet pkt;
+    uint8_t hash[8];
+    size_t raw_len = 0;
+    uint32_t deadline = 0;   // the packet goes on air by then, or the job ends expired
+    char job[Job::ID_CAP + 1] = {0};
+  } _raw_p;
+  uint32_t _raw_tokens = 0, _raw_tok_ms = 0;   // the rate: thousandths of a send
+  bool _raw_tok_init = false;
+  static const uint32_t RAW_RATE_PER_MIN = 6, RAW_BURST = 3, RAW_MIN_FREE = 8, RAW_SENT_GRACE_MS = 30000;
+  bool rawTake(uint32_t now);
+  void rawTick(uint32_t now);
+  void rawFinish(uint8_t state, const char* outcome);
 };
 
 }  // namespace Iface

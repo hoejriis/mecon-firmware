@@ -251,6 +251,16 @@ void setup() {
     the_iface.setReportSend([](void* u, const uint8_t* to, int slot, const uint8_t* b, size_t n) {
       return static_cast<MyMesh*>(u)->reportSend(to, slot, b, n);
     }, &the_mesh, &standing_store);
+    the_iface.setRawTx(Iface::ConsoleIface::RawTxHost{
+        [](void* u, const mesh::Packet& p) { return static_cast<MyMesh*>(u)->rawSeen(p); },
+        [](void* u, size_t n) { return static_cast<MyMesh*>(u)->rawAirtimeMs(n); },
+        [](void* u) { return (uint32_t)static_cast<MyMesh*>(u)->getRemainingTxBudget(); },
+        [](void* u) { return static_cast<MyMesh*>(u)->getDutyLimitMs(); },
+        [](void* u) { return static_cast<MyMesh*>(u)->rawFreePackets(); },
+        [](void* u, const mesh::Packet& p) { return static_cast<MyMesh*>(u)->rawSend(p); },
+        &the_mesh});
+    the_mesh.setRawTxDone([](void* u, const mesh::Packet* p, bool ok) { static_cast<Iface::ConsoleIface*>(u)->onRawTx(p, ok); },
+                          &the_iface);
     the_iface.setLoraSend([](void* u, const Iface::LoraLink::Peer& p, const uint8_t* f, size_t n, bool flood_ok) {
       if (p.channel) return static_cast<MyMesh*>(u)->loraChannelReply(p.key, f, n);
       return static_cast<MyMesh*>(u)->loraReply(p.key, p.secret, p.path, p.path_len, f, n, flood_ok);
