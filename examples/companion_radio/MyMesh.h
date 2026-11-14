@@ -162,7 +162,7 @@ public:
   bool loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n,
                  bool flood_ok);
   bool rfSend(const uint8_t* to, const uint8_t* frame, size_t n);
-  void traceQueued(mesh::Packet* pkt, bool first);
+  void traceQueued(mesh::Packet* pkt, uint8_t idx);
   bool loraChannelSend(int slot, const uint8_t* to_key, const uint8_t* frame, size_t n);
   bool ifaceWritable(const BaseSerialInterface* src) const { return _serial && !_serial->isWriteBusy() && src; }
   void ifaceWrite(const BaseSerialInterface* src, const uint8_t* frame, size_t len) {

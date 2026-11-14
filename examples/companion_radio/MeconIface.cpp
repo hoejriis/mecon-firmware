@@ -468,6 +468,11 @@ void writeLoraTx(JsonWriter& w, const Iface::LoraTxTrace& t) {
   if (!t.any()) return;
   const Iface::LoraTxTrace::Counts& c = t.counts();
   w.key("lora_tx"); w.beginObject();
+  w.key("now_ms"); w.unum((uint32_t)millis());
+  w.key("recent"); w.beginArray();   // the newest first: [frame index, millis when it went on the air]
+  Iface::LoraTxTrace::Sent sent;
+  for (int i = 0; t.recent(i, &sent); i++) { w.beginArray(); w.unum(sent.idx); w.unum(sent.ms); w.endArray(); }
+  w.endArray();
   w.key("first_queued"); w.unum(c.first_queued);
   w.key("first_sent"); w.unum(c.first_sent);
   w.key("rest_queued"); w.unum(c.rest_queued);
@@ -1554,6 +1559,13 @@ void MeconIface::writeRfCounts(Iface::JsonWriter& w) const {
   w.key("rf"); w.beginObject();
   w.key("replies"); w.unum(_rf_frames_in);
   w.key("completed"); w.unum(_rf_completed);
+  w.key("now_ms"); w.unum((uint32_t)millis());
+  w.key("heard"); w.beginArray();   // the newest first: [xid, frame index, millis when it was heard]
+  for (int k = 0; k < _rf_hcount; k++) {
+    const RfHeard& h = _rf_heard[(_rf_hnext - 1 - k + RF_HEARD) % RF_HEARD];
+    w.beginArray(); w.unum(h.xid); w.unum(h.idx); w.unum(h.ms); w.endArray();
+  }
+  w.endArray();
   _rf.writeCountFields(w);
   const LoraLink::LastIncomplete& li = _rf.lastIncomplete();
   if (li.any) {   // which frames of the last reply that expired arrived: the rest were lost on the way (#539)
@@ -1568,6 +1580,11 @@ void MeconIface::writeRfCounts(Iface::JsonWriter& w) const {
 
 void MeconIface::onRfReply(const uint8_t* key, const uint8_t* frame, size_t n) {
   _rf_frames_in++;
+  if (n > 5) {   // when each reply frame was heard, with its xid and index (#542: read beside the sender's times)
+    _rf_heard[_rf_hnext] = RfHeard{frame[4], frame[5], (uint32_t)millis()};
+    _rf_hnext = (_rf_hnext + 1) % RF_HEARD;
+    if (_rf_hcount < RF_HEARD) _rf_hcount++;
+  }
   if (n <= LORA_REPLY_HDR) return;
   uint8_t* f = static_cast<uint8_t*>(malloc(n));
   if (!f) return;
