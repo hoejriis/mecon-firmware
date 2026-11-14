@@ -637,6 +637,44 @@ def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
     assert times == sorted(times) and times[-1] <= heard["now_ms"], heard
 
 
+def anon_reqs_from(ether, src, since):
+    """The management request frames (ANON_REQ) node `src` put on the air since tx_log index `since`."""
+    return [t for t in ether.tx_log[since:] if t.src == src and ((t.data[0] >> 2) & 0x0F) == 7]
+
+
+def test_a_request_to_a_contact_with_no_path_is_not_rebroadcast_into_its_reply(ether, nodes):
+    # A request to a stored contact with no known path was flooded, so every repeater in range rebroadcast each frame, and a
+    # rebroadcast that landed in the target's direct reply destroyed a frame of it: on the bench, frame 0, sent soonest (#542).
+    # It goes zero-hop now, which nothing forwards.
+    d, m = enrolled(nodes, ether, "companion_standalone", "zh")
+    target(nodes, ether, "repeater", "zhr", seed=55)
+    ether.set_link("mgrzh", "zhr")
+    ether.set_link("zh", "zhr")
+    m.c.add_contact(bytes.fromhex(d.node_key), "zh-target")   # a contact, with no path known
+    since = len(ether.tx_log)
+    r = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="zh1"), timeout=90.0)
+    assert r and r["status"] == "ok", r
+    assert anon_reqs_from(ether, "mgrzh", since), "the request went out"
+    assert not anon_reqs_from(ether, "zhr", since), "the repeater rebroadcast the manager's request"
+
+
+def test_a_target_beyond_zero_hop_is_reached_by_flood_after_the_wait(ether, nodes):
+    # The fallback: a target the manager cannot hear directly answers nothing zero-hop, so the next request after the wait
+    # floods, through the repeater.
+    d, m = enrolled(nodes, ether, "companion_standalone", "zf")
+    target(nodes, ether, "repeater", "zfr", seed=57)
+    ether.set_link("mgrzf", "zf", loss=1.0)                 # out of each other's reach
+    ether.set_link("mgrzf", "zfr")
+    ether.set_link("zf", "zfr")
+    m.c.add_contact(bytes.fromhex(d.node_key), "zf-target")
+    r = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="zf1"), timeout=25.0)
+    assert r is None, "zero-hop could not reach it"
+    since = len(ether.tx_log)
+    r = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="zf2"), timeout=120.0)
+    assert r and r["status"] == "ok", r
+    assert anon_reqs_from(ether, "zfr", since), "it went by flood, through the repeater"
+
+
 def test_an_rf_reply_waits_for_room_behind_observations(ether, nodes, tmp_path):
     # Each reply frame the manager hears is also an observations event of about 600 B, so with that stream subscribed the
     # queue's 1,536 B for events was full when the reply completed, and its 1.4 KB event was dropped after it had been

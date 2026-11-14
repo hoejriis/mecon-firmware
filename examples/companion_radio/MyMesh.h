@@ -1,6 +1,7 @@
 #pragma once
 
 #include "helpers/iface/LoraTxTrace.h"
+#include "helpers/iface/RfRoute.h"
 #include <helpers/Posture.h>
 #include <helpers/PrefsBatch.h>
 #include <helpers/cli/CliMqtt.h>
@@ -420,6 +421,7 @@ private:
   MeconIface _iface;
   Iface::MessageSent* _msg_capture = nullptr;   // a message.send in progress: onMessagePacket fills in its hash
   Iface::LoraTxTrace _lora_tx;                  // what became of the LoRa management frames queued here (#542)
+  Iface::RfRoute _rf_route;                     // zero-hop or flood, per target with no known path (#542)
 public:
   const Iface::LoraTxTrace& loraTx() const { return _lora_tx; }
 private:

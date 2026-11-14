@@ -995,8 +995,16 @@ bool MyMesh::rfSend(const uint8_t* to, const uint8_t* frame, size_t n) {
   mesh::Packet* pkt = createAnonDatagram(PAYLOAD_TYPE_ANON_REQ, self_id, recipient->id, recipient->getSharedSecret(self_id), temp, 4 + n);
   if (!pkt) return false;
   traceQueued(pkt, n > 2 ? frame[2] : 0xFF);   // a request frame: marker, xid, index, count
-  if (recipient->out_path_len == OUT_PATH_UNKNOWN) sendFloodScoped(*recipient, pkt);
-  else sendDirect(pkt, recipient->out_path, recipient->out_path_len);
+  if (recipient->out_path_len == OUT_PATH_UNKNOWN) {
+    // No known path: zero-hop first, so no repeater rebroadcasts the request into the target's reply (#542, RfRoute.h)
+    const uint32_t now = millis();
+    const bool by_flood = _rf_route.flood(to, now);
+    if (by_flood) sendFloodScoped(*recipient, pkt);
+    else sendZeroHop(pkt);
+    _rf_route.sent(to, by_flood, now);
+  } else {
+    sendDirect(pkt, recipient->out_path, recipient->out_path_len);
+  }
   return true;
 }
 
@@ -1010,6 +1018,7 @@ void MyMesh::traceQueued(mesh::Packet* pkt, uint8_t idx) {
 void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, uint8_t len) {
 #ifdef ENABLE_MECON_IFACE
   if (len > Iface::LORA_REPLY_HDR && memcmp(data, Iface::LORA_REPLY_MAGIC, 4) == 0) {
+    _rf_route.heard(contact.id.pub_key, millis());   // the route of the attempt this answers is the one to keep (#542)
     _iface.onRfReply(contact.id.pub_key, data, len);
     return;
   }
