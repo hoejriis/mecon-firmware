@@ -61,7 +61,7 @@ Each change of state is an event on the `job` stream (`ev/job` on MQTT), `{"job"
 
 - A signed request is deduplicated by its persisted per-issuer watermark. That holds across reboots, transports and broker changes, so a state-changing signed request runs at most once.
 - An unsigned request is deduplicated by the v1.0 id cache, which a reboot clears. A job that can span a reboot also has its id in the owed-results table, so a duplicate after the reboot gets the job's current state instead of a second run.
-- One state-changing job runs at a time. A second state-changing request while one is open answers `busy` with `error` `job-open:<job>`, and nothing runs. Reads, `job.get`, `job.list`, `job.ack`, `job.confirm` and `job.cancel` are always served.
+- One state-changing job runs at a time. A second state-changing request while one is open answers `busy` with `error` `job-open:<job>`, and nothing runs. A signed one keeps its `job_id` unused, so the same bytes can be sent again once the job has ended (AUTHORITY section 8). Reads, `job.get`, `job.list`, `job.ack`, `job.confirm` and `job.cancel` are always served.
 - **A failed or pending job never blocks recovery.** A reset scope (3.5) or `job.cancel` from a caller allowed to run it first reverts an `awaiting-confirm` job, then runs. A job that never ends is impossible by construction: every non-terminal state has a deadline (3.4) or belongs to an operation that ends by itself.
 
 ### 3.4 Commit or revert

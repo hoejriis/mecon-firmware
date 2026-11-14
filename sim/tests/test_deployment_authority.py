@@ -1581,3 +1581,41 @@ def test_a_signed_mode_switch_over_a_broker_reverts_when_nobody_confirms(nodes, 
     while time.time() < end and not d.c.cli("get mqtt.status").startswith("> connected"):
         time.sleep(0.3)
     assert d.c.cli("get mqtt.status").startswith("> connected"), "back on the broker"
+
+
+def tentative(d, job, key, value):
+    return wrap(d.node_key, "config.apply", {"set": {key: value}, "confirm": {"within_s": 30}}, job=job)
+
+
+@pytest.mark.timescale(10)
+def test_a_request_answered_busy_keeps_its_id_and_runs_when_sent_again(nodes):
+    # On v3test a change sent while another awaited confirmation was answered busy job-open, and every resend of the same
+    # signed bytes got that busy again long after the window closed: the id had been used up, the busy stored as its result.
+    d = boot(nodes, "bsy")
+    assert d.provision()["status"] == "ok"
+    r = d.send(tentative(d, 1001, "txdelay", "0.7"))
+    assert r["status"] == "ok" and r["result"]["state"] == "awaiting-confirm", r
+    w = tentative(d, 1002, "path.hash.mode", 1)
+    r = d.send(w)
+    assert r["status"] == "busy" and r["error"].startswith("job-open:"), r
+    time.sleep(4)   # 40 device seconds: 1001 reverts, with nothing signed in between
+    r = d.send(w)
+    assert r["status"] == "ok" and r["result"]["state"] == "awaiting-confirm", r
+    assert r["result"]["job"].endswith(":1002"), r
+
+
+@pytest.mark.timescale(10)
+def test_a_request_that_ran_is_never_run_again_and_an_older_one_stays_refused(nodes):
+    d = boot(nodes, "bsz")
+    assert d.provision()["status"] == "ok"
+    w1 = tentative(d, 2001, "txdelay", "0.7")
+    first = d.send(w1)
+    assert first["status"] == "ok" and first["result"]["state"] == "awaiting-confirm", first
+    again = d.send(w1)   # the same bytes: the stored result, not a second run (which would answer busy job-open)
+    assert again["status"] == "ok" and again["result"] == first["result"], again
+    w2 = tentative(d, 2002, "path.hash.mode", 1)
+    assert d.send(w2)["status"] == "busy"
+    r = d.send(wrap(d.node_key, "job.cancel", {"job": first["result"]["job"]}, job=2003))
+    assert r["status"] == "ok" and r["result"]["state"] == "reverted", r
+    r = d.send(w2)   # below the mark now (2003 ran): refused, never run behind newer work
+    assert r["status"] == "refused" and r["error"] == "replay" and r["result"]["mark"] == 2003, r
