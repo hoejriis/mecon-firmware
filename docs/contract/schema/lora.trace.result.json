@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/lora.trace.result.json",
+  "title": "Result of lora.trace",
+  "description": "Companion. When the last LoRa management frames went on the air here and when the last reply frames to its rf.request were heard, against its millisecond clock now, so a lost frame can be placed against its neighbours (LORA_MANAGEMENT.md section 7). Apart from status.get, whose signed result it would outgrow.",
+  "type": "object",
+  "required": ["now_ms", "sent", "heard"],
+  "additionalProperties": false,
+  "properties": {
+    "now_ms": {"type": "integer", "minimum": 0, "description": "The device's millisecond clock when this was written, to align the times against another device's."},
+    "sent": {"type": "array", "maxItems": 8, "description": "The newest frames on the air first: [frame index, millisecond clock when the radio finished sending it].", "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 0}}},
+    "heard": {"type": "array", "maxItems": 8, "description": "The newest reply frames heard first: [xid, frame index, millisecond clock when heard].", "items": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer", "minimum": 0}}}
+  }
+}
