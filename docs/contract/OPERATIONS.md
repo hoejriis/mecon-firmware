@@ -219,6 +219,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `neighbour.remove` | `{"key"}`, one whole node key in lower-case hex (the CLI also takes a prefix, which can match several) | CLI `neighbor.remove` | write | yes | R | Con, MQTT where built; not over LoRa |
 | `neighbour.discover` | a zero-hop discovery request on the air, within the radio's own duty-cycle rules | CLI `discover.neighbors` | write | yes | R | Con, MQTT where built; not over LoRa |
 | `room.post` | `{"text"}`, 1 to 149 characters: a system post to the room's clients | CLI `room.post` | write | yes | S | Con, MQTT where built; not over LoRa |
+| `packet.transmit` | `{"packet","within_s"}`: a manager's native packet on the air as given ("Packet transmission" below) | none (`CMD_SEND_RAW_PACKET` stays refused) | write; signed only | yes, a job | R | Con, MQTT where built; not over LoRa |
 | `board.get` | the board's own readings, `{"bootloader","adc_multiplier","power_management","power_source","boot_mv","boot_reason","powersaving"}`; each `null` where the board cannot tell (`bootloader` on nRF52 only, `power_source` and `boot_mv` with nRF52 power management). `power_source` is the same board call as the power stream's `external` | CLI `get bootloader.ver`, `get adc.multiplier`, `get pwrmgt.support`, `get pwrmgt.source`, `get pwrmgt.bootmv`, `get pwrmgt.bootreason`, `powersaving` | read | no | R S | Con, MQTT where built; not over LoRa |
 | `board.adc.set` | `{"multiplier":"<decimal>"}`, 0 to 10 with at most three places, as a string; `0` is the board's default. `unsupported` on a board with no adjustable battery divider | CLI `set adc.multiplier` | write | yes | R S | Con, MQTT where built; not over LoRa |
 | `power.saving.set` | `{"on": bool}`; `unsupported` where the board, or a bridge build, has no power saving | CLI `powersaving on`, `powersaving off` | write | yes | R S | Con, MQTT where built; not over LoRa |
@@ -339,7 +340,7 @@ Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in 
 | 66 | `CMD_RUN_CLI_COMMAND` | read to reach the CLI; then the line's class | refused | none (the interface has no CLI-line operation) |
 | 0x7F | `CMD_MECON` | per operation | refused (every operation) | the device interface |
 
-"None" means the frame stays native and gets no interface operation. Raw transmission and signing arbitrary data with the node key are not management actions a manager should be able to ask for.
+"None" means the frame stays native and gets no interface operation. Raw transmission and signing arbitrary data with the node key are not management actions a manager should be able to ask for, with one exception the owner approved: a Repeater transmits a packet a manager built (`packet.transmit`, "Packet transmission" below). It signs nothing with the node key, and the Companion's raw frames stay refused.
 
 ### 5.3 CLI lines
 
@@ -435,6 +436,18 @@ A Repeater's and a Room server's native region tree, the one the console's `regi
 
 **The scope key never leaves the device.** It is read from the request and written to the prefs; it is in no result, job record, audit entry (`audit.list` and the `logs` stream carry fixed event fields only) or telemetry event.
 
+### Packet transmission (Repeater)
+
+`packet.transmit` puts a native MeshCore packet on the air from a Repeater. A manager builds the packet, for example a direct or channel message under a Companion identity it is authorised to use. The Repeater only provides the transmitter: it keeps its own identity, signs and decrypts nothing, and goes on repeating as before.
+
+- **Who may.** A signed caller only: the Deployment's authority, on every transport, the cable included. A standalone device answers `refused` / `signature-required`; an enrolled one refuses an unsigned request `unauthenticated` before the operation runs. Not over LoRa, and not on the Room server or the Companion, which do not list it.
+- **What is sent.** `packet` is base64 of the bytes `Packet::writeTo` writes: the header, the transport codes when the route has them, `path_len`, the path and the payload, at most 255 bytes. They go out exactly as given: the route type, path and transport codes are not changed, and no hop is added or removed. A manager originating a flood sends an empty path; a forwarded packet keeps its own.
+- **Checked before anything is queued.** Every length against what arrived. The payload version must be the one this firmware reads, the path valid, and the payload 1 to 184 bytes; otherwise `invalid` / `malformed`. Only messaging and what a bridge forwards may be sent: REQ, RESPONSE, TXT_MSG, ACK, GRP_TXT, GRP_DATA, ANON_REQ and PATH. An advert re-announces an identity and a trace writes its path into the payload, so ADVERT, TRACE, MULTIPART, CONTROL and RAW_CUSTOM answer `invalid` / `unsupported-type`.
+- **Never twice.** The signed job id is the send's identity. The same id again gets its job, not a second send, across a lost answer, a reconnect and a reboot. A packet whose hash the Repeater has already seen, heard over the radio or sent, is refused `refused` / `already-heard`, so a packet heard and then also injected is never a silent success. The hash is marked seen before the send, so the Repeater does not repeat its own echo. The hash covers the type and payload, so the same packet with another route counts as the same. Each Repeater keeps its own table: two addressed in turn each send.
+- **Bounds.** One send at a time; another, or any other job, while one is open answers `busy` / `queue-full`. At most 6 a minute, in bursts of 3: `busy` / `rate`. A packet longer on air than the whole duty window allows is `refused` / `over-duty-limit`. Otherwise the Repeater holds the packet until the window has room for it now and its packet pool has 8 free, so repeating is never starved, for at most `within_s` (5 to 120, default 60). It goes through the ordinary send queue and duty accounting, never around them.
+- **The answer and the outcome.** The answer gives the job (`accepted`), the packet's hash, the airtime estimate and `duty_held`. The job ends as `applied` with outcome `transmitted` once the radio has sent it. It ends as `failed` with outcome `expired` (not sent within `within_s`), `failed` (the radio refused it), or `unknown` (queued but never confirmed sent, or cut by a reboot while open). `job.get` and the `job` event carry it. `transmitted` means on the air. It never means delivered or acknowledged: that is the native receiver's to say and the manager's to read.
+- **Private.** The packet's bytes are in no result, job record, log, audit entry or stream. The hash and the outcome are the record.
+
 ### 5.4 LoRa remote administration (native)
 
 | Facility | Repeater | Room server | Companion | Who |
@@ -473,7 +486,7 @@ These native facilities sit beside the device interface over LoRa, which is a se
 |---|---|
 | Any device-interface operation over the TCP port or default-PIN BLE | an untrusted caller; messaging only (5.2) |
 | Remote `poweroff` | a powered-off device needs someone on site |
-| Raw transmission and data signing as operations | not management (5.2) |
+| Raw transmission and data signing as operations | not management (5.2); the one exception is the Repeater's `packet.transmit` |
 | BLE bond clear over any path but physical USB | SECURITY_AND_AUTHORITY: bonds are cleared over USB only |
 | Backfill and outage forwarding over the interface | not generic firmware: a manager application's concern. Native messaging stays native |
 

@@ -523,6 +523,9 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 }
 
 void MyMesh::logTx(mesh::Packet *pkt, int len) {
+#ifdef ENABLE_MECON_IFACE
+  if (_raw_done) _raw_done(_raw_done_user, pkt, true);
+#endif
 #ifdef WITH_BRIDGE
   if (_prefs.bridge_pkt_src == 0) {
     bridge.sendPacket(pkt);
@@ -548,6 +551,9 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
 }
 
 void MyMesh::logTxFail(mesh::Packet *pkt, int len) {
+#ifdef ENABLE_MECON_IFACE
+  if (_raw_done) _raw_done(_raw_done_user, pkt, false);
+#endif
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
@@ -637,6 +643,22 @@ bool MyMesh::loraChannelReply(const uint8_t* to_key, const uint8_t* frame, size_
 }
 
 // A compact report: to a node, as an anonymous datagram by flood, since nothing says the way there; or on the bound channel.
+// A manager's native packet, as given (#537): no hop added, the route and path untouched. Marked seen first, as the
+// Mesh helpers mark what they send, so its echo is not repeated back; Dispatcher::sendPacket marks nothing.
+bool MyMesh::rawSend(const mesh::Packet& p) {
+  mesh::Packet* q = obtainNewPacket();
+  if (!q) return false;
+  q->header = p.header;
+  q->transport_codes[0] = p.transport_codes[0]; q->transport_codes[1] = p.transport_codes[1];
+  q->path_len = p.path_len;
+  memcpy(q->path, p.path, sizeof(q->path));
+  q->payload_len = p.payload_len;
+  memcpy(q->payload, p.payload, p.payload_len);
+  getTables()->markSeen(q);
+  sendPacket(q, 1);
+  return true;
+}
+
 bool MyMesh::reportSend(const uint8_t* to, int slot, const uint8_t* bytes, size_t n) {
   if (slot >= 0) {
     static const uint8_t ALL[Iface::LORA_CH_PREFIX] = {0};

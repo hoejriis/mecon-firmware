@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/packet.transmit.result.json",
+  "title": "Result of packet.transmit",
+  "description": "A new send: its job (accepted, then by job.get or a job event: applied with outcome transmitted, or failed with outcome expired, failed or unknown), the packet's hash, the airtime estimate, and whether the duty window holds it now. The same signed job id again gets the job's summary instead (job.get's shape). The packet's bytes are never in a result.",
+  "type": "object",
+  "anyOf": [
+    {
+      "additionalProperties": false,
+      "required": ["job", "job_state", "hash", "est_airtime_ms", "duty_held"],
+      "properties": {
+        "job": {"type": "string"},
+        "job_state": {"const": "accepted"},
+        "hash": {"type": "string", "pattern": "^[0-9a-f]{16}$", "description": "MeshCore's packet hash (type and payload), 8 bytes."},
+        "est_airtime_ms": {"type": "integer", "minimum": 0},
+        "duty_held": {"type": "boolean", "description": "The duty window has no room for it now: it waits, up to within_s."}
+      }
+    },
+    {"required": ["job", "op", "state"]}
+  ]
+}
