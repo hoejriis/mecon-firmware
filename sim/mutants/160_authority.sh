@@ -71,8 +71,8 @@ mutate unlock_policy_opens_writes src/helpers/cli/CliPolicy.h '  const bool unlo
 mutate unlock_policy_honoured_for_any_principal src/helpers/cli/CliPolicy.h 'inline bool unlockManagement(const Context& c) { return c.unlocked && principalOf(c) == P_CABLE; }' 'inline bool unlockManagement(const Context& c) { return c.unlocked; }' unit:test_cli_engine
 mutate unlock_hmac_ignores_the_message src/helpers/deployment/DepHmac.cpp '  update(&c, msg, msg_len);' '' unit:test_dep_hmac
 mutate unlock_compare_checks_one_byte src/helpers/deployment/DepHmac.cpp '  for (size_t i = 0; i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' '  for (size_t i = 0; i < 1 && i < n; i++) diff |= (uint8_t)(a[i] ^ b[i]);' unit:test_dep_hmac
-mutate unlock_set_unlock_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0 ||
-      strcmp(op, "identity.rotate") == 0)' ' ||
+mutate unlock_set_unlock_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0 || strcmp(op, "deployment.continuity.put") == 0 ||
+      strcmp(op, "identity.rotate") == 0)' ' || strcmp(op, "deployment.continuity.put") == 0 ||
       strcmp(op, "identity.rotate") == 0)' unit:test_dep_wrapper
 
 mutate unlock_salvage_takes_the_older_frame src/helpers/deployment/DepState.cpp '      if (s->has_salvage && gen <= best) continue;' '' unit:test_dep_state
@@ -127,8 +127,8 @@ mutate rotate_unenrols examples/companion_radio/MyMesh.cpp 'bool MyMesh::dropOld
   bool dropped = true;' 'bool MyMesh::dropOldKeyState() {
   _store->removeDeploymentCopies(-1, DataStore::DEP_RECORD);
   bool dropped = true;' $IR::test_rotation_changes_the_key_and_keeps_everything_else
-mutate rotate_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0 ||
-      strcmp(op, "identity.rotate") == 0)' ' || strcmp(op, "deployment.set_unlock") == 0)' $IR::test_rotation_needs_a_signature_and_a_readable_record
+mutate rotate_not_sensitive src/helpers/deployment/DepWrapper.cpp ' || strcmp(op, "deployment.set_unlock") == 0 || strcmp(op, "deployment.continuity.put") == 0 ||
+      strcmp(op, "identity.rotate") == 0)' ' || strcmp(op, "deployment.set_unlock") == 0 || strcmp(op, "deployment.continuity.put") == 0)' $IR::test_rotation_needs_a_signature_and_a_readable_record
 mutate revoked_issuer_reported_unknown src/helpers/deployment/DepWrapper.cpp 'e = set.isRevoked(issuer) ? WR_ISSUER_REVOKED : WR_UNKNOWN_ISSUER; goto done; }' 'e = WR_UNKNOWN_ISSUER; goto done; }' $IR::test_a_revoked_member_is_refused_and_cannot_rotate_the_key
 
 # --- review 3 of PR 132 (AUTHORITY_REVIEW_2.md): one group of mutants per finding
