@@ -82,6 +82,7 @@ public:
   uint32_t eventsDropped() const;
   void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
   void writeRfCounts(Iface::JsonWriter& w) const;
+  void writeLoraTrace(Iface::JsonWriter& w) const;   // lora.trace (#542)
   bool onLora() const { return _on_lora; }
   bool onLoraChannel(int slot, const uint8_t* data, size_t n);
   void onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n);

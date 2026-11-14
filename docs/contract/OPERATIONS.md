@@ -182,6 +182,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 |---|---|---|---|---|---|---|
 | `hello` | versions, ids, role, capabilities | | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `status.get` | status snapshot | | read | no | C R S | as above |
+| `lora.trace` | when the last LoRa management frames went on the air and when the last reply frames were heard, with the clock now ([LoRa management](LORA_MANAGEMENT.md) section 7). *(On `main`, in the release after v0.3.6. In v0.3.6 these were in `status.get` as `lora_tx.recent` and `rf.heard`.)* | | read | no | C | all |
 | `config.schema` | settings this build has | CLI registry | read | no | C R S | as above |
 | `config.get` | values | CLI `get` per key | read; per key | no | C R S | as above |
 | `config.apply` | writes, all-or-none checked | CLI `set` per key | write; per key | yes | C R S | as above |
