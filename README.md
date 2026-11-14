@@ -96,7 +96,7 @@ Four boards are hardware test targets: **Heltec V3, Heltec V4, Seeed Wio Tracker
 
 Any application that implements the public contracts can manage mecon-firmware devices. [MeshContinuum](https://github.com/hoejriis/MeshContinuum) is one such manager: a Backend with a browser Reader, which needs that Backend and bridges USB and BLE to it.
 
-The firmware offers generic capabilities that a manager asks for: sending, collecting messages and outcomes, contact and channel administration, local delivery and standing instructions. Choosing a gateway, deciding which history to catch up on and setting a health policy belong to the manager. MECON connected messaging, backfill, RF health monitoring, autonomous outage forwarding and firmware-image delivery over LoRa are later work built on those capabilities, and are outside the product described here. [What the firmware does, and what a manager does](docs/INTEGRATION.md#what-the-firmware-does-and-what-a-manager-does) draws the line.
+The firmware offers generic capabilities that a manager asks for: sending, collecting messages and outcomes, contact and channel administration, local delivery and standing instructions. Choosing a gateway, deciding which history to catch up on and setting a health policy belong to the manager. MECON connected messaging, backfill, RF health monitoring, a human-readable `ping` on the management channel, delegated receive identities on a Companion and firmware-image delivery over LoRa are later work built on those capabilities, and are outside the product described here. [What the firmware does, and what a manager does](docs/INTEGRATION.md#what-the-firmware-does-and-what-a-manager-does) draws the line.
 
 ## Licence and security
 
