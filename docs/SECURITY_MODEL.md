@@ -67,7 +67,7 @@ Normal/Hardened posture is orthogonal to Deployment membership: **Normal → Har
 
 ## Protected continuity storage boundary
 
-Built for #118 (the owner's decisions of 2026-11-08 and 2026-11-14): the operations, the sealing at rest and the destruction are in [AUTHORITY section 10a](contract/AUTHORITY.md). A MECON Companion holds the package by default; its export is protected by a passphrase the device never sees. *(On `main`, in the release after v0.3.5.)*
+Built for #118 (the owner's decisions of 2026-11-08 and 2026-11-14): the operations, the sealing at rest and the destruction are in [AUTHORITY section 10a](contract/AUTHORITY.md). A MECON Companion holds the package by default; its export is protected by a passphrase the device never sees.
 
 Firmware provides a bounded protected storage boundary for Deployment continuity/recovery material.
 

@@ -39,10 +39,12 @@ One management model covers every path: an operation means the same wherever it 
 | Local access on each role | Companion: app frames over USB and BLE. Repeater, Room server: a console line over USB | Role: the stock roles differ |
 | Messages, received-message collection, contact operations and `rf.request` | Companion only | Role: a Repeater or Room server has no stock chat client |
 | Neighbour operations (`neighbour.*`) | Repeater only | Role: only a Repeater keeps a neighbour table |
+| Transmitting a manager's packet (`packet.transmit`) | Repeater only, signed requests only, over the USB console or MQTT, never over LoRa | Owner decision: the one exception to the rule that a manager cannot ask for raw transmission. The Repeater keeps its own identity and signs nothing |
 | Room posts (`room.post`) | Room server only | Role: only a Room server keeps posts |
 | GPS operations (`gps.*`) | Repeater and Room server builds with a GPS receiver | Hardware and role |
 | The BLE PIN and bonds (`ble.pin.*`, `ble.bonds`) | Companion builds with BLE | Hardware and role: only a Companion has BLE |
 | Reading the packet log (`log.read`) | The Repeater and Room server console only. A broker session is refused | Security rule: the stock `log` command runs from the console only |
+| Exporting the continuity package (`deployment.continuity.export`) | The unsigned USB cable only, in Normal | Security rule: it carries the Deployment's recovery material, encrypted under a passphrase the device never sees |
 | Setting a clock back (`clock.back`) | A Companion's cable only | Security rule: it is destructive, since peers that hold the contact ignore its adverts for the time it went back |
 | Server actions, and the board, sensor, GPS, audit and network-profile operations, over LoRa | Not carried. Use USB, the console or MQTT | LoRa carries a fixed set of operations ([LoRa management](contract/LORA_MANAGEMENT.md)); the [operation matrix](contract/OPERATIONS.md#51-device-interface-operations) gives each operation's paths |
 | Channels on a Repeater or Room server | One management slot, with no channel messaging | Role: no native channel table |

@@ -46,9 +46,9 @@ Resets come in explicit, named scopes, so clearing one kind of state does not cl
 
 | Reset | How | What it does |
 |---|---|---|
-| Factory reset | Companion: the app's factory reset over USB, or `erase` on the rescue console. Repeater and Room server: `erase` on the console | Erases everything, a new node key included, and returns the device to Normal. It always works over USB in both postures. The audit log records it |
+| Factory reset | Companion: the app's factory reset over USB, or `erase` on the rescue console. Repeater and Room server: `erase` on the console | Erases everything, a new node key and the continuity package included, and returns the device to Normal. It always works over USB in both postures. The audit log records it |
 | Rebuild (Companion) | `rebuild` on the rescue console | Rewrites identity, settings, channels and the audit log from memory and rebuilds the contact store. Keeps a Deployment record |
-| Leave a Deployment | `deployment.reset` | Removes the Deployment record. Keeps the node key, `device_id`, settings, contacts and channels. For a healthy record: signed, over USB, in Normal. For a corrupt record: the unsigned cable in Normal, or after a local unlock in Hardened |
+| Leave a Deployment | `deployment.reset` | Removes the Deployment record and the continuity package. Keeps the node key, `device_id`, settings, contacts and channels. For a healthy record: signed, over USB, in Normal. For a corrupt record: the unsigned cable in Normal, or after a local unlock in Hardened |
 
 To enter the rescue console on a Companion, long-press the user button within 8 seconds of the logo screen appearing ([CLI reference](CLI_REFERENCE.md#rescue-console)).
 

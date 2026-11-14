@@ -34,7 +34,7 @@ The firmware holds no user favourites database and no routing policy. RF health 
 
 ## Messages and contacts
 
-On a Companion, `message.send` sends one native message, and `message.get` reads what became of it. `inbox.list` collects received messages, beside the native queue the stock app reads. `message.deliver` hands the stock app a message the device missed, marked, and never transmits it. `contact.*` and `channel.*` work on the native tables.
+On a Companion, `message.send` sends one native message, and `message.get` reads what became of it. `inbox.list` collects received messages, beside the native queue the stock app reads. `message.deliver` hands the stock app a message the device missed, marked, and never transmits it. `contact.*` and `channel.*` work on the native tables. On a Repeater, `packet.transmit` puts a native packet the manager built on the air, for example a message under a Companion identity the manager is authorised to use; the Repeater adds no hop and signs nothing.
 
 Each of these is bounded and lives in RAM where the [contract](contract/OPERATIONS.md#6-messages) says so, so plan for a reboot losing what was not collected. An outcome reports what the device knows: `acked` shows the recipient's node had the message, and `timed-out` does not prove it did not. Retries and catching up are the manager's to decide.
 

@@ -8,7 +8,12 @@
 - `get mecon.mem`: free heap, the largest free block, the lowest free heap since boot, and whether the heap is below its floor ([heap floor](CONNECTIVITY_MODE.md#heap-floor)).
 - `get mecon.heaplow`: what was running when the largest block, and the free heap, were at their lowest since boot.
 - `get mecon.slowpass` and `get mecon.slowsections`, on a Companion: the longest main-loop pass and which part of the loop took it, and each part's own longest run. A long pass keeps the cable and the radio waiting ([CLI reference](CLI_REFERENCE.md)).
-- `status.get` over the device interface: the status snapshot, with the LoRa management counts (`lora`), and on a Companion that has relayed a request, the counts of its relay replies (`rf`), which show where a missing reply was lost ([LoRa management](contract/LORA_MANAGEMENT.md)).
+- `status.get` over the device interface: the status snapshot, with the LoRa management counts (`lora`), and on a Companion that has relayed a request, the counts of its relay replies (`rf`), which show where a missing reply was lost ([LoRa management](contract/LORA_MANAGEMENT.md)). Within it:
+  - `rf.last_incomplete` names the frames that came of the last reply still missing frames after 60 s;
+  - on a Companion that has sent a LoRa management frame, `lora_tx` says what became of each frame, with `lora_tx.recent`, `rf.heard` and `now_ms` giving when the last frames went on the air and were heard;
+  - `events_dropped` counts signed events dropped for want of room (a completed `rf` reply or a `job` event first waits up to 10 s), and on the nRF52 boards `cable_dropped` counts frames dropped because the cable host stopped reading.
+
+  `rf`, `lora_tx`, `events_dropped` and `cable_dropped` are left out of a `status.get` answered over LoRa.
 - The connectivity page on boards with a screen: mode, posture, PIN state, Wi-Fi and MQTT ([screens and buttons](UI.md)).
 
 ## Telemetry streams
