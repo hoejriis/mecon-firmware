@@ -67,7 +67,7 @@ Normal/Hardened posture is orthogonal to Deployment membership: **Normal → Har
 
 ## Protected continuity storage boundary
 
-**Target, not shipped.** This firmware holds no continuity blob; nothing in `src/` stores or destroys one. It is to be built as part of the Deployment-membership work (the owner's decision of 2026-11-08).
+Built for #118 (the owner's decisions of 2026-11-08 and 2026-11-14): the operations, the sealing at rest and the destruction are in [AUTHORITY section 10a](contract/AUTHORITY.md). A MECON Companion holds the package by default; its export is protected by a passphrase the device never sees. *(On `main`, in the release after v0.3.5.)*
 
 Firmware provides a bounded protected storage boundary for Deployment continuity/recovery material.
 

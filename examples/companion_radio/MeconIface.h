@@ -153,6 +153,8 @@ public:
   static Iface::Status opDeployUpdate(Iface::OpContext& c);
   static Iface::Status opDeployReset(Iface::OpContext& c);
   static Iface::Status opDeploySetUnlock(Iface::OpContext& c);
+  static Iface::Status opContinuityPut(Iface::OpContext& c);
+  static Iface::Status opContinuityExport(Iface::OpContext& c);
   static Iface::Status opDeployUnlockChallenge(Iface::OpContext& c);
   static Iface::Status opDeployUnlock(Iface::OpContext& c);
   // identity.rotate (AUTHORITY.md section 11): signed, sensitive, only with a readable record.

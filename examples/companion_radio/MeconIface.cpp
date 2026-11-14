@@ -47,7 +47,7 @@ const size_t HELLO_LORA_BUDGET = 700;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
                                     "sub.start", "sub.stop", "posture.set", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
-                                    "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
+                                    "deployment.authority_update", "deployment.reset", "deployment.set_unlock", "deployment.continuity.put", "deployment.continuity.export",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "clock.back", "advert.send", "device.reboot", "device.reset", "identity.key.export",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
                                     "update.manifest", "update.status", "update.offer", "update.chunk",
@@ -155,6 +155,8 @@ const OpEntry OPS[] = {
   {"deployment.authority_update", MeconIface::opDeployUpdate, PRIV_WRITE, true},
   {"deployment.reset", MeconIface::opDeployReset, PRIV_WRITE, true},
   {"deployment.set_unlock", MeconIface::opDeploySetUnlock, PRIV_WRITE, true},
+  {"deployment.continuity.put", MeconIface::opContinuityPut, PRIV_WRITE, true},
+  {"deployment.continuity.export", MeconIface::opContinuityExport, PRIV_READ, false},   // never cached
   // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
   {"deployment.unlock_challenge", MeconIface::opDeployUnlockChallenge, PRIV_WRITE, false},
   {"deployment.unlock", MeconIface::opDeployUnlock, PRIV_WRITE, false},
@@ -1850,6 +1852,7 @@ void MeconIface::loop(uint32_t now) {
   }
   _gap.tick(now);
   _jobs.tick(now);
+  _auth.continuityReconcile(Posture::isHardened(_mesh->postureValue()));   // Hardened holds no package (#118)
   _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) {
     _mesh->saveDirtyContacts();   // as the native CMD_REBOOT does: a contact change still waiting for its lazy save

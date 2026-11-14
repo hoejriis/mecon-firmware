@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/deployment.continuity.put.result.json",
+  "title": "Result of deployment.continuity.put",
+  "description": "AUTHORITY.md section 10a: the package is stored at the generation given; the package itself is never echoed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "continuity",
+    "generation"
+  ],
+  "properties": {
+    "continuity": {
+      "const": "stored"
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    }
+  }
+}
