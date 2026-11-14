@@ -43,6 +43,28 @@ TEST(LoraLink, AMessageInOrderOrNotCompletesOnce) {
   EXPECT_EQ(nullptr, l.nextComplete());
 }
 
+// A manager's link (#539): a reply still missing frames at its deadline is counted and freed, with which frames came; and
+// the manager answers nothing, since parts-missing is the target's answer to a request.
+TEST(LoraLink, AReplyMissingAFrameExpiresCountedWithItsFrames) {
+  LoraLink l;
+  EXPECT_EQ(LoraLink::F_PARTIAL, feed(l, KEY_A, frame(5, 0, 3, LORA_REQ_PAYLOAD), 1000));
+  EXPECT_EQ(LoraLink::F_PARTIAL, feed(l, KEY_A, frame(5, 2, 3, 4), 1000));
+  l.expireReplies(1000 + LORA_REASSEMBLY_MS - 1);
+  EXPECT_EQ(0u, l.counts().incomplete) << "not before its deadline";
+  EXPECT_FALSE(l.lastIncomplete().any);
+  l.expireReplies(1000 + LORA_REASSEMBLY_MS);
+  EXPECT_EQ(1u, l.counts().incomplete);
+  ASSERT_TRUE(l.lastIncomplete().any);
+  EXPECT_EQ(5, l.lastIncomplete().xid);
+  EXPECT_EQ(3, l.lastIncomplete().count);
+  EXPECT_EQ(0x5, l.lastIncomplete().have) << "frames 0 and 2 came; 1 was lost";
+  Sent s;
+  l.tick(1000 + LORA_REASSEMBLY_MS + 1, sendTo, &s);
+  EXPECT_TRUE(s.frames.empty()) << "a manager sends no parts-missing";
+  EXPECT_EQ(LoraLink::F_COMPLETE, feed(l, KEY_A, frame(6, 0, 1, 4), 2000 + LORA_REASSEMBLY_MS))
+      << "freed: the next reply starts afresh";
+}
+
 TEST(LoraLink, TheBlockPaddingOfTheDatagramIsNotMessage) {
   LoraLink l;
   std::vector<uint8_t> first = frame(7, 0, 2, LORA_REQ_PAYLOAD, 'a');

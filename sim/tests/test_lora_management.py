@@ -13,7 +13,7 @@ from sim.harness import CompanionClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
 import mecon_schema  # noqa: E402
-from test_deployment_authority import SECRET, Dev, RTC, apply_name, update_args, wrap  # noqa: E402
+from test_deployment_authority import SECRET, Dev, RTC, apply_name, provision_args, update_args, wrap  # noqa: E402
 from test_deployment_authority_server import Srv  # noqa: E402
 from test_provenance import verifies  # noqa: E402
 
@@ -698,3 +698,49 @@ def test_a_job_event_waits_for_room_on_a_full_queue(ether, nodes, tmp_path):
             d.i.events.append(msg_in)
     assert got, "the job's confirmed state was lost on the full queue: %s" % [e.get("ev") for e in d.i.events]
     assert d.i.request("status.get")["result"].get("events_dropped", 0) >= 1, "the queue was full: a snapshot was dropped"
+
+
+def test_a_companion_that_has_managed_still_answers_its_whole_status_over_lora(ether, nodes):
+    # A Companion's status.get gains rf once it has received a reply frame (#531). Over LoRa that took its whole status past
+    # one signed reply: wiotest, a manager earlier that night, answered bilbo's relay "too-large-to-sign" (#539). Over LoRa the
+    # manager's own members are left out; over the cable they stay.
+    d, m = enrolled(nodes, ether, "companion_standalone", "rfm")
+    r = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="m1"), timeout=90.0)
+    assert r and r["status"] == "ok", r
+    assert "rf" in m.i.request("status.get")["result"], "the manager now has rf counts, over its cable"
+    m_key = m.i.request("hello")["result"]["node_key"]
+    assert m.i.request("deployment.provision", provision_args(m_key, 1))["status"] == "ok"
+    assert d.i.request("sub.start", {"stream": "rf", "lifetime_s": 300})["status"] == "ok"
+    msg = json.dumps(wrap(m_key, "status.get", job=None, rid="back1"), separators=(",", ":"))
+    q = d.send(wrap(d.node_key, "rf.request", {"to": m_key, "message": msg}, job=9), 10)   # d is enrolled: signed
+    assert q["status"] == "ok", q
+    xid, got, end = q["result"]["xid"], None, time.time() + 90
+    while time.time() < end and got is None:
+        got = next((e for e in d.i.events if e.get("ev") == "rf" and e["data"].get("xid") == xid), None)
+        e = d.i.read_message(0.5)
+        if e and "ev" in e:
+            d.i.events.append(e)
+    assert got and "message" in got["data"], got
+    back = json.loads(got["data"]["message"])
+    assert back["status"] == "ok", "the manager's whole status over LoRa: %s" % back
+    assert "rf" not in back["result"] and "events_dropped" not in back["result"], sorted(back["result"])
+    assert verifies(got["data"]["message"], m_key, "result")
+
+
+def test_a_reply_missing_frames_expires_counted_with_the_frames_that_came(ether, nodes):
+    # In the night run wiotest took 10 reply frames and made no message, yet counted nothing: the manager's side was never
+    # ticked, so a reply missing a frame never met its deadline (#539). Here the target's reply is cut after its first frame.
+    d, m = enrolled(nodes, ether, "companion_standalone", "rfx")
+    msg = json.dumps(wrap(d.node_key, "status.get", job=None, rid="x1"), separators=(",", ":"))
+    sent = len(ether.tx_log)
+    assert m.i.request("rf.request", {"to": d.node_key, "message": msg})["status"] == "ok"
+    end = time.time() + 90
+    while time.time() < end and not any(t.src == "rfx" and t.length > 100 and "mgrrfx" in t.delivered_to
+                                        for t in ether.tx_log[sent:]):   # a reply frame, delivered
+        time.sleep(0.02)
+    ether.set_loss("rfx", "mgrrfx", 1.0, both=False)           # the rest of the reply never reaches the manager
+    time.sleep(75)                                            # past the 60 s reassembly deadline
+    rf = m.i.request("status.get")["result"]["rf"]
+    assert rf["incomplete"] == 1 and rf["completed"] == 0, rf
+    li = rf["last_incomplete"]
+    assert li["count"] >= 6 and li["have"] & 1 and li["have"] != (1 << li["count"]) - 1, li
