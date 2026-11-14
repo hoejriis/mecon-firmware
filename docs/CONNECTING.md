@@ -46,7 +46,7 @@ set mqtt.profile 0 pwd <secret>
 get mqtt.status
 ```
 
-**A private CA instead of a fingerprint.** `tools/mqtt_ca_commands.py <profile> <ca.pem>` prints the `ca begin`, `ca add …` and `ca end` lines to paste ([setting a CA anchor](MQTT.md#setting-a-ca-anchor-over-the-console)).
+**A private CA instead of a fingerprint.** `tools/mqtt_ca_commands.py <profile> <ca.pem>` prints the `ca begin`, `ca add …` and `ca end` lines to paste ([setting a CA anchor](MQTT.md#setting-a-ca-anchor-over-the-console)). A manager sets either kind in one request instead ([over the device interface](MQTT.md#setting-an-anchor-over-the-device-interface)).
 
 **A broker on the LAN.** `type discovery` with `site <id>` finds a broker by mDNS. The device uses it only if it advertises that site and passes TLS verification against the profile's anchor.
 

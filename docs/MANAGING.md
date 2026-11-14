@@ -46,6 +46,15 @@ A request names an operation and carries an id. The result repeats the id:
 
 `tools/mecon_iface_hw.py` runs the published request fixtures against a board over `serial`, `ble`, `console` or `mqtt`, and is a quick way to see the interface answer. Some fixtures change settings, so use it on a spare board.
 
+### Settings and actions from the stock CLI
+
+The settings and actions that stock MeshCore offers only on its CLI also run through the interface, on every role:
+- **Companion:** the BLE PIN (`ble.pin.set`), the time-zone offset (`tz.offset`), contact auto-add, telemetry sharing and the advert location, the radio preferences, and `contact.capacity`.
+- **Repeater and Room server:** the flood limits, the board's readings and battery divider, power saving, sensor and GPS settings, and the server actions: `clock.reset`, `stats.clear`, the packet log, `radio.temp`, `neighbour.*` on a Repeater and `room.post` on a Room server.
+- **Every role:** `audit.list` reads the audit log's history, and on builds with Wi-Fi, profiles can be removed and broker anchors set (`net.profile.clear`, `mqtt.profile.anchor`).
+
+Each runs the CLI line it stands for, as the caller, so the CLI's own permission check decides it. Some are limited to one role or path, such as `log.read` to the console and `clock.back` to the cable: see [what differs](SUPPORTED_HARDWARE.md#what-differs-and-why) and the [managed operations](contract/OPERATIONS.md#51-device-interface-operations).
+
 ## Changes that could cut you off
 
 A change to the radio, transmit power, connectivity mode, Wi-Fi or broker settings could lose the link it was sent over. From anything except the cable, such a change must ask for confirmation:

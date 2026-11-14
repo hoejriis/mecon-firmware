@@ -131,7 +131,20 @@ Measured on v3test (V3 standalone Companion), against a bench broker serving a c
 
 The steady heap of a session rises by 5.5 to 6.6 KB. The low-water hardly moves: it is set during the handshake, while the chain is still held, together with the handshake's own working set (the RSA verification, and the 16 KB TLS input buffer a broker may fill with a full record).
 
-**Why the Heltec V3 does not reach the 2.0.17 low-water.** Against F2 (wss, every stream on, the pilot on v0.3.2), the lowest `min_free` measured is about 25 KB, against 51.7 KB on Arduino-ESP32 2.0.17. The levers tried that move it are in this page: the TLS output buffer, dynamic Wi-Fi TX buffers, the removed components, the BT controller's memory in Wi-Fi mode and this one. Fewer Wi-Fi RX buffers and fewer LWIP sockets did not help. A shorter chain from the broker (two certificates instead of three) is worth about 1.6 KB of steady heap and is the broker's setting. What remains is ESP-IDF 5.3's larger Wi-Fi and TLS working set during a handshake, which no setting found here reduces.
+### Long-lived tables before TLS
+
+In Wi-Fi mode the standalone Companion allocates its result cache, job table, inbox and message table before Wi-Fi and TLS start (from v0.3.4). Allocated after the handshake, as before, they split the heap for the rest of the session, and the largest free block sat under the 20,480 B floor.
+
+Measured on the pilot (v3test, V3 standalone Companion, enrolled, serving the production Backend over `wss` with TLS verified), read over the cable every 10 s:
+
+| Build | Largest block, settled | Lowest largest block | `min_free` | Under the floor |
+|---|---|---|---|---|
+| v0.3.2, 30 minutes, 2026-11-12 | 15,348 B | 15,348 B | 19,716 B | yes |
+| this change, one hour, 2026-11-12 | 24,564 B | 22,516 B (`mqtt.publish`) | 28,648 B (`mqtt.connect`) | never |
+
+The v0.3.4 release image, an hour on 2026-11-13, kept above the floor: `heap_low` read 0 in all 359 samples. The largest block's lowest reading, 21,492 B, came while MQTT publishes were in flight; each holds 2,048 B of send buffers until the broker acknowledges it, for about 200 ms. Between publishes the largest block settles at 24,564 B, about 4 KB above the floor. `get mecon.heaplow` and the runtime stream's `heap_lows` name what was running at each low, which is where the operation names in the table come from.
+
+**Why the Heltec V3 does not reach the 2.0.17 low-water.** Against F2 (wss, every stream on, the pilot), the lowest `min_free` measured was about 25 KB on v0.3.2 and 28,648 B with the long-lived tables first, against 51.7 KB on Arduino-ESP32 2.0.17. The levers tried that move it are in this page: the TLS output buffer, dynamic Wi-Fi TX buffers, the removed components, the BT controller's memory in Wi-Fi mode, the freed certificate chain and the long-lived tables. Fewer Wi-Fi RX buffers and fewer LWIP sockets did not help. A shorter chain from the broker (two certificates instead of three) is worth about 1.6 KB of steady heap and is the broker's setting. What remains is ESP-IDF 5.3's larger Wi-Fi and TLS working set during a handshake, which no setting found here reduces.
 
 ### The Heltec V4 has its own rebuilt libraries
 

@@ -65,6 +65,10 @@ A CA certificate is 600 to 1,900 characters and the console line takes 79, so it
 - `ca end` decodes the text and installs it only if it is one complete DER certificate (a SEQUENCE whose declared length is exactly what arrived), so a damaged or truncated paste is refused with `ERR: ca is not one complete base64 DER certificate; the profile is unchanged`. It then saves the prefs and replaces any fingerprint anchor. That check proves the shape; it does not prove the certificate is the right one or parses as X.509, which the connect finds out (and reports as `pin`).
 - A pasted `-----BEGIN CERTIFICATE-----` line is skipped, so the lines of a PEM file can be sent as they are. `ca begin` starts again; `ca clear` and `anchor clear` remove a CA; `set mqtt.profile <n> clear` removes the profile and its CA and drops its staging buffer. A second profile may stage only after the first finishes: there is one staging buffer.
 
+### Setting an anchor over the device interface
+
+A manager sets the anchor in one request with `mqtt.profile.anchor`: a fingerprint, a whole CA certificate as base64 DER (checked whole, as `ca end` checks it), or `clear`. `net.profile.clear` removes a profile. Any caller but the cable is refused (`in-use`) for the profile its own session runs on ([managed operations](contract/OPERATIONS.md#51-device-interface-operations)).
+
 ### WebSocket
 
 A static profile with `transport ws` speaks MQTT 3.1.1 over WebSocket (RFC 6455, subprotocol `mqtt`), for a broker served only that way, typically behind a reverse proxy on port 443. With TLS on it is WSS. Nothing about authentication changes:

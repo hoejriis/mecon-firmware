@@ -39,7 +39,7 @@ Each of these is bounded and lives in RAM where the [contract](contract/OPERATIO
 
 ## Configuration
 
-Settings are the device's CLI settings, read and written with `config.schema`, `config.get` and `config.apply`. A change that could cut the manager off (radio, transmit power, connectivity, Wi-Fi or broker settings) must ask for confirmation, and reverts unless `job.confirm` follows ([managed operations](contract/OPERATIONS.md)). Wi-Fi profiles, broker profiles with their TLS anchors, and the broker roles a Deployment assigns (local, primary, secondary) are all supplied this way or at provisioning. Broker credentials are write-only.
+Settings are the device's CLI settings, read and written with `config.schema`, `config.get` and `config.apply`. A change that could cut the manager off (radio, transmit power, connectivity, Wi-Fi or broker settings) must ask for confirmation, and reverts unless `job.confirm` follows ([managed operations](contract/OPERATIONS.md)). Wi-Fi profiles, broker profiles and the broker roles a Deployment assigns (local, primary, secondary) are supplied this way or at provisioning. A broker's TLS anchor, a fingerprint or a CA, is set or cleared with `mqtt.profile.anchor`, and a profile is removed with `net.profile.clear`. Broker credentials are write-only.
 
 ## Telemetry and updates
 

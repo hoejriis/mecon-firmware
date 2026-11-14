@@ -38,6 +38,13 @@ One management model covers every path: an operation means the same wherever it 
 | The sensor role | No device interface | Owner decision |
 | Local access on each role | Companion: app frames over USB and BLE. Repeater, Room server: a console line over USB | Role: the stock roles differ |
 | Messages, received-message collection, contact operations and `rf.request` | Companion only | Role: a Repeater or Room server has no stock chat client |
+| Neighbour operations (`neighbour.*`) | Repeater only | Role: only a Repeater keeps a neighbour table |
+| Room posts (`room.post`) | Room server only | Role: only a Room server keeps posts |
+| GPS operations (`gps.*`) | Repeater and Room server builds with a GPS receiver | Hardware and role |
+| The BLE PIN and bonds (`ble.pin.*`, `ble.bonds`) | Companion builds with BLE | Hardware and role: only a Companion has BLE |
+| Reading the packet log (`log.read`) | The Repeater and Room server console only. A broker session is refused | Security rule: the stock `log` command runs from the console only |
+| Setting a clock back (`clock.back`) | A Companion's cable only | Security rule: it is destructive, since peers that hold the contact ignore its adverts for the time it went back |
+| Server actions, and the board, sensor, GPS, audit and network-profile operations, over LoRa | Not carried. Use USB, the console or MQTT | LoRa carries a fixed set of operations ([LoRa management](contract/LORA_MANAGEMENT.md)); the [operation matrix](contract/OPERATIONS.md#51-device-interface-operations) gives each operation's paths |
 | Channels on a Repeater or Room server | One management slot, with no channel messaging | Role: no native channel table |
 | Secrets and sensitive operations over LoRa | Never, on either path | Security rule |
 | Results that list or reveal state, over LoRa | Point to point only | Privacy rule: every channel member can read a channel reply |
