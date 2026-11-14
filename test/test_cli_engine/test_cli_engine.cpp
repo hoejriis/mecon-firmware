@@ -273,6 +273,7 @@ TEST(Registry, CompanionClassification) {
     {"set mqtt.enabled 1", C_WRITE}, {"rebootnow", C_WRITE}, {"reboot now", C_WRITE}, {"unknowncommand", C_WRITE},
     {"", C_WRITE}, {"set postures hardened", C_WRITE}, {"get auditx", C_READ},
     {"clock", C_WRITE}, {"neighbors", C_WRITE}, {"gps", C_WRITE}, {"region", C_WRITE}, {"erase", C_WRITE},
+    {"stats-packets", C_WRITE},   // Repeater-only: unknown on a Companion
   };
   for (auto& c : cases) EXPECT_EQ(classify(c.line, ROLE_COMPANION), c.cls) << c.line;
 }
@@ -292,6 +293,8 @@ TEST(Registry, RepeaterClassification) {
     {"sensor set a b", C_WRITE}, {"gps on", C_WRITE}, {"powersaving on", C_WRITE}, {"clear stats", C_WRITE},
     {"reboot now", C_WRITE}, {"time 5", C_WRITE}, {"neighbor.remove aa", C_WRITE},
     {"get connectivity.mode", C_READ},   // a read by prefix, as a Companion-only command it is unknown here
+    // Issue #563: the stock counters only read; with trailing words, or misspelled, they stay writes
+    {"stats-packets", C_READ}, {"stats-radio", C_READ}, {"stats-core", C_READ}, {"stats-packets x", C_WRITE}, {"stats-packetsx", C_WRITE},
   };
   for (auto& c : cases) EXPECT_EQ(classify(c.line, ROLE_REPEATER), c.cls) << c.line;
 }

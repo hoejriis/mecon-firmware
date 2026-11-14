@@ -28,7 +28,7 @@ A remote caller never inherits a local caller's privileges: a LoRa or MQTT calle
 
 | Class | Commands |
 |---|---|
-| `read` | `get ...`, `ver`, `board`; on a repeater or room server also `clock`, `neighbors`, `power`, `powersaving`, `region`, `region get`, `sensor get`, `sensor list`, `gps` |
+| `read` | `get ...`, `ver`, `board`; on a repeater or room server also `clock`, `neighbors`, `power`, `powersaving`, `region`, `region get`, `sensor get`, `sensor list`, `gps`, `stats-packets`, `stats-radio`, `stats-core` |
 | `write` | everything else that changes a setting or transmits, including `set ...`, `password`, `advert`; **also the class of any command nobody registered** |
 | `secret` | private-key material: `get prv.key`, `set prv.key`; the Companion frames `CMD_EXPORT_PRIVATE_KEY` and `CMD_IMPORT_PRIVATE_KEY` |
 | `posture` | `set posture ...`, `get audit`, `set connectivity.mode`, `set mqtt.profile <n> manage ...` |
