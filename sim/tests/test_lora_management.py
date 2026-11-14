@@ -627,14 +627,38 @@ def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
     assert tx["first_queued"] == tx["first_sent"] == 1 and tx["rest_queued"] == tx["rest_sent"] >= 1, tx
     # when each frame went on the air and was heard (#542): the target's frame 0 is among its sends, and the manager heard
     # every reply frame, in order, its times rising and none from the future
-    sent = d.i.request("status.get")["result"]["lora_tx"]
-    assert 0 in [f[0] for f in sent["recent"]], sent
-    assert all(f[1] <= sent["now_ms"] for f in sent["recent"]), sent
-    heard = m.i.request("status.get")["result"]["rf"]
+    sent = d.i.request("lora.trace")["result"]
+    assert 0 in [f[0] for f in sent["sent"]], sent
+    assert all(f[1] <= sent["now_ms"] for f in sent["sent"]), sent
+    heard = m.i.request("lora.trace")["result"]
     idx = [h[1] for h in reversed(heard["heard"])]
     assert idx[:7] == sorted(idx[:7]) and 0 in idx, heard
     times = [h[2] for h in reversed(heard["heard"])]
     assert times == sorted(times) and times[-1] <= heard["now_ms"], heard
+
+
+def test_an_enrolled_managers_status_still_fits_a_signed_result(ether, nodes):
+    # v0.3.6 put the frame timing in status.get. On an enrolled Companion that had managed (bilbo on F2, 2026-11-14), every
+    # status.get then answered busy too-large-to-sign: the signed result had no room for the rings. The rings now have a
+    # read of their own, lora.trace, and status.get keeps the counts.
+    d, m = enrolled(nodes, ether, "companion_standalone", "rft")
+    for k in range(3):   # enough requests and replies to fill both rings, 8 sent and 8 heard
+        r = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="st%d" % k), timeout=90.0)
+        assert r and r["status"] == "ok", r
+    key = m.i.request("hello")["result"]["node_key"]
+    assert m.i.request("deployment.provision", provision_args(key))["status"] == "ok"   # the manager's results are signed now
+    s = m.i.request("status.get")
+    assert s["status"] == "ok", s
+    assert s["result"]["rf"]["replies"] >= 6 and s["result"]["lora_tx"]["first_sent"] >= 1, s["result"]
+    flat = json.dumps(s["result"])
+    assert all('"%s"' % k not in flat for k in ("heard", "sent", "recent")), "the rings are lora.trace's, not status.get's"
+    t = m.i.request("lora.trace")
+    assert t["status"] == "ok", t
+    assert not mecon_schema.check(t["result"], mecon_schema.load("lora.trace.result.json")), t
+    newest = t["result"]["heard"][0][0]   # the ring also holds the end of the reply before
+    idx = [h[1] for h in reversed(t["result"]["heard"]) if h[0] == newest]
+    assert 0 in idx and idx == sorted(idx), t["result"]
+    assert all(f[1] <= t["result"]["now_ms"] for f in t["result"]["sent"]), t["result"]
 
 
 def test_an_rf_reply_waits_for_room_behind_observations(ether, nodes, tmp_path):
