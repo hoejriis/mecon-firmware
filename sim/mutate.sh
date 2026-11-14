@@ -79,7 +79,8 @@ PY
   verdict=error
   if [ $rc -eq 0 ]; then verdict=survived
   else case "$target" in
-    unit:*) grep -Eq "test cases: [0-9]+ failed|[0-9]+ failed, [0-9]+ succeeded|\[FAILED\]" ".sim-logs/mut_$name.log" && verdict=caught ;;
+    # a test that crashes on the broken code (a read past a guard page) caught it too: a build error prints no signal
+    unit:*) grep -Eq "test cases: [0-9]+ failed|[0-9]+ failed, [0-9]+ succeeded|\[FAILED\]|Program received signal" ".sim-logs/mut_$name.log" && verdict=caught ;;
     *) [ $rc -eq 1 ] && grep -Eq "[0-9]+ failed" ".sim-logs/mut_$name.log" && verdict=caught ;;
   esac; fi
   if [ "$verdict" = survived ]; then echo "SURVIVED: $name (its tests still pass with the code broken)"; SURVIVED=1; fi
