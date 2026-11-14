@@ -143,6 +143,30 @@ def test_a_cancel_reverts_and_a_reboot_while_pending_reverts_at_boot(nodes):
     assert g["state"] == "reverted" and g["owed"] is True, g
 
 
+def delays(i):
+    keys = ["rxdelay", "txdelay", "direct.txdelay"]
+    return ok(i.request("config.get", {"keys": keys}), "config.get.result.json")["values"]
+
+
+@pytest.mark.timescale(10)
+def test_a_revert_puts_back_a_decimal_as_the_device_printed_it(nodes):
+    # 0.2 is stored as a float and read back as "0.1999999", nine characters. A revert must put that back too: on v3test a
+    # group of three reverted two and left direct.txdelay changed, the job failed (2026-11-14).
+    n = ble_boot(nodes, "rvd", PIN)
+    b, i = ble(n)
+    job = i.request("config.apply", {"set": {"rxdelay": "0", "txdelay": "0.5", "direct.txdelay": "0.2"},
+                                     "confirm": {}})["result"]["job"]
+    assert i.request("job.confirm", {"job": job})["result"]["state"] == "confirmed"
+    before = delays(i)
+    assert len(before["direct.txdelay"]) > 8, before   # the case that matters: longer than a request may send
+    job = i.request("config.apply", {"set": {"rxdelay": "1", "txdelay": "0.7", "direct.txdelay": "0.7"},
+                                     "confirm": {}})["result"]["job"]
+    r = i.request("job.cancel", {"job": job})
+    assert r["status"] == "ok" and r["result"]["state"] == "reverted", r
+    after = delays(i)   # the CLI prints a float truncated, not rounded: a value read and set again can drop its last digit
+    assert all(abs(float(after[k]) - float(before[k])) < 1e-6 for k in before), (before, after)
+
+
 def test_a_signed_caller_on_the_cable_is_not_the_cable(nodes):
     d = dep_boot(nodes, "sgn")
     assert d.provision()["status"] == "ok"
