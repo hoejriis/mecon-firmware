@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include <vector>
+#include <sys/mman.h>
+#include <unistd.h>
 #include "helpers/iface/PacketTransmit.h"
 
 using namespace Iface;
@@ -49,11 +51,30 @@ TEST(PacketTransmit, TheLargestPacketFitsAndOneBytePastThePayloadBoundDoesNot) {
   EXPECT_STREQ("malformed", checkRawPacket(over.data(), over.size(), nullptr));
 }
 
+// n bytes of b placed flush against a page that cannot be read: a read past the end crashes the test instead of passing
+// unseen (a missing length check still ends in "malformed" by the payload bound, but only after reading past the bytes).
+struct Guarded {
+  uint8_t* base = nullptr;
+  size_t page = 0;
+  const uint8_t* at(const std::vector<uint8_t>& b, size_t n) {
+    page = (size_t)sysconf(_SC_PAGESIZE);
+    base = static_cast<uint8_t*>(mmap(nullptr, 2 * page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+    mprotect(base + page, page, PROT_NONE);
+    uint8_t* p = base + page - n;
+    memcpy(p, b.data(), n);
+    return p;
+  }
+  ~Guarded() { if (base) munmap(base, 2 * page); }
+};
+
 TEST(PacketTransmit, ShortOrInconsistentBytesAreMalformedAndNothingIsReadPastThem) {
   const auto ok = native(ROUTE_TYPE_TRANSPORT_FLOOD, PAYLOAD_TYPE_TXT_MSG, {1, 2, 3, 4}, 10);
   // every truncation, including inside the transport codes and the path, which readFrom would read past
-  for (size_t n = 0; n < ok.size() - 10; n++)
-    EXPECT_STREQ("malformed", checkRawPacket(ok.data(), n, nullptr)) << "truncated to " << n;
+  for (size_t n = 1; n < ok.size() - 10; n++) {
+    Guarded g;
+    EXPECT_STREQ("malformed", checkRawPacket(g.at(ok, n), n, nullptr)) << "truncated to " << n;
+  }
+  EXPECT_STREQ("malformed", checkRawPacket(ok.data(), 0, nullptr));
   EXPECT_STREQ("malformed", checkRawPacket(nullptr, 5, nullptr));
   auto v2 = native(ROUTE_TYPE_FLOOD, PAYLOAD_TYPE_TXT_MSG, {}, 10);
   v2[0] |= (1 << PH_VER_SHIFT);
