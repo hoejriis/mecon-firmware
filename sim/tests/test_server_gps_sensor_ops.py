@@ -72,7 +72,10 @@ def test_gps_on_a_board_without_a_receiver(ether, nodes, kind):
     r = d.i.request("gps.sync")
     assert r["status"] == "failed" and r["error"] == "no-gps", r
     assert d.i.request("gps.set", {"on": True})["status"] == "ok", "the toggle is a setting, receiver or not, as in the CLI"
-    assert d.i.request("gps.setloc")["status"] == "ok", "as the CLI's: it saves the sensor manager's position, whatever it is"
+    lat = d.cli.command("get lat")
+    r = d.i.request("gps.setloc")
+    assert r["status"] == "failed" and r["error"] == "no-gps", r   # no receiver, so no position to save (#570)
+    assert d.cli.command("get lat") == lat, "nothing saved"
 
 
 @pytest.mark.parametrize("kind", GPS_KINDS)
@@ -92,6 +95,10 @@ def test_gps_with_a_fix_switches_shares_and_saves(ether, nodes, kind):
         f.write("nofix 3\n")
     res = d.i.request("gps.get")["result"]
     assert res["fix"] is False and res["sats"] == 3 and res["powered"] is True, res
+    lat = d.cli.command("get lat")
+    r = d.i.request("gps.setloc")   # a receiver with no fix: the sensor manager's 0,0 or old value is not a position (#570)
+    assert r["status"] == "failed" and r["error"] == "no-fix", r
+    assert d.cli.command("get lat") == lat, "nothing saved"
     with open(d.n.dir + ".gps", "w") as f:
         f.write("fix 55676100 12568300 15000 9 2\n")
     for p in ("share", "prefs", "none"):

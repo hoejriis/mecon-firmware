@@ -696,8 +696,14 @@ Status opGpsSet(OpContext& c) {
 }
 // gps.sync: `gps sync`, the clock set from the receiver's next fix.
 Status opGpsSync(OpContext& c) { return gpsLine(c, "gps sync"); }
-// gps.setloc: `gps setloc`, the receiver's position into the saved lat and lon; the answer is what was saved.
+// gps.setloc: `gps setloc`, the receiver's position into the saved lat and lon; the answer is what was saved. Only a fix is
+// a position: without one the sensor manager holds 0,0 or an old value, which the CLI line would save all the same (#570).
 Status opGpsSetloc(OpContext& c) {
+  const ConsoleIface::Host& h = self(c)->host();
+  char g[160] = {0};
+  if (!h.run(h.user, "gps", g, sizeof(g))) { c.error = "refused"; return ST_FAILED; }
+  if (strcmp(g, "Can't find GPS") == 0) { c.error = "no-gps"; return ST_FAILED; }
+  if (strncmp(g, "on, ", 4) != 0 || !strstr(g, ", fix,")) { c.error = "no-fix"; return ST_FAILED; }
   const Status st = gpsLine(c, "gps setloc");
   if (st != ST_OK) return st;
   char r[40];
