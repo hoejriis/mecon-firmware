@@ -26,10 +26,9 @@ A device with no Deployment follows its posture rules, under which a trusted lin
 | Layer | What it is | Examples |
 |---|---|---|
 | Generic capability | The firmware does what an authorized manager asks, and reports honestly what happened | Native direct and channel send, with correlated outcomes. Collecting received messages. Contact and channel administration. Supplying a message to the local app without transmitting it. Bounded standing instructions and periodic reports. Compact telemetry |
-| Autonomous firmware process | The device acts by itself under stated criteria. Later work, and a separate thing from the capabilities above | Outage forwarding |
 | Manager orchestration | Policy, which stays in the application | Which gateway to send through, which history to catch up on, how a Deployment is run, RF health policy, carrying favourite channels between devices |
 
-The firmware holds no user favourites database and no routing policy. RF health monitoring is built from compact telemetry and standing instructions, not from a telemetry mechanism of its own. Firmware-image delivery over LoRa is later work too.
+The firmware holds no user favourites database and no routing policy. RF health monitoring is built from compact telemetry and standing instructions, not from a telemetry mechanism of its own. Firmware-image delivery over LoRa, a human-readable `ping` on the management channel, and delegated receive identities on a Companion (receiving and acknowledging for up to four of its owner's other identities) are later work too. Autonomous outage forwarding is not planned.
 
 [MECON journeys](MECON_JOURNEYS.md) maps connected messaging, backfill and RF health onto these operations, with the states a manager sees, the bounds it must plan for, and what the firmware and the manager each provide.
 
