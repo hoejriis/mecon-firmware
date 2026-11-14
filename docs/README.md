@@ -28,6 +28,7 @@ mecon-firmware is MeshCore 1.18.0 with secure management, diagnostics and signed
 - [Device interface](contract/DEVICE_INTERFACE.md): the wire contract over USB, BLE and MQTT, with [schemas](contract/schema) and [fixtures](contract/fixtures)
 - [Management authority](contract/AUTHORITY.md), [managed operations](contract/OPERATIONS.md), [telemetry](contract/TELEMETRY.md), [signed updates](contract/UPDATES.md), [management channel](contract/MANAGEMENT_CHANNEL.md), [management over LoRa](contract/LORA_MANAGEMENT.md)
 - [Integration guide](INTEGRATION.md) and [security model](SECURITY_MODEL.md)
+- [MECON journeys](MECON_JOURNEYS.md): messaging, backfill and RF health, from the device's side
 
 ## Developing
 

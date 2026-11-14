@@ -383,6 +383,16 @@ bool DeployAuth::isWrapper(const char* m, size_t n) {
   return w;
 }
 // The verified body of a signed request, freed wiped: a config.apply carries passwords in clear.
+// Whether a result as run() wrote it is a busy: {"v":1,"id":"...","status":"busy",...}. The status comes right after the id,
+// within the first bytes; an id cannot hold a quote, so the match cannot come from inside it.
+static bool answeredBusy(const char* out, size_t n) {
+  static const char S[] = "\"status\":\"busy\"";
+  const size_t lim = n < 96 ? n : 96;
+  for (size_t i = 0; i + sizeof(S) - 1 <= lim; i++)
+    if (memcmp(out + i, S, sizeof(S) - 1) == 0) return true;
+  return false;
+}
+
 static void freeBody(char* body, size_t cap) {
   if (body) Iface::wipe(body, cap);
   free(body);
@@ -425,6 +435,8 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   bodyId(v.body, v.body_len, id);
   char key[24];   // the result cache key of this request: '#' is outside the id charset, so no unsigned id can collide
   key[0] = 0;
+  int marked = -1;          // the member whose mark this request raised, and the mark before it
+  uint32_t mark_before = 0;
 
   if (v.cls == Dep::OPC_JOB || v.cls == Dep::OPC_SENSITIVE) {
     // Marks that could not be written back at boot, or after a set change, are retried before anything is accepted.
@@ -481,6 +493,8 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
       freeBody(body, body_cap);
       return n;
     }
+    marked = v.member;
+    mark_before = old.mark;
   }
 
   // Run it as a normal v1.0 request for the signed principal on this transport (Context.remote follows the transport).
@@ -492,7 +506,11 @@ int DeployAuth::dispatchSigned(const Cli::Context& uctx, char nonce_slot[33], co
   _signed = false;
   _signing_issuer[0] = 0;
   _signing_member = -1;
-  if (n > 0 && key[0] && cache) cache->store(key, SIGNED_OP, out, (size_t)n);
+  // busy ran nothing (DEVICE_INTERFACE section 3): the id stays unused, so the same signed bytes run once the bound has
+  // cleared, rather than read back this busy as a duplicate's stored result for good. The reservation stays where it is.
+  const bool not_run = n > 0 && answeredBusy(out, (size_t)n);
+  if (not_run && marked >= 0) _dep->marks.m[marked].wm.mark = mark_before;
+  if (n > 0 && key[0] && cache && !not_run) cache->store(key, SIGNED_OP, out, (size_t)n);
   if (v.cls == Dep::OPC_SENSITIVE || v.cls == Dep::OPC_NONCE) issueNonce(nonce_slot);   // used once
   freeBody(body, body_cap);
   return n;
