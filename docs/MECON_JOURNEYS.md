@@ -140,7 +140,7 @@ A node with no IP link sends a small signed report over LoRa. The manager can as
 | `status.get` | `lora`, and on a Companion `rf` and `lora_tx` | [LORA_MANAGEMENT](contract/LORA_MANAGEMENT.md) section 7 |
 | `rf` stream | On a Companion, the replies and compact reports it hears, as `{"from","report"}` (base64) for the manager to verify | [TELEMETRY](contract/TELEMETRY.md), compact reports |
 
-All of these go over LoRa point to point, and `report.now` goes on the management channel too. Standing instructions are defined under [Standing instructions](contract/OPERATIONS.md#standing-instructions). *(`lora_tx` and `rf.last_incomplete`: On `main`, in the release after v0.3.5.)*
+All of these go over LoRa point to point, and `report.now` goes on the management channel too. Standing instructions are defined under [Standing instructions](contract/OPERATIONS.md#standing-instructions).
 
 ### State machine: one standing instruction
 

@@ -73,7 +73,9 @@ On its own, a device follows its posture rules. To have a manager command it, en
 - results and events are signed by the device;
 - a broker login, a BLE pairing, a TLS session or a channel key never grants authority by itself.
 
-The details, including manager rotation, revocation and local unlock, are in [management authority](contract/AUTHORITY.md). Leaving a Deployment is `deployment.reset` ([update and recover](UPDATING_AND_RECOVERY.md#resets)).
+An enrolled device in Normal can also hold the Deployment's **continuity package**, the material a manager needs to recover the Deployment, encrypted under a passphrase the device never sees. A manager stores it with a signed `deployment.continuity.put`, and it is read back only over the USB cable (`deployment.continuity.export`). Raising the posture to Hardened, leaving the Deployment and a factory reset destroy it.
+
+The details, including manager rotation, revocation, local unlock and the continuity package, are in [management authority](contract/AUTHORITY.md). Leaving a Deployment is `deployment.reset` ([update and recover](UPDATING_AND_RECOVERY.md#resets)).
 
 ## A private management channel
 
