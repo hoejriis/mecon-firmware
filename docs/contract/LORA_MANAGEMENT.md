@@ -64,6 +64,13 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   grants nothing here. The reply travels as a native response datagram to the sender. A verified result goes the way the request
   came (a flood's hops reversed, or directly for a neighbour), or by flood when that is not known. An answer to an unverified
   request never floods (section 7).
+- **How a Companion manager sends the request.** Along the target's known path when it has one. With none, **zero-hop first**:
+  a flood is rebroadcast by every repeater in range, and a rebroadcast that lands while the target's direct reply is on the air
+  destroys a frame of it, the first most often. A zero-hop request is forwarded by nobody, and a neighbour answers it. A zero-hop
+  attempt that hears no reply within 20 s sends the next request to that target by flood. The route that got an answer is kept
+  per target (four targets): zero-hop until a zero-hop attempt goes unanswered, flood for 30 minutes and then zero-hop again.
+  A target that is not a contact is always tried zero-hop. *(On `main`, in the release after v0.3.6. Before it, a request to a
+  contact with no known path was always flooded.)*
 - The datagram carries a one-byte marker (0x1D) after its 4-byte tag, which selects this protocol. It is no password and no native
   request type, so neither can be read as the other. A reply starts with the magic `0x1D "MC1"`.
 - Native addressing (the destination hash, then decryption with the pairwise secret) selects the target. The signed
