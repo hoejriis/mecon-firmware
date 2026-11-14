@@ -133,6 +133,25 @@
           "type": "string"
         }
       }
+    },
+    "continuity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "present",
+        "generation"
+      ],
+      "description": "AUTHORITY.md section 10a: whether the device holds a continuity package and its generation (0 when none), never what it holds. Only on a role that can hold one, with a healthy record.",
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      }
     }
   }
 }

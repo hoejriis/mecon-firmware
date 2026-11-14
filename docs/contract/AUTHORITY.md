@@ -278,6 +278,15 @@ A device entering Hardened while it holds a record must first hold a **local unl
 
 The unlock grants the reads and posture unlock shown in section 9. It never grants key export or configuration writes beyond what signed callers have.
 
+## 10a. The continuity package
+
+An enrolled device in Normal holds the Deployment's **continuity package**: the material a manager needs to bootstrap or recover the Deployment from this device ([Security and authority](SECURITY_AND_AUTHORITY.md), "Protected continuity material"). A MECON Companion holds one by default (the owner's decision on #118). The device never reads the package. A manager encrypts it under a passphrase the user chooses before it arrives, and the passphrase never reaches the device.
+- **Storing it.** `deployment.continuity.put {"package": <base64 of 1 to 768 bytes>, "generation": <1 to 2^32-1>}` is a sensitive operation: a member's signature, a job id and this link's channel nonce. It is answered `{"continuity": "stored", "generation": n}` and never echoes the package. A generation must rise above the one held (`stale_generation`), so a replaced package cannot be put back. Refusals: `not_enrolled`, `unauthenticated`, `deployment_record_corrupt`, `hardened`, `bad-args`.
+- **At rest.** The device seals the package again under a 32-byte wrapping key it makes itself and never exports: an HMAC-SHA-256 keystream and an HMAC-SHA-256 tag, each under its own key derived from it, with a fresh nonce on every put. Package and key are two files, apart from the record. Destroying the key makes the package unreadable, whatever flash still holds.
+- **Exporting it.** `deployment.continuity.export` (no args) answers `{"package", "generation"}`, the package as it was put. It goes to the unsigned USB cable, in Normal, and to nothing else: a signed request, BLE, a broker, TCP and LoRa get `usb_only`. Hardened gets `hardened`, and a device holding none gets `no_continuity`. A sealed file that fails its tag gets `continuity_corrupt`. It is never cached, and someone holding the cable still needs the passphrase to read what comes out.
+- **Destroying it.** Entering Hardened destroys it within one pass of the device's loop, and so does booting in Hardened. Returning to Normal leaves none until a new put. `deployment.reset` and the factory reset destroy it too (section 11).
+- `deployment.get` reports `continuity: {"present", "generation"}`, never the contents, on a role that can hold one.
+
 ## 11. Enrollment changes, reset and recovery
 
 | Operation | Removes | Keeps | Who |
@@ -285,11 +294,12 @@ The unlock grants the reads and posture unlock shown in section 9. It never gran
 | broker or Wi-Fi profile change | that profile | everything else | signed (commit-or-revert, [Operations](OPERATIONS.md) section 3.4) |
 | `deployment.authority_update` | nothing; the set changes | everything | anyone who can reach the device (DAK-signed) |
 | re-enrollment into the same Deployment | nothing | everything; the set and revision move forward | signed `deployment.provision` |
-| `deployment.reset` (unenroll), healthy record | the record, watermarks, local unlock secret, provisioned marker | node key, `device_id`, configuration, contacts, channels | signed, over USB only, in Normal |
+| `deployment.reset` (unenroll), healthy record | the record, watermarks, local unlock secret, continuity package, provisioned marker | node key, `device_id`, configuration, contacts, channels | signed, over USB only, in Normal |
 | `deployment.reset`, corrupt record | the same | the same | USB cable in Normal; local unlock in Hardened |
+| posture raise (Normal → Hardened) | the continuity package (section 10a) | the record | signed (`posture.set`); the cable only with no record |
 | posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed (`posture.set`); the cable only with no record |
 | `identity.rotate` (new owner) | node key, and what was made with it. Companion: contacts, message queue. Repeater: the client ACL. Room server: the client ACL and its posts | configuration, record, posture, `device_id`, and a Companion's channels | signed and sensitive; refused without a readable record. Every role |
-| Companion rescue `rebuild` | nothing: it reformats and saves everything back, the record included | everything | the cable |
+| Companion rescue `rebuild` | the continuity package where it reformats (ESP32); otherwise nothing: it saves everything else back, the record included. A manager puts the package again | everything | the cable |
 | factory reset | everything, the record, the provisioned marker and `device_id` included | nothing | the cable only; never remote, never BLE once enrolled |
 
 Rules:

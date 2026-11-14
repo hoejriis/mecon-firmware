@@ -19,6 +19,7 @@
 #include "helpers/deployment/DepState.h"
 #include "helpers/deployment/DepStore.h"
 #include "helpers/deployment/DepWrapper.h"
+#include "ConfigSnap.h"
 
 namespace Iface {
 
@@ -54,6 +55,10 @@ public:
     // The Repeater and Room server's command handlers learn from Cli::serverCaller() whether the device is enrolled and
     // whether the console line they run is a verified signed request; the Companion has its own path for both.
     bool publish_caller = false;
+    // The continuity package and its wrapping key, two files kept apart from the record (#118); null: the role holds
+    // none, and the continuity operations answer not-on-this-device.
+    SnapStore* cont_blob = nullptr;
+    SnapStore* cont_key = nullptr;
   };
 
   // Loads the record and its marks from the store; called once at boot. With no record a standalone device holds no
@@ -119,6 +124,12 @@ public:
   Status opSetUnlock(OpContext& c);
   Status opUnlockChallenge(OpContext& c);
   Status opUnlock(OpContext& c);
+  // The Deployment continuity package (SECURITY_AND_AUTHORITY, "Protected continuity material"; AUTHORITY section 10a):
+  // stored by a member's signature in Normal, exported to the unsigned cable in Normal, destroyed by Hardened.
+  Status opContinuityPut(OpContext& c);
+  Status opContinuityExport(OpContext& c);
+  // Called on every pass with the posture: in Hardened the wrapping key goes, so the package cannot be read again.
+  void continuityReconcile(bool hardened);
   // The gate of identity.rotate (AUTHORITY.md section 11): ST_OK only for a verified signed request on a device whose record
   // reads back healthy. Anything else is a refusal with a contract code and nothing changes.
   Status rotateGate(OpContext& c);
@@ -128,6 +139,7 @@ public:
   // After the file system has been formatted (the factory reset): the provisioned marker goes with the record, and the
   // state in memory follows what is now stored.
   void onFactoryReset();
+  bool continuityBuilt() const { return _env.cont_blob && _env.cont_key; }
   // The Companion's rescue console rebuild must not unenrol (sections 9, 11): the record's two copies, the marks' two
   // copies and the marker are read before it and written back after. A null snapshot means something exists that cannot
   // be read; the rebuild is then refused.
@@ -177,6 +189,10 @@ private:
   uint32_t _last_update_ms = 0;             // rate limit of deployment.authority_update (flash wear)
   bool _have_update = false;
   LinkUnlock* _link = nullptr;              // the cable link of the request being handled (null: none)
+  bool _cont_key_present = false;          // the wrapping key's file holds a key (read once at boot, then kept equal)
+  void continuityDestroy();                 // the key first, then the package: the key alone already ends it
+  bool continuityRead(uint8_t* pkg, size_t cap, size_t* n, uint32_t* gen);
+  void writeContinuity(JsonWriter& w);
   uint32_t _secret_epoch = 1;               // moves whenever the secret changes or goes; older challenges and unlocks die
   uint8_t _fails = 0;                       // wrong answers since the last success or lockout, for the whole device
   bool _locked = false;
