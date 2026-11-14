@@ -49,6 +49,8 @@ All of them run on a trusted local transport (USB console, or BLE with a non-def
 | `get wifi.status` | `connected profile=<n> ssid=<name> rssi=<dBm> ip=<ip> up=<s>`, or the state: `scanning`, `connecting`, `backoff`, `no-profile`, `off` |
 | `set wifi.ssid`, `set wifi.pwd`, `set wifi.clear`, `get wifi.ssid`, `get wifi.pwd`, `get wifi.enabled`, `get wifi.ip` | stock commands, profile 0 |
 
+Over the device interface, `config.apply` sets the profile keys and `net.profile.clear` removes a profile ([managed operations](contract/OPERATIONS.md#51-device-interface-operations)).
+
 `last=` is the last failure of that profile: `none`, `not-found`, `auth`, `drops`, `timeout` or `other`. A profile edit applies at once (the profile in use is rejoined) with no reboot; `set wifi.enabled` and the first profile on a device that had none still need a reboot to start Wi-Fi.
 
 ## Passwords are write-only
