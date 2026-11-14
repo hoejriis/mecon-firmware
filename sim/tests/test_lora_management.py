@@ -625,6 +625,16 @@ def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
     assert tx["failed"] == 0 and tx["untracked"] == 0, tx
     tx = m.i.request("status.get")["result"]["lora_tx"]       # the manager: the request's frames
     assert tx["first_queued"] == tx["first_sent"] == 1 and tx["rest_queued"] == tx["rest_sent"] >= 1, tx
+    # when each frame went on the air and was heard (#542): the target's frame 0 is among its sends, and the manager heard
+    # every reply frame, in order, its times rising and none from the future
+    sent = d.i.request("status.get")["result"]["lora_tx"]
+    assert 0 in [f[0] for f in sent["recent"]], sent
+    assert all(f[1] <= sent["now_ms"] for f in sent["recent"]), sent
+    heard = m.i.request("status.get")["result"]["rf"]
+    idx = [h[1] for h in reversed(heard["heard"])]
+    assert idx[:7] == sorted(idx[:7]) and 0 in idx, heard
+    times = [h[2] for h in reversed(heard["heard"])]
+    assert times == sorted(times) and times[-1] <= heard["now_ms"], heard
 
 
 def test_an_rf_reply_waits_for_room_behind_observations(ether, nodes, tmp_path):
