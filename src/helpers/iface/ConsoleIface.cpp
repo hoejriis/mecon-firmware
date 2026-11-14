@@ -1683,7 +1683,8 @@ Status ConsoleIface::rawTransmit(OpContext& c) {
   mesh::Packet pkt;
   RawPacketInfo info;
   if (const char* e = checkRawPacket(raw, (size_t)n, &info, &pkt)) { c.error = e; return ST_INVALID; }
-  // The same signed job id gets its stored job, not a second send (the replay check reserved it before this ran).
+  // The same signed job id never reaches here: DeployAuth answers it from the result cache, or duplicate/replay. Kept for
+  // a job id the table still holds after its cached result is gone, which must get its job and no second send.
   char jid[Job::ID_CAP + 1];
   if (!confirmJobId(this, *c.req, jid, sizeof(jid))) return ST_INVALID;
   JobTable* t = _jobs.table();
