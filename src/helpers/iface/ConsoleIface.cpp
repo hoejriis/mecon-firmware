@@ -138,7 +138,8 @@ Status opHello(OpContext& c) {
   if (netProfileOpsBuilt()) for (const char* ncap : NET_CAPABILITIES) add(ncap);
   if (m->host().neighbour) for (const char* ncap : NEIGHBOUR_CAPABILITIES) add(ncap);
   if (strcmp(m->host().role, "room") == 0) add("room.post");
-  if (m->rawTxBuilt()) add("packet.transmit");   // the Repeater: its main gives the sender (#537)
+  if (m->rawTxBuilt()) add("packet.transmit");
+  if (m->auth().continuityBuilt()) { add("deployment.continuity.put"); add("deployment.continuity.export"); }   // the Repeater: its main gives the sender (#537)
 #if ENV_INCLUDE_GPS == 1
   for (const char* gcap : GPS_CAPABILITIES) add(gcap);
 #endif
@@ -737,6 +738,8 @@ Status opDeployProvision(OpContext& c) { return self(c)->auth().opProvision(c); 
 Status opDeployUpdate(OpContext& c) { return self(c)->auth().opUpdate(c); }
 Status opDeployReset(OpContext& c) { return self(c)->auth().opReset(c); }
 Status opDeploySetUnlock(OpContext& c) { return self(c)->auth().opSetUnlock(c); }
+Status opContinuityPut(OpContext& c) { return self(c)->auth().opContinuityPut(c); }
+Status opContinuityExport(OpContext& c) { return self(c)->auth().opContinuityExport(c); }
 Status opDeployUnlockChallenge(OpContext& c) { return self(c)->auth().opUnlockChallenge(c); }
 Status opDeployUnlock(OpContext& c) { return self(c)->auth().opUnlock(c); }
 Status opJobGet(OpContext& c) { return self(c)->jobs().opGet(c); }
@@ -767,6 +770,8 @@ const OpEntry OPS[] = {
   {"deployment.authority_update", opDeployUpdate, PRIV_WRITE, true},
   {"deployment.reset", opDeployReset, PRIV_WRITE, true},
   {"deployment.set_unlock", opDeploySetUnlock, PRIV_WRITE, true},
+  {"deployment.continuity.put", opContinuityPut, PRIV_WRITE, true},
+  {"deployment.continuity.export", opContinuityExport, PRIV_READ, false},   // never cached: the handler checks the caller
   // The handshake is never cached: a stored "unlocked" must not answer a request after the unlock has lapsed.
   {"deployment.unlock_challenge", opDeployUnlockChallenge, PRIV_WRITE, false},
   {"deployment.unlock", opDeployUnlock, PRIV_WRITE, false},
@@ -890,6 +895,8 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   if (_host.dep_store) {
     DeployAuth::Env env;
     env.store = _host.dep_store;
+    env.cont_blob = _host.cont_blob;
+    env.cont_key = _host.cont_key;
     env.node_key = _host.node_key;
     env.publish_caller = true;   // the front door, CommonCLI and the Ethernet console read it (Cli::serverCaller)
     env.now_s = _host.clock_s ? authClock : nullptr;
@@ -1589,6 +1596,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   _gap.tick(now);
   _jobs.tick(now);
   rawTick(now);   // a held packet.transmit, when the duty window has room (#537)
+  _auth.continuityReconcile(Posture::isHardened(_host.posture(_host.user)));   // Hardened holds no package (#118)
   _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0 && _host.board) _host.board->reboot();
   refreshEnvironment(now);

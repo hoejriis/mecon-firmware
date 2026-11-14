@@ -52,7 +52,9 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static Iface::PathFsStore mgmt_record_store("/mgmt_channel");
   static Iface::PathFsStore mgmt_snap_store("/mgmt_snap");
   static Iface::PathFsStore region_snap_store("/region_snap");   // a pending region change's copy of the map
-  static Iface::PathFsStore standing_store("/standing");   // the standing instructions (OPERATIONS.md)
+  static Iface::PathFsStore standing_store("/standing");
+  static Iface::PathFsStore cont_blob_store("/mecon_cont");   // the Deployment continuity package (AUTHORITY 10a)
+  static Iface::PathFsStore cont_key_store("/mecon_contk");   // and its wrapping key, kept apart   // the standing instructions (OPERATIONS.md)
   static bool ifaceRegionsSave(void*) { return the_mesh.saveRegions(); }
   static void ifaceRegionsDefault(void*, const RegionEntry* r) { the_mesh.onDefaultRegionChanged(r); }
   static bool ifaceRun(void*, const char* line, char* reply, size_t cap) {
@@ -210,6 +212,7 @@ void setup() {
                                        &the_mesh.regions(), ifaceRegionsSave, ifaceRegionsDefault, &region_snap_store,
                                        ifaceAclCount, ifaceAclEntry, ifaceReset,
                                        nullptr, ifaceLogRead, ifaceClockGuess,
+                                       &cont_blob_store, &cont_key_store,
                                      };
     dep_store.setFs(fs);
     job_store.setFs(fs);
@@ -218,6 +221,8 @@ void setup() {
     mgmt_record_store.setFs(fs);
     mgmt_snap_store.setFs(fs);
     region_snap_store.setFs(fs);
+    cont_blob_store.setFs(fs);
+    cont_key_store.setFs(fs);
     standing_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
     heapFloor().begin(HEAP_FLOOR_BYTES);   // the enforced heap floor (helpers/HeapFloor.h), as on the Companion: ESP32 only

@@ -216,6 +216,15 @@ TEST_F(Fx, SensitiveOperationsNeedThisLinksNonce) {
             checkOp("ble.pin.get", "{}", ",\"job_id\":8,\"channel_nonce\":\"n0nce-for-this-link\""));
 }
 
+// The continuity package is sensitive too (#118): a put captured on another link cannot be replayed onto this one.
+TEST_F(Fx, ContinuityPutIsSensitiveAndNeedsAJobAndThisLinksNonce) {
+  const char* args = "{\"package\":\"AAAA\",\"generation\":1}";
+  EXPECT_EQ(WR_MALFORMED, checkOp("deployment.continuity.put", args, ""));
+  EXPECT_EQ(WR_BAD_CHANNEL_NONCE, checkOp("deployment.continuity.put", args, ",\"job_id\":9"));
+  EXPECT_EQ(WR_OK, checkOp("deployment.continuity.put", args, ",\"job_id\":9,\"channel_nonce\":\"n0nce-for-this-link\""));
+  EXPECT_EQ(OPC_SENSITIVE, v.cls);
+}
+
 // The secret travels in deployment.set_unlock: sensitive, so a request captured on another link cannot be replayed here.
 TEST_F(Fx, SetUnlockIsSensitiveAndNeedsAJobAndThisLinksNonce) {
   const char* args = "{\"unlock_secret\":\"00\"}";
