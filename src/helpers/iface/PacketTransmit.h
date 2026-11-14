@@ -1,5 +1,5 @@
 #pragma once
-// packet.transmit (OPERATIONS.md section 5.7): the checks a manager-supplied native packet passes before a Repeater queues it.
+// packet.transmit (OPERATIONS.md, "Packet transmission (Repeater)"): the checks a manager-supplied native packet passes before a Repeater queues it.
 // The bytes are Packet::writeTo's: header, the transport codes when the route has them, path_len, path, payload. Every length
 // is checked against what was received, unlike Packet::readFrom and Dispatcher::tryParsePacket, which read the transport
 // codes and path without that check: those parse what the radio heard, this parses what a caller sent.
