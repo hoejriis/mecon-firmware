@@ -10,6 +10,7 @@ class ArduinoSerialInterface : public BaseSerialInterface {
   uint16_t rx_len;
   Stream* _serial;
   uint8_t rx_buf[MAX_FRAME_SIZE];
+  static uint32_t _tx_dropped;
 
 public:
   bool isTrustedTransport() const override { return true; }   // a cable: physical possession
@@ -31,6 +32,8 @@ public:
   bool isConnected() const override;
 
   bool isWriteBusy() const override;
+  // Frames dropped since boot because the host held the cable open without reading (nRF52: SerialTxGate.h).
+  static uint32_t txDropped() { return _tx_dropped; }
   size_t writeFrame(const uint8_t src[], size_t len) override;
   size_t checkRecvFrame(uint8_t dest[]) override;
 };

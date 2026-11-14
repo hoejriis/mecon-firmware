@@ -15,6 +15,7 @@
 #include <helpers/cli/MeconCli.h>
 #include <helpers/cli/CliRegistry.h>
 #include <helpers/BaseSerialInterface.h>
+#include <helpers/ArduinoSerialInterface.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/iface/IfaceConfig.h>
 #include <helpers/iface/AuditOps.h>
@@ -495,6 +496,7 @@ Status opStatus(OpContext& c) {
     m->writeRfCounts(w);   // the manager side: replies to this Companion's rf.request (#531)
     writeLoraTx(w, mesh->loraTx());   // what became of the LoRa management frames this node queued (#542)
     if (const uint32_t d = m->eventsDropped()) { w.key("events_dropped"); w.unum(d); }   // a usig_seq gap's cause (#536)
+    if (const uint32_t d = ArduinoSerialInterface::txDropped()) { w.key("cable_dropped"); w.unum(d); }   // a host that stopped reading (#550)
   }
   w.key("messages"); w.beginObject();   // a manager that reconnects learns there are outcomes to collect
   w.key("open"); w.num(m->messages() ? m->messages()->open() : 0);

@@ -1,10 +1,13 @@
 #include "ArduinoSerialInterface.h"
 #include "esp32/NativeUsbTx.h"
+#include "SerialTxGate.h"
 
 #define RECV_STATE_IDLE        0
 #define RECV_STATE_HDR_FOUND   1
 #define RECV_STATE_LEN1_FOUND  2
 #define RECV_STATE_LEN2_FOUND  3
+
+uint32_t ArduinoSerialInterface::_tx_dropped = 0;
 
 void ArduinoSerialInterface::enable() { 
   _isEnabled = true;
@@ -26,9 +29,9 @@ bool ArduinoSerialInterface::isWriteBusy() const {
 #if defined(SIM_FREE_HEAP)
   if (sim_serial_tx_held()) return true;
 #endif
-#ifdef MECON_NATIVE_USB_TX
-  // A frame waits with its sender rather than overrun the ring, which discards when it overruns (NativeUsbTx.h). With no host
-  // nothing drains, so nothing waits either.
+#if defined(MECON_NATIVE_USB_TX) || defined(NRF52_PLATFORM)
+  // A frame waits with its sender rather than overrun the ring, which discards when it overruns (NativeUsbTx.h), or, on nRF52,
+  // rather than hold the loop until the host reads (SerialTxGate.h). With no host nothing drains, so nothing waits either.
   if (_serial == &Serial && Serial) return Serial.availableForWrite() < (int)(MAX_FRAME_SIZE + 3);
 #endif
   return false;
@@ -39,6 +42,14 @@ size_t ArduinoSerialInterface::writeFrame(const uint8_t src[], size_t len) {
     // frame is too big!
     return 0;
   }
+
+#if defined(NRF52_PLATFORM)
+  // A host that holds the port open without reading: drop the frame, whole, rather than stop the loop with it.
+  if (_serial == &Serial && Serial && !serialRoomFor(Serial, len + 3, [] { return (uint32_t)millis(); }, [] { yield(); })) {
+    _tx_dropped++;
+    return 0;
+  }
+#endif
 
   uint8_t hdr[3];
   hdr[0] = '>';
