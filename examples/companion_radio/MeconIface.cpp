@@ -460,6 +460,22 @@ void writeHealth(JsonWriter& w, MyMesh* mesh) {
   w.endObject();
 }
 
+// status.get's "lora_tx", once a LoRa management frame has been queued here: a message's first frame apart from the rest,
+// queued and on air, then those that failed or waited for airtime, and any the trace lost track of.
+void writeLoraTx(JsonWriter& w, const Iface::LoraTxTrace& t) {
+  if (!t.any()) return;
+  const Iface::LoraTxTrace::Counts& c = t.counts();
+  w.key("lora_tx"); w.beginObject();
+  w.key("first_queued"); w.unum(c.first_queued);
+  w.key("first_sent"); w.unum(c.first_sent);
+  w.key("rest_queued"); w.unum(c.rest_queued);
+  w.key("rest_sent"); w.unum(c.rest_sent);
+  w.key("failed"); w.unum(c.failed);
+  w.key("held"); w.unum(c.held);
+  w.key("untracked"); w.unum(c.untracked);
+  w.endObject();
+}
+
 Status opStatus(OpContext& c) {
   MeconIface* m = self(c);
   MyMesh* mesh = m->mesh();
@@ -477,6 +493,7 @@ Status opStatus(OpContext& c) {
   m->lora().writeCounts(w);
   if (!m->onLora()) {   // over LoRa the whole status is near what one signed reply carries: these would tip it over (#539)
     m->writeRfCounts(w);   // the manager side: replies to this Companion's rf.request (#531)
+    writeLoraTx(w, mesh->loraTx());   // what became of the LoRa management frames this node queued (#542)
     if (const uint32_t d = m->eventsDropped()) { w.key("events_dropped"); w.unum(d); }   // a usig_seq gap's cause (#536)
   }
   w.key("messages"); w.beginObject();   // a manager that reconnects learns there are outcomes to collect

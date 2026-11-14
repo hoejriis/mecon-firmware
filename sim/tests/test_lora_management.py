@@ -619,6 +619,12 @@ def test_a_companions_whole_status_reaches_a_companion_manager(ether, nodes):
     assert verifies(r.raw, d.node_key, "result"), "read whole: the signature still holds"
     rf = m.i.request("status.get")["result"]["rf"]   # the manager's side, where a lost reply would be seen (#531)
     assert rf["replies"] >= 6 and rf["completed"] >= 1, rf
+    # every frame each side queued went on air, a message's first among them (#542)
+    tx = d.i.request("status.get")["result"]["lora_tx"]       # the target: the reply's frames
+    assert tx["first_queued"] == tx["first_sent"] == 1 and tx["rest_queued"] == tx["rest_sent"] >= 5, tx
+    assert tx["failed"] == 0 and tx["untracked"] == 0, tx
+    tx = m.i.request("status.get")["result"]["lora_tx"]       # the manager: the request's frames
+    assert tx["first_queued"] == tx["first_sent"] == 1 and tx["rest_queued"] == tx["rest_sent"] >= 1, tx
 
 
 def test_an_rf_reply_waits_for_room_behind_observations(ether, nodes, tmp_path):
