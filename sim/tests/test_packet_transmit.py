@@ -13,6 +13,7 @@ from test_deployment_authority_server import Srv  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_schema  # noqa: E402
+import meshcore_grp  # noqa: E402
 
 PAYLOAD_TYPE_GRP_TXT, PAYLOAD_TYPE_ADVERT = 5, 4
 
@@ -110,3 +111,20 @@ def test_the_room_server_does_not_offer_it(ether, nodes):
     s = Srv(nodes("room_server", "pts", seed=46, rtc=RTC, ether_path=ether.path).start())
     assert "packet.transmit" not in capabilities(s)
     assert s.i.request("packet.transmit", {"packet": "AAAA"})["error"] == "not-on-this-device"
+
+
+def test_a_channel_message_a_manager_built_reaches_a_stock_companion_through_the_repeater(ether, nodes):
+    # As on the bench (#537 stage 3): the manager builds the packet on a private test channel the receiver holds, and
+    # the Repeater only transmits it; it holds no channel key.
+    r = Srv(nodes("repeater", "ptm", seed=47, rtc=RTC, ether_path=ether.path).start())
+    assert r.provision()["status"] == "ok"
+    b = companion(nodes, ether, "ptb", 48)
+    secret = bytes(range(16, 32))                    # a test channel's, made up here
+    assert b.set_channel(1, "t537", secret)[0] == 0
+    ether.set_link("ptm", "ptb")
+    raw = meshcore_grp.grp_txt(secret, "bench", "built by the manager", RTC + 200)
+    res = r.send(wrap(r.node_key, "packet.transmit", {"packet": base64.b64encode(raw).decode()}, job=7), 10)
+    assert res["status"] == "ok", res
+    got = b.sync_messages(timeout=90)   # the duty window starts full after a boot: it is held until there is room
+    assert got and got[0]["kind"] == "channel" and got[0]["channel"] == 1, got
+    assert got[0]["text"] == "bench: built by the manager", got
