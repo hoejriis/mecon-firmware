@@ -166,7 +166,7 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | `power` | Battery voltage, USB, solar and charger state. | stock | read | Exactly `power`. |
 | `password <new>` | Change the admin password. | stock | write | The reply echoes the new password in clear (stock). While the admin password is the stock default (`password`, the build's own default, or empty) remote admin is off entirely; setting it here switches remote admin on. |
 | `clear stats` | Reset the statistics counters. | stock | write |  |
-| `stats-core` | Core statistics: battery, uptime, queue, debug flags. | stock | read | Console only: the handler refuses a remote caller. Exactly `stats-core`; with trailing words it is classed `write`. A read, so an enrolled device answers it on the unsigned cable. *(On `main`, in the release after v0.3.6. Before it, `write`, refused on an enrolled device's cable.)* |
+| `stats-core` | Core statistics: battery, uptime, queue, debug flags. | stock | read | Console only: the handler refuses a remote caller. Exactly `stats-core`; with trailing words it is classed `write`. A read, so an enrolled device answers it on the unsigned cable. *(Since v0.3.7. Before it, `write`, refused on an enrolled device's cable.)* |
 | `stats-radio` | Radio statistics: noise floor, RSSI/SNR, airtime, receive errors. | stock | read | As `stats-core`. |
 | `stats-packets` | Packet counters. | stock | read | As `stats-core`. |
 | `log start` | Start capturing the receive log to storage. | stock | write |  |
