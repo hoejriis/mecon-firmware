@@ -174,3 +174,6 @@ A small binary subset of the producers above, for the radio, with the same meani
 - **Where it goes.** To a node key as an anonymous datagram, or on a channel. A Repeater or Room server floods the datagram and uses its bound management channel. A Companion sends the datagram by the contact's path, or directly to a neighbour when the node is not a contact, and `slot` must name its bound management channel, never a public one. On a channel the frame carries the sender's 8-byte key prefix and, if named, the target's. A Companion that hears one puts it on its `rf` stream as `{"from","report"}` (base64), for the manager to verify.
 - **Private.** `location` needs the right to read it, and never goes on a channel, where every member could read it.
 - **Limits.** `report.now` at most once in 30 s (`busy`, `rate-limited`). Every report goes through the duty window like any other transmission.
+
+**On the air.** A 99-byte report (`health` and `radio`) travels as a 149-byte anonymous datagram. At the EU Narrow preset (SF8, BW 62.5 kHz, CR 4/8, 32-symbol preamble) that is about 1.43 s, and a full 113-byte report (a 165-byte packet) about 1.56 s. One report every 900 s takes about 1.6% of a 10% band's hourly budget. Measured on a Wio Tracker L1 and a SenseCAP T1000-E, 2026-11-15.
+
