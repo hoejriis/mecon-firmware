@@ -95,7 +95,7 @@ A node with no IP link can still be managed over LoRa, point to point or on its 
 - **Enrolled devices only.** Only a signed request runs, so a device with no Deployment runs nothing on this path. A native remote-admin login to a Repeater or Room server is a separate path, and stays as described in the [CLI reference](CLI_REFERENCE.md).
 - **No secrets.** Key material and sensitive operations never go on the air, on either path.
 - **What the channel may disclose.** Every member of a management channel can read its replies. So the channel carries only status, job state and the results of changes. Anything that lists or reveals state goes point to point, under a pairwise key.
-- **How a request travels.** A Companion manager sends a request to a contact with no known path zero-hop first, which no Repeater forwards, so Repeaters cannot rebroadcast it into the reply. If nothing is heard within 20 s, the next request to that target floods, and keeps flooding for 30 minutes before zero-hop is tried again.
+- **How a request travels.** A Companion manager sends a request along the target's known path when it has one. With none, the request goes zero-hop, which no Repeater forwards, so Repeaters cannot rebroadcast it into the reply. For a stored contact, if a zero-hop try goes unanswered for 20 s, the next request to it floods, and keeps flooding for 30 minutes before zero-hop is tried again. A target that is not a contact is always tried zero-hop.
 - **What airtime allows.** The duty cycle limits every frame, so LoRa carries operations and compact telemetry, not subscriptions, full logs, screen snapshots or firmware images.
 
 The [management over LoRa](contract/LORA_MANAGEMENT.md) contract gives the rules for each operation.
