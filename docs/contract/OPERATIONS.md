@@ -182,7 +182,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 |---|---|---|---|---|---|---|
 | `hello` | versions, ids, role, capabilities | | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built |
 | `status.get` | status snapshot | | read | no | C R S | as above |
-| `lora.trace` | when the last LoRa management frames went on the air and when the last reply frames were heard, with the clock now ([LoRa management](LORA_MANAGEMENT.md) section 7). *(On `main`, in the release after v0.3.6. In v0.3.6 these were in `status.get` as `lora_tx.recent` and `rf.heard`.)* | | read | no | C | all |
+| `lora.trace` | when the last LoRa management frames went on the air and when the last reply frames were heard, with the clock now ([LoRa management](LORA_MANAGEMENT.md) section 7). *(Since v0.3.7. In v0.3.6 these were in `status.get` as `lora_tx.recent` and `rf.heard`.)* | | read | no | C | all |
 | `config.schema` | settings this build has | CLI registry | read | no | C R S | as above |
 | `config.get` | values | CLI `get` per key | read; per key | no | C R S | as above |
 | `config.apply` | writes, all-or-none checked | CLI `set` per key | write; per key | yes | C R S | as above |
@@ -230,7 +230,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `gps.get` | `{"receiver","powered","active","fix","sats","advert","diag"}`: the `gps` line as fields, null without a receiver; `advert` the self advert's position policy (`none`, `share`, `prefs`) and `diag` the `gps diag` line, each null for a caller the CLI gate refuses that line (both are of the write class) | CLI `gps`, `gps advert`, `gps diag` | read | no | R S (builds with GPS) | Con, MQTT where built; not over LoRa |
 | `gps.set` | `{"on": bool}`: the GPS setting, saved; `no-gps` where the board has no GPS toggle | CLI `gps on`, `gps off` | write | yes | R S (builds with GPS) | Con, MQTT where built; not over LoRa |
 | `gps.sync` | set the clock from the receiver's next fix; `no-gps` without a receiver | CLI `gps sync` | write | yes | R S (builds with GPS) | Con, MQTT where built; not over LoRa |
-| `gps.setloc` | the receiver's fix into the saved `lat` and `lon`; the answer is `{"lat","lon"}` as saved. `no-gps` without a receiver, `no-fix` without a fix, and nothing is saved *(On `main`, in the release after v0.3.6; before it, the sensor manager's position was saved whatever it was, 0,0 included)* | CLI `gps setloc` | write | yes | R S (builds with GPS) | Con, MQTT where built; not over LoRa |
+| `gps.setloc` | the receiver's fix into the saved `lat` and `lon`; the answer is `{"lat","lon"}` as saved. `no-gps` without a receiver, `no-fix` without a fix, and nothing is saved *(Since v0.3.7; before it, the sensor manager's position was saved whatever it was, 0,0 included)* | CLI `gps setloc` | write | yes | R S (builds with GPS) | Con, MQTT where built; not over LoRa |
 | `gps.advert.set` | `{"policy"}`, `none`, `share` or `prefs`: which position the self advert carries | CLI `gps advert` | write | yes | R S (builds with GPS) | Con, MQTT where built; not over LoRa |
 | `clock.get` | `{"epoch": n}`, wall-clock seconds; `null` while the clock is not set | `CMD_GET_DEVICE_TIME` | read | no | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
 | `clock.set` | `{"epoch": n}`: sets the device clock, forward only (`backwards` otherwise); the answer is the clock after it | `CMD_SET_DEVICE_TIME`, CLI `time` | write | yes | C R S | C: USB BLE MQTT; R S: Con, MQTT where built; not over LoRa |
