@@ -21,6 +21,7 @@ mecon-firmware is MeshCore 1.18.0 with secure management, diagnostics and signed
 - [Screens and buttons](UI.md)
 - [Availability](AVAILABILITY.md): what you can get today, and what is not yet proven
 - [Hardware evidence](HARDWARE_VERIFIED.md): what has been checked on real boards
+- [Conformance matrix](CONFORMANCE_MATRIX.md): that evidence by board, role, transport and capability
 
 ## Integrating a manager
 
