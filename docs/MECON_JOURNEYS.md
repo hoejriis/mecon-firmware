@@ -177,7 +177,14 @@ Layout 0x1E, version 1, little-endian: fields, boot u32, seq u32, time u32 (0 wh
 | `runs_left`, `runs`, `failed` and `skipped` are the device's own counts. `runs` counts since boot; `runs_left` is kept across a boot | [OPERATIONS](contract/OPERATIONS.md) section 5.1 |
 | A reply lost in transit is seen in `status.get` `rf` and `lora_tx` on a Companion | [LORA_MANAGEMENT](contract/LORA_MANAGEMENT.md) section 7 |
 
-Cadence and airtime over a whole run have not been measured and published yet. Counts of a report heard are the receiver's, not a guarantee of delivery.
+**Measured on hardware** (a Wio Tracker L1 Companion reporting to a SenseCAP T1000-E Companion, EU Narrow, 869.618 MHz, BW 62.5 kHz, SF8, CR 4/8):
+
+- A report with `health` and `radio` is 99 bytes and goes on the air as a 149-byte packet. That is about 1.43 s of airtime, computed from the radio settings and matching the frame spacing on the bench.
+- A standing instruction of `every_s` 900 ran at 902.9 s and then 931.2 s, inside its jitter bound.
+- One report every 900 s uses about 1.6% of the 10% band's hourly budget.
+- With the manager's Backend link cut for 30 minutes, the target kept to its schedule. The two reports sent meanwhile were missing at the Backend as gaps in the stream's `seq`, with nothing replayed, and the first report after the reconnect arrived on schedule.
+
+Counts of a report heard are the receiver's, not a guarantee of delivery.
 
 ### Who provides what
 
