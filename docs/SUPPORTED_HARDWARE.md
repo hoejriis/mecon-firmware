@@ -2,6 +2,10 @@
 
 Which board to choose, which role to run on it, and what each combination can do when finished. Some of it has not run on every board, management over LoRa included: see [availability](AVAILABILITY.md). A device also reports its own capabilities (`hello` lists every operation and telemetry stream the build and board support), so a manager should read those rather than infer them from the board name.
 
+## MECON fleet product profiles versus upstream roles
+
+MECON's primary fleet profiles are **Personal Companion**, **Repeater Gateway** (Repeater with direct Backend connectivity), and **RF-only Repeater** (managed through LoRa). **Room server is retained as an upstream-compatible MeshCore role, not a primary MECON fleet profile.** Preserve already implemented generic role functionality and applicable security/conformance; do not create a MECON-specific Room server firmware edition or new Room-server-only product workflows. MECON's future store-and-forward belongs to the Backend. Room servers may still be used independently of MECON when an RF-only store is useful. See the [architecture decision register](https://github.com/hoejriis/mecon-backend/blob/main/docs/ARCHITECTURE_DECISIONS.md).
+
 ## Choosing a board
 
 | You want | Choose |
