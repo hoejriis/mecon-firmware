@@ -69,6 +69,12 @@ jobs:
             echo "https://mirrors.edge.kernel.org/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           done
           sudo systemctl stop mosquitto || true   # the package starts a default broker; the tests start their own
+          # Ubuntu 26.04's AppArmor profile confines mosquitto to its system paths, so it cannot read a test broker's config
+          # under the pytest temporary folder and exits at once. The tests start their own brokers: unload the profile.
+          if [ -f /etc/apparmor.d/mosquitto ]; then
+            sudo ln -sf /etc/apparmor.d/mosquitto /etc/apparmor.d/disable/mosquitto
+            sudo apparmor_parser -R /etc/apparmor.d/mosquitto || true
+          fi
       - run: pip install "platformio==6.2.0" pytest
       - name: Build every sim_* environment
         run: |
