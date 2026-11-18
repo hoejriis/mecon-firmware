@@ -225,8 +225,8 @@ def test_an_apply_saves_the_prefs_once_on_a_server(nodes, tmp_path):
     assert i.request("config.get", {"keys": ["name"]})["result"]["values"] == {"name": "Rep"}
 
 
-@pytest.mark.parametrize("kind,build", [("repeater", "plain"), ("room_server", "plain"), ("repeater_wifi", "wifi"),
-                                        ("room_server_wifi", "wifi")])
+@pytest.mark.parametrize("kind,build", [("repeater", "plain_repeater"), ("room_server", "plain_room"),
+                                        ("repeater_wifi", "wifi_repeater"), ("room_server_wifi", "wifi_room")])
 def test_the_recorded_server_schema_is_what_the_firmware_answers(nodes, kind, build):
     with open(os.path.join(FIXTURES, "config_schema_server.recorded.json")) as f:
         rec = json.load(f)["builds"][build]
