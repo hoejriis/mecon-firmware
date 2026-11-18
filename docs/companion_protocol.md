@@ -291,7 +291,7 @@ Bytes 7+: Message Text (UTF-8, variable length)
 03 00 01 D2 02 96 49 48 65 6C 6C 6F
 ```
 
-**Response**: `PACKET_MSG_SENT` (0x06) on success
+**Response**: `PACKET_OK` (0x00) on success, `PACKET_ERROR` (0x01) with `ERR_CODE_NOT_FOUND` for a slot with no channel. `PACKET_MSG_SENT` is the direct message's answer only. *(Corrected 2026-11-18: this said `PACKET_MSG_SENT`.)*
 
 ---
 
@@ -624,7 +624,7 @@ def parse_channel_message(data):
 Use the `SEND_CHANNEL_MESSAGE` command (see [Commands](#commands)).
 
 **Important**: 
-- Messages are limited to 133 characters per MeshCore specification
+- The limit is in bytes, not characters. A direct message's text may be up to 160 bytes (158 when `attempt` is above 3); a longer one is refused. A channel message goes out as `<node name>: <text>` and is cut, without notice and possibly inside a UTF-8 character, at 160 bytes, so keep its text within 160 minus the node name's length minus 2. Many apps keep to 133. *(Corrected 2026-11-18: this said 133 characters.)*
 - Long messages should be split into chunks
 - Include a chunk indicator (e.g., "[1/3] message text")
 
@@ -825,11 +825,13 @@ Bytes 2-5: Tag / Expected ACK (4 bytes, little-endian)
 Bytes 6-9: Suggested Timeout (32-bit little-endian, milliseconds)
 ```
 
-**PACKET_ACK** (0x82):
+**PACKET_ACK** (0x82), `PUSH_CODE_SEND_CONFIRMED`: the recipient acknowledged a direct message. 9 bytes:
 ```
 Byte 0: 0x82
-Bytes 1-6: ACK Code (6 bytes, hex)
+Bytes 1-4: ACK code: the expected_ack that PACKET_MSG_SENT gave for the message
+Bytes 5-8: Round trip in milliseconds (32-bit little-endian)
 ```
+*(Corrected 2026-11-18: this described a 6-byte ACK code.)*
 
 ### Error Codes
 
