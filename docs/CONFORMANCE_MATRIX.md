@@ -13,7 +13,7 @@ This page lays [hardware evidence](HARDWARE_VERIFIED.md) out by board and role, 
 
 A `✓` is never taken from a simulator, from another board or from another role. Where a row names two boards or roles, each gets its own mark only if the row names it. A `✓` shows that the named check ran; the row in HARDWARE_VERIFIED says what it covered and what it left out. A build pass proves compilation only.
 
-Rows are grouped by capability. Boards are the Heltec V3 (v3test), Heltec V4 (v4test), Seeed Wio Tracker L1 (wiotest) and SenseCAP T1000-E. Roles are Companion, Repeater and Room server, each in its own table. Companion cells mean the standalone build on the Heltec boards and the USB or BLE build on the nRF52 boards.
+Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio Tracker L1 and SenseCAP T1000-E. Roles are Companion, Repeater and Room server, each in its own table. Companion cells mean the standalone build on the Heltec boards and the USB or BLE build on the nRF52 boards.
 
 ## Companion
 
@@ -175,8 +175,8 @@ Rows are grouped by capability. Boards are the Heltec V3 (v3test), Heltec V4 (v4
 ## Why a cell says n/a
 
 - **Wi-Fi, MQTT and HTTPS download on the Wio Tracker L1 and T1000-E:** the boards have no Wi-Fi and no IP link.
-- **BLE on a Repeater or Room server:** none, by owner decision. Local management is the USB console.
-- **BLE update on the Wio Tracker L1 and T1000-E:** none, by owner decision. nRF52 updates are signed offers followed by the bootloader's serial DFU over USB.
+- **BLE on a Repeater or Room server:** none, by design decision. Local management is the USB console.
+- **BLE update on the Wio Tracker L1 and T1000-E:** none, by design decision. nRF52 updates are signed offers followed by the bootloader's serial DFU over USB.
 - **Serial DFU on a Heltec board:** ESP32 images are written by the device itself, not by a bootloader DFU.
 - **Screen stream on the T1000-E:** the board has no screen.
 - **Messaging operations on a Repeater or Room server:** Companion only.
@@ -189,25 +189,25 @@ Rows are grouped by capability. Boards are the Heltec V3 (v3test), Heltec V4 (v4
 - Where a row names a hardware test peer, such as a Heltec V3 Companion acting as the manager's radio, the mark belongs to the board under test, not the peer.
 - A BLE `✓` on the T1000-E Companion is 33 of 34 fixtures: the one failure is a fixture that sets a Wi-Fi key, which a board without Wi-Fi refuses by design.
 - On the Heltec V4 Repeater, the console update (`b41`) was run with 1,024-byte chunks. Chunks of 2,304 bytes moved nothing because the console line limit is 1,600 bytes.
-- A Wio Tracker L1 row marked `c8` was reported by the deimos-mesh session through the Reader, not run by this repository's own tools.
+- A Wio Tracker L1 row marked `c8` was reported by the reference Backend's tooling through the Reader, not run by this repository's own tools.
 - The Heltec V4 screen cell (`a42`) is filed under the Heltec V3 heading in HARDWARE_VERIFIED, but the row itself names a Heltec V4 Companion.
 
 ## Known gaps
 
-Every `—` above is a gap. These are the ones that matter for acceptance of the conformance Issue (#117). A tracker number appears only where HARDWARE_VERIFIED or the open Issue list names one.
+Every `—` above is a gap. These are the ones that matter for acceptance of conformance.
 
-- **LoRa management with a Companion as the target.** Not recorded as a row on any board. HARDWARE_VERIFIED's "not yet verified" list records a run on a Wio Tracker L1 and a T1000-E Companion through F2's relay, with no build or date row. Issues #115 and #116.
-- **LoRa management of a Heltec V3 Repeater or Room server.** Only the V4 was the target. Issue #115.
+- **LoRa management with a Companion as the target.** Not recorded as a row on any board. HARDWARE_VERIFIED's "not yet verified" list records a run on a Wio Tracker L1 and a T1000-E Companion through the reference Backend's relay, with no build or date row.
+- **LoRa management of a Heltec V3 Repeater or Room server.** Only the V4 was the target.
 - **Room server on the Wio Tracker L1.** The fixtures (24 of 24) and a stock GETTING_STARTED run are recorded. Enrolment, LoRa and updates are not.
 - **Room server on the T1000-E.** Console fixtures and enrolment only. No LoRa, no unsigned-refusal row, no update.
 - **Room server on the Heltec V3.** No fixture row for the Room server build. Rotation, broker interface and heap are recorded.
-- **Channel-mode replies on the nRF52 server roles.** A `standing.put` or channel-mode request lost a frame on the air. Issue #542 as cited in HARDWARE_VERIFIED.
-- **Standing instructions that actually run (scheduled report, reboot) on anything but a Heltec V4 Repeater.** Issue #266.
-- **Compact report cadence and airtime.** Not measured on any board. Issue #116.
-- **`device.reset` scopes, BLE bonds, BLE PIN reads and key export on a board.** Issue #446. Passes in the simulator only; no hardware row for any scope.
+- **Channel-mode replies on the nRF52 server roles.** A `standing.put` or channel-mode request lost a frame on the air.
+- **Standing instructions that actually run (scheduled report, reboot) on anything but a Heltec V4 Repeater.**
+- **Compact report cadence and airtime.** Not measured on any board.
+- **`device.reset` scopes, BLE bonds, BLE PIN reads and key export on a board.** Passes in the simulator only; no hardware row for any scope.
 - **Deployment continuity package.** No hardware row on any board.
-- **Server-role actions and settings v0.3.3 added** beyond the flood limits and `stats.clear`, run for real on an enrolled board. Needs a signed request the production Backend cannot send yet. Issue #492.
-- **`packet.transmit` on the Heltec V3 Repeater**, and from a real Backend. Issue #537.
+- **Server-role actions and settings v0.3.3 added** beyond the flood limits and `stats.clear`, run for real on an enrolled board. Needs a signed request a reference Backend cannot send yet.
+- **`packet.transmit` on the Heltec V3 Repeater**, and from a real Backend.
 - **Signed updates on the server roles** by USB console (all but the V4 Repeater), broker push and HTTPS download.
 - **Signed updates on the Heltec V3 by HTTPS download**, and on the Heltec V4 Companion by broker push.
 - **Messaging operations beyond the V3 Companion:** `message.send` and `inbox.*` on the V4, Wio and T1000-E Companions; `message.deliver` on the Wio and T1000-E.
@@ -227,7 +227,7 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `a10` Heltec V3: Hardened posture (default PIN)
 - `a11` Heltec V3: Device screen and button (standalone build)
 - `a13` Heltec V3: Rescue console (standalone build)
-- `a14` Heltec V3: Companion-to-Companion messaging over LoRa (with v4test)
+- `a14` Heltec V3: Companion-to-Companion messaging over LoRa (with a Heltec V4 test board)
 - `a15` Heltec V3: ESP-IDF 5.3: upgrade without erase (standalone)
 - `a18` Heltec V3: ESP-IDF 5.3: BLE (NimBLE)
 - `a19` Heltec V3: ESP-IDF 5.3: Wi-Fi + TLS MQTT (standalone)
@@ -245,8 +245,8 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `a42` Heltec V3: Screen stream and message text, Normal and Hardened (Heltec V4 standalone Companion; Wio Tracker L1 Compani...
 - `a46` Heltec V3: `identity.rotate` over a verified broker (standalone, public test keys, bench timing marks)
 - `a53` Heltec V3: † v0.3.0 signed update over USB from the signed v0.2.1, from the release's own assets (standalone)
-- `a55` Heltec V3: v0.3.3 Companion interface keys and reads (standalone, enrolled on F2, the release's image in both app slots)
-- `a59` Heltec V3: Large requests over the USB cable (v0.3.5 standalone, enrolled on F2, the release's image in both app slots)
+- `a55` Heltec V3: v0.3.3 Companion interface keys and reads (standalone, enrolled on the reference Backend, the release's image in both app slots)
+- `a59` Heltec V3: Large requests over the USB cable (v0.3.5 standalone, enrolled on the reference Backend, the release's image in both app slots)
 - `b6` Heltec V4: Default-PIN BLE refusals
 - `b7` Heltec V4: Connectivity mode
 - `b9` Heltec V4: Wi-Fi failover between two access points
@@ -264,19 +264,19 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `b39` Heltec V4: Unsigned cable, enrolled, in Hardened (standalone)
 - `b41` Heltec V4: † v0.3.1 signed update over the console from the signed v0.3.0, from the release's own assets (Repeater, `h...
 - `b42` Heltec V4: Heap floor on a server build (Repeater, the v0.3.0 release)
-- `b43` Heltec V4: v0.3.3 Repeater and Room server reads (enrolled on F2, the release's images in both app slots)
+- `b43` Heltec V4: v0.3.3 Repeater and Room server reads (enrolled on the reference Backend, the release's images in both app slots)
 - `b44` Heltec V4: v0.3.3 Repeater and Room server writes over an unsigned cable (enrolled)
-- `b45` Heltec V4: v0.3.3 by a signed update from the production Backend (Repeater, enrolled, F2 row 694, from v0.3.2)
-- `b46` Heltec V4: Flood limits by a signed `config.apply` from the production Backend (v0.3.3 Repeater, enrolled, F2 row 694)
-- `b47` Heltec V4: `stats.clear` signed by the production Backend over MQTT (v0.3.3 Repeater, enrolled, F2 row 694)
+- `b45` Heltec V4: v0.3.3 by a signed update from a reference Backend (Repeater, enrolled, Backend row 694, from v0.3.2)
+- `b46` Heltec V4: Flood limits by a signed `config.apply` from a reference Backend (v0.3.3 Repeater, enrolled, Backend row 694)
+- `b47` Heltec V4: `stats.clear` signed by a reference Backend over MQTT (v0.3.3 Repeater, enrolled, Backend row 694)
 - `b48` Heltec V4: `packet.transmit` on a Repeater (`heltec_v4_repeater`, main 13fcd703, enrolled with the public test authori...
 - `c1` Wio Tracker L1: Adaptive contacts capacity
 - `c2` Wio Tracker L1: nRF52 interface worker
 - `c5` Wio Tracker L1: Device interface (Companion USB, Repeater and Room server console)
 - `c6` Wio Tracker L1: `GETTING_STARTED` walked from a fresh clone, Repeater and USB Companion builds
-- `c8` Wio Tracker L1: v0.2.0 signed update through the Reader over USB (`WioTrackerL1_companion_radio_usb`), run by the deimos-me...
+- `c8` Wio Tracker L1: v0.2.0 signed update through the Reader over USB (`WioTrackerL1_companion_radio_usb`), run by the reference Backend's tooling...
 - `c9` Wio Tracker L1: Loop stack through the Companion's radio paths (v0.2.1 USB Companion, unenrolled, Heltec V3 as the peer, pr...
-- `c10` Wio Tracker L1: v0.3.3 by release DFU over v0.3.2 (USB Companion, enrolled on F2)
+- `c10` Wio Tracker L1: v0.3.3 by release DFU over v0.3.2 (USB Companion, enrolled on the reference Backend)
 - `c14` Wio Tracker L1: A cable host that stops reading (USB Companion; main 13fcd703, then the build with the fix, the fix)
 - `c15` Wio Tracker L1: Repeater management over LoRa (Repeater package, enrolled with the public test keys; Heltec V4 standalone C...
 - `d1` SenseCAP T1000-E: Public T1000-E Companion USB build, enrolled
@@ -289,7 +289,7 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `d8` SenseCAP T1000-E: Room server on cleared marker pages
 - `d10` SenseCAP T1000-E: Repeater enrolment with the public test keys (`tools/mecon_worker_hw.py`)
 - `d13` SenseCAP T1000-E: v0.3.1 signed update through the bootloader from the signed v0.3.0, from the release's own assets (`t1000e_...
-- `d14` SenseCAP T1000-E: v0.3.3 by release DFU over v0.3.2 (USB Companion, enrolled on F2)
+- `d14` SenseCAP T1000-E: v0.3.3 by release DFU over v0.3.2 (USB Companion, enrolled on the reference Backend)
 - `d15` SenseCAP T1000-E: A cable host that stops reading (USB Companion; main 13fcd703, then the build with the fix, the fix)
 - `d16` SenseCAP T1000-E: Repeater management over LoRa (Repeater package, enrolled with the public test keys; Heltec V4 standalone C...
 - `m1` More than one board: `get dutycycle` per band (Heltec V3 standalone Companion)

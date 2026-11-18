@@ -25,7 +25,7 @@ From [v0.2.0](https://github.com/hoejriis/mecon-firmware/releases/tag/v0.2.0), a
 | Board | Delivery | If the new image fails |
 |---|---|---|
 | Heltec V3, V4 | pushed over USB or BLE (a manager on MQTT offers it and a bridge pushes it), or downloaded by the device over IP | The image boots on trial. It is reverted unless confirmed in time, and at once after a crash, watchdog or brownout reset |
-| T1000-E, Wio Tracker L1 | a signed offer, then the bootloader's serial DFU over USB (USB only, by owner decision) | There is no previous image to return to. The device reports its version. A failed image is replaced over USB |
+| T1000-E, Wio Tracker L1 | a signed offer, then the bootloader's serial DFU over USB (USB only, by design decision) | There is no previous image to return to. The device reports its version. A failed image is replaced over USB |
 
 Stock MeshCore's unsigned Wi-Fi updater (`start ota`) is refused in these builds.
 
@@ -55,7 +55,7 @@ To enter the rescue console on a Companion, long-press the user button within 8 
 ## Locked out
 
 - **Over BLE or Wi-Fi.** Use USB. On a standalone device it is trusted in every posture. On an enrolled device it keeps reads, reboot and the recovery operations ([standalone and enrolled](MANAGING.md#standalone-and-enrolled)). A factory reset over USB always works, and it erases everything.
-- **A Hardened Companion in Wi-Fi mode** has no app transport, by owner decision. Use USB.
+- **A Hardened Companion in Wi-Fi mode** has no app transport, by design decision. Use USB.
 - **A Repeater or Room server refusing a correct password.** The client's clock once ran ahead and left a watermark in the future. A restart of the device clears it and changes no setting ([postures](STANDALONE_POSTURES.md#recovery)).
 - **A Companion whose own clock ran ahead.** `clock back <epoch seconds>` over USB sets it right, and its messages carry the right time at once. Peers that hold the contact ignore its adverts for as long as the clock went back, because they refuse an advert no newer than the last they heard. Removing and adding the contact on a peer ends that sooner. A clock left ahead costs the same wait, with the wrong time throughout.
 - **A device moved from the private reference firmware** reads that firmware's Deployment record as corrupt and refuses changes until it is cleared. [Backend migration](migration/BACKEND_MIGRATION.md#moving-a-board-from-the-private-090x-line) gives the steps.

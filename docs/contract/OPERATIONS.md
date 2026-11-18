@@ -341,7 +341,7 @@ Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in 
 | 66 | `CMD_RUN_CLI_COMMAND` | read to reach the CLI; then the line's class | refused | none (the interface has no CLI-line operation) |
 | 0x7F | `CMD_MECON` | per operation | refused (every operation) | the device interface |
 
-"None" means the frame stays native and gets no interface operation. Raw transmission and signing arbitrary data with the node key are not management actions a manager should be able to ask for, with one exception the owner approved: a Repeater transmits a packet a manager built (`packet.transmit`, "Packet transmission" below). It signs nothing with the node key, and the Companion's raw frames stay refused.
+"None" means the frame stays native and gets no interface operation. Raw transmission and signing arbitrary data with the node key are not management actions a manager should be able to ask for, with one approved exception: a Repeater transmits a packet a manager built (`packet.transmit`, "Packet transmission" below). It signs nothing with the node key, and the Companion's raw frames stay refused.
 
 ### 5.3 CLI lines
 
@@ -371,7 +371,7 @@ Every CLI line is classed by the registry; a line the registry does not name is 
 Notes the matrix depends on, as the code stands:
 - `start ota` on an ESP32 Repeater or Room server opens an unauthenticated Wi-Fi access point that accepts an image. This is stock behaviour, and it is unsigned. It is compiled out unless a build defines `ENABLE_WIFI_OTA`, and every build with the device interface refuses it ([CLI reference](../CLI_REFERENCE.md)).
 - The Repeater runs any line that starts with `reboot`, while the registry classes only the exact `reboot` as reboot. A longer form is `write`, which is stricter (refused to a Hardened remote admin), not weaker.
-- The sensor role (`simple_sensor`) is not a MECON target. It has no device interface and no posture front door, and nothing on this page applies to it. This is a recorded exception to the rule that the firmware works the same way in all modes: the owner's decision of 2026-11-04. One part of the posture rules does apply to it, by the owner's decision of 2026-11-08: it refuses remote admin while its admin password is the stock default or empty, as the Repeater and Room server do, until a password is set on the local console.
+- The sensor role (`simple_sensor`) is not a MECON target. It has no device interface and no posture front door, and nothing on this page applies to it. This is a recorded exception to the rule that the firmware works the same way in all modes: a design decision of 2026-11-04. One part of the posture rules does apply to it, by a design decision of 2026-11-08: it refuses remote admin while its admin password is the stock default or empty, as the Repeater and Room server do, until a password is set on the local console.
 
 ### Standing instructions
 
@@ -475,8 +475,8 @@ These native facilities sit beside the device interface over LoRa, which is a se
 |---|---|---|---|---|
 | Heltec V3 Companion standalone | yes | yes | yes | connectivity mode, USB, the section 5.1 operations for the Companion |
 | Heltec V4 Companion standalone | yes | yes | yes | as V3 |
-| Heltec V3 Repeater, Room server | yes (console) | yes | no (owner decision) | |
-| Heltec V4 Repeater, Room server | yes (console) | yes | no (owner decision) | |
+| Heltec V3 Repeater, Room server | yes (console) | yes | no (by design) | |
+| Heltec V4 Repeater, Room server | yes (console) | yes | no (by design) | |
 | Heltec V3/V4 Companion `_usb`, `_ble`, `_wifi` | no | `_wifi` only (CLI topic) | `_ble` | stock-shaped builds; native frames only |
 | SenseCAP T1000-E Companion (`_usb`, `_ble`), Repeater, Room server | yes (Companion: frames; Repeater, Room server: console) | no | Companion `_ble` | no Wi-Fi. The Companion keeps the stock contact array. |
 | Wio Tracker L1 Companion (`_usb`, `_ble`), Repeater, Room server | yes (Companion: frames; Repeater, Room server: console) | no | Companion `_ble` | no Wi-Fi |

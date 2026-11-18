@@ -1,6 +1,6 @@
 # MECON OLED display — approved ASCII design reference
 
-Source: owner-approved 128×64 PNG mockups in issue #562 discussion, 15 November 2026. **These text diagrams are content/layout transcriptions, not pixel-identical bitmap reproductions.** The approved PNGs remain the visual reference for exact 128×64 spacing and logo shape. All displayed values are examples.
+Source: approved 128×64 PNG mockups, 15 November 2026. **These text diagrams are content/layout transcriptions, not pixel-identical bitmap reproductions.** The approved PNGs remain the visual reference for exact 128×64 spacing and logo shape. All displayed values are examples.
 
 ## Boot splash (same for Companion and Repeater)
 
@@ -9,7 +9,7 @@ Source: owner-approved 128×64 PNG mockups in issue #562 discussion, 15 November
 |  o--\ /--o  MeshContinuum      |
 |  o--/ \--o                     |
 |--------------------------------|
-|      https://mecon.cloud/      |
+|      https://example.net/      |
 |       MECON 0.90.28            |
 |       MeshCore v1.17.1         |
 +--------------------------------+
@@ -24,20 +24,20 @@ Rows 1–2 retain the stock device-name/battery and page dots. Rows 3–7 contai
 ### 1. Repeater — WiFi and MQTT connected
 ```text
 +--------------------------------+
-|edc.makr.dk                 [===]|
+|example.net                 [===]|
 |       * . . . . . . . .        |
 |Normal Repeater                 |
 |Last LoRa: 10 sec ago           |
 |Mode: WiFi                      |
 |HomeNetwork                     |
-|mqtt.mecon.cloud                |
+|mqtt.example.net                |
 +--------------------------------+
 ```
 
 ### 2. Repeater — WiFi offline
 ```text
 +--------------------------------+
-|edc.makr.dk                 [===]|
+|example.net                 [===]|
 |       * . . . . . . . .        |
 |Normal Repeater                 |
 |Last LoRa: 2 min ago            |
@@ -50,7 +50,7 @@ Rows 1–2 retain the stock device-name/battery and page dots. Rows 3–7 contai
 ### 3. Repeater — BLE Reader
 ```text
 +--------------------------------+
-|edc.makr.dk                 [===]|
+|example.net                 [===]|
 |       * . . . . . . . .        |
 |Hardened Repeater               |
 |Last LoRa: 3 sec ago            |
@@ -63,7 +63,7 @@ Rows 1–2 retain the stock device-name/battery and page dots. Rows 3–7 contai
 ### 4. Repeater — USB agent
 ```text
 +--------------------------------+
-|edc.makr.dk                 [===]|
+|example.net                 [===]|
 |       * . . . . . . . .        |
 |Normal Repeater                 |
 |Last LoRa: 1 min ago            |
@@ -76,20 +76,20 @@ Rows 1–2 retain the stock device-name/battery and page dots. Rows 3–7 contai
 ### 5. Companion — WiFi and MQTT connected
 ```text
 +--------------------------------+
-|edc.makr.dk                 [===]|
+|example.net                 [===]|
 |       * . . . . . . . .        |
 |Normal Companion                |
 |Last LoRa: 8 sec ago            |
 |Mode: WiFi                      |
 |CamperSpot                      |
-|broker.deimos.dk                |
+|mqtt.example.net                |
 +--------------------------------+
 ```
 
 ### 6. Companion — BLE Reader
 ```text
 +--------------------------------+
-|edc.makr.dk                 [===]|
+|example.net                 [===]|
 |       * . . . . . . . .        |
 |Hardened Companion              |
 |Last LoRa: never                |
@@ -110,4 +110,3 @@ Rows 1–2 retain the stock device-name/battery and page dots. Rows 3–7 contai
 - Truncate or otherwise safely handle long names while preserving all seven lines.
 - Text mockups use more characters than the real 128×64 bitmap may accommodate; verify actual glyph widths, truncation and clipping against approved native PNGs and hardware.
 
-Related issue: https://github.com/hoejriis/mecon-firmware/issues/562

@@ -1,6 +1,6 @@
 # Private MVP → MECON target contract audit
 
-This is the completeness audit required before the public firmware can be considered rebuildable without consulting the private `deimos-mesh-firmware` repository.
+This is the completeness audit required before the public firmware can be considered rebuildable without consulting the earlier private firmware repository.
 
 The source set audited is the five firmware-owned private contracts:
 
@@ -189,4 +189,4 @@ The audit is complete at the product-contract level. MeshCore 1.18.0 was release
 5. final sensor/capability exposure inherited from 1.18;
 6. final memory/resource baseline before fixing contact/roster capacities.
 
-Those are implementation mappings, not undocumented requirements. A coding agent can now identify what behaviour must exist without consulting the private repository; now that 1.18.0 is out, the remaining work is deciding which released native primitive implements each marked requirement.
+Those are implementation mappings, not undocumented requirements. A reader can now identify what behaviour must exist without consulting the private repository; now that 1.18.0 is out, the remaining work is deciding which released native primitive implements each marked requirement.

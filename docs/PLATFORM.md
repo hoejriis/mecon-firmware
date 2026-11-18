@@ -69,7 +69,7 @@ The Heltec V3 envs (`esp32s3_idf5_base` in `platformio.ini`) carry a `custom_sdk
 What is set:
 
 - **Wi-Fi TX buffers are dynamic** (`CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER=y`, 16 buffers), not a static pool of 8 buffers of about 1.6 KB. `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n` goes with it: Arduino's base config puts Wi-Fi and LWIP buffers in PSRAM, which locks out dynamic TX. The V3 has no PSRAM, so nothing else moves there. On a board with PSRAM Wi-Fi and LWIP buffers would come from internal RAM instead, which is why the V4's set leaves this out (below).
-- **The IPC tasks get a 2,048-byte stack** (`CONFIG_ESP_IPC_TASK_STACK_SIZE=2048`) instead of the stock 1,024. Installing the GPIO ISR service at boot runs on the IPC task, and with heap poisoning on it overran the 1,024-byte stack in 4 of 304 resets on v3test (`Stack canary watchpoint triggered (ipc0/ipc1)`, Issue #216). Upstream's library builder made the same change. It costs 2 KB of internal heap (two tasks).
+- **The IPC tasks get a 2,048-byte stack** (`CONFIG_ESP_IPC_TASK_STACK_SIZE=2048`) instead of the stock 1,024. Installing the GPIO ISR service at boot runs on the IPC task, and with heap poisoning on it overran the 1,024-byte stack in 4 of 304 resets on a V3 test board (`Stack canary watchpoint triggered (ipc0/ipc1)`). Upstream's library builder made the same change. It costs 2 KB of internal heap (two tasks).
 - **The TLS output buffer is 4 KB** (`CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y`, `CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=4096`), not 16 KB. The largest write the firmware makes over TLS is an MQTT packet of at most 1,600 bytes. mbedTLS cuts a longer write at the buffer's size and PubSubClient treats that as a failure, so a larger packet needs this raised with it. The input buffer stays 16 KB, since a broker or download server may send full records.
 - **13 unused managed components are removed** from the library build: esp_insights, esp_rainmaker, rmaker_common, esp_diagnostics, esp_diag_data_store, esp_schedule, esp-sr, esp-zboss-lib, esp-zigbee-lib, esp_modem, esp-modbus, esp_rcp_update and esp-libhelix-mp3.
 
@@ -79,13 +79,13 @@ What is set:
 
 *Correction, 2026-11-09:* an earlier trial reported that with dynamic buffers the radio never left `scanning` once a TLS session started. Because of that Kconfig dependency, the trial most likely never had dynamic buffers, and its result is withdrawn.
 
-Measured since, with DTLS off and the option confirmed in the generated config (v3test, an enrolled V3 standalone Companion after a reboot, `wss` to a local broker, every stream on):
+Measured since, with DTLS off and the option confirmed in the generated config (an enrolled V3 standalone Companion after a reboot, `wss` to a local broker, every stream on):
 - The session connected and stayed verified.
 - Free heap moved 0.3 KB, and the low-water 1 to 3.5 KB, within the spread between identical runs.
 
 So they stay off: the gain does not pay for the change.
 
-Measured on v3test (V3 standalone Companion, `get mecon.mem` idle and 20 s after a pinned-TLS MQTT session verified, main bafb88d5 against this build in one session, 2026-10-31): idle free heap 98,276 B against 105,228 B, largest block 36,852 B against 42,996 B; with the TLS session free 36,956 B against 50,764 B (about 14 KB more), largest block 14,836 B against 31,732 B, low-water 24,860 B against 38,228 B (about 13 KB more). That is net of the 2 KB the larger IPC stacks take. The largest block moves with the memory layout (an unchanged tree has measured both 14,836 B and 31,732 B), so the free and low-water gains are the ones to rely on. An earlier split (Issue #100) put about 8 KB of free heap on the component removal and about 7 KB on the dynamic TX buffers. Both gains need the rebuilt libraries; there is no runtime-only route, because the prebuilt libraries reserve the static pool from their own sdkconfig.
+Measured on a V3 test board (standalone Companion, `get mecon.mem` idle and 20 s after a pinned-TLS MQTT session verified, main bafb88d5 against this build in one session, 2026-10-31): idle free heap 98,276 B against 105,228 B, largest block 36,852 B against 42,996 B; with the TLS session free 36,956 B against 50,764 B (about 14 KB more), largest block 14,836 B against 31,732 B, low-water 24,860 B against 38,228 B (about 13 KB more). That is net of the 2 KB the larger IPC stacks take. The largest block moves with the memory layout (an unchanged tree has measured both 14,836 B and 31,732 B), so the free and low-water gains are the ones to rely on. An earlier split put about 8 KB of free heap on the component removal and about 7 KB on the dynamic TX buffers. Both gains need the rebuilt libraries; there is no runtime-only route, because the prebuilt libraries reserve the static pool from their own sdkconfig.
 
 Flash and static RAM of the V3 envs, main (bafb88d5) against this build (local builds in the project container, same toolchain and locked libraries, 2026-10-31):
 
@@ -104,7 +104,7 @@ Flash drops by about 57-63 KB on the BLE, standalone and Wi-Fi Companions and by
 
 Arduino-ESP32 hands the BT controller's reserved memory to the heap at start-up only in builds that link no BLE library. The standalone Companion links one, so in Wi-Fi mode, where the BLE stack is never started before a restart, that memory sat unused. The Companion now releases it (`esp_bt_controller_mem_release`) when it boots in Wi-Fi mode. A mode change to BLE takes effect through a restart, which brings the memory back.
 
-Measured on v3test (V3 standalone Companion, enrolled, after a reboot, `wss` to a local broker, every stream on, 10 minutes, 30 reads each, 2026-11-11, v0.3.1 bench builds):
+Measured on a V3 test board (standalone Companion, enrolled, after a reboot, `wss` to a local broker, every stream on, 10 minutes, 30 reads each, 2026-11-11, v0.3.1 bench builds):
 
 | Build | Lowest `min_free` | Free heap | Largest block |
 |---|---|---|---|
@@ -113,7 +113,7 @@ Measured on v3test (V3 standalone Companion, enrolled, after a reboot, `wss` to 
 
 One run each, and identical runs have spread by up to 3.5 KB.
 
-Two other levers from Issue #100 were measured in the same session and are not used:
+Two other levers were measured in the same session and are not used:
 - **4 static Wi-Fi RX buffers** instead of 10 (with `CONFIG_ESP_WIFI_RX_BA_WIN=6`, which ESP-IDF requires): 38,504 B. With the release as well: 36,480 B, which undoes the release's gain.
 - **6 LWIP sockets** instead of 10: 40,312 B, no gain.
 
@@ -121,7 +121,7 @@ Two other levers from Issue #100 were measured in the same session and are not u
 
 mbedTLS keeps the peer's whole certificate chain for the life of a TLS session. The broker is authenticated after the handshake, by the profile's anchor (a leaf fingerprint, or a chain to a CA), and nothing reads the chain after that, so the MQTT client frees it then. The library's own option (`MBEDTLS_SSL_KEEP_PEER_CERTIFICATE` off) cannot be used: it drops the chain before the anchor check runs, and every anchored profile would fail closed.
 
-Measured on v3test (V3 standalone Companion), against a bench broker serving a chain like F2's of three RSA-2048 certificates (leaf, intermediate, root). The session was anchored and verified, no streams, 60 s each, 2026-11-11:
+Measured on a V3 test board (standalone Companion), against a bench broker serving a chain like a production Backend's of three RSA-2048 certificates (leaf, intermediate, root). The session was anchored and verified, no streams, 60 s each, 2026-11-11:
 
 | Build, anchor | Steady free heap | Lowest `min_free` |
 |---|---|---|
@@ -135,7 +135,7 @@ The steady heap of a session rises by 5.5 to 6.6 KB. The low-water hardly moves:
 
 In Wi-Fi mode the standalone Companion allocates its result cache, job table, inbox and message table before Wi-Fi and TLS start (from v0.3.4). Allocated after the handshake, as before, they split the heap for the rest of the session, and the largest free block sat under the 20,480 B floor.
 
-Measured on the pilot (v3test, V3 standalone Companion, enrolled, serving the production Backend over `wss` with TLS verified), read over the cable every 10 s:
+Measured on a long-running test board (V3 standalone Companion, enrolled, serving a reference Backend over `wss` with TLS verified), read over the cable every 10 s:
 
 | Build | Largest block, settled | Lowest largest block | `min_free` | Under the floor |
 |---|---|---|---|---|
@@ -144,11 +144,11 @@ Measured on the pilot (v3test, V3 standalone Companion, enrolled, serving the pr
 
 The v0.3.4 release image, an hour on 2026-11-13, kept above the floor: `heap_low` read 0 in all 359 samples. The largest block's lowest reading, 21,492 B, came while MQTT publishes were in flight; each holds 2,048 B of send buffers until the broker acknowledges it, for about 200 ms. Between publishes the largest block settles at 24,564 B, about 4 KB above the floor. `get mecon.heaplow` and the runtime stream's `heap_lows` name what was running at each low, which is where the operation names in the table come from.
 
-**Why the Heltec V3 does not reach the 2.0.17 low-water.** Against F2 (wss, every stream on, the pilot), the lowest `min_free` measured was about 25 KB on v0.3.2 and 28,648 B with the long-lived tables first, against 51.7 KB on Arduino-ESP32 2.0.17. The levers tried that move it are in this page: the TLS output buffer, dynamic Wi-Fi TX buffers, the removed components, the BT controller's memory in Wi-Fi mode, the freed certificate chain and the long-lived tables. Fewer Wi-Fi RX buffers and fewer LWIP sockets did not help. A shorter chain from the broker (two certificates instead of three) is worth about 1.6 KB of steady heap and is the broker's setting. What remains is ESP-IDF 5.3's larger Wi-Fi and TLS working set during a handshake, which no setting found here reduces.
+**Why the Heltec V3 does not reach the 2.0.17 low-water.** Against a reference Backend (wss, every stream on, the long-running test board), the lowest `min_free` measured was about 25 KB on v0.3.2 and 28,648 B with the long-lived tables first, against 51.7 KB on Arduino-ESP32 2.0.17. The levers tried that move it are in this page: the TLS output buffer, dynamic Wi-Fi TX buffers, the removed components, the BT controller's memory in Wi-Fi mode, the freed certificate chain and the long-lived tables. Fewer Wi-Fi RX buffers and fewer LWIP sockets did not help. A shorter chain from the broker (two certificates instead of three) is worth about 1.6 KB of steady heap and is the broker's setting. What remains is ESP-IDF 5.3's larger Wi-Fi and TLS working set during a handshake, which no setting found here reduces.
 
 ### The Heltec V4 has its own rebuilt libraries
 
-The V4 envs extend `esp32s3_v4_idf5_base`, whose rebuilt set holds the 2,048-byte IPC stack and the same 13 removed components, and nothing else. The V3's dynamic Wi-Fi TX buffers are left out. They need `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n`, which moves Wi-Fi and LWIP out of the V4's PSRAM. Measured on v4test with Wi-Fi + TLS MQTT, the V3's set cost the V4 internal heap: free 101,472 B against 102,568 B on main, largest block 34,804 B against 38,900 B, low-water 91,816 B against 97,832 B. In the V4's set `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` stays on, and the linked `esp_ipc_init` creates the IPC tasks with 2,048 bytes. Measured on v4test (V4.3 OLED, standalone Companion, 2026-11-01): 303 software resets of main gave 6 IPC canary panics (2.0 %; 4 in ipc0, 2 in ipc1), 300 of this build gave none. In one session, `get mecon.mem` idle free 140,916 B on main against 147,612 B; with a pinned-TLS MQTT session free 96,792 B against 103,484 B and low-water 92,020 B against 98,692 B (about 6.7 KB more each, net of the 2 KB the IPC stacks take); PSRAM free unchanged at 2,035,116 B. The largest block, 32,756 B against 38,900 B, moves with the layout and is not relied on.
+The V4 envs extend `esp32s3_v4_idf5_base`, whose rebuilt set holds the 2,048-byte IPC stack and the same 13 removed components, and nothing else. The V3's dynamic Wi-Fi TX buffers are left out. They need `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n`, which moves Wi-Fi and LWIP out of the V4's PSRAM. Measured on a V4 test board with Wi-Fi + TLS MQTT, the V3's set cost the V4 internal heap: free 101,472 B against 102,568 B on main, largest block 34,804 B against 38,900 B, low-water 91,816 B against 97,832 B. In the V4's set `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` stays on, and the linked `esp_ipc_init` creates the IPC tasks with 2,048 bytes. Measured on a V4 test board (V4.3 OLED, standalone Companion, 2026-11-01): 303 software resets of main gave 6 IPC canary panics (2.0 %; 4 in ipc0, 2 in ipc1), 300 of this build gave none. In one session, `get mecon.mem` idle free 140,916 B on main against 147,612 B; with a pinned-TLS MQTT session free 96,792 B against 103,484 B and low-water 92,020 B against 98,692 B (about 6.7 KB more each, net of the 2 KB the IPC stacks take); PSRAM free unchanged at 2,035,116 B. The largest block, 32,756 B against 38,900 B, moves with the layout and is not relied on.
 
 The V3 and the V4 are both ESP32-S3, so one PlatformIO core directory holds only one of the two sets. Building a V3 then a V4 (or the reverse) in one directory rebuilds the other set (about 6 minutes). Use separate volumes locally, or separate core directories: `all-boards.yml` gives the V4 envs and the C6 envs one each. `target-boards` and `pr-build-check` build one env per runner, so they cannot mix. `bin/idf5_libs.sh <env>` builds the stub env with that env's set (`idf5_hybrid_libs` for the V3, `idf5_hybrid_libs_v4` for the V4).
 
@@ -171,7 +171,7 @@ Not done: a hardware run of the V4 and of the other roles with this build.
 
 ## On hardware
 
-Measured on v3test and v4test on 2026-10-24, each board first on main (2.0.17) and then with the ESP-IDF 5.3 app written over it without an erase, same store and configuration. Every row, with its build, is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md).
+Measured on a V3 and a V4 test board on 2026-10-24, each board first on main (2.0.17) and then with the ESP-IDF 5.3 app written over it without an erase, same store and configuration. Every row, with its build, is in [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md).
 
 | | Heltec V3, 2.0.17 | Heltec V3, ESP-IDF 5.3 | Heltec V4, 2.0.17 | Heltec V4, ESP-IDF 5.3 |
 |---|---|---|---|---|
@@ -183,17 +183,17 @@ Measured on v3test and v4test on 2026-10-24, each board first on main (2.0.17) a
 
 ### nRF52 worker: interface requests and received packets
 
-The Adafruit nRF52 core runs `loop()` on a fixed 4 KB stack (`LOOP_STACK_SZ`). A first `deployment.provision` overflowed it on hardware (#158): the parse, the authority-set verify and the signing of the result came to about 4.8 KB of frames. Every device-interface request on nRF52 now runs on an 8 KB worker task (`src/helpers/NrfWorker.h`).
+The Adafruit nRF52 core runs `loop()` on a fixed 4 KB stack (`LOOP_STACK_SZ`). A first `deployment.provision` overflowed it on hardware: the parse, the authority-set verify and the signing of the result came to about 4.8 KB of frames. Every device-interface request on nRF52 now runs on an 8 KB worker task (`src/helpers/NrfWorker.h`).
 - **The hand-off.** The loop task hands one request to the worker and waits until it is answered, up to 15 s, so the request sees the same single-threaded world.
 - **A job that overruns** resets the device: it is still running on the caller's buffers, so no reply is safe. If the worker task cannot be created (no memory), the request is answered `busy`, error `worker`, unsigned, and nothing runs on the small stack.
 - **Strict encodings.** A signature whose S is not below the group order, or whose R is not a canonical point, is refused before any verifier runs, so every build accepts the same signatures.
 - **The verify.** The authority layer verifies Ed25519 on the nRF52840's CC310 (`src/helpers/deployment/DepVerify.h`), as `mesh::Identity::verify` does; other firmware uses the Crypto library's verifier.
-- **Received packets** run on the same worker (#162). A remote CLI `set` on a Repeater or Room server goes down to a prefs save, and a received advert on a Companion rewrites the advert-blob table, each through LittleFS. Measured on the T1000-E and Wio builds, those chains came to 3,730–3,780 B and about 3,600 B of the loop task's 3,840 B budget, before LittleFS's bad-block relocation, which recurses (184 B per level, 376 B through `lfs_deorphan`). `Dispatcher::processRecvPacket` hands each packet's `onRecvPacket` to the worker and waits up to 30 s, so mesh state still has one runner at a time.
+- **Received packets** run on the same worker. A remote CLI `set` on a Repeater or Room server goes down to a prefs save, and a received advert on a Companion rewrites the advert-blob table, each through LittleFS. Measured on the T1000-E and Wio builds, those chains came to 3,730–3,780 B and about 3,600 B of the loop task's 3,840 B budget, before LittleFS's bad-block relocation, which recurses (184 B per level, 376 B through `lfs_deorphan`). `Dispatcher::processRecvPacket` hands each packet's `onRecvPacket` to the worker and waits up to 30 s, so mesh state still has one runner at a time.
   - If `run()` ever returned with the job unfinished, the device resets rather than carry on.
   - The worker is created when the Dispatcher starts, so a failure is known at boot. Packets are then handled on the loop task as before, and `ERR_EVENT_WORKER` is set in the Dispatcher's error flags.
   - The longest receive measured is 5.4 s, on a Wio Companion with its 2 MB QSPI 96.7 % full. It is the first advert-blob save after a cold boot, which pays LittleFS's free-block scan of the whole flash; later saves took about 850 ms. That leaves the 30 s wait about 5.5 times the worst case seen.
   - There is no hardware watchdog on these builds. One added later needs a timeout longer than this wait.
-- **The boot's identity-rotation recovery** on a Companion with the device interface runs on the worker too (#172). It reads and rewrites the rotation statement (two 512 B buffers) and saves it through LittleFS; on the loop task it had been the deepest path, 3,568 of 3,840 B. Without a worker it runs on the loop task as before.
+- **The boot's identity-rotation recovery** on a Companion with the device interface runs on the worker too. It reads and rewrites the rotation statement (two 512 B buffers) and saves it through LittleFS; on the loop task it had been the deepest path, 3,568 of 3,840 B. Without a worker it runs on the loop task as before.
 - **Measured.** `status.get` reports the loop task's `loop_stack_free` and the worker's `worker_stack_free`.
 - **The gate.** The `stack-gate` workflow (`tools/stack_callgraph.py`) builds eight envs with GCC's call-graph files: the Repeater, Room server, and BLE and USB Companions of the T1000-E and of the Wio Tracker L1. The Wio Tracker L1 BLE Companion joined on 2026-11-08; its first run had a worst 3,568 B of 3,840 on the loop task and 3,664 B of 7,936 on the worker. It fails a change whose worst static path is over 3,840 B on the loop task or 7,936 B on the worker, or where a hand-off no longer reaches `NrfWorker::run`: received packets, a Companion's contact-import loopback, and the boot's rotation recovery. It follows the receive chain into the file system, and counts a job nested in another on the worker together with it. A recursion reachable from either task fails it unless every function in it is on the workflow's list, each entry with its reason: a depth counts a recursion once, so one driven by stored data could be far deeper than the figure.
 
@@ -204,7 +204,7 @@ What carried over unchanged: identity, name, PIN, contacts (50 of 50) and settin
 What is worse, and stays recorded until it is won back:
 
 - **Largest free block.** On ESP-IDF 5.3 the largest allocatable block of internal RAM is about 43–45 KB on both boards whatever the free total, where 2.0.17 had 90–130 KB. Every allocation the firmware makes today fits.
-- **Wi-Fi + TLS heap on the Heltec V3.** Measured on v3test with a verified TLS MQTT session, the 16 KB output buffer against 4 KB: free 48,572 B against about 60,840 B, low-water 35,476 B against 49,056 and 52,420 B (two runs), and with ten streams low-water 22,936 B against 34,092 and 36,100 B. The heap floor is 20,480 B. The V4 is far from its floor and keeps the 16 KB buffer.
+- **Wi-Fi + TLS heap on the Heltec V3.** Measured on a V3 test board with a verified TLS MQTT session, the 16 KB output buffer against 4 KB: free 48,572 B against about 60,840 B, low-water 35,476 B against 49,056 and 52,420 B (two runs), and with ten streams low-water 22,936 B against 34,092 and 36,100 B. The heap floor is 20,480 B. The V4 is far from its floor and keeps the 16 KB buffer.
 
 ## Board exceptions
 
