@@ -22,7 +22,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 |---|---|---|
 | L4 | A USB unlock outlives a change of cable user until it expires | Fixed: the window is 5 minutes, and native USB also clears it when the host's connection drops. A USB-UART bridge shows the board nothing, so on the Heltec V3 only the shorter window helps |
 | L5 | An unlock in Normal opens the whole posture class, not only the posture command | Fixed: a local unlock in Normal opens the posture and the audit reads, and no longer `set connectivity.mode` or the broker-management flag. Section 9 grants reads and the posture; the audit read stays because it is a read |
-| L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Fixed by the owner's decision of 2026-11-06: once enrolled the console only reads, in the caller table of section 9. The finding read the table alone: the console's line also passes the role's own gate as a remote admin, which already refused `reboot`, so the table now matches what the device did |
+| L6 | The Ethernet console admin keeps `reboot` on an enrolled server | Fixed by a design decision of 2026-11-06: once enrolled the console only reads, in the caller table of section 9. The finding read the table alone: the console's line also passes the role's own gate as a remote admin, which already refused `reboot`, so the table now matches what the device did |
 | L7 | The highest `job_id` value is the blocked-mark sentinel | Fixed: that `job_id` is refused as malformed, stated in section 8 |
 | L8 | Entropy of the ESP32 RNG on server roles that run no radio | Fixed: a seed from the SAR ADC at the start of each boot is mixed into every later draw (section 12). The ADC source was not used per draw, because it cannot run beside the radio or another ADC user |
 | I1 | The duplicate-result cache key uses a truncated instance id | Fixed: an authority set whose members share those 6 bytes is refused. The id stays short, since it is the job identity managers see |
@@ -44,7 +44,7 @@ is stricter than, or differs from, the contract, the contract needs a matching e
 
 ## Review 3: signed events and results, identity.rotate (2026-10-28)
 
-Outcome of the third review of the branch `feat/authority-95-provenance` (PR 132): 1 high, 4 medium, 6 low, 7 info. No exploit
+Outcome of the third review of the authority-provenance branch: 1 high, 4 medium, 6 low, 7 info. No exploit
 detail here. Each fix landed as its own commit with a test that fails without it and a named mutant (`sim/mutate.sh`)
 that the test kills.
 

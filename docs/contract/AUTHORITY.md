@@ -284,7 +284,7 @@ The unlock grants the reads and posture unlock shown in section 9. It never gran
 
 ## 10a. The continuity package
 
-An enrolled device in Normal holds the Deployment's **continuity package**: the material a manager needs to bootstrap or recover the Deployment from this device ([Security and authority](SECURITY_AND_AUTHORITY.md), "Protected continuity material"). A MECON Companion holds one by default (the owner's decision on #118). The device never reads the package. A manager encrypts it under a passphrase the user chooses before it arrives, and the passphrase never reaches the device.
+An enrolled device in Normal holds the Deployment's **continuity package**: the material a manager needs to bootstrap or recover the Deployment from this device ([Security and authority](SECURITY_AND_AUTHORITY.md), "Protected continuity material"). A MECON Companion holds one by default (a design decision). The device never reads the package. A manager encrypts it under a passphrase the user chooses before it arrives, and the passphrase never reaches the device.
 - **Storing it.** `deployment.continuity.put {"package": <base64 of 1 to 768 bytes>, "generation": <1 to 2^32-1>}` is a sensitive operation: a member's signature, a job id and this link's channel nonce. It is answered `{"continuity": "stored", "generation": n}` and never echoes the package. A generation must rise above the one held (`stale_generation`), so a replaced package cannot be put back. Refusals: `not_enrolled`, `unauthenticated`, `deployment_record_corrupt`, `hardened`, `bad-args`.
 - **At rest.** The device seals the package again under a 32-byte wrapping key it makes itself and never exports: an HMAC-SHA-256 keystream and an HMAC-SHA-256 tag, each under its own key derived from it, with a fresh nonce on every put. Package and key are two files, apart from the record. Destroying the key makes the package unreadable, whatever flash still holds.
 - **Exporting it.** `deployment.continuity.export` (no args) answers `{"package", "generation"}`, the package as it was put. It goes to the unsigned USB cable, in Normal, and to nothing else: a signed request, BLE, a broker, TCP and LoRa get `usb_only`. Hardened gets `hardened`, and a device holding none gets `no_continuity`. A sealed file that fails its tag gets `continuity_corrupt`. It is never cached, and someone holding the cable still needs the passphrase to read what comes out.
@@ -343,7 +343,7 @@ Rules:
 
 ## 14. Product profiles
 
-A product built on this contract may add fields to the `deployment` object and its own job classes. These must not weaken any check above, and the profile must say which fields it adds. MECON's profile is [#118](https://github.com/hoejriis/mecon-firmware/issues/118); its outage sync-key generation and its migration of legacy job sequences are defined there, not here. A generic device ignores profile fields it does not implement.
+A product built on this contract may add fields to the `deployment` object and its own job classes. These must not weaken any check above, and the profile must say which fields it adds. MECON's profile defines its outage sync-key generation and its migration of legacy job sequences; this contract does not. A generic device ignores profile fields it does not implement.
 
 ## 15. Review outcome
 
