@@ -21,7 +21,7 @@ One logical device model reached over MQTT, USB and BLE. A Backend talks to the 
 
 ### 3. Envelope
 
-UTF-8 JSON objects. Three shapes:
+UTF-8 JSON objects. A string may write any character as `\uXXXX`, a character outside the Basic Multilingual Plane as a surrogate pair, or send it as raw UTF-8: a string is decoded to UTF-8 before any check, so its length and character rules apply to the decoded bytes. A lone or reversed surrogate is `invalid`. *(Since v0.3.9. Before it, every `\u` escape was `invalid`, so a client whose encoder escapes non-ASCII, as Python's `json` does by default, could send no character outside ASCII.)* Three shapes:
 
 ```json
 {"v":1,"id":"r-17","op":"config.get","args":{"keys":["name","radio"]}}

@@ -160,6 +160,49 @@ int jsonElem(const JsonDoc& d, int arr, int n) {
   return c;
 }
 
+// Four hex digits after a \u, into *cp. False if there are not four.
+static bool hex4(const char*& p, const char* e, uint32_t* cp) {
+  if (e - p < 4) return false;
+  uint32_t v = 0;
+  for (int i = 0; i < 4; i++) {
+    const char h = *p++;
+    v <<= 4;
+    if (h >= '0' && h <= '9') v |= (uint32_t)(h - '0');
+    else if (h >= 'a' && h <= 'f') v |= (uint32_t)(h - 'a' + 10);
+    else if (h >= 'A' && h <= 'F') v |= (uint32_t)(h - 'A' + 10);
+    else return false;
+  }
+  *cp = v;
+  return true;
+}
+
+// A \u escape (p just past the u) as UTF-8 into buf, its length in *len. A high surrogate must be followed by \u and a low
+// one, which together make one code point; a lone or reversed surrogate is refused. A \u0000 decodes to a control byte,
+// which the caller's charset refuses like any other.
+static bool unicodeEscape(const char*& p, const char* e, uint8_t buf[4], size_t* len) {
+  uint32_t cp;
+  if (!hex4(p, e, &cp)) return false;
+  if (cp >= 0xDC00 && cp <= 0xDFFF) return false;
+  if (cp >= 0xD800 && cp <= 0xDBFF) {
+    uint32_t lo;
+    if (e - p < 2 || p[0] != '\\' || p[1] != 'u') return false;
+    p += 2;
+    if (!hex4(p, e, &lo) || lo < 0xDC00 || lo > 0xDFFF) return false;
+    cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+  }
+  if (cp < 0x80) { buf[0] = (uint8_t)cp; *len = 1; }
+  else if (cp < 0x800) { buf[0] = (uint8_t)(0xC0 | cp >> 6); buf[1] = (uint8_t)(0x80 | (cp & 0x3F)); *len = 2; }
+  else if (cp < 0x10000) {
+    buf[0] = (uint8_t)(0xE0 | cp >> 12); buf[1] = (uint8_t)(0x80 | (cp >> 6 & 0x3F)); buf[2] = (uint8_t)(0x80 | (cp & 0x3F));
+    *len = 3;
+  } else {
+    buf[0] = (uint8_t)(0xF0 | cp >> 18); buf[1] = (uint8_t)(0x80 | (cp >> 12 & 0x3F));
+    buf[2] = (uint8_t)(0x80 | (cp >> 6 & 0x3F)); buf[3] = (uint8_t)(0x80 | (cp & 0x3F));
+    *len = 4;
+  }
+  return true;
+}
+
 bool jsonGetString(const JsonDoc& d, int t, char* out, size_t cap, Charset cs, size_t minLen) {
   if (t < 0 || d.tok[t].type != JSMN_STRING || cap == 0) return false;
   size_t n = 0;
@@ -167,6 +210,19 @@ bool jsonGetString(const JsonDoc& d, int t, char* out, size_t cap, Charset cs, s
   const char* e = p + d.tlen(t);
   while (p < e) {
     char c = *p++;
+    if (c == '\\' && p < e && *p == 'u') {
+      // \uXXXX (and a surrogate pair) as UTF-8: standard JSON, and how many encoders write anything outside ASCII. Each
+      // byte meets the same charset and length rules as an unescaped one, so a decoded control character is still refused.
+      p++;
+      uint8_t u[4];
+      size_t ul;
+      if (!unicodeEscape(p, e, u, &ul)) return false;
+      for (size_t k = 0; k < ul; k++) {
+        if (n + 1 >= cap || !charsetOk(cs, (char)u[k])) return false;
+        out[n++] = (char)u[k];
+      }
+      continue;
+    }
     if (c == '\\') {
       if (p >= e) return false;
       switch (*p++) {
@@ -178,7 +234,7 @@ bool jsonGetString(const JsonDoc& d, int t, char* out, size_t cap, Charset cs, s
         case 'n': c = '\n'; break;
         case 'r': c = '\r'; break;
         case 't': c = '\t'; break;
-        default: return false;   // \u included
+        default: return false;
       }
       // a decoded control character is as unwelcome as a raw one, except where the caller allows it (none do)
     }
