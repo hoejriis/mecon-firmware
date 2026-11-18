@@ -68,6 +68,29 @@ TEST(RfRoute, TheClockWrapping) {
   EXPECT_TRUE(request(r, A, 0xFFFFF000u + RfRoute::WAIT_MS));
 }
 
+// #578: the request's frames waited for airtime, so the attempt's wait runs from its last frame on the air.
+TEST(RfRoute, AnAttemptHeldForAirtimeIsNotCountedUnansweredFromWhenItWasQueued) {
+  RfRoute r;
+  request(r, A, 1000);
+  r.onAir(15000);   // the last frame left 14 s after it was queued
+  // Past the wait from queueing (21 s), but not from the air: still zero-hop.
+  EXPECT_FALSE(request(r, A, 15000 + RfRoute::WAIT_MS - 1));
+  EXPECT_TRUE(request(r, A, 15000 + RfRoute::WAIT_MS));    // past the wait from the air with nothing heard: flood
+}
+
+TEST(RfRoute, OnAirLeavesAFloodAttemptAndAnAnsweredTargetAlone) {
+  RfRoute r;
+  request(r, A, 0);
+  EXPECT_TRUE(request(r, A, RfRoute::WAIT_MS));   // A floods
+  r.onAir(RfRoute::WAIT_MS + 1000);
+  EXPECT_EQ(r.mode(A), RfRoute::FLOOD);
+  request(r, B, 0);
+  r.heard(B, 2000);
+  r.onAir(50000);                                 // nothing pending for B: no effect
+  EXPECT_EQ(r.mode(B), RfRoute::ZERO_HOP);
+  EXPECT_FALSE(request(r, B, 50000 + RfRoute::WAIT_MS));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
