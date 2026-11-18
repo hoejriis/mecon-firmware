@@ -196,6 +196,8 @@ These three roles share one command set (`CommonCLI`, with `MyMesh`/`SensorMesh`
 | `get flood.max.unscoped` / `set flood.max.unscoped <0-64>` | Hop limit for unscoped flood messages. | stock | read / write |  |
 | `get flood.max.advert` / `set flood.max.advert <0-64>` | Hop limit for advert floods. | stock | read / write |  |
 | `get loop.detect` / `set loop.detect off\|minimal\|moderate\|strict` | Loop detection strength. | stock | read / write |  |
+| `get region.neutral` / `set region.neutral on\|off` | Repeater: forward a scoped flood whose transport code matches no configured region. Off by default. | MECON | read / write | *(Since v0.3.9.)* Opt-in flood-scope neutrality for unknown scopes only, not promiscuous repeating. A code that matches a configured region keeps that region's rule, so an explicit `region denyf` still drops it; unscoped floods keep the wildcard rule; hop, duplicate, loop and duty-cycle limits all still apply. It adds airtime on a mesh with many scopes. Not on the Room server. |
+| `get region.neutral.count` | Repeater: floods forwarded only because `region.neutral` is on, since boot. | MECON | read | *(Since v0.3.9.)* Not saved. |
 | `set freq <MHz>` | Set the frequency, applied at reboot. | stock | write | Console only (`unknown config: freq ...` over the air). Use `set radio` for the full set. |
 | `get adc.multiplier` / `set adc.multiplier <f>` | Battery-reading fine tuning; 0 = board default. | stock | read / write | `Error: unsupported` on boards without it. |
 | `get extra.sf` / `set extra.sf <sf>[ <sf>...]` | Extra spreading factors to listen on (LR2021 builds only). | stock | read / write |  |

@@ -1095,7 +1095,9 @@ bool ConsoleIface::mqttSubscribed() const {
 }
 
 ConfigHost ConsoleIface::configHost() {
-  return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, N_SERVER_KEYS, &_confirm,
+  // region.neutral is the last SERVER_KEYS entry and a Repeater setting: any other role lists the table without it.
+  const size_t nkeys = strcmp(host().role, "repeater") == 0 ? N_SERVER_KEYS : N_SERVER_KEYS - 1;
+  return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, nkeys, &_confirm,
                     [](void* u) { return static_cast<ConsoleIface*>(u)->onLora(); }};
 }
 
