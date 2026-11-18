@@ -7,3 +7,5 @@ mutate rfroute_answer_misread src/helpers/iface/RfRoute.h '    e->mode = e->pend
 mutate rfroute_no_wait src/helpers/iface/RfRoute.h '    if (e->pending && !e->pending_flood && (uint32_t)(now - e->pending_ms) >= WAIT_MS) {' '    if (e->pending && !e->pending_flood) {' unit:test_rf_route
 # A frame held for airtime is late, not unanswered (#578): the wait runs from the last frame on the air
 mutate rfroute_wait_from_queueing src/helpers/iface/RfRoute.h '      if (e.used && e.pending && !e.pending_flood) e.pending_ms = now;' '      (void)e;' unit:test_rf_route
+# A channel reply waits out the request's rebroadcasts before its first frame (#578)
+mutate lora_ch_reply_at_once src/helpers/iface/LoraLink.h '    _next_send = p.channel ? now + LORA_CH_SETTLE_MS : now;' '    _next_send = now;' unit:test_lora_link

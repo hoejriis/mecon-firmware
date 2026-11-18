@@ -226,7 +226,9 @@ TEST(LoraLink, OnTheChannelOnlyAVerifiedResultIsAnswered) {
   ASSERT_TRUE(l.queueReply(*p, msg.data(), msg.size(), true, 1000));
   l.release(*p);
   Sent s;
-  l.tick(1000, sendTo, &s);
+  l.tick(1000 + LORA_CH_SETTLE_MS - 1, sendTo, &s);
+  EXPECT_TRUE(s.frames.empty()) << "a channel reply waits out the request's rebroadcasts (#578)";
+  l.tick(1000 + LORA_CH_SETTLE_MS, sendTo, &s);
   ASSERT_EQ(1u, s.frames.size());
   EXPECT_EQ(LORA_REPLY_HDR + LORA_CH_REPLY_PAYLOAD, s.frames[0].size());
   EXPECT_EQ(2, s.frames[0][6]);

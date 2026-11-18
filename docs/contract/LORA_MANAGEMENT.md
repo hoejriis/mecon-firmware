@@ -67,7 +67,9 @@ encrypted on both paths. A node is addressed by its node public key, as native M
 - **How a Companion manager sends the request.** Along the target's known path when it has one. With none, **zero-hop first**:
   a flood is rebroadcast by every repeater in range, and a rebroadcast that lands while the target's direct reply is on the air
   destroys a frame of it, the first most often. A zero-hop request is forwarded by nobody, and a neighbour answers it. A zero-hop
-  attempt that hears no reply within 20 s sends the next request to that target by flood. The route that got an answer is kept
+  attempt that hears no reply within 20 s of its last frame going on the air sends the next request to that target by flood;
+  frames that waited for airtime count from when they went out, not from when they were queued *(since v0.3.8; before it, from
+  when the first frame was queued, so a duty hold could send a target to flood)*. The route that got an answer is kept
   per target (four targets): zero-hop until a zero-hop attempt goes unanswered, flood for 30 minutes and then zero-hop again.
   A target that is not a contact is always tried zero-hop. *(Since v0.3.7. Before it, a request to a
   contact with no known path was always flooded.)*
@@ -90,7 +92,9 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   which keys talk, never a `device_id`.
 - Only the node whose key matches the target prefix reads further. The signed body's `target_public_key` then
   confirms the full key, as on the point-to-point path. Every other node drops the frame without answering.
-- The reply travels on the same channel, addressed to the sender's prefix. Channel members can read it, and
+- The reply travels on the same channel, addressed to the sender's prefix. It starts 4 s after the request is complete,
+  because every repeater in range rebroadcasts each request frame, and a reply begun at once lost its first frame to
+  those copies *(since v0.3.8)*. Channel members can read it, and
   membership is a weaker boundary than a pairwise key. So the channel carries only results that say nothing beyond
   the job:
   - the status envelope;

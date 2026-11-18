@@ -39,6 +39,10 @@ const uint32_t LORA_REASSEMBLY_MS = 60000;
 const uint32_t LORA_REPLY_MS = 10UL * 60 * 1000;
 const uint32_t LORA_SESSION_MS = 15UL * 60 * 1000;
 const uint32_t LORA_FRAME_GAP_MS = 800;
+// A request on the management channel is a flood: every repeater in range sends each frame again, after a random delay of up
+// to five of its airtimes times its txdelay. A reply begun at once lost its first frame to those copies (#578), so a channel
+// reply starts this long after the request completed. A point-to-point reply goes at once.
+const uint32_t LORA_CH_SETTLE_MS = 4000;
 const uint32_t LORA_UNVERIFIED_PER_MIN = 4;
 
 class LoraLink {
@@ -174,7 +178,7 @@ public:
     p.tx_count = (uint8_t)((len + pay - 1) / pay);
     p.tx_flood_ok = verified;
     p.tx_deadline = now + LORA_REPLY_MS;
-    _next_send = now;
+    _next_send = p.channel ? now + LORA_CH_SETTLE_MS : now;
     return true;
   }
 
