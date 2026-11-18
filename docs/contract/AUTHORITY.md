@@ -343,7 +343,7 @@ Rules:
 
 ## 14. Product profiles
 
-A product built on this contract may add fields to the `deployment` object and its own job classes. These must not weaken any check above, and the profile must say which fields it adds. MECON's profile defines its outage sync-key generation and its migration of legacy job sequences; this contract does not. A generic device ignores profile fields it does not implement.
+A product built on this contract may add fields to the `deployment` object and its own job classes. These must not weaken any check above, and the profile must say which fields it adds. MECON adds no profile fields today: autonomous outage forwarding, which an outage sync key would have served, is not planned, and this firmware does not import a legacy firmware's records, so there are no legacy job sequences to migrate *(corrected 2026-11-18: this said MECON's profile defines both)*. A generic device ignores profile fields it does not implement.
 
 ## 15. Review outcome
 
