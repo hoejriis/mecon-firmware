@@ -77,7 +77,7 @@ TEST(IfaceEnvelope, IdLengthBounds) {
 TEST(IfaceEnvelope, IdCharset) {
   for (const char* good : {"aZ09", "a.b", "a_b", "a:b", "a-b", "0"})
     EXPECT_EQ(ST_OK, parse(std::string(R"({"v":1,"id":")") + good + R"(","op":"hello"})")) << good;
-  for (const char* bad : {"a b", "a/b", "a\\u0041", "a\"", "a=b", "é", "a,b", "a;b", "a#"}) {
+  for (const char* bad : {"a b", "a/b", "a\\u0020", "a\"", "a=b", "é", "a,b", "a;b", "a#"}) {   // an escape is decoded first
     std::string m = std::string(R"({"v":1,"id":")") + bad + R"(","op":"hello"})";
     if (std::string(bad) == "a\"") m = R"({"v":1,"id":"a\"","op":"hello"})";
     EXPECT_EQ(ST_INVALID, parse(m)) << bad;
@@ -210,12 +210,13 @@ TEST(IfaceJson, Readers) {
   EXPECT_FALSE(jsonGetString(d, jsonFind(d, 0, "s"), out, 0, CS_ANY));
 }
 
-TEST(IfaceJson, UnicodeEscapesAreNotAccepted) {
+TEST(IfaceJson, AnEscapedAsciiCharacterIsThatCharacter) {
   RequestDoc d;
   const char* m = R"({"a":"\u0041"})";
   ASSERT_EQ(J_OK, jsonParse(d, m, strlen(m)));
   char out[8];
-  EXPECT_FALSE(jsonGetString(d, jsonFind(d, 0, "a"), out, sizeof out, CS_ANY));
+  ASSERT_TRUE(jsonGetString(d, jsonFind(d, 0, "a"), out, sizeof out, CS_NAME));
+  EXPECT_STREQ(out, "A");
 }
 
 // ---- writer and serializers
@@ -883,6 +884,49 @@ TEST(IfaceQueue, XidAdvancesPerMessage) {
   uint8_t a[FRAME_MAX], b[FRAME_MAX];
   q.nextFrame(a); q.nextFrame(b);
   EXPECT_NE(a[1], b[1]);
+}
+
+// \uXXXX escapes decode to UTF-8, as standard JSON writes anything outside ASCII (Python's json does by default).
+static bool getEscaped(const std::string& value, char* out, size_t cap, Charset cs = CS_ANY) {
+  static RequestDoc d;
+  static std::string m;
+  m = "{\"s\":\"" + value + "\"}";
+  if (jsonParse(d, m.data(), m.size()) != J_OK) return false;
+  return jsonGetString(d, jsonFind(d, 0, "s"), out, cap, cs);
+}
+
+TEST(IfaceJson, UnicodeEscapesDecodeToUtf8) {
+  char out[32];
+  ASSERT_TRUE(getEscaped("b\\u00e6nk-\\u00f8", out, sizeof out));
+  EXPECT_STREQ(out, "b\xc3\xa6nk-\xc3\xb8");                       // bænk-ø
+  ASSERT_TRUE(getEscaped("\\u20AC", out, sizeof out));
+  EXPECT_STREQ(out, "\xe2\x82\xac");                               // €, upper-case hex
+  ASSERT_TRUE(getEscaped("David \\ud83c\\udfe0", out, sizeof out));
+  EXPECT_STREQ(out, "David \xf0\x9f\x8f\xa0");                     // a surrogate pair is one 4-byte character
+  ASSERT_TRUE(getEscaped("b\xc3\xa6nk", out, sizeof out));
+  EXPECT_STREQ(out, "b\xc3\xa6nk");                                // raw UTF-8 is unchanged
+}
+
+TEST(IfaceJson, BadUnicodeEscapesAreRefused) {
+  char out[32];
+  EXPECT_FALSE(getEscaped("\\ud83c", out, sizeof out));            // a lone high surrogate
+  EXPECT_FALSE(getEscaped("\\ud83cx", out, sizeof out));
+  EXPECT_FALSE(getEscaped("\\udfe0", out, sizeof out));            // a lone low surrogate
+  EXPECT_FALSE(getEscaped("\\udfe0\\ud83c", out, sizeof out));     // reversed
+  EXPECT_FALSE(getEscaped("\\ud83c\\u0041", out, sizeof out));     // high followed by no low
+  EXPECT_FALSE(getEscaped("\\ud83cxxdfe0", out, sizeof out));    // the low half must come as \\u, not just as hex
+  EXPECT_FALSE(getEscaped("\\u0000", out, sizeof out));
+  EXPECT_FALSE(getEscaped("\\u001f", out, sizeof out));            // a control character, as when unescaped
+  EXPECT_FALSE(getEscaped("\\u00g6", out, sizeof out));            // not hex
+  EXPECT_FALSE(getEscaped("\\u00e", out, sizeof out));             // too short
+  EXPECT_FALSE(getEscaped("\\u00e6", out, sizeof out, CS_NAME));    // a name set takes ASCII only
+}
+
+TEST(IfaceJson, AnEscapedCharacterCountsItsUtf8BytesAgainstTheLimit) {
+  char out[8];   // room for 7 bytes and the NUL
+  EXPECT_TRUE(getEscaped("abcde\\u00e6", out, sizeof out));         // 5 + 2 bytes
+  EXPECT_FALSE(getEscaped("abcdef\\u00e6", out, sizeof out));       // 6 + 2: one over
+  EXPECT_FALSE(getEscaped("abc\\ud83c\\udfe0", out, 7));            // 3 + 4 needs 8
 }
 
 int main(int argc, char **argv) {
