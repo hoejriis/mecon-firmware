@@ -5,3 +5,5 @@ mutate rfroute_always_flood examples/companion_radio/MyMesh.cpp '    else sendZe
 mutate rfroute_never_flood src/helpers/iface/RfRoute.h '    return e->mode == FLOOD;' '    return false;' $T2
 mutate rfroute_answer_misread src/helpers/iface/RfRoute.h '    e->mode = e->pending_flood ? FLOOD : ZERO_HOP;' '    e->mode = FLOOD;' unit:test_rf_route
 mutate rfroute_no_wait src/helpers/iface/RfRoute.h '    if (e->pending && !e->pending_flood && (uint32_t)(now - e->pending_ms) >= WAIT_MS) {' '    if (e->pending && !e->pending_flood) {' unit:test_rf_route
+# A frame held for airtime is late, not unanswered (#578): the wait runs from the last frame on the air
+mutate rfroute_wait_from_queueing src/helpers/iface/RfRoute.h '      if (e.used && e.pending && !e.pending_flood) e.pending_ms = now;' '      (void)e;' unit:test_rf_route

@@ -479,7 +479,7 @@ void MyMesh::onMessagePacket(const mesh::Packet* pkt) {
 void MyMesh::logTx(mesh::Packet* packet, int len) {
   uint8_t hash[MAX_HASH_SIZE];
   packet->calculatePacketHash(hash);
-  _lora_tx.sent(hash, millis());
+  if (_lora_tx.sent(hash, millis())) _rf_route.onAir(millis());
   if (!_iface.messages() || !_iface.messages()->anyOpen()) return;
   _iface.messages()->onTx(hash, millis());
 }

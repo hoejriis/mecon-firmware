@@ -44,6 +44,13 @@ public:
     }
   }
 
+  // A management frame of this node's went on the air. A zero-hop attempt's wait runs from its last frame on the air, not
+  // from when it was queued: frames held for airtime are late, not unanswered, and must not send the target to flood (#578).
+  void onAir(uint32_t now) {
+    for (Entry& e : _e)
+      if (e.used && e.pending && !e.pending_flood) e.pending_ms = now;
+  }
+
   // A reply frame came from `key`: the route of the attempt it answers is the route to keep.
   void heard(const uint8_t* key, uint32_t now) {
     Entry* e = find(key);

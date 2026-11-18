@@ -23,14 +23,16 @@ public:
     _next = (_next + 1) % SLOTS;
     (idx == 0 ? _c.first_queued : _c.rest_queued)++;
   }
-  void sent(const uint8_t hash[8], uint32_t now_ms) {
+  // Whether the frame was one of this node's tracked management frames.
+  bool sent(const uint8_t hash[8], uint32_t now_ms) {
     Slot* s = find(hash);
-    if (!s) return;
+    if (!s) return false;
     (s->idx == 0 ? _c.first_sent : _c.rest_sent)++;
     _recent[_rnext] = Sent{s->idx, now_ms};
     _rnext = (_rnext + 1) % RECENT;
     if (_rcount < RECENT) _rcount++;
     s->used = false;
+    return true;
   }
   // The i-th most recent sent frame (0: the newest); false past the last.
   bool recent(int i, Sent* out) const {
