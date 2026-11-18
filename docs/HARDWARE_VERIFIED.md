@@ -144,6 +144,8 @@ Reading a release on a Heltec V3 or V4 includes `tools/mecon_latency_hw.py <port
 | Flood limits by a signed `config.apply` from a reference Backend (v0.3.3 Repeater, enrolled, Backend row 694) | read `flood.max.unscoped` 64 and `flood.max.advert` 8; `flood.max.advert` set to 9 and read back 9 (21:06:04Z), restored to 8 and read back 8 (21:06:13Z), each answered `ok` | 2026-11-12, v0.3.3 (829db04b) |
 | `stats.clear` signed by a reference Backend over MQTT (v0.3.3 Repeater, enrolled, Backend row 694) | answered `ok` at about 23:55:48Z; the radio stream before it (epoch 61) read `rx.flood` 109, `rx.total` 109, `tx.flood` 109, `tx.direct` 1, `tx.total` 110, and the first after it (same epoch, so no reboot) read every counter 0 | 2026-11-12, v0.3.3 (829db04b) |
 | `packet.transmit` on a Repeater (`heltec_v4_repeater`, main 13fcd703, enrolled with the public test authority; a Heltec V3 stock Companion as the receiver; EU Narrow) | a channel message the manager built on a test channel was sent signed: the job ended `transmitted` and the Companion read the text exactly; the same packet under a new job was refused `already-heard` | 2026-11-14, main (13fcd703) |
+| `packet.transmit` sent by a reference Backend (Heltec V4 Repeater, v0.3.7, enrolled on the Backend; a SenseCAP T1000-E Companion as the receiver; EU Narrow) | the Backend built a direct message under a test Companion identity and sent it signed: `accepted`, with its hash and airtime estimate, and the receiver's inbox held it once, from that identity, by radio | 2026-11-15, v0.3.7 (fd847b13) |
+| `packet.transmit` held, expired, refused and cut by a reboot (Heltec V4 Repeater, v0.3.7, enrolled with the public test authority, over its console; EU Narrow) | inside the first 30 s after a boot, when the duty window is seeded full: a packet was `accepted` with `duty_held` true and ended `failed`, `expired`; a second request meanwhile was `busy` `queue-full`; airtime stayed at the seed, so nothing was sent. A held packet whose job was open across a reboot read `failed`, `unknown` after it. After the first 30 s the seed has freed room and a short packet is not held | 2026-11-18, v0.3.7 (fd847b13) |
 
 ## Seeed Wio Tracker L1
 
@@ -215,6 +217,8 @@ Reading a release on a Heltec V3 or V4 includes `tools/mecon_latency_hw.py <port
 Builds b6d0a50e, d23437d5, adaf9fed, f0067d70 and a76e33d7 were bench merges of branches then open; their features are on `main` by these rows' merge.
 
 ## Not yet verified on hardware
+
+The rows above prove a Repeater transmits one packet a manager asks for, and its bounds. They do not prove a manager's coordinated send across several gateways (a user's Companion first, then Repeater Gateways chosen by what they observed): that is a manager feature, not yet run end to end.
 
 - The Repeater and Room server settings and actions that v0.3.3 added, run for real on an enrolled board, apart from the flood limits and `stats.clear` (above): they need a signed request, and a reference Backend cannot send one for them yet. Verified only in the simulator.
 - Setting v0.3.3's new Companion and server config keys on hardware (read on all four boards; set only in the simulator).
