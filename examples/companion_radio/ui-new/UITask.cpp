@@ -7,6 +7,7 @@
 #include <helpers/DisplayPrivacy.h>      // issue #113: what the screen shows per posture
 #include <helpers/Posture.h>
 #include <helpers/ui/FrontPage.h>         // the operational front page shared with the Repeater (docs/UI.md)
+#include <helpers/ui/MeconSplash.h>       // the boot splash shared with the Repeater
 #ifdef ENABLE_WIFI_INTERFACE
   #include <WiFi.h>
 #endif
@@ -44,46 +45,15 @@
 class SplashScreen : public UIScreen {
   UITask* _task;
   unsigned long dismiss_after;
-  char _version_info[12];
 
 public:
   SplashScreen(UITask* task) : _task(task) {
-    // strip off dash and commit hash by changing dash to null terminator
-    // e.g: v1.2.3-abcdef -> v1.2.3
-    const char *ver = FIRMWARE_VERSION;
-    const char *dash = strchr(ver, '-');
-
-    int len = dash ? dash - ver : strlen(ver);
-    if (len >= sizeof(_version_info)) len = sizeof(_version_info) - 1;
-    memcpy(_version_info, ver, len);
-    _version_info[len] = 0;
-
     dismiss_after = millis() + BOOT_SCREEN_MILLIS;
   }
 
+  // The MECON splash, the same on the Repeater (src/helpers/ui/MeconSplash.h, docs/UI.md).
   int render(DisplayDriver& display) override {
-    // meshcore logo
-    display.setColor(UIColor::corp_blue);
-    int logoWidth = 128;
-    display.drawXbm((display.width() - logoWidth) / 2, 3, meshcore_logo, logoWidth, 13);
-
-    // meshcore website
-    const char* website = "https://meshcore.io";
-    display.setColor(UIColor::primary_txt);
-    display.setTextSize(1);
-    uint16_t websiteWidth = display.getTextWidth(website);
-    display.setCursor((display.width() - websiteWidth) / 2, 22);
-    display.print(website);
-
-    // version info
-    display.setColor(UIColor::primary_txt);
-    display.setTextSize(1);
-    display.drawTextCentered(display.width()/2, 35, _version_info);
-
-    display.setColor(UIColor::secondary_txt);
-    display.setTextSize(1);
-    display.drawTextCentered(display.width()/2, 48, FIRMWARE_BUILD_DATE);
-
+    MeconSplash::draw(display, UIColor::primary_txt, FIRMWARE_VERSION);
     return 1000;
   }
 

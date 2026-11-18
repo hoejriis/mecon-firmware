@@ -14,6 +14,7 @@ class UITask {
   int _prevBtnState;
   NodePrefs* _node_prefs;
   char _version_info[32];
+  const char* _firmware_version = "";
   unsigned long _powering_off_at = 0;
   unsigned long _started_at = 0;
   FrontFill _front_fill = nullptr;

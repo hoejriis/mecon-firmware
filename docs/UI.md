@@ -14,7 +14,7 @@ What the on-device display shows and how the button drives it, for the Companion
 | `examples/companion_radio/ui-orig` | older and smaller-screen boards (for example Wio E5 mini, RAK3112, T1000-E, Thinknode M3/M4/M7, Xiao nRF52) | one home screen, message preview, one-line alerts | stock, plus the [screen privacy](#screen-privacy) rules |
 | `examples/companion_radio/ui-tiny` | the T-Echo card | small-display (U8g2) screens with a scrolling status bar; same pages and gestures as `ui-new` minus the Bluetooth-skip, Wi-Fi line and connectivity additions (pages: home, recent, radio, Bluetooth, advert, GPS, sensors, hibernate) | stock, plus the [screen privacy](#screen-privacy) rules |
 | none | Companion builds on boards without a display (`DISPLAY_CLASS` not defined) | nothing | the device is driven by the phone app, USB or the CLI; the button, where there is one, still handles the first-8-seconds rescue |
-| `examples/simple_repeater/UITask.cpp` | Repeater on boards with a display | boot splash, then the [front page](#front-page) and the stock radio page | front page and page dots added |
+| `examples/simple_repeater/UITask.cpp` | Repeater on boards with a display | the [boot splash](#boot-splash), then the [front page](#front-page) and the stock radio page | splash, front page and page dots |
 | `simple_room_server`, `simple_sensor` | Room server, Sensor on boards with a display | boot splash, then node name and radio settings | stock, unchanged |
 
 **What this firmware changed:**
@@ -145,6 +145,14 @@ These are the same stock pages as on any MeshCore `ui-new` build; they are captu
 ```
 
 ## New and changed screens
+
+### Boot splash
+
+**Changed, on the Companion (`ui-new`) and the Repeater.** For 4 s after boot, both show the same screen (`src/helpers/ui/MeconSplash.h`): the MeshContinuum mark (32 px, rendered from the brand's one-colour mark) and wordmark, a rule, `https://mecon.cloud/`, `MECON` with this firmware's version and `MeshCore` with the upstream version it is built on (from `v1.18.0-mecon.0.3.7`: `MECON 0.3.7`, `MeshCore 1.18.0`). It names no role and no posture. Stock showed the MeshCore logo, `https://meshcore.io`, the version and the build date. The Repeater's power-off screen keeps the stock logo.
+
+![The boot splash at 128x64, shown 8 times larger](ui/splash_8x.png)
+
+*(Rendered by `tools/splash_preview.py` from the same geometry and the display's 6x8 font; the versions are examples.)*
 
 ### Front page
 
@@ -611,7 +619,7 @@ The simulated suite checks this: `test_no_secret_is_ever_drawn` sets Wi-Fi and M
 
 The Room server and Sensor screens are **unchanged from stock**. The Repeater (`examples/simple_repeater/UITask.cpp`) changed:
 
-- the boot screen for 4 s, as stock: logo, `https://meshcore.io`, version and build date, and `< Repeater >` (`< Room Server >`, `< Sensor >` on the others);
+- **changed:** the [boot splash](#boot-splash) for 4 s, the same as the Companion's (the Room server and Sensor keep the stock one: logo, `https://meshcore.io`, version and build date, and `< Room Server >` or `< Sensor >`);
 - **changed:** then two pages under a header with the node name, the battery (drawn only when the board reads a battery voltage, 2.5 V or more) and two page dots. Page 1 is the [front page](#front-page). Page 2 is the stock radio lines, `FREQ: 869.618 SF8` and `BW: 62.50 CR: 5`. Both refresh every second;
 - **changed:** a **click** wakes the display, and when it is on moves to the other page (stock: it did nothing); the display turns off after 20 s;
 - a **long press** shows the logo and `Turning OFF` and powers the board off after 3 s;

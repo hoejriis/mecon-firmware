@@ -2,6 +2,7 @@
 #include "target.h"
 #include <Arduino.h>
 #include <helpers/CommonCLI.h>
+#include <helpers/ui/MeconSplash.h>
 
 #ifndef USER_BTN_PRESSED
 #define USER_BTN_PRESSED LOW
@@ -34,6 +35,7 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   _auto_off = millis() + AUTO_OFF_MILLIS;
   _started_at = millis();
   _node_prefs = node_prefs;
+  _firmware_version = firmware_version;
   _display->turnOn();
 
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
@@ -87,25 +89,8 @@ void UITask::renderHeader(uint8_t pages) {
 
 void UITask::renderCurrScreen() {
   char tmp[80];
-  if (millis() < _started_at + BOOT_SCREEN_MILLIS) { // boot screen
-    // meshcore logo
-    _display->setColor(UIColor::corp_blue);
-    int logoWidth = 128;
-    _display->drawXbm((_display->width() - logoWidth) / 2, 3, meshcore_logo, logoWidth, 13);
-
-    // meshcore website
-    const char* website = "https://meshcore.io";
-    _display->setColor(UIColor::primary_txt);
-    _display->setTextSize(1);
-    _display->drawTextCentered(_display->width() / 2, 22, website);
-
-    // version info
-    _display->setTextSize(1);
-    _display->drawTextCentered(_display->width() / 2, 35, _version_info);
-
-    // node type
-    const char* node_type = "< Repeater >";
-    _display->drawTextCentered(_display->width() / 2, 48, node_type);
+  if (millis() < _started_at + BOOT_SCREEN_MILLIS) { // boot screen: the MECON splash, as on the Companion (docs/UI.md)
+    MeconSplash::draw(*_display, UIColor::primary_txt, _firmware_version);
   } else if (_powering_off_at > 0) {
     // meshcore logo
     _display->setColor(UIColor::corp_blue);
