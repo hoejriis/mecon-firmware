@@ -48,6 +48,9 @@ const KeyDef SERVER_KEYS[] = {
 #ifdef ENABLE_WIFI_INTERFACE
 #include "IfaceNetKeys.inc"
 #endif
+  // Repeater only, and it must stay the last entry: the Room server lists the table without it (ConsoleIface::configHost).
+  {"region.neutral", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get region.neutral", F_WHOLE,
+   "set region.neutral %s"},
 };
 const size_t N_SERVER_KEYS = sizeof(SERVER_KEYS) / sizeof(SERVER_KEYS[0]);
 

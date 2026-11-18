@@ -456,9 +456,14 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
       && mesh::isFloodHopLimitExceeded(packet, _prefs.flood_max, _prefs.flood_max_unscoped, _prefs.flood_max_advert)) {
     return false;
   }
+  bool neutral_pass = false;
   if (packet->isRouteFlood() && recv_pkt_region == NULL) {
-    MESH_DEBUG_PRINTLN("allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
-    return false;
+    // region.neutral lets through only a scoped flood whose code matches no configured region (see onRecvPacket)
+    if (!recv_pkt_neutral) {
+      MESH_DEBUG_PRINTLN("allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
+      return false;
+    }
+    neutral_pass = true;
   }
   if (packet->isRouteFlood() && _prefs.loop_detect != LOOP_DETECT_OFF) {
     const uint8_t* maximums;
@@ -474,6 +479,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
       return false;
     }
   }
+  if (neutral_pass) n_neutral_forwarded++;   // counted only when every check passed and only this mode allowed it
   return true;
 }
 
@@ -582,8 +588,16 @@ uint32_t MyMesh::getDirectRetransmitDelay(const mesh::Packet *packet) {
 }
 
 mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
+  recv_pkt_neutral = false;
   if (pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
     recv_pkt_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
+    // Region-neutral forwarding: the code matches no configured region at all. findMatch(pkt, 0) considers every
+    // region whatever its flags, so a code that matches a region which denies flood stays rejected: an explicit
+    // deny wins. The native `parent` of a region is display-only (matching ignores it), so an unknown code has no
+    // parent to inherit a deny from. The packet is not modified.
+    if (recv_pkt_region == NULL && _prefs.region_neutral && region_map.findMatch(pkt, 0) == NULL) {
+      recv_pkt_neutral = true;
+    }
   } else if (pkt->getRouteType() == ROUTE_TYPE_FLOOD) {
     if (region_map.getWildcard().flags & REGION_DENY_FLOOD) {
       recv_pkt_region = NULL;
@@ -1015,6 +1029,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _logging = false;
   region_load_active = false;
   recv_pkt_region = NULL;
+  recv_pkt_neutral = false;
+  n_neutral_forwarded = 0;
 
 #if MAX_NEIGHBOURS
   memset(neighbours, 0, sizeof(neighbours));
@@ -1535,6 +1551,19 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     } else {
       sendNodeDiscoverReq();
       strcpy(reply, "OK - Discover sent");
+    }
+  } else if (strcmp(command, "get region.neutral") == 0) {
+    strcpy(reply, _prefs.region_neutral ? "> on" : "> off");
+  } else if (strcmp(command, "get region.neutral.count") == 0) {
+    sprintf(reply, "> %lu", (unsigned long)n_neutral_forwarded);
+  } else if (memcmp(command, "set region.neutral ", 19) == 0) {
+    const char* v = command + 19;
+    if (strcmp(v, "on") == 0 || strcmp(v, "off") == 0) {
+      _prefs.region_neutral = v[1] == 'n' ? 1 : 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Err - region.neutral is on or off");
     }
   } else if (strcmp(command, "get dutycycle") == 0) {
     formatDutyCycleReply(reply);

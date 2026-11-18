@@ -79,6 +79,7 @@ public:
   uint8_t radio_fem_txgain = 0; // LoRa FEM TX gain setting
   uint8_t path_hash_mode = 0;   // which path mode to use when sending
   uint8_t loop_detect = 0;
+  uint8_t region_neutral = 0;   // Repeater: forward floods whose scope no configured region matches (keyed file only)
   uint8_t cad_enabled = 0;      // hardware Channel Activity Detection before TX (boolean)
   uint8_t extra_sf[4];
   uint8_t posture = 0;          // Posture::NORMAL / HARDENED (src/helpers/Posture.h)
@@ -196,6 +197,7 @@ private:
       def("f_max_uns", _parent->flood_max_unscoped);
       def("f_max_adv", _parent->flood_max_advert);
       def("loop", _parent->loop_detect);
+      def("neutral", _parent->region_neutral);
     }
   public:
     RepeatPrefs(NodePrefs* parent) : _parent(parent) { }

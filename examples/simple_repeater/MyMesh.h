@@ -107,6 +107,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   RegionMap region_map, temp_map;
   RegionEntry* load_stack[8];
   RegionEntry* recv_pkt_region;
+  bool recv_pkt_neutral;          // this packet is a scoped flood no configured region matches, let through by region.neutral
+  uint32_t n_neutral_forwarded;   // floods forwarded only because of region.neutral, since boot
   TransportKey default_scope;
   RateLimiter discover_limiter, anon_limiter;
   uint32_t pending_discover_tag;
