@@ -2,6 +2,7 @@
 #include "target.h"
 #include <Arduino.h>
 #include <helpers/CommonCLI.h>
+#include <helpers/ui/MeconSplash.h>
 
 #ifndef USER_BTN_PRESSED
 #define USER_BTN_PRESSED LOW
@@ -34,6 +35,7 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   _auto_off = millis() + AUTO_OFF_MILLIS;
   _started_at = millis();
   _node_prefs = node_prefs;
+  _firmware_version = firmware_version;
   _display->turnOn();
 
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
@@ -53,27 +55,42 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   free(version);
 }
 
+// The stock name on the left, the battery on the right when the board reads one, and a dot per page (docs/UI.md).
+void UITask::renderHeader(uint8_t pages) {
+  _display->setTextSize(1);
+  _display->setColor(UIColor::primary_txt);
+  const uint16_t mv = _board->getBattMilliVolts();
+  const bool batt = mv >= 2500;   // below that the board has no battery to read: draw none rather than an invented level
+  char name[sizeof(_node_prefs->node_name)];
+  snprintf(name, sizeof(name), "%s", _node_prefs->node_name);
+  const size_t room = batt ? 16 : FrontPage::COLS;   // characters left of the icon
+  if (strlen(name) > room) {
+    size_t cut = room;
+    while (cut > 0 && ((uint8_t)name[cut] & 0xC0) == 0x80) cut--;   // never half a UTF-8 character
+    name[cut] = 0;
+  }
+  _display->setCursor(0, 0);
+  _display->print(name);
+  if (batt) {
+    int pct = ((int)mv - 3000) * 100 / (4200 - 3000);
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    const int w = 24, h = 10, x = _display->width() - w - 5;
+    _display->drawRect(x, 0, w, h);
+    _display->fillRect(x + w, h / 4, 3, h / 2);
+    _display->fillRect(x + 2, 2, pct * (w - 4) / 100, h - 4);
+  }
+  int x = _display->width() / 2 - 5 * (pages - 1);
+  for (uint8_t i = 0; i < pages; i++, x += 10) {
+    if (i == _page) _display->fillRect(x - 1, 13, 4, 4);
+    else _display->fillRect(x, 14, 2, 2);
+  }
+}
+
 void UITask::renderCurrScreen() {
   char tmp[80];
-  if (millis() < _started_at + BOOT_SCREEN_MILLIS) { // boot screen
-    // meshcore logo
-    _display->setColor(UIColor::corp_blue);
-    int logoWidth = 128;
-    _display->drawXbm((_display->width() - logoWidth) / 2, 3, meshcore_logo, logoWidth, 13);
-
-    // meshcore website
-    const char* website = "https://meshcore.io";
-    _display->setColor(UIColor::primary_txt);
-    _display->setTextSize(1);
-    _display->drawTextCentered(_display->width() / 2, 22, website);
-
-    // version info
-    _display->setTextSize(1);
-    _display->drawTextCentered(_display->width() / 2, 35, _version_info);
-
-    // node type
-    const char* node_type = "< Repeater >";
-    _display->drawTextCentered(_display->width() / 2, 48, node_type);
+  if (millis() < _started_at + BOOT_SCREEN_MILLIS) { // boot screen: the MECON splash, as on the Companion (docs/UI.md)
+    MeconSplash::draw(*_display, UIColor::primary_txt, _firmware_version);
   } else if (_powering_off_at > 0) {
     // meshcore logo
     _display->setColor(UIColor::corp_blue);
@@ -92,10 +109,22 @@ void UITask::renderCurrScreen() {
     _display->setCursor((_display->width() - poffWidth) / 2, 48);
     _display->drawTextCentered(_display->width()/2, 48, poweroff_string);
   } else {
-    _display->setCursor(0, 0);
+    renderHeader(2);
     _display->setTextSize(1);
     _display->setColor(UIColor::primary_txt);
-    _display->print(_node_prefs->node_name);
+    if (_page == 0) {
+      FrontPage::State st;
+      st.role = "Repeater";
+      char broker[64] = {0};
+      if (_front_fill) _front_fill(st, broker, sizeof(broker));
+      FrontPage::Row rows[FrontPage::ROWS];
+      FrontPage::rows(st, rows);
+      for (int i = 0; i < FrontPage::ROWS; i++) {
+        _display->setCursor(0, 20 + i * 8);
+        _display->print(rows[i]);
+      }
+      return;
+    }
 
     // freq / sf
     _display->setCursor(0, 20);
@@ -114,7 +143,8 @@ void UITask::loop() {
   int ev = user_btn.check();
   if (ev == BUTTON_EVENT_CLICK) {
     if (_display->isOn()) {
-      // TODO: any action ?
+      _page = (_page + 1) % 2;   // the next page
+      _next_refresh = 0;
     } else {
       _display->turnOn();
     }

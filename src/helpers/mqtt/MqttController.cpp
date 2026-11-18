@@ -451,6 +451,17 @@ void MqttController::snapshot(Snapshot* out) {
   }
 }
 
+bool MqttController::connectedBroker(char* out, size_t cap) const {
+  if (cap) out[0] = 0;
+  const uint8_t cur = _core.current();
+  if (!_started || !_enabled || _core.state() != MqttState::Connected || cur == MqttCore::NONE) return false;
+  const MqttProfile& q = _profiles->p[cur];
+  if (q.host[0]) snprintf(out, cap, "%s", q.host);
+  else snprintf(out, cap, "%u.%u.%u.%u", (unsigned)(_cur_addr >> 24), (unsigned)((_cur_addr >> 16) & 255),
+                (unsigned)((_cur_addr >> 8) & 255), (unsigned)(_cur_addr & 255));
+  return true;
+}
+
 void MqttController::formatStatus(char* out, size_t cap) {
   if (!_started || !_enabled) { snprintf(out, cap, "> off"); return; }
   uint32_t now = millis();

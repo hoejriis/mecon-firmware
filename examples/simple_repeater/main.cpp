@@ -10,10 +10,20 @@
 #endif
 
 #include "MyMesh.h"
+#include <helpers/Posture.h>
+#ifdef ENABLE_WIFI_INTERFACE
+  #include <helpers/wifi/WifiController.h>
+  #ifdef ENABLE_MQTT
+    #include <helpers/mqtt/MqttController.h>
+  #endif
+#endif
 
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
   static UITask ui_task(board, display);
+  static uint32_t console_ms = 0;   // when the USB console last received a byte
+  static bool console_seen = false;
+  static void fillFront(FrontPage::State& st, char* broker, size_t cap);
 #endif
 
 #ifdef ETHERNET_ENABLED
@@ -286,6 +296,7 @@ void setup() {
 
 #ifdef DISPLAY_CLASS
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
+  ui_task.setFrontFill(fillFront);
 #endif
 
 #ifdef ETHERNET_ENABLED
@@ -301,9 +312,37 @@ void setup() {
   mecon::boot::mark(mecon::boot::SETUP, millis());
 }
 
+#ifdef DISPLAY_CLASS
+// The front page's state (src/helpers/ui/FrontPage.h): only what this node measured. "Connected via USB" means the console
+// received a byte in the last minute: a Repeater cannot tell an idle host from no host.
+static void fillFront(FrontPage::State& st, char* broker, size_t cap) {
+  st.hardened = Posture::isHardened(the_mesh.getNodePrefs()->posture);
+  uint32_t rx;
+  if (the_mesh.lastRx(&rx)) { st.rx_seen = true; st.rx_age_s = (millis() - rx) / 1000; }
+  st.mode = FrontPage::MODE_USB;
+  st.usb_connected = console_seen && millis() - console_ms < 60000;
+  #if defined(ENABLE_WIFI_INTERFACE) && defined(ENABLE_MECON_IFACE)
+  if (net_started) {
+    st.mode = FrontPage::MODE_WIFI;
+    WifiController& w = wifiController();
+    st.wifi_connected = w.connected();
+    const uint8_t cur = w.core()->current();
+    if (st.wifi_connected && cur != WifiCore::NONE) st.ssid = the_mesh.getNodePrefs()->wifi_profiles.ssid(cur);
+    #ifdef ENABLE_MQTT
+    st.mqtt_connected = mqttController().connectedBroker(broker, cap);
+    st.broker = broker;
+    #endif
+  }
+  #endif
+}
+#endif
+
 void loop() {
   heapFloor().loop(millis(), rtc_clock.getCurrentTime());
   heapWatchTick();   // what the heap was doing at its lowest (helpers/HeapWatch.h)
+#ifdef DISPLAY_CLASS
+  if (Serial.available()) { console_ms = millis(); console_seen = true; }
+#endif
   // Handle Serial CLI
   int len = strlen(command);
   // `command` must stay NUL-terminated within its bounds. If it ever isn't,

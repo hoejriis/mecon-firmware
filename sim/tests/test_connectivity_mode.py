@@ -53,16 +53,22 @@ def restart_after_switch(node):
 
 
 def home_settled(node):
-    """The home screen is up and the first 8 s of the UI (where a long press goes to the rescue console) are over."""
-    assert node.ui.wait_text("Unread Msg", 20), node.ui.last_text()
+    """The stock home page is up (one click past the front page the device boots on), and the first 8 s of the UI, where a
+    long press goes to the rescue console, are over."""
+    if "Unread Msg" in (node.ui.last_text() or ""):   # already there
+        time.sleep(1.0)
+        return
+    assert node.ui.wait_text("Last LoRa:", 20), node.ui.last_text()
     time.sleep(1.0)
+    node.ui.press("click")
+    assert node.ui.wait_text("Unread Msg", 15), node.ui.last_text()
 
 
 def goto_connectivity(node):
     """Click through the home pages to the connectivity status screen; returns the number of clicks."""
     for clicks in range(12):
         text = node.ui.last_text()
-        if "Mode:" in text:
+        if "Mode:" in text and "Last LoRa:" not in text:   # the front page shows a mode too
             return clicks
         node.ui.press("click")
         end = time.time() + 15   # wait for the page to change, not merely for a redraw of the same page

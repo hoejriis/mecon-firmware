@@ -1,0 +1,11 @@
+# Front page, BLE mode: posture and role, last LoRa received, mode, link, broker
++---------------------+
+|ExampleNode          |
+|                     |
+|Normal Companion     |
+|Last LoRa: never     |
+|Mode: BLE            |
+|BLE not connected    |
+|MQTT not connected   |
+|                     |
++---------------------+

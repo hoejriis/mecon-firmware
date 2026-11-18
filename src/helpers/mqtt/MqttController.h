@@ -53,6 +53,9 @@ public:
   // The broker tiers from the Deployment record (MqttCore::setTiers), pushed by the device interface when it changes.
   void setBrokerTiers(const uint8_t* tiers, uint8_t n) { _core.setTiers(tiers, n); }
   bool sessionUp() const { return _started && _core.state() == MqttState::Connected; }
+  // The broker of the session that is up, as a screen names it: the profile's host, or the address it reached when the
+  // profile names none (a broker found on the LAN). False, and "" in out, while no session is up.
+  bool connectedBroker(char* out, size_t cap) const;
   void setIfaceHandler(IfaceFn fn, void* user, const char* device_id_hex) {
     _iface_fn = fn;
     _iface_user = user;

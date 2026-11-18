@@ -310,6 +310,8 @@ uint8_t MyMesh::getExtraAckTransmitCount() const {
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
   Iface::observe(snr, rssi, raw, len);   // the observations stream, when the device interface is built in
+  _last_rx_ms = millis();   // the front page's "Last LoRa": a received packet, never a sent one
+  _rx_seen = true;
   if (_serial->isConnected() && len + 3 <= MAX_FRAME_SIZE) {
     int i = 0;
     out_frame[i++] = PUSH_CODE_LOG_RX_DATA;

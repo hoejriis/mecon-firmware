@@ -99,7 +99,11 @@ struct AdvertPath {
 };
 
 class MyMesh : public BaseChatMesh, public DataStoreHost {
+  uint32_t _last_rx_ms = 0;
+  bool _rx_seen = false;
 public:
+  // When a LoRa packet was last received (millis), for the front page; false before the first.
+  bool lastRx(uint32_t* ms) const { if (_rx_seen) *ms = _last_rx_ms; return _rx_seen; }
   class Listener {
     public:
       virtual void onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t txt_type, uint32_t sender_timestamp, const char* text) = 0;

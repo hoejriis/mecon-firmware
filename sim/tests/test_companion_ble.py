@@ -232,9 +232,19 @@ def test_switching_to_wifi_mode_takes_ble_down_and_a_reboot_does_not_bring_it_ba
     assert log_count(n, "SIMBLE begin") == begins                # the stack was not brought up in Wi-Fi mode
 
 
+def to_home(n):
+    """The stock home page (unread count, pairing PIN): one click past the front page the device boots on."""
+    if "Unread Msg" in (n.ui.last_text() or ""):
+        return
+    assert n.ui.wait_text("Last LoRa:", 20), n.ui.last_text()
+    time.sleep(1.0)   # past the first 8 s of the UI (a long press there is the rescue console)
+    n.ui.press("click")
+    assert n.ui.wait_text("Unread Msg", 15), n.ui.last_text()
+
+
 def test_the_bluetooth_page_switches_the_link_off_and_on(nodes):
     n = boot(nodes, "m2", PIN)
-    assert n.ui.wait_text("Unread Msg", 20), n.ui.last_text()
+    to_home(n)
     time.sleep(1.0)                                              # past the first 8 s of the UI (a long press there is the rescue console)
     b = n.connect_ble(PIN)
     b.app_start()
