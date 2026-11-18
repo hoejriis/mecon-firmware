@@ -70,7 +70,7 @@ Flash cost: one 268-byte file (`/audit.bin`, fixed record size: 8-byte header, 3
 
 ## Known limits
 
-- The audit log is evidence for the owner, not tamper-proof: someone with the USB console can factory-reset the device. The reset itself is recorded.
+- The audit log is evidence for the operator, not tamper-proof: someone with the USB console can factory-reset the device. The reset itself is recorded.
 - Boot-time non-starts (BLE with a default PIN, TCP servers) are recorded once, not on every boot, so a crash loop cannot become a flash-write loop.
 - A device that is Hardened and has only the BLE transport with a default PIN cannot be reached over the air; use USB.
 - The Hardened rules for key export and import apply to the Companion frames and to the Repeater and Room console `get prv.key` / `set prv.key`.

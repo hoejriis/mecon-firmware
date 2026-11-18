@@ -6,7 +6,7 @@ A firmware build accepts an update only if its manifest is signed by one of the 
 |---|---|---|---|
 | 1 | `e1716b2d488a1c09` | On the release signing host, readable only by its own user | To sign every release |
 | 2 | `3225364d7272549d` | On the maintainer's laptop, outside any synced folder | If key 1 is lost or dropped |
-| 3 | `9c496a197e7468fd` | In the owner's cloud storage, unencrypted | Last resort |
+| 3 | `9c496a197e7468fd` | In the release owner's cloud storage, unencrypted | Last resort |
 
 No private key is ever printed, logged, committed or sent. `tools/mecon_release_key.py` writes a seed to a new file, mode 600, and prints only the public key.
 
@@ -51,7 +51,7 @@ Steps 2 and 3 above for key 2, if it leaked. Make a new spare on the laptop and 
 
 ### Key 3 leaks, or the storage account may have been reached
 
-Steps 2 and 3 above for key 3. The owner makes a new one himself; no agent reads or copies this seed.
+Steps 2 and 3 above for key 3. The release owner makes a new one; no automated tool reads or copies this seed.
 
 ### Every key is lost
 

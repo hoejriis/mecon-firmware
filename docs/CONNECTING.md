@@ -4,7 +4,7 @@ Wi-Fi and MQTT are on every supported role of the Heltec V3 and V4: the Repeater
 
 ## Choose BLE or Wi-Fi
 
-The Heltec standalone Companion runs one radio stack per boot, BLE or Wi-Fi, by owner decision, to keep memory headroom:
+The Heltec standalone Companion runs one radio stack per boot, BLE or Wi-Fi, by design decision, to keep memory headroom:
 
 ```text
 get connectivity.mode
