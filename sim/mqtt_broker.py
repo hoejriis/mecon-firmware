@@ -152,11 +152,16 @@ class Broker:
         self._probe_connections = self._probe_clients = 0
 
     def start(self):
-        self.proc = subprocess.Popen(["mosquitto", "-c", self.conf], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # stderr kept: a broker that cannot open its config or its log file says why only there
+        self.err_path = os.path.join(self.dir, self.name + ".err")
+        self._err = open(self.err_path, "w")
+        self.proc = subprocess.Popen(["mosquitto", "-c", self.conf], stdout=subprocess.DEVNULL, stderr=self._err)
         end = time.time() + 10
         while time.time() < end:
             if self.proc.poll() is not None:
-                raise RuntimeError("mosquitto %s exited: see %s" % (self.name, self.log_path))
+                self._err.flush()
+                err = open(self.err_path).read().strip()[-400:]
+                raise RuntimeError("mosquitto %s exited: %s (log: %s)" % (self.name, err or "no error output", self.log_path))
             try:
                 socket.create_connection((self.ip, self.port), timeout=0.2).close()
             except OSError:
@@ -176,6 +181,9 @@ class Broker:
             except subprocess.TimeoutExpired:
                 self.proc.kill()
                 self.proc.wait()
+        if getattr(self, "_err", None):
+            self._err.close()
+            self._err = None
 
     def log(self):
         return open(self.log_path, errors="replace").read() if os.path.exists(self.log_path) else ""
