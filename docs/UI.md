@@ -14,13 +14,14 @@ What the on-device display shows and how the button drives it, for the Companion
 | `examples/companion_radio/ui-orig` | older and smaller-screen boards (for example Wio E5 mini, RAK3112, T1000-E, Thinknode M3/M4/M7, Xiao nRF52) | one home screen, message preview, one-line alerts | stock, plus the [screen privacy](#screen-privacy) rules |
 | `examples/companion_radio/ui-tiny` | the T-Echo card | small-display (U8g2) screens with a scrolling status bar; same pages and gestures as `ui-new` minus the Bluetooth-skip, Wi-Fi line and connectivity additions (pages: home, recent, radio, Bluetooth, advert, GPS, sensors, hibernate) | stock, plus the [screen privacy](#screen-privacy) rules |
 | none | Companion builds on boards without a display (`DISPLAY_CLASS` not defined) | nothing | the device is driven by the phone app, USB or the CLI; the button, where there is one, still handles the first-8-seconds rescue |
-| `examples/simple_repeater/UITask.cpp`, `simple_room_server`, `simple_sensor` | Repeater, Room server, Sensor on boards with a display | boot splash, then node name and radio settings | stock, unchanged |
+| `examples/simple_repeater/UITask.cpp` | Repeater on boards with a display | boot splash, then the [front page](#front-page) and the stock radio page | front page and page dots added |
+| `simple_room_server`, `simple_sensor` | Room server, Sensor on boards with a display | boot splash, then node name and radio settings | stock, unchanged |
 
 **What this firmware changed:**
 - **In every Companion UI (`ui-new`, `ui-orig`, `ui-tiny`) and every env:** the [screen privacy](#screen-privacy) rules, which apply in both postures.
 - **In `ui-new`, only when the build defines `ENABLE_CONNMODE`:** the connectivity page and a status line. Today that means the two **standalone Companion** envs (`Heltec_v3_companion_radio_standalone`, `heltec_v4_companion_radio_standalone`).
 
-Apart from those, every `ui-new` env (`_usb`, `_ble`, `_wifi`) draws the stock screens. The Repeater, Room server and Sensor screens are unchanged. See [Connectivity mode](CONNECTIVITY_MODE.md) for the feature and [Standalone security postures](STANDALONE_POSTURES.md) for the posture it displays.
+Apart from those, every `ui-new` env (`_usb`, `_ble`, `_wifi`) draws the stock screens. The [front page](#front-page) is new on the Companion and the Repeater. The Room server and Sensor screens are unchanged. See [Connectivity mode](CONNECTIVITY_MODE.md) for the feature and [Standalone security postures](STANDALONE_POSTURES.md) for the posture it displays.
 
 ## The button
 
@@ -41,17 +42,18 @@ The display turns itself off after 15 s without input (board settings may change
 
 ## Companion home pages, in order
 
-Page order is fixed by the build. Click goes forward, double click goes back, both wrap around. On the simulated standalone board the order was recorded by clicking through (graphics-only pages are only a label and an icon):
+Page order is fixed by the build. The device starts on the front page. Click goes forward, double click goes back, both wrap around. On the simulated standalone board the order was recorded by clicking through (graphics-only pages are only a label and an icon):
 
 ```text
-home -> recent -> radio -> bluetooth -> connectivity -> advert -> discovery -> hibernate -> (back to home)
+front -> home -> recent -> radio -> bluetooth -> connectivity -> advert -> discovery -> hibernate -> (back to front)
 ```
 ```text
-home -> recent -> radio -> connectivity -> advert -> discovery -> hibernate -> (back to home)
+front -> home -> recent -> radio -> connectivity -> advert -> discovery -> hibernate -> (back to front)
 ```
 
 | # | Page | Stock `ui-new` | This firmware |
 |---|---|---|---|
+| 0 | **Front** | does not exist | **new**, and the page the device starts on: [the front page](#front-page) |
 | 1 | **Home** | node name, battery, unread message count (large `MSG: n` on builds without Wi-Fi, small `Unread Msg: n` on Wi-Fi builds), on Wi-Fi builds the line `IP: a.b.c.d`; `< Connected >` while a phone, USB host or TCP client is attached, otherwise the BLE pairing `Pin:nnnnnn` | the pairing PIN shows until a phone connects over BLE; a USB host or TCP client no longer hides it (stock hid it for good on builds with USB and BLE, since the USB interface always reports itself connected). On standalone builds the IP line becomes the **status line** (mode, Wi-Fi address or PIN class); the pairing PIN is not drawn in Wi-Fi mode |
 | 2 | **Recent adverts** ("Recent adverts" alert on entry) | up to 4 recently heard nodes, with the age of each (`12s`, `4m`, `2h`) | unchanged |
 | 3 | **Radio** | frequency, spreading factor, bandwidth, coding rate, TX power, noise floor | unchanged |
@@ -143,6 +145,48 @@ These are the same stock pages as on any MeshCore `ui-new` build; they are captu
 ```
 
 ## New and changed screens
+
+### Front page
+
+**New, on the Companion (`ui-new`) and the Repeater.** Below the stock header (the node name, the battery, the page dots) come five rows of measured state, the same on both roles (`src/helpers/ui/FrontPage.h`):
+
+1. the posture and the role: `Normal Companion`, `Hardened Repeater`;
+2. `Last LoRa:` and how long ago the last LoRa packet was **received** (`10 sec ago`, `2 min ago`, `5 h ago`, `3 days ago`), or `never` since boot. A packet this node sent, and traffic over MQTT, BLE or USB, do not count;
+3. the mode: `Mode: WiFi`, `Mode: BLE`, or `Mode: USB` on a build or setting with neither;
+4. the link, with no label when it is up: the joined network's name in Wi-Fi mode, `Connected via BLE` while a phone holds the BLE link, `Connected via USB` while a host talks on the cable; otherwise `WiFi not connected`, `BLE not connected` or `USB not connected`;
+5. the broker of this device's own MQTT session, with no label (its host, or its address when the profile names none), or `MQTT not connected`. A Reader's broker session is never shown as the device's.
+
+A row holds 21 characters; a longer name keeps its first 19 and ends `..`, never splitting a character. On the Repeater, "Connected via USB" means the console received a byte in the last minute, since a Repeater cannot tell an idle host from none.
+
+The Companion's stock pages follow it, unchanged, so the stock home page with the unread count and the BLE pairing PIN is one click away. The Repeater has two pages: this one, and the stock radio page.
+
+```text
++---------------------+
+|ExampleNode          |
+|                     |
+|Normal Companion     |
+|Last LoRa: never     |
+|Mode: BLE            |
+|BLE not connected    |
+|MQTT not connected   |
+|                     |
++---------------------+
+```
+
+```text
++---------------------+
+|ExampleNode          |
+|                     |
+|Normal Companion     |
+|Last LoRa: never     |
+|Mode: WiFi           |
+|ExNet                |
+|MQTT not connected   |
+|                     |
++---------------------+
+```
+
+*(Captured on the simulated standalone Companion: in BLE mode before a phone connects, and in Wi-Fi mode joined to `ExNet` with no broker profile. Nothing was received over LoRa in either run.)*
 
 ### Home page status line
 
@@ -565,15 +609,15 @@ The simulated suite checks this: `test_no_secret_is_ever_drawn` sets Wi-Fi and M
 
 ## Repeater, Room server and Sensor
 
-**Unchanged from stock.** No fork commit touches these screens, and the Hardened posture is not shown on them. The Repeater (`examples/simple_repeater/UITask.cpp`) has no pages:
+The Room server and Sensor screens are **unchanged from stock**. The Repeater (`examples/simple_repeater/UITask.cpp`) changed:
 
-- the boot screen for 4 s: logo, `https://meshcore.io`, version and build date, and `< Repeater >` (`< Room Server >`, `< Sensor >` on the others);
-- then the node name and two radio lines, `FREQ: 869.618 SF8` and `BW: 62.50 CR: 5`, refreshed every second;
-- a **click** wakes the display and does nothing else; the display turns off after 20 s;
+- the boot screen for 4 s, as stock: logo, `https://meshcore.io`, version and build date, and `< Repeater >` (`< Room Server >`, `< Sensor >` on the others);
+- **changed:** then two pages under a header with the node name, the battery (drawn only when the board reads a battery voltage, 2.5 V or more) and two page dots. Page 1 is the [front page](#front-page). Page 2 is the stock radio lines, `FREQ: 869.618 SF8` and `BW: 62.50 CR: 5`. Both refresh every second;
+- **changed:** a **click** wakes the display, and when it is on moves to the other page (stock: it did nothing); the display turns off after 20 s;
 - a **long press** shows the logo and `Turning OFF` and powers the board off after 3 s;
 - the 8-second rescue rule is a Companion feature and does not apply here; a Repeater is managed through its CLI ([CLI reference](CLI.md)).
 
-These screens were not run in the simulator; they are described from the code.
+These screens were not run in the simulator; they are described from the code. The front page's rows are checked by native unit tests (`test/test_front_page`).
 
 ## What was not reachable in the simulator
 

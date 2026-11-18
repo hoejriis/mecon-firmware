@@ -86,6 +86,8 @@ struct NeighbourInfo {
 #define PACKET_LOG_FILE  "/packet_log"
 
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
+  uint32_t _last_rx_ms = 0;
+  bool _rx_seen = false;
   FILESYSTEM* _fs;
   unsigned long next_local_advert, next_flood_advert;
   bool _logging;
@@ -197,6 +199,8 @@ protected:
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
 
 public:
+  // When a LoRa packet was last received (millis), for the front page; false before the first.
+  bool lastRx(uint32_t* ms) const { if (_rx_seen) *ms = _last_rx_ms; return _rx_seen; }
 #ifdef ENABLE_MECON_IFACE
   bool loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n,
                  bool flood_ok);

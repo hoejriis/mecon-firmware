@@ -5,6 +5,8 @@
 #include <time.h>
 #include <helpers/connmode/ConnStatus.h>   // ConnMode::homeLink
 #include <helpers/DisplayPrivacy.h>      // issue #113: what the screen shows per posture
+#include <helpers/Posture.h>
+#include <helpers/ui/FrontPage.h>         // the operational front page shared with the Repeater (docs/UI.md)
 #ifdef ENABLE_WIFI_INTERFACE
   #include <WiFi.h>
 #endif
@@ -94,6 +96,7 @@ public:
 
 class HomeScreen : public UIScreen {
   enum HomePage {
+    FRONT,   // the operational front page: first after boot, the stock pages follow
     FIRST,
     RECENT,
     RADIO,
@@ -135,6 +138,40 @@ class HomeScreen : public UIScreen {
   uint32_t discovery_req_time = 0;
   bool discovery_disp_names = true; // by default desplay names if available (removes SNR_O)
 #endif
+
+  // The five rows of measured state below the header (src/helpers/ui/FrontPage.h).
+  void renderFront(DisplayDriver& display) {
+    FrontPage::State st;
+    st.hardened = Posture::isHardened(_node_prefs->posture);
+    st.role = "Companion";
+    uint32_t rx;
+    if (the_mesh.lastRx(&rx)) { st.rx_seen = true; st.rx_age_s = (millis() - rx) / 1000; }
+    char broker[64] = {0};
+  #ifdef ENABLE_CONNMODE
+    ConnMode::ConnStatus cs;
+    fillConnStatus(cs, _task, _node_prefs);
+    st.mode = cs.mode == ConnMode::WIFI ? FrontPage::MODE_WIFI : FrontPage::MODE_BLE;
+    st.wifi_connected = cs.wifi_connected;
+    st.ssid = cs.ssid;
+    st.ble_connected = cs.ble_connected;
+    #ifdef ENABLE_MQTT
+    st.mqtt_connected = mqttController().connectedBroker(broker, sizeof(broker));
+    st.broker = broker;
+    #endif
+  #elif defined(BLE_PIN_CODE)
+    st.mode = FrontPage::MODE_BLE;
+    st.ble_connected = _task->isBleConnected();
+  #else
+    st.mode = FrontPage::MODE_USB;
+    st.usb_connected = _task->hasConnection();
+  #endif
+    FrontPage::Row rows[FrontPage::ROWS];
+    FrontPage::rows(st, rows);
+    display.setTextSize(1);
+    display.setColor(UIColor::primary_txt);
+    const int step = (display.height() - 20) / FrontPage::ROWS < 9 ? 8 : 9;
+    for (int i = 0; i < FrontPage::ROWS; i++) display.drawTextEllipsized(0, 20 + i * step, display.width(), rows[i]);
+  }
 
   void renderBatteryIndicator(DisplayDriver& display, uint16_t batteryMilliVolts) {
     // Convert millivolts to percentage
@@ -296,7 +333,10 @@ public:
       }
     }
 
-    if (_page == HomePage::FIRST) {
+    if (_page == HomePage::FRONT) {
+      renderFront(display);
+      return 1000;
+    } else if (_page == HomePage::FIRST) {
       display.setColor(UIColor::primary_txt);
       #ifdef ENABLE_WIFI_INTERFACE
       // smaller unread message ui for wifi variants

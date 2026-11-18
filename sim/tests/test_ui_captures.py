@@ -80,7 +80,7 @@ def frame_with(n, needle, timeout=15.0):
 
 
 def page_name(text):
-    for key, name in (("Unread Msg", "home"), ("FQ:", "radio"), ("toggle:", "bluetooth"), ("Mode:", "connectivity"),
+    for key, name in (("Last LoRa:", "front"), ("Unread Msg", "home"), ("FQ:", "radio"), ("toggle:", "bluetooth"), ("Mode:", "connectivity"),
                       ("advert:", "advert"), ("hibernate", "hibernate"), ("discover:", "discovery")):
         if key in text:
             return name
@@ -105,11 +105,14 @@ def tour(n):
         if len(pages) == 1:
             nm = "recent"    # the first page after home; empty until an advert is heard
         pages.append((nm, last_frame(n)))
+    if any(nm == "front" for nm, _ in pages):   # the device boots on the front page: list from there
+        i = [nm for nm, _ in pages].index("front")
+        pages = pages[i:] + pages[:i]
     return pages
 
 
 def order_line(pages):
-    return " -> ".join(nm for nm, _ in pages) + " -> (back to home)"
+    return " -> ".join(nm for nm, _ in pages) + " -> (back to %s)" % pages[0][0]
 
 
 def go_connectivity(n):
@@ -122,6 +125,7 @@ def test_ble_mode_screens(nodes):
     n, c = start(nodes, "cap_ble")
     pages = tour(n)
     d = dict(pages)
+    emit("front_ble", "Front page, BLE mode: posture and role, last LoRa received, mode, link, broker", d["front"])
     emit("home_ble", "Home page, BLE mode, per-device PIN (the simulated USB host counts as connected)", d["home"])
     emit("page_radio", "Radio page", d["radio"])
     emit("page_bluetooth", "Bluetooth page (the 32x32 icon is a graphic and is not recorded)", d["bluetooth"])
@@ -203,6 +207,7 @@ def test_wifi_mode_screens(nodes, wenv):
     assert n.ui.wait_text("Wi-Fi 192.0.2.10")
     pages = tour(n)
     d = dict(pages)
+    emit("front_wifi", "Front page, Wi-Fi mode, connected: the network's name, and no broker session", d["front"])
     emit("home_wifi", "Home page, Wi-Fi mode, connected (no pairing PIN is drawn)", d["home"])
     emit("connectivity_wifi_nomqtt", "Connectivity page, Wi-Fi mode, connected, no MQTT profile", d["connectivity"])
     assert "bluetooth" not in d, "the Bluetooth page must be skipped in Wi-Fi mode"

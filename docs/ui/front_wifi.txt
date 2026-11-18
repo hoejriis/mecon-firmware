@@ -1,0 +1,11 @@
+# Front page, Wi-Fi mode, connected: the network's name, and no broker session
++---------------------+
+|ExampleNode          |
+|                     |
+|Normal Companion     |
+|Last LoRa: never     |
+|Mode: WiFi           |
+|ExNet                |
+|MQTT not connected   |
+|                     |
++---------------------+

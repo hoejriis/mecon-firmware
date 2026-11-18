@@ -60,8 +60,14 @@ def settle(node, seconds=8.0):
 
 
 def home_settled(node):
-    assert node.ui.wait_text("Unread Msg", 20), node.ui.last_text()
+    """The stock home page, one click past the front page the device boots on."""
+    if "Unread Msg" in (node.ui.last_text() or ""):   # already there
+        time.sleep(1.0)
+        return
+    assert node.ui.wait_text("Last LoRa:", 20), node.ui.last_text()
     time.sleep(1.0)
+    node.ui.press("click")
+    assert node.ui.wait_text("Unread Msg", 15), node.ui.last_text()
 
 
 def test_a_healthy_heap_reports_no_low_state_and_the_default_floor(nodes):
