@@ -124,7 +124,7 @@ On the first boot a stock `/contacts3` file is read into the store; the file is 
 
 **A migration never evicts.** If the store fills before the file is read through, the contacts it could not take stay in `/contacts3`, which is kept, and `get contacts.capacity` ends with `unmigrated N`: the contacts in the old file that the store does not hold. A later boot tries again and takes whatever room has appeared.
 
-**The SenseCAP T1000-E Companions keep the stock array** (`CONTACTS_STOCK_ARRAY`, below). They keep contacts on a 100 KB ExtraFS, and 350 stock records, the store's buckets for them, `/adv_blobs` and `/channels2` need about 130 KB, so the file cannot be migrated there. Shrinking it as it migrates is not an option either: truncating a file on the Adafruit nRF52 LittleFS left it unreadable (bilbo, Issue #223), and CI rejects `truncate(` in firmware sources.
+**The SenseCAP T1000-E Companions keep the stock array** (`CONTACTS_STOCK_ARRAY`, below). They keep contacts on a 100 KB ExtraFS, and 350 stock records, the store's buckets for them, `/adv_blobs` and `/channels2` need about 130 KB, so the file cannot be migrated there. Shrinking it as it migrates is not an option either: truncating a file on the Adafruit nRF52 LittleFS left it unreadable (on an nRF52 test board), and CI rejects `truncate(` in firmware sources.
 
 Going back to a stock firmware afterwards finds no `/contacts3` and starts with no contacts; the bucket files take file-system space it does not know about. Nothing here writes a stock-format copy.
 

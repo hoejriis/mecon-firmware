@@ -1,15 +1,21 @@
-# Introduction
+# mecon-firmware
 
-Welcome to the MeshCore documentation.
+mecon-firmware is MeshCore 1.18.0 with secure management, diagnostics and signed updates added. The mesh keeps working on its own. A manager can configure, monitor and update a device over USB, Bluetooth, MQTT or LoRa, under one authorization model.
 
-Below are a few quick start guides.
+- [What it does, and how it compares with stock MeshCore](../README.md)
+- [Fleet profiles: Personal Companion, Repeater Gateway, RF-only Repeater](../README.md#fleet-profiles)
+- [Why mecon-firmware](WHY_MECON_FIRMWARE.md)
+- [Documentation index](README.md): using a device task by task, and the reference pages
+- [Integrating a manager](INTEGRATION.md) and the [device contract](contract/README.md)
 
-- [Frequently Asked Questions](./faq.md)
-- [CLI Commands](./cli_commands.md)
-- [Companion Protocol](./companion_protocol.md)
-- [Packet Format](./packet_format.md)
-- [QR Codes](./qr_codes.md)
+These pages describe the target product. [Availability](AVAILABILITY.md) says what you can get today, and [hardware evidence](HARDWARE_VERIFIED.md) records what has been checked on real boards.
 
-If you find a mistake in any of our documentation, or find something is missing, please feel free to open a pull request for us to review.
+## MeshCore protocol references
 
-- [Documentation Source](https://github.com/meshcore-dev/MeshCore/tree/main/docs)
+These pages come from upstream MeshCore and apply unchanged:
+
+- [Frequently asked questions](./faq.md)
+- [CLI commands](./cli_commands.md)
+- [Companion protocol](./companion_protocol.md)
+- [Packet format](./packet_format.md)
+- [QR codes](./qr_codes.md)

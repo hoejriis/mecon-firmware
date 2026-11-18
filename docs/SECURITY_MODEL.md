@@ -17,7 +17,7 @@ A device that belongs to no Deployment follows the Normal and Hardened postures 
 - No management transport grants an unrestricted shell, arbitrary execution surface or raw secret-store access merely because it is authenticated.
 - Security posture controls local exposure; it does not redefine who has Deployment authority.
 
-The Deployment authority layer is the public [Management authority contract](contract/AUTHORITY.md) in this repository. Firmware and managers implement that contract rather than inventing transport-specific trust rules. *(Corrected 2026-10-25: this paragraph earlier named a Backend-side contract maintained by MeshContinuum. By owner decision the generic contract is public here, and conformance with any Backend's own contract is checked under #118.)*
+The Deployment authority layer is the public [Management authority contract](contract/AUTHORITY.md) in this repository. Firmware and managers implement that contract rather than inventing transport-specific trust rules. *(Corrected 2026-10-25: this paragraph earlier named a Backend-side contract maintained by MeshContinuum. By design decision the generic contract is public here, and conformance with any Backend's own contract is checked in the conformance work.)*
 
 ## Normal and Hardened posture
 
@@ -55,7 +55,7 @@ A full external flash erase/reflash by a person with physical possession is outs
 
 ## Damaged posture
 
-The posture is persisted with the prefs and saved atomically (STANDALONE_POSTURES). A stored value that is not Normal is read as Hardened, so damage can only make the device stricter. There is no separate fail-secure state: the owner's decision of 2026-11-08 removed it from this model, since reading damage as Hardened already fails to the safe side. A device left in Hardened this way recovers as any Hardened device does: a signed `posture.set` or the local unlock when it is enrolled, or a factory reset over the cable.
+The posture is persisted with the prefs and saved atomically (STANDALONE_POSTURES). A stored value that is not Normal is read as Hardened, so damage can only make the device stricter. There is no separate fail-secure state: a design decision of 2026-11-08 removed it from this model, since reading damage as Hardened already fails to the safe side. A device left in Hardened this way recovers as any Hardened device does: a signed `posture.set` or the local unlock when it is enrolled, or a factory reset over the cable.
 
 ## Deployment authority
 
@@ -67,11 +67,11 @@ Normal/Hardened posture is orthogonal to Deployment membership: **Normal → Har
 
 ## Protected continuity storage boundary
 
-Built for #118 (the owner's decisions of 2026-11-08 and 2026-11-14): the operations, the sealing at rest and the destruction are in [AUTHORITY section 10a](contract/AUTHORITY.md). A MECON Companion holds the package by default; its export is protected by a passphrase the device never sees.
+Built for the continuity package (design decisions of 2026-11-08 and 2026-11-14): the operations, the sealing at rest and the destruction are in [AUTHORITY section 10a](contract/AUTHORITY.md). A MECON Companion holds the package by default; its export is protected by a passphrase the device never sees.
 
 Firmware provides a bounded protected storage boundary for Deployment continuity/recovery material.
 
-At the posture layer the contents are **opaque**: package schema, package generation, sync-key generation and Join/Recovery orchestration belong to the P3 Deployment continuity contract, not the posture implementation.
+At the posture layer the contents are **opaque**: package schema, package generation, sync-key generation and Join/Recovery orchestration belong to the Deployment continuity contract, not the posture implementation.
 
 Security invariants:
 

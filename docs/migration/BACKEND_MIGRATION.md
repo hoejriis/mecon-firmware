@@ -2,7 +2,7 @@
 
 ## Integration boundary — agreed 24 October 2026, updated 25 October 2026
 
-The approved firmware programme divides the work into generic managed-device capabilities (P3: identity and authority, full telemetry, managed operations, signed updates, private management channels, authorized LoRa operations, compact LoRa telemetry, four-board conformance) and later MECON-specific work (P4: Deployment mapping, messaging, backfill, outage and sync behaviour, RF health policy, LoRa image delivery). Platform consolidation and the common device interface are done on `main`. Release timing, production fleet migration and public Backend publication are separate decisions; a standalone public release is not a dependency. The private Backend continues to improve and to adapt to the public firmware.
+The firmware provides generic managed-device capabilities: identity and authority, full telemetry, managed operations, signed updates, private management channels, authorized LoRa operations, compact LoRa telemetry and conformance on four boards. A Backend adds what is specific to it: mapping devices to its Deployment, messaging, backfill, outage and sync behaviour, RF health policy and LoRa image delivery. A Backend built for an older, private protocol adapts at its own boundary, as this guide describes; the firmware does not adapt to it.
 
 The Reader currently **depends on a Backend** and bridges USB/BLE devices to it. Backend ingestion must normalize MQTT and bridged USB/BLE into the same capability/versioned device and telemetry model, preserving device provenance, authorization, event identity and correlation across path changes. Offline Reader design is outside this scope.
 
@@ -10,11 +10,11 @@ Telemetry includes raw observations, runtime/resources, radio/connectivity, inve
 
 Later references in this target document to direct operation without infrastructure describe native/device capabilities or future designs, not an implemented offline Reader.
 
-This document is the **single place for backend-side changes required because the public MECON target firmware differs from the deployed/private MVP**. The firmware and public contract documents describe the desired end state; they must not be polluted with legacy behaviour merely to make migration easier.
+This document is the **single place for backend-side changes required because the public MECON target firmware differs from the deployed legacy firmware**. The firmware and public contract documents describe the desired end state; they must not be polluted with legacy behaviour merely to make migration easier.
 
-"Legacy" in this document means the wire the private 0.9x reference firmware speaks today (its shipped behaviour is summarised in [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). The public line and that private line are separate lines: version numbers do not order across them.
+"Legacy" in this document means the wire the legacy 0.9x firmware speaks today (its shipped behaviour is summarised in [Current-to-target adjustments](CONTRACT_MIGRATION_NOTES.md#reference-firmware-today-09x-line)). The public line and that private line are separate lines: version numbers do not order across them.
 
-The current backend must continue to support deployed private-MVP firmware during rollout. Implement compatibility at the backend boundary and remove it only when the old fleet is retired.
+The current backend must continue to support deployed legacy firmware during rollout. Implement compatibility at the backend boundary and remove it only when the old fleet is retired.
 
 ## Migration rule
 
@@ -27,7 +27,7 @@ For each difference below, the backend should support **old and new simultaneous
 5. retain legacy output only for legacy devices;
 6. remove the adapter after the old fleet is retired.
 
-Do not make the new firmware emit private legacy names merely to avoid backend work.
+Do not make the new firmware emit legacy names merely to avoid backend work.
 
 *Sequencing:* the public firmware speaks the v1 vocabulary below only, and does not emit the legacy names (`gateway_id`, `deimos/gw/…`). The firmware's functionality comes first; a Backend adopts the v1 interfaces afterwards. Until then, the public firmware is verified against the conformance suite and simulated boards, not against a legacy Backend.
 
@@ -35,7 +35,7 @@ Do not make the new firmware emit private legacy names merely to avoid backend w
 
 ### Legacy
 
-The private MVP uses/deployed variants of:
+The legacy firmware uses variants of:
 
 - `gateway_id`;
 - `deimos_firmware_version`;
@@ -52,7 +52,7 @@ Use backend-neutral MECON vocabulary:
 - `mecon_firmware_version`;
 - independent MECON protocol/profile versions;
 - `mecon.*` settings;
-- provisioned namespace rather than a private service compiled default;
+- provisioned namespace rather than a compiled-in service default;
 - native roles `companion` / `repeater`, with observation expressed as a capability.
 
 ### Backend change
@@ -63,7 +63,7 @@ Accept legacy fields/topics while deployed, normalize them to the new device mod
 
 ### Legacy
 
-Earlier private builds held several broker profiles and, in some versions, simultaneous broker sessions with independent authority. Since reference firmware 0.51.0 the device opens one session at a time, in the order local, primary, secondary broker. Up to four broker profiles are still stored, each with its own capability grants (`cap_receive_admin_config`, `cap_receive_backfill`, `cap_publish_events`).
+Earlier legacy builds held several broker profiles and, in some versions, simultaneous broker sessions with independent authority. Since reference firmware 0.51.0 the device opens one session at a time, in the order local, primary, secondary broker. Up to four broker profiles are still stored, each with its own capability grants (`cap_receive_admin_config`, `cap_receive_backfill`, `cap_publish_events`).
 
 ### MECON target
 
@@ -114,7 +114,7 @@ One logical settings contract is carried over MQTT, USB and BLE. MECON extends n
 
 ### Legacy
 
-The private firmware implements its own multi-profile Wi-Fi machinery.
+The legacy firmware implements its own multi-profile Wi-Fi machinery.
 
 ### MECON target
 
@@ -128,7 +128,7 @@ The user-visible three-profile behaviour remains. Backend code must rely on the 
 
 ### Legacy
 
-Direct support evolved incrementally; some operations use native Companion commands, some use MECON/private tunnels. In the 0.9x firmware the passkey is random per device, re-rolled once on upgrade from a non-secret value, settable by a Deployment-signed `ble_passkey` command or by USB command 37, and BLE startup follows documented timing rules; older builds differ.
+Direct support evolved incrementally; some operations use native Companion commands, some use legacy tunnels. In the 0.9x firmware the passkey is random per device, re-rolled once on upgrade from a non-secret value, settable by a Deployment-signed `ble_passkey` command or by USB command 37, and BLE startup follows documented timing rules; older builds differ.
 
 ### MECON target
 
@@ -146,7 +146,7 @@ Companion uses NimBLE, per-device PIN, standard MeshCore Companion interoperabil
 
 ### Legacy
 
-Earlier private builds used a fixed/reduced contact-table target (including 64 and temporary lower values during memory mitigation). The 0.9x firmware enforces 50 contacts on Heltec V3 and V4 and 350 on the T1000-E, and reports the runtime capacity.
+Earlier legacy builds used a fixed/reduced contact-table target (including 64 and temporary lower values during memory mitigation). The 0.9x firmware enforces 50 contacts on Heltec V3 and V4 and 350 on the T1000-E, and reports the runtime capacity.
 
 ### MECON target
 
@@ -186,7 +186,7 @@ Backend/Reader code must capability-negotiate whether an operation is native or 
 
 ## Outage sync and private-channel resilience
 
-The private MVP's outage/backfill behaviour remains a required product capability, but its public contract must be backend-neutral.
+The legacy firmware's outage/backfill behaviour remains a required product capability, but its public contract must be backend-neutral.
 
 Backend changes:
 
@@ -205,7 +205,7 @@ Backend parsers and UI must move from legacy health/status field assumptions to 
 
 ## OTA
 
-The private firmware already ships signed-manifest OTA: Ed25519-signed manifests, revert of an unconfirmed update, a signed `ota/ack` (capability `ota_ack_signed`), relay of a full image over one LoRa hop to ESP32 gateways (`ota/relay/*`) and a staged-only LoRa image on the Wio repeater. The target makes managed OTA part of the public contract: signed updates over IP, USB and BLE are planned as Issue #110, and LoRa image delivery as Issue #123. Neither is built in the public firmware yet.
+A legacy firmware line may already offer its own signed-manifest updates, with its own acknowledgement and relay topics. This firmware's update lifecycle is the one in the public contract ([updates](../contract/UPDATES.md)): signed release manifests, installs authorised per device, and delivery over IP, USB and BLE, depending on the board. Delivering firmware images over LoRa is not part of it yet.
 
 Backend changes:
 
@@ -224,11 +224,11 @@ MECON target is built on released MeshCore 1.18. Backend/Reader code must not re
 2. MECON v1 extension — use public MECON contract;
 3. backend-only workflow — remove from firmware contract.
 
-This audit is a release blocker because it prevents the public firmware from reimplementing obsolete 1.17/private mechanisms solely for backend compatibility.
+This audit is a release blocker because it prevents the public firmware from reimplementing obsolete 1.17 and legacy mechanisms solely for backend compatibility.
 
 ## Rollout acceptance (target; not scheduled)
 
-Before replacing the private MVP fleet, which is a separate decision, demonstrate against the current MeshContinuum backend/Reader:
+Before replacing a legacy fleet, demonstrate against the current MeshContinuum backend/Reader:
 
 - enrollment/provisioning of each role that is built for the four verification boards (Heltec V3, Heltec V4, Wio Tracker L1, T1000-E), as those capabilities are implemented;
 - mixed legacy + v1 fleet operation;
@@ -239,13 +239,13 @@ Before replacing the private MVP fleet, which is a separate decision, demonstrat
 - Companion messaging and provisioning;
 - direct USB/BLE Reader operation;
 - outage/private-channel behaviour and daily status;
-- update lifecycle (signed updates over IP, USB and BLE are Issue #110; LoRa image delivery is Issue #123);
+- update lifecycle (signed updates over IP, USB and BLE; no LoRa image delivery yet);
 - backend handling of dynamic contact/resource capacity;
 - legacy adapters can be identified and later removed independently of the v1 implementation.
 
-## Moving a board from the private 0.90.x line
+## Moving a board from the legacy 0.90.x line
 
-The private reference firmware stores its Deployment record in files with the same names and frame header as this firmware's, but in a different layout. A board flashed from 0.90.x to this firmware with its file system kept therefore reads them as a **corrupt record**. That is deliberate: it fails closed, and it never treats another firmware's authority state as its own. Until the record is cleared, the board refuses provisioning, signed requests and unsigned configuration writes, Wi-Fi settings included.
+The legacy 0.90.x firmware stores its Deployment record in files with the same names and frame header as this firmware's, but in a different layout. A board flashed from 0.90.x to this firmware with its file system kept therefore reads them as a **corrupt record**. That is deliberate: it fails closed, and it never treats another firmware's authority state as its own. Until the record is cleared, the board refuses provisioning, signed requests and unsigned configuration writes, Wi-Fi settings included.
 
 To move a board:
 
@@ -256,8 +256,8 @@ To move a board:
 
 An erase over the cable (a factory reset) is the alternative. It removes everything, the node key included.
 
-This firmware does not recognise or import the private line's record. That decision may be revisited with MECON's own fleet migration.
+This firmware does not recognise or import the legacy line's record. 
 
 ## Removal criterion
 
-Legacy compatibility code may be removed only after no supported deployed device requires the private-MVP protocol. Removal should delete adapters, legacy topic subscriptions and legacy field aliases without changing the canonical MECON v1 contract.
+Legacy compatibility code may be removed only after no supported deployed device requires the legacy protocol. Removal should delete adapters, legacy topic subscriptions and legacy field aliases without changing the canonical MECON v1 contract.

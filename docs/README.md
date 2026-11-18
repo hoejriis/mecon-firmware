@@ -1,6 +1,6 @@
 # mecon-firmware documentation
 
-mecon-firmware is MeshCore 1.18.0 with secure management, diagnostics and signed updates added. Start with the [project README](../README.md) for what it does and how it compares with stock MeshCore. These pages describe the finished product. For what you can get today, see [availability](AVAILABILITY.md).
+mecon-firmware is MeshCore 1.18.0 with secure management, diagnostics and signed updates added. Start with the [project README](../README.md) for what it does and how it compares with stock MeshCore. These pages describe the finished product. For what you can get today, see [availability](AVAILABILITY.md). A managed fleet usually puts each device in one of three [fleet profiles](../README.md#fleet-profiles).
 
 ## Using it, task by task
 
