@@ -500,8 +500,19 @@ def screen_companion(nodes, name, **kw):
     return n, c, mecon_iface.IfaceClient(c._send, c._read_frame)
 
 
+def to_home(n):
+    """The stock home page (unread count, pairing PIN): one click past the front page the device boots on."""
+    if "Unread Msg" in (n.ui.last_text() or ""):
+        return
+    assert n.ui.wait_text("Last LoRa:", 20), n.ui.last_text()
+    time.sleep(1.0)   # past the first 8 s of the UI (a long press there is the rescue console)
+    n.ui.press("click")
+    assert n.ui.wait_text("Unread Msg", 15), n.ui.last_text()
+
+
 def pin_off_the_screen(n):
     """A phone connected: the home screen stops showing the pairing PIN."""
+    to_home(n)
     assert n.ui.wait_text("Pin:", 20), n.ui.last_text()
     n.ui.phone(True)
     end = time.time() + 10
@@ -571,6 +582,7 @@ def test_a_screen_stream_that_stops_ends_its_frame(nodes):
 
 def test_a_frame_that_shows_the_pairing_pin_is_withheld(nodes):
     n, c, i = screen_companion(nodes, "sw")
+    to_home(n)
     assert n.ui.wait_text("Pin:", 20), n.ui.last_text()
     assert i.request("sub.start", {"stream": "screen", "period_s": 5, "lifetime_s": 60})["status"] == "ok"
     parts = screen_frame(i)
