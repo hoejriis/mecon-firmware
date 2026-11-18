@@ -51,9 +51,21 @@ def make_leaf(directory, name, ca, dns=None, ip=None, days=2):
     open(ext, "w").write("basicConstraints=CA:FALSE\n" + ("subjectAltName=" + ",".join(sans) + "\n" if sans else ""))
     subprocess.run(["openssl", "req", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
                     "-keyout", key, "-out", csr, "-subj", "/CN=test-broker-" + name], check=True, capture_output=True)
-    subprocess.run(["openssl", "x509", "-req", "-in", csr, "-CA", ca[0], "-CAkey", ca[1], "-set_serial",
-                    str(int.from_bytes(os.urandom(8), "big") >> 1), "-out", cert, "-days", str(days), "-extfile", ext],
-                   check=True, capture_output=True)
+    sign = ["openssl", "x509", "-req", "-in", csr, "-CA", ca[0], "-CAkey", ca[1], "-set_serial",
+            str(int.from_bytes(os.urandom(8), "big") >> 1), "-out", cert, "-extfile", ext]
+    if days < 0:
+        # OpenSSL 3.5 (Ubuntu 26.04) refuses a negative -days, and any end before the start ("end date before start
+        # date"): give a window wholly in the past instead, one day long and ended `days` ago. Expired as before. An
+        # OpenSSL without -not_before still takes -days.
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc)
+        fmt = lambda t: t.strftime("%Y%m%d%H%M%SZ")
+        r = subprocess.run(sign + ["-not_before", fmt(now + datetime.timedelta(days=days - 1)),
+                                   "-not_after", fmt(now + datetime.timedelta(days=days))], capture_output=True)
+        if r.returncode == 0:
+            sign = None
+    if sign:
+        subprocess.run(sign + ["-days", str(days)], check=True, capture_output=True)
     out = subprocess.run(["openssl", "x509", "-in", cert, "-noout", "-fingerprint", "-sha256"], check=True,
                          capture_output=True, text=True).stdout
     return cert, key, out.strip().split("=", 1)[1].replace(":", "").lower()
@@ -152,11 +164,16 @@ class Broker:
         self._probe_connections = self._probe_clients = 0
 
     def start(self):
-        self.proc = subprocess.Popen(["mosquitto", "-c", self.conf], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # stderr kept: a broker that cannot open its config or its log file says why only there
+        self.err_path = os.path.join(self.dir, self.name + ".err")
+        self._err = open(self.err_path, "w")
+        self.proc = subprocess.Popen(["mosquitto", "-c", self.conf], stdout=subprocess.DEVNULL, stderr=self._err)
         end = time.time() + 10
         while time.time() < end:
             if self.proc.poll() is not None:
-                raise RuntimeError("mosquitto %s exited: see %s" % (self.name, self.log_path))
+                self._err.flush()
+                err = open(self.err_path).read().strip()[-400:]
+                raise RuntimeError("mosquitto %s exited: %s (log: %s)" % (self.name, err or "no error output", self.log_path))
             try:
                 socket.create_connection((self.ip, self.port), timeout=0.2).close()
             except OSError:
@@ -176,6 +193,9 @@ class Broker:
             except subprocess.TimeoutExpired:
                 self.proc.kill()
                 self.proc.wait()
+        if getattr(self, "_err", None):
+            self._err.close()
+            self._err = None
 
     def log(self):
         return open(self.log_path, errors="replace").read() if os.path.exists(self.log_path) else ""
