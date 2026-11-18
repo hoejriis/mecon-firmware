@@ -669,6 +669,8 @@ def test_a_target_beyond_zero_hop_is_reached_by_flood_after_the_wait(ether, node
     m.c.add_contact(bytes.fromhex(d.node_key), "zf-target")
     r = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="zf1"), timeout=25.0)
     assert r is None, "zero-hop could not reach it"
+    # The 20 s wait runs from the attempt's last frame on the air (#578), a few seconds after it was asked for.
+    time.sleep(10)
     since = len(ether.tx_log)
     r = m.send(d.node_key, wrap(d.node_key, "status.get", job=None, rid="zf2"), timeout=120.0)
     assert r and r["status"] == "ok", r
