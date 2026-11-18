@@ -196,8 +196,6 @@ Counts of a report heard are the receiver's, not a guarantee of delivery.
 | `rf` and `lora_tx` counters | Reading the counters, and the cadence and airtime measurements |
 | A `location` field kept off channels | Whatever display it wants, and sizing any relay route it runs for a multi-frame request |
 
-## Related issues
+## Later work built on these journeys
 
-- Connected messaging: [#119](https://github.com/hoejriis/mecon-firmware/issues/119)
-- Backfill and reconnect catch-up: [#120](https://github.com/hoejriis/mecon-firmware/issues/120)
-- RF health monitoring: [#122](https://github.com/hoejriis/mecon-firmware/issues/122)
+Backend-coordinated messaging, backfill and reconnect catch-up, and RF health monitoring are manager features built on the capabilities above. [Availability](AVAILABILITY.md#what-only-a-manager-brings) says what exists today.
