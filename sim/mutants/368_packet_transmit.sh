@@ -14,5 +14,8 @@ mutate ptx_sent_reported_failed src/helpers/iface/ConsoleIface.cpp '  rawFinish(
 # job id from its result cache (or duplicate/replay) before the handler runs, so the handler's FOUND branch is never reached.
 mutate ptx_cancel_keeps_the_held_packet src/helpers/iface/ConsoleIface.cpp '  rawDropCancelled();
   if (!_raw_p.active) return;' '  if (!_raw_p.active) return;' sim/tests/test_packet_transmit.py::test_a_cancelled_held_packet_never_goes_on_air_and_frees_the_slot
-mutate ptx_cancel_slot_not_freed src/helpers/iface/ConsoleIface.cpp '  rawDropCancelled();   // a held packet whose job was cancelled no longer holds the slot
-' '' sim/tests/test_packet_transmit.py::test_a_cancelled_held_packet_never_goes_on_air_and_frees_the_slot
+# The drop also runs before a new send is checked; removing only that call is equivalent, since rawTick drops the packet on
+# the next loop, before any request can arrive. The pre-fix behaviour, no drop anywhere, is the mutant:
+mutate ptx_cancel_prefix_no_drop src/helpers/iface/ConsoleIface.cpp '  if (!_raw_p.active || _raw_p.submitted) return;
+  JobTable* t = _jobs.table();' '  return;
+  JobTable* t = _jobs.table();' sim/tests/test_packet_transmit.py::test_a_cancelled_held_packet_never_goes_on_air_and_frees_the_slot

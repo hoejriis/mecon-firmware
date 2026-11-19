@@ -149,9 +149,11 @@ def test_a_cancelled_held_packet_never_goes_on_air_and_frees_the_slot(ether, nod
     job = res["result"]["job"]
     c = r.send(wrap(r.node_key, "job.cancel", {"job": job}, job=7), 10)
     assert c["status"] == "ok" and c["result"]["state"] == "cancelled", c
-    nxt = r.send(wrap(r.node_key, "packet.transmit", {"packet": base64.b64encode(other).decode(), "within_s": 5}, job=8), 10)
-    assert nxt["status"] == "ok", "the slot is free once the held packet is dropped: %s" % nxt
-    time.sleep(8)
+    # Long enough for the duty window to make room for the held packet (it is seeded full at boot): without the drop it would
+    # go out in this time.
+    time.sleep(60)
     assert not [t for t in ether.tx_log if t.src == "ptc" and t.data == raw], "a cancelled packet never goes on air"
     st = r.i.request("job.get", {"job": job})["result"]
     assert st["state"] == "cancelled", st
+    nxt = r.send(wrap(r.node_key, "packet.transmit", {"packet": base64.b64encode(other).decode(), "within_s": 5}, job=8), 10)
+    assert nxt["status"] == "ok", "the slot is free once the held packet is dropped: %s" % nxt
