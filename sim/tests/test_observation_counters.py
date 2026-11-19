@@ -154,6 +154,12 @@ def test_the_pool_running_dry_is_counted_each_time(ether, rp):
     after = radio(i)
     assert after["queue_full_count"] > before["queue_full_count"], (before, after)
     assert after["queue"]["free"] <= 1 and after["queue"]["depth"] >= 25, after["queue"]
+    # and a packet this node builds itself, with nothing arriving, finds none free too
+    cli.command("advert.zerohop")
+    settle(ether)
+    built = radio(i)
+    assert built["queue_full_count"] > after["queue_full_count"], (after["queue_full_count"], built["queue_full_count"])
+    assert built["rx"]["flood"] == after["rx"]["flood"], "nothing was received meanwhile"
 
 
 def observed(ether, i, dst, frames):
