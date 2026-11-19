@@ -25,6 +25,7 @@ namespace mesh {
 void Dispatcher::begin() {
   n_sent_flood = n_sent_direct = 0;
   n_recv_flood = n_recv_direct = 0;
+  n_rx_dup = n_rx_dropped = n_rx_unparsable = n_tx_fail = n_cad_retries = n_duty_holds = n_queue_full = 0;
   _err_flags = 0;
   radio_nonrx_start = _ms->getMillis();
 
@@ -178,6 +179,7 @@ void Dispatcher::loop() {
       MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): WARNING: outbound packed send timed out!", getLogDateTime());
 
       _radio->onSendFinished();
+      n_tx_fail++;
       logTxFail(outbound, 2 + outbound->getPathByteLen() + outbound->payload_len);
 
       releasePacket(outbound);  // return to pool
@@ -260,6 +262,7 @@ void Dispatcher::checkRecv() {
 
       pkt = _mgr->allocNew();
       if (pkt == NULL) {
+        n_queue_full++;
         MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): WARNING: received data, no unused packets available!", getLogDateTime());
       } else {
         if (tryParsePacket(pkt, raw, len)) {
@@ -268,6 +271,7 @@ void Dispatcher::checkRecv() {
           air_time = _radio->getEstAirtimeFor(len);
           rx_air_time += air_time;
         } else {
+          n_rx_unparsable++;
           _mgr->free(pkt);  // put back into pool
           pkt = NULL;
         }
@@ -390,6 +394,7 @@ void Dispatcher::checkSend() {
       // channel activity has gone on too long... (Radio might be in a bad state)
       // force the pending transmit below...
     } else {
+      n_cad_retries++;
       next_tx_time = futureMillis(getCADFailRetryDelay());
       return;
     }
@@ -423,6 +428,7 @@ void Dispatcher::checkSend() {
       uint32_t limit_ms = getDutyLimitMs();
       if (est > limit_ms) {
         MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): packet airtime %u ms exceeds duty-cycle limit %u ms, dropped", getLogDateTime(), (uint32_t)est, (uint32_t)limit_ms);
+        n_tx_fail++;
         logTxFail(outbound, outbound->getRawLength());
         releasePacket(outbound);
         outbound = NULL;
@@ -432,6 +438,7 @@ void Dispatcher::checkSend() {
       dutyAdvance(now);
       if (duty.sum() + est > limit_ms) {
         uint32_t wait = duty.waitMs(now, duty.sum() + est - limit_ms);
+        n_duty_holds++;
         onDutyHold(outbound, wait);
         _mgr->queueOutbound(outbound, 0, futureMillis(wait));
         outbound = NULL;
@@ -446,6 +453,7 @@ void Dispatcher::checkSend() {
       if (!success) {
         MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): ERROR: send start failed!", getLogDateTime());
 
+        n_tx_fail++;
         logTxFail(outbound, outbound->getRawLength());
   
         releasePacket(outbound);  // return to pool
@@ -472,6 +480,7 @@ void Dispatcher::checkSend() {
 Packet* Dispatcher::obtainNewPacket() {
   auto pkt = _mgr->allocNew();  // TODO: zero out all fields
   if (pkt == NULL) {
+    n_queue_full++;
     _err_flags |= ERR_EVENT_FULL;
   } else {
     pkt->payload_len = pkt->path_len = 0;

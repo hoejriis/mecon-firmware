@@ -12,14 +12,21 @@
     "noise_floor_dbm",
     "last",
     "airtime",
-    "duty"
+    "duty",
+    "queue_full_count",
+    "cad_busy_retries",
+    "duty_holds",
+    "queue"
   ],
   "properties": {
     "rx": {
       "type": "object",
       "required": [
         "flood",
-        "direct"
+        "direct",
+        "dup",
+        "dropped",
+        "unparsable"
       ],
       "properties": {
         "flood": {
@@ -37,6 +44,21 @@
         "errors": {
           "type": "integer",
           "minimum": 0
+        },
+        "dup": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "packets whose hash had been seen before"
+        },
+        "dropped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "direct packets that reached this node but name another node as the next hop"
+        },
+        "unparsable": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "frames received that were not a valid packet (bad version, reserved path mode, truncated or oversize)"
         }
       }
     },
@@ -44,7 +66,8 @@
       "type": "object",
       "required": [
         "flood",
-        "direct"
+        "direct",
+        "failed"
       ],
       "properties": {
         "flood": {
@@ -58,6 +81,11 @@
         "total": {
           "type": "integer",
           "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "packets dropped because the send failed to start, timed out, or could never fit the duty limit"
         }
       }
     },
@@ -134,6 +162,40 @@
         "used_ms": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "queue_full_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "times no packet was free to receive into or to build; queue_full says only that it happened since the last clear"
+    },
+    "cad_busy_retries": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "sends put off because the channel was busy"
+    },
+    "duty_holds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "sends put back to wait for airtime"
+    },
+    "queue": {
+      "type": "object",
+      "required": [
+        "depth",
+        "free"
+      ],
+      "properties": {
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "packets waiting to send, including those waiting for their time"
+        },
+        "free": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "unused packets left in the pool"
         }
       }
     }
