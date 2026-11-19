@@ -1722,6 +1722,7 @@ Status ConsoleIface::rawTransmit(OpContext& c) {
   const JobTable::Lookup l = t->find(jid, &known);
   if (l == JobTable::FOUND) { JobService::writeSummary(*c.out, *known); return ST_OK; }
   if (l == JobTable::EXPIRED) { c.error = "result-expired"; return ST_FAILED; }
+  rawDropCancelled();   // a held packet whose job was cancelled no longer holds the slot
   if (t->openJob() || _raw_p.active) { c.error = "queue-full"; return ST_BUSY; }
   const uint32_t now = millis();
   if (_raw.seen(_raw.user, pkt)) { c.error = "already-heard"; return ST_REFUSED; }
@@ -1754,7 +1755,19 @@ Status ConsoleIface::rawTransmit(OpContext& c) {
 }
 
 // The held packet goes when the duty window has room for it now and the pool can spare a packet, or its job ends.
+// A held packet whose job was cancelled (job.cancel) is dropped before it reaches the radio, so a cancelled send never
+// goes on the air. Once submitted to the send queue it can't be recalled, and job.cancel refuses it (JobService::opCancel).
+void ConsoleIface::rawDropCancelled() {
+  if (!_raw_p.active || _raw_p.submitted) return;
+  JobTable* t = _jobs.table();
+  Job* j = nullptr;
+  if (t && t->find(_raw_p.job, &j) == JobTable::FOUND && j->state != JOB_CANCELLED) return;
+  _raw_p.active = false;
+  memset(&_raw_p.pkt, 0, sizeof(_raw_p.pkt));
+}
+
 void ConsoleIface::rawTick(uint32_t now) {
+  rawDropCancelled();
   if (!_raw_p.active) return;
   if (_raw_p.submitted) {   // queued: logTx ends it; a queue that dropped it says nothing, so it ends unknown after a grace
     if ((int32_t)(now - _raw_p.deadline - RAW_SENT_GRACE_MS) >= 0) rawFinish(JOB_FAILED, "unknown");
