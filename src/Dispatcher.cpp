@@ -324,7 +324,9 @@ void Dispatcher::checkRecv() {
       if (_delay < 50) {
         MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(), score delay below threshold (%d)", getLogDateTime(), _delay);
         processRecvPacket(pkt);   // is below the score delay threshold, so process immediately
+#ifdef ENABLE_MECON_IFACE
         obs_outcome = rx_outcome;
+#endif
       } else {
         MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(), score delay is: %d millis", getLogDateTime(), _delay);
         if (_delay > MAX_RX_DELAY_MILLIS) {
@@ -335,7 +337,9 @@ void Dispatcher::checkRecv() {
     } else {
       n_recv_direct++;
       processRecvPacket(pkt);
+#ifdef ENABLE_MECON_IFACE
       obs_outcome = rx_outcome;
+#endif
     }
   }
   if (obs_raw) {
@@ -392,14 +396,18 @@ DispatcherAction Dispatcher::recvOnWorker(Packet* pkt) {
 }
 
 void Dispatcher::processRecvPacket(Packet* pkt) {
+#ifdef ENABLE_MECON_IFACE
   rx_outcome = Iface::OUTCOME_UNKNOWN;
+#endif
   DispatcherAction action = recvOnWorker(pkt);
   if (action == ACTION_RELEASE) {
     _mgr->free(pkt);
   } else if (action == ACTION_MANUAL_HOLD) {
     // sub-class is wanting to manually hold Packet instance, and call releasePacket() at appropriate time
   } else {   // ACTION_RETRANSMIT*
+#ifdef ENABLE_MECON_IFACE
     rx_outcome = Iface::OUTCOME_FORWARDED;
+#endif
     uint8_t priority = (action >> 24) - 1;
     uint32_t _delay = action & 0xFFFFFF;
 

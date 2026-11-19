@@ -1,7 +1,8 @@
 #pragma once
 // Received packets for the observations stream (docs/contract/TELEMETRY.md): the dispatcher hands every packet
 // here as the radio heard it, and the device interface glue, when present, registers itself as the sink. No
-// dependencies, so every role's mesh code can include it. With no sink, or no subscriber, a call costs one test.
+// dependencies, so every role's mesh code can include it. With no sink, or no subscriber, a call costs one test; without
+// ENABLE_MECON_IFACE (the device interface) it costs nothing.
 #include <stdint.h>
 
 namespace Iface {
@@ -41,6 +42,7 @@ inline ObserveSink& observeSink() {
   return sink;
 }
 
+#ifdef ENABLE_MECON_IFACE
 inline bool observing() {
   ObserveSink& s = observeSink();
   return s.fn && (!s.want || s.want(s.user));
@@ -50,5 +52,10 @@ inline void observe(float snr, float rssi, const uint8_t* raw, int len, const Ob
   ObserveSink& s = observeSink();
   if (s.fn) s.fn(s.user, snr, rssi, raw, len, info);
 }
+#else
+// A build without the device interface has no sink: the dispatcher's observation code compiles to nothing.
+inline bool observing() { return false; }
+inline void observe(float, float, const uint8_t*, int, const ObserveInfo&) {}
+#endif
 
 }  // namespace Iface

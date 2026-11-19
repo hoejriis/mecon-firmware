@@ -33,7 +33,9 @@ mutate obsout_not_next_hop_not_tagged src/Dispatcher.h 'n_rx_dropped++; noteRxOu
 mutate obsout_unparsable_not_tagged src/Dispatcher.cpp '          obs_outcome = Iface::OUTCOME_UNPARSABLE;
 ' '' $O1
 mutate obsout_stale_from_the_packet_before src/Dispatcher.cpp '  rx_outcome = Iface::OUTCOME_UNKNOWN;
-  DispatcherAction action' '  DispatcherAction action' $O1
+#endif
+  DispatcherAction action' '#endif
+  DispatcherAction action' $O1
 mutate obsout_no_route_reported_as_filtered src/Mesh.cpp '!room ? Iface::OUTCOME_NO_ROUTE : Iface::OUTCOME_FILTERED' '!room ? Iface::OUTCOME_FILTERED : Iface::OUTCOME_FILTERED' $O2
 mutate obsout_flood_not_forwarded_untagged src/Mesh.cpp '  if (packet->isRouteFlood()) {   // why it goes no further' '  if (false) {   // why it goes no further' $O3
 mutate obsout_direct_in_turn_not_filtered src/Mesh.cpp '    if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize())) noteRxOutcome(Iface::OUTCOME_FILTERED);   // its turn, but forwarding is not allowed here

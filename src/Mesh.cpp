@@ -121,7 +121,9 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         return ACTION_RETRANSMIT_DELAYED(0, d);  // Routed traffic is HIGHEST priority 
       }
     }
+#ifdef ENABLE_MECON_IFACE
     if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize())) noteRxOutcome(Iface::OUTCOME_FILTERED);   // its turn, but forwarding is not allowed here
+#endif
     countRxDropped();
     return ACTION_RELEASE;   // this node is NOT the next hop (OR this packet has already been forwarded), so discard.
   }
