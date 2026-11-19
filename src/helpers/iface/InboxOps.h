@@ -23,6 +23,8 @@ struct InboxEntry {
   uint8_t type;             // the native TXT_TYPE_*
   uint8_t len;
   bool cut;
+  bool has_identity;        // a direct message to a delegated receive identity (Issue #552): which one, in identity
+  uint8_t identity[32];     // that identity's public key; the primary identity's messages carry none
   bool from_manager;        // message.deliver put it here: no radio reception, and nothing checked its sender or its time
   char text[TEXT_CAP + 1];
 };

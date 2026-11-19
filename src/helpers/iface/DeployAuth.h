@@ -21,6 +21,8 @@
 #include "helpers/deployment/DepWrapper.h"
 #include "ConfigSnap.h"
 
+namespace mesh { class LocalIdentity; }
+
 namespace Iface {
 
 // The local unlock state of one link (AUTHORITY.md section 10), kept by the host beside the link's channel nonce and
@@ -59,6 +61,12 @@ public:
     // none, and the continuity operations answer not-on-this-device.
     SnapStore* cont_blob = nullptr;
     SnapStore* cont_key = nullptr;
+    // The delegated receive identities (AUTHORITY section 10b; Issue #552) and their wrapping key, two files kept apart from
+    // the record and from the continuity package; node_id is the node key that opens a sealed delegated key. Null: the
+    // role holds none, and the identity.delegate operations answer not-on-this-device.
+    SnapStore* dlg_blob = nullptr;
+    SnapStore* dlg_key = nullptr;
+    const mesh::LocalIdentity* node_id = nullptr;
   };
 
   // Loads the record and its marks from the store; called once at boot. With no record a standalone device holds no
@@ -130,6 +138,16 @@ public:
   Status opContinuityExport(OpContext& c);
   // Called on every pass with the posture: in Hardened the wrapping key goes, so the package cannot be read again.
   void continuityReconcile(bool hardened);
+  // The delegated receive identities (AUTHORITY section 10b): put and delete by a member's signature in Normal, list for any
+  // reader; destroyed by Hardened, deployment.reset and a factory reset, kept by identity.rotate.
+  static const int DELEGATES_MAX = 4;
+  Status opDelegatePut(OpContext& c);
+  Status opDelegateDelete(OpContext& c);
+  Status opDelegateList(OpContext& c);
+  void delegateReconcile(bool hardened);
+  bool delegatesBuilt() const { return _env.dlg_blob && _env.dlg_key && _env.node_id; }
+  // The n-th delegated identity (in slot order), null past the last: what the mesh tries a direct message against.
+  const mesh::LocalIdentity* delegated(int n) const;
   // The gate of identity.rotate (AUTHORITY.md section 11): ST_OK only for a verified signed request on a device whose record
   // reads back healthy. Anything else is a refusal with a contract code and nothing changes.
   Status rotateGate(OpContext& c);
@@ -193,6 +211,11 @@ private:
   void continuityDestroy();                 // the key first, then the package: the key alone already ends it
   bool continuityRead(uint8_t* pkg, size_t cap, size_t* n, uint32_t* gen);
   void writeContinuity(JsonWriter& w);
+  mesh::LocalIdentity* _dlg[DELEGATES_MAX] = {};   // the live identities, by slot (null: empty)
+  bool _dlg_key_present = false;
+  void delegatesDestroy();                  // the key first, then the blob and the identities in memory
+  void delegatesLoad();
+  bool delegatesSave();                     // seals the table as it is in memory
   uint32_t _secret_epoch = 1;               // moves whenever the secret changes or goes; older challenges and unlocks die
   uint8_t _fails = 0;                       // wrong answers since the last success or lockout, for the whole device
   bool _locked = false;

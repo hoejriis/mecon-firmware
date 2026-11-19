@@ -159,6 +159,10 @@ public:
   static Iface::Status opDeploySetUnlock(Iface::OpContext& c);
   static Iface::Status opContinuityPut(Iface::OpContext& c);
   static Iface::Status opContinuityExport(Iface::OpContext& c);
+  // The delegated receive identities (AUTHORITY.md section 10b; Issue #552).
+  static Iface::Status opDelegatePut(Iface::OpContext& c);
+  static Iface::Status opDelegateDelete(Iface::OpContext& c);
+  static Iface::Status opDelegateList(Iface::OpContext& c);
   static Iface::Status opDeployUnlockChallenge(Iface::OpContext& c);
   static Iface::Status opDeployUnlock(Iface::OpContext& c);
   // identity.rotate (AUTHORITY.md section 11): signed, sensitive, only with a readable record.
@@ -177,6 +181,7 @@ public:
   // Whether the device holds a Deployment record, healthy or corrupt: an unsigned caller then changes nothing
   // (AUTHORITY.md section 9). The CLI privilege table takes it as Context.enrolled.
   bool enrolled() const { return _auth.enrolled(); }
+  const mesh::LocalIdentity* delegatedIdentity(int n) const { return _auth.delegated(n); }   // the mesh tries a DM against each
   const Cli::Context& callerContext() const { return _ctx; }
   uint8_t auditCaller() const { return _caller; }   // the caller's audit identity (Posture::CALLER_*)
   const Iface::DeployAuth& authState() const { return _auth; }

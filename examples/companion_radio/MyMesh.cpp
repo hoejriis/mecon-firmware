@@ -571,6 +571,10 @@ bool MyMesh::keepReceived(mesh::Packet* pkt, const uint8_t* from, int channel, u
   e->rx_ts = getRTCClock()->knownTime();
   e->rx_ms = millis();
   if (from) memcpy(e->from, from, sizeof(e->from));
+  if (const mesh::LocalIdentity* di = _rx_delegate >= 0 ? delegatedIdentity(_rx_delegate) : nullptr) {   // Issue #552
+    memcpy(e->identity, di->pub_key, sizeof(e->identity));
+    e->has_identity = true;
+  }
   if (signer) memcpy(e->signer, signer, sizeof(e->signer));
   e->channel = (int8_t)channel;
   e->snr_x4 = (int8_t)(pkt->getSNR() * 4);

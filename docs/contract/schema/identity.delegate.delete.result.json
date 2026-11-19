@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/identity.delegate.delete.result.json",
+  "title": "Result of identity.delegate.delete",
+  "description": "AUTHORITY.md section 10b (Since v0.4.0): the slot is empty afterwards; removed says whether it held an identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "slot",
+    "removed"
+  ],
+  "properties": {
+    "slot": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "removed": {
+      "type": "boolean"
+    }
+  }
+}

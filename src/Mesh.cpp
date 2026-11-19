@@ -160,11 +160,11 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         //       For flood mode, the path may not be the 'best' in terms of hops.
         // FUTURE: could send back multiple paths, using createPathReturn(), and let sender choose which to use(?)
 
+        bool found = false;
         if (self_id.isHashMatch(&dest_hash)) {
           // scan contacts DB, for all matching hashes of 'src_hash' (max 4 matches supported ATM)
           int num = searchPeersByHash(&src_hash);
           // for each matching contact, try to decrypt data
-          bool found = false;
           for (int j = 0; j < num; j++) {
             uint8_t secret[PUB_KEY_SIZE];
             getPeerSharedSecret(secret, j);
@@ -200,12 +200,20 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
               break;
             }
           }
-          if (found) {
-            pkt->markDoNotRetransmit();  // packet was for this node, so don't retransmit
-          } else {
+          if (!found) {
             MESH_DEBUG_PRINTLN("%s recv matches no peers, src_hash=%02X", getLogDateTime(), (uint32_t)src_hash);
           }
         }
+        // MECON (Issue #552): a text message the node's own identity did not open may be for a delegated one. The node's own
+        // identity is tried first, so two identities sharing a one-byte hash are tried in order.
+        if (!found && pkt->getPayloadType() == PAYLOAD_TYPE_TXT_MSG) {
+          for (int d = 0; !found; d++) {
+            const LocalIdentity* di = delegatedIdentity(d);
+            if (!di) break;
+            if (di->isHashMatch(&dest_hash)) found = recvDelegated(pkt, *di, d, src_hash, macAndData, pkt->payload_len - i);
+          }
+        }
+        if (found) pkt->markDoNotRetransmit();  // packet was for this node, so don't retransmit
         action = routeRecvPacket(pkt);
       }
       break;
@@ -455,6 +463,32 @@ Packet* Mesh::createAdvert(const LocalIdentity& id, const uint8_t* app_data, siz
 
 #define MAX_COMBINED_PATH  (MAX_PACKET_PAYLOAD - 2 - CIPHER_BLOCK_SIZE)
 
+// MECON (Issue #552): a direct text message addressed to a delegated identity. Only a PLAIN text message whose MAC checks
+// against a known contact is accepted: it is handed up and ACKed with the delegated key, and nothing else is ever done as a
+// delegated identity (no request, no command, no reply of its own). A message that opens but is of another kind is dropped.
+bool Mesh::recvDelegated(Packet* pkt, const LocalIdentity& id, int index, uint8_t src_hash, uint8_t* macAndData, int mac_len) {
+  int num = searchPeersByHash(&src_hash);
+  for (int j = 0; j < num; j++) {
+    uint8_t secret[PUB_KEY_SIZE];
+    if (!getPeerSharedSecretFor(secret, j, id)) continue;
+    uint8_t data[MAX_PACKET_PAYLOAD];
+    int len = Utils::MACThenDecrypt(secret, data, macAndData, mac_len);
+    if (len > 0) {
+      if (len > 5 && (data[4] >> 2) == 0 /* TXT_TYPE_PLAIN */) {
+        _rx_delegate = index;
+        _reply_id = &id;
+        onPeerDataRecv(pkt, PAYLOAD_TYPE_TXT_MSG, j, secret, data, len);
+        _reply_id = NULL;
+        _rx_delegate = -1;
+      }
+      memset(secret, 0, sizeof(secret));
+      return true;
+    }
+    memset(secret, 0, sizeof(secret));
+  }
+  return false;
+}
+
 Packet* Mesh::createPathReturn(const Identity& dest, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len) {
   uint8_t dest_hash[PATH_HASH_SIZE];
   dest.copyHashTo(dest_hash);
@@ -476,7 +510,7 @@ Packet* Mesh::createPathReturn(const uint8_t* dest_hash, const uint8_t* secret, 
 
   int len = 0;
   memcpy(&packet->payload[len], dest_hash, PATH_HASH_SIZE); len += PATH_HASH_SIZE;  // dest hash
-  len += self_id.copyHashTo(&packet->payload[len]);  // src hash
+  len += (_reply_id ? *_reply_id : self_id).copyHashTo(&packet->payload[len]);  // src hash (MECON: a delegated identity's, while it answers)
 
   {
     int data_len = 0;
