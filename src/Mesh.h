@@ -86,6 +86,18 @@ protected:
    */
   virtual void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) { }
 
+  // MECON (Issue #552): delegated receive identities. The n-th identity this node also receives direct text messages for, or
+  // NULL past the last (none by default). It only receives and ACKs: nothing else is ever sent as it.
+  virtual const LocalIdentity* delegatedIdentity(int n) { return NULL; }
+  // The shared secret of peer_idx (as searchPeersByHash numbered it) with the delegated identity `as`; false when the peer
+  // is gone, and then dest_secret is not written.
+  virtual bool getPeerSharedSecretFor(uint8_t* dest_secret, int peer_idx, const LocalIdentity& as) { return false; }
+  // While a message to a delegated identity is being handled: its index, and the identity that its reply packets (the path
+  // return that carries the ACK) name as their source; -1 and NULL otherwise.
+  bool recvDelegated(Packet* pkt, const LocalIdentity& id, int index, uint8_t src_hash, uint8_t* macAndData, int mac_len);
+  int _rx_delegate = -1;
+  const LocalIdentity* _reply_id = NULL;
+
   /**
    * \brief  A (now decrypted) data packet has been received (by a known peer).
    *         NOTE: these can be received multiple times (per sender/msg-id), via different routes

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/identity.delegate.list.result.json",
+  "title": "Result of identity.delegate.list",
+  "description": "AUTHORITY.md section 10b (Since v0.4.0): the delegated receive identities, public keys only, and the most the device holds.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "max",
+    "identities"
+  ],
+  "properties": {
+    "max": {
+      "const": 4
+    },
+    "identities": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slot",
+          "pub"
+        ],
+        "properties": {
+          "slot": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "pub": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

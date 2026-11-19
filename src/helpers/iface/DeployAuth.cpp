@@ -11,6 +11,9 @@
 #include <helpers/cli/CliCaller.h>
 #include <helpers/deployment/DepHmac.h>
 #include <helpers/deployment/DepContinuity.h>
+#include <helpers/deployment/DepDelegates.h>
+#include "DelegateSeal.h"
+#include <Identity.h>
 #include <helpers/updates/UpdB64.h>
 #include "Provenance.h"
 #include <helpers/deployment/DepMarker.h>
@@ -234,6 +237,7 @@ void DeployAuth::begin(const Env& env) {
     _cont_key_present = _env.cont_key->load(key, sizeof(key)) == sizeof(key);
     wipe(key, sizeof(key));
   }
+  delegatesLoad();
 }
 
 // The two facts the servers' command handlers read (Cli::ServerCaller): kept equal to the state in memory.
@@ -1018,11 +1022,13 @@ Status DeployAuth::opReset(OpContext& c) {
   const bool had_unlock = _dep && _dep_ls == Dep::LS_OK && _dep->rec.has_unlock;
   const bool had_marker = Dep::markerRead() == Dep::MK_PRESENT;
   const bool had_continuity = _cont_key_present;
+  const bool had_delegates = _dlg_key_present;
   // The record first, the older copy first within it; the marker last, so a step that fails leaves the device reading as
   // enrolled or corrupt, never as a device with no Deployment while part of it remains.
   const bool ok = st->removeBoth(rec_slot, Dep::SF_RECORD) &&
                   st->removeBoth(marks_slot, Dep::SF_MARKS) && Dep::markerClear();
   if (ok) continuityDestroy();   // a package belongs to the Deployment it was made for
+  if (ok) delegatesDestroy();    // and so do the delegated identities
   if (_dep) Dep::depFree(_dep);
   load();   // the state in memory is what is now stored
   if (!ok) { c.error = "storage"; return ST_FAILED; }
@@ -1033,6 +1039,7 @@ Status DeployAuth::opReset(OpContext& c) {
   if (had_unlock) w.str("unlock_secret");
   if (had_marker) w.str("marker");
   if (had_continuity) w.str("continuity");
+  if (had_delegates) w.str("delegates");
   w.endArray();
   w.key("kept"); w.beginArray();
   w.str("node_key"); w.str("device_id"); w.str("configuration"); w.str("contacts"); w.str("channels");
@@ -1041,6 +1048,7 @@ Status DeployAuth::opReset(OpContext& c) {
 }
 
 void DeployAuth::onFactoryReset() {
+  delegatesDestroy();
   continuityDestroy();   // the format takes the files too; this holds where the key would outlive it
   Dep::markerClear();   // the format already takes it on ESP32 (NVS erase) and the sim; kept for a platform whose format does not
   _secret_epoch++;
@@ -1244,6 +1252,224 @@ Status DeployAuth::opContinuityExport(OpContext& c) {
   if (pkg) { wipe(pkg, Dep::CONT_MAX); free(pkg); }
   if (b64) { wipe(b64, 1028); free(b64); }
   return st;
+}
+
+// ---- the delegated receive identities (AUTHORITY section 10b; Issue #552)
+
+// The table at rest is one sealed file (Dep::dlgSeal) of records {slot, private key, public key} under a wrapping key the
+// device makes itself and never exports. A key is never read back by any operation: list gives public keys only.
+
+const mesh::LocalIdentity* DeployAuth::delegated(int n) const {
+  for (int i = 0; i < DELEGATES_MAX; i++)
+    if (_dlg[i] && n-- == 0) return _dlg[i];
+  return nullptr;
+}
+
+void DeployAuth::delegatesDestroy() {
+  if (!delegatesBuilt()) return;
+  _env.dlg_key->discard();
+  _env.dlg_blob->discard();
+  _dlg_key_present = false;
+  for (int i = 0; i < DELEGATES_MAX; i++) {
+    if (_dlg[i]) { wipe(_dlg[i], sizeof(mesh::LocalIdentity)); delete _dlg[i]; _dlg[i] = nullptr; }
+  }
+}
+
+void DeployAuth::delegateReconcile(bool hardened) {
+  if (hardened && _dlg_key_present) delegatesDestroy();   // within one pass of entering Hardened, and at boot
+}
+
+void DeployAuth::delegatesLoad() {
+  if (!delegatesBuilt()) return;
+  uint8_t key[Dep::DLG_KEY];
+  _dlg_key_present = _env.dlg_key->load(key, sizeof(key)) == sizeof(key);
+  if (_dlg_key_present) {
+    uint8_t* sealed = static_cast<uint8_t*>(malloc(Dep::DLG_SEALED_MAX));
+    uint8_t* plain = static_cast<uint8_t*>(malloc(Dep::DLG_PLAIN_MAX));
+    size_t n = 0;
+    if (sealed && plain) {
+      const size_t len = _env.dlg_blob->load(sealed, Dep::DLG_SEALED_MAX);
+      if (len && Dep::dlgOpen(key, sealed, len, plain, Dep::DLG_PLAIN_MAX, &n)) {
+        for (size_t o = 0; o + Dep::DLG_REC <= n; o += Dep::DLG_REC) {
+          const uint8_t slot = plain[o];
+          if (slot >= DELEGATES_MAX || _dlg[slot]) continue;
+          mesh::LocalIdentity* li = new (std::nothrow) mesh::LocalIdentity();
+          if (!li) continue;
+          li->readFrom(plain + o + 1, PRV_KEY_SIZE + PUB_KEY_SIZE);
+          _dlg[slot] = li;
+        }
+      }
+    }
+    if (sealed) { wipe(sealed, Dep::DLG_SEALED_MAX); free(sealed); }
+    if (plain) { wipe(plain, Dep::DLG_PLAIN_MAX); free(plain); }
+  }
+  wipe(key, sizeof(key));
+}
+
+// Seals the table as it is in memory (the wrapping key is made at the first save, and goes with the last identity).
+bool DeployAuth::delegatesSave() {
+  int count = 0;
+  for (int i = 0; i < DELEGATES_MAX; i++) if (_dlg[i]) count++;
+  if (count == 0) {
+    _env.dlg_key->discard();
+    _env.dlg_blob->discard();
+    _dlg_key_present = false;
+    return true;
+  }
+  uint8_t key[Dep::DLG_KEY], nonce[Dep::DLG_NONCE];
+  uint8_t* plain = static_cast<uint8_t*>(malloc(Dep::DLG_PLAIN_MAX));
+  uint8_t* sealed = static_cast<uint8_t*>(malloc(Dep::DLG_SEALED_MAX));
+  bool ok = plain && sealed;
+  if (ok && _dlg_key_present) ok = _env.dlg_key->load(key, sizeof(key)) == sizeof(key);
+  else if (ok) {
+    CryptoRNG rng;   // no fallback: a predictable wrapping key would be worse than none
+    rng.random(key, sizeof(key));
+    bool nonzero = false;
+    for (uint8_t x : key) nonzero = nonzero || x != 0;
+    ok = nonzero && _env.dlg_key->save(key, sizeof(key));
+    if (ok) _dlg_key_present = true;
+  }
+  if (ok) {
+    size_t o = 0;
+    for (int i = 0; i < DELEGATES_MAX; i++) {
+      if (!_dlg[i]) continue;
+      plain[o] = (uint8_t)i;
+      _dlg[i]->writeTo(plain + o + 1, PRV_KEY_SIZE + PUB_KEY_SIZE);
+      o += Dep::DLG_REC;
+    }
+    CryptoRNG rng;
+    rng.random(nonce, sizeof(nonce));
+    const size_t len = Dep::dlgSeal(key, nonce, plain, o, sealed, Dep::DLG_SEALED_MAX);
+    ok = len && _env.dlg_blob->save(sealed, len);
+  }
+  wipe(key, sizeof(key));
+  if (plain) { wipe(plain, Dep::DLG_PLAIN_MAX); free(plain); }
+  if (sealed) { wipe(sealed, Dep::DLG_SEALED_MAX); free(sealed); }
+  return ok;
+}
+
+namespace {
+// The gate of the two writes: a verified signed request on a healthy record, in Normal.
+bool delegateGate(bool built, Dep::LoadState ls, bool signed_, const Cli::Context& ctx, Dep::DepState* dep, const char** err) {
+  if (!built) { *err = "not-on-this-device"; return false; }
+  if (ls == Dep::LS_ABSENT) { *err = "not_enrolled"; return false; }
+  if (!signed_) {
+    if (dep) dep->auth_rejections++;
+    *err = ls == Dep::LS_OK ? "unauthenticated" : "deployment_record_corrupt";
+    return false;
+  }
+  if (ls != Dep::LS_OK || !dep) { *err = "deployment_record_corrupt"; return false; }
+  if (Posture::isHardened(ctx.posture)) { *err = "hardened"; return false; }   // Hardened holds none
+  return true;
+}
+}  // namespace
+
+// identity.delegate.put {"slot": 0..3, "pub": 64 hex, "sealed": base64 of mecon-dl-v1 (112 bytes)}. A sensitive operation:
+// a member's signature, a job id and this link's channel nonce. The private key arrives only sealed to the node key.
+Status DeployAuth::opDelegatePut(OpContext& c) {
+  const char* err = nullptr;
+  if (!delegateGate(delegatesBuilt(), _dep_ls, _signed, _ctx, _dep, &err)) {
+    c.error = err;
+    return strcmp(err, "not-on-this-device") == 0 ? ST_FAILED : ST_REFUSED;
+  }
+  const JsonDoc& d = *c.doc;
+  const bool obj = isObject(d, c.req->args);
+  const int ts = obj ? jsonFind(d, c.req->args, "slot") : -1;
+  const int tp = obj ? jsonFind(d, c.req->args, "pub") : -1;
+  const int tx = obj ? jsonFind(d, c.req->args, "sealed") : -1;
+  int64_t slot = 0;
+  char pub_hex[2 * PUB_KEY_SIZE + 1], b64[4 * ((Iface::Dl::SEALED + 2) / 3) + 1];
+  uint8_t pub[PUB_KEY_SIZE], sealed[Iface::Dl::SEALED + 1], shared[32], k[32], prv[PRV_KEY_SIZE];
+  if (ts < 0 || tp < 0 || tx < 0 || !jsonGetInt(d, ts, 0, DELEGATES_MAX - 1, &slot) ||
+      !jsonGetString(d, tp, pub_hex, sizeof(pub_hex), CS_ANY, 2 * PUB_KEY_SIZE) || strlen(pub_hex) != 2 * PUB_KEY_SIZE ||
+      !mesh::Utils::fromHex(pub, PUB_KEY_SIZE, pub_hex) ||
+      !jsonGetString(d, tx, b64, sizeof(b64), CS_ANY, 4) ||
+      Upd::base64Decode(b64, strlen(b64), sealed, sizeof(sealed)) != (long)Iface::Dl::SEALED) {
+    c.error = "bad-args";
+    return ST_INVALID;
+  }
+  // A reserved one-byte hash is never a destination, and the node's own key is not a delegate; the same key in two slots
+  // would be tried twice for nothing.
+  if (pub[0] == 0x00 || pub[0] == 0xFF) { c.error = "reserved_hash"; return ST_REFUSED; }
+  if (memcmp(pub, _env.node_id->pub_key, PUB_KEY_SIZE) == 0) { c.error = "same_as_node"; return ST_REFUSED; }
+  for (int i = 0; i < DELEGATES_MAX; i++)
+    if (i != (int)slot && _dlg[i] && memcmp(_dlg[i]->pub_key, pub, PUB_KEY_SIZE) == 0) { c.error = "duplicate"; return ST_REFUSED; }
+  Status st = ST_REFUSED;
+  mesh::LocalIdentity* li = nullptr;
+  _env.node_id->calcSharedSecret(shared, sealed);   // the ephemeral key is the first 32 bytes
+  Iface::Dl::kdf(shared, _answering.job, (uint8_t)slot, sealed, pub, k);
+  if (!Iface::Dl::open(k, sealed + Iface::Dl::EPH, prv)) { c.error = "seal_invalid"; goto done; }
+  if (!mesh::LocalIdentity::validatePrivateKey(prv)) { c.error = "bad_key"; goto done; }
+  li = new (std::nothrow) mesh::LocalIdentity();
+  if (!li) { c.error = "no-memory"; st = ST_BUSY; goto done; }
+  li->readFrom(prv, PRV_KEY_SIZE);   // the public key is derived, and must be the one named
+  if (memcmp(li->pub_key, pub, PUB_KEY_SIZE) != 0) { c.error = "key_mismatch"; goto done; }
+  {
+    mesh::LocalIdentity* old = _dlg[slot];
+    _dlg[slot] = li;
+    if (!delegatesSave()) {
+      _dlg[slot] = old;   // the table in memory stays what is stored
+      c.error = "storage";
+      st = ST_BUSY;
+      goto done;
+    }
+    li = nullptr;
+    if (old) { wipe(old, sizeof(mesh::LocalIdentity)); delete old; }
+  }
+  c.out->key("delegate"); c.out->str("stored");
+  c.out->key("slot"); c.out->num((int)slot);
+  c.out->key("pub"); c.out->str(pub_hex);
+  st = ST_OK;
+done:
+  if (li) { wipe(li, sizeof(mesh::LocalIdentity)); delete li; }
+  wipe(shared, sizeof(shared));
+  wipe(k, sizeof(k));
+  wipe(prv, sizeof(prv));
+  wipe(sealed, sizeof(sealed));
+  return st;
+}
+
+// identity.delegate.delete {"slot": 0..3}: a member's signed request, in Normal. An empty slot is answered, not refused.
+Status DeployAuth::opDelegateDelete(OpContext& c) {
+  const char* err = nullptr;
+  if (!delegateGate(delegatesBuilt(), _dep_ls, _signed, _ctx, _dep, &err)) {
+    c.error = err;
+    return strcmp(err, "not-on-this-device") == 0 ? ST_FAILED : ST_REFUSED;
+  }
+  const JsonDoc& d = *c.doc;
+  const int ts = isObject(d, c.req->args) ? jsonFind(d, c.req->args, "slot") : -1;
+  int64_t slot = 0;
+  if (ts < 0 || !jsonGetInt(d, ts, 0, DELEGATES_MAX - 1, &slot)) { c.error = "bad-args"; return ST_INVALID; }
+  const bool had = _dlg[slot] != nullptr;
+  if (had) {
+    mesh::LocalIdentity* old = _dlg[slot];
+    _dlg[slot] = nullptr;
+    if (!delegatesSave()) { _dlg[slot] = old; c.error = "storage"; return ST_BUSY; }
+    wipe(old, sizeof(mesh::LocalIdentity));
+    delete old;
+  }
+  c.out->key("slot"); c.out->num((int)slot);
+  c.out->key("removed"); c.out->boolean(had);
+  return ST_OK;
+}
+
+// identity.delegate.list: the public keys only, never a private key, on any link.
+Status DeployAuth::opDelegateList(OpContext& c) {
+  if (!delegatesBuilt()) { c.error = "not-on-this-device"; return ST_FAILED; }
+  JsonWriter& w = *c.out;
+  w.key("max"); w.num(DELEGATES_MAX);
+  w.key("identities"); w.beginArray();
+  for (int i = 0; i < DELEGATES_MAX; i++) {
+    if (!_dlg[i]) continue;
+    char hex[2 * PUB_KEY_SIZE + 1];
+    hexTo(hex, _dlg[i]->pub_key, PUB_KEY_SIZE);
+    w.beginObject();
+    w.key("slot"); w.num(i);
+    w.key("pub"); w.str(hex);
+    w.endObject();
+  }
+  w.endArray();
+  return ST_OK;
 }
 
 }  // namespace Iface

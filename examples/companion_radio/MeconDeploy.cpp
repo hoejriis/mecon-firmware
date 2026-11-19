@@ -220,6 +220,9 @@ namespace {
 // The continuity package and its wrapping key, two files apart from the record (AUTHORITY section 10a; #118).
 Iface::PathFsStore g_cont_blob("/mecon_cont");
 Iface::PathFsStore g_cont_key("/mecon_contk");
+// The delegated receive identities and their wrapping key, two more files (AUTHORITY section 10b; Issue #552).
+Iface::PathFsStore g_dlg_blob("/mecon_dlg");
+Iface::PathFsStore g_dlg_key("/mecon_dlgk");
 }  // namespace
 
 void MeconIface::deployLoad() {
@@ -230,6 +233,11 @@ void MeconIface::deployLoad() {
   g_cont_key.setFs(_mesh->_store->getPrimaryFS());
   env.cont_blob = &g_cont_blob;
   env.cont_key = &g_cont_key;
+  g_dlg_blob.setFs(_mesh->_store->getPrimaryFS());
+  g_dlg_key.setFs(_mesh->_store->getPrimaryFS());
+  env.dlg_blob = &g_dlg_blob;
+  env.dlg_key = &g_dlg_key;
+  env.node_id = &_mesh->self_id;
   env.node_key = _mesh->self_id.pub_key;
   env.profile_exists = profileExists;
   env.user = _mesh;
@@ -333,6 +341,9 @@ Status MeconIface::opDeployReset(OpContext& c) { return self(c)->_auth.opReset(c
 Status MeconIface::opDeploySetUnlock(OpContext& c) { return self(c)->_auth.opSetUnlock(c); }
 Status MeconIface::opContinuityPut(OpContext& c) { return self(c)->_auth.opContinuityPut(c); }
 Status MeconIface::opContinuityExport(OpContext& c) { return self(c)->_auth.opContinuityExport(c); }
+Status MeconIface::opDelegatePut(OpContext& c) { return self(c)->_auth.opDelegatePut(c); }
+Status MeconIface::opDelegateDelete(OpContext& c) { return self(c)->_auth.opDelegateDelete(c); }
+Status MeconIface::opDelegateList(OpContext& c) { return self(c)->_auth.opDelegateList(c); }
 Status MeconIface::opDeployUnlockChallenge(OpContext& c) { return self(c)->_auth.opUnlockChallenge(c); }
 Status MeconIface::opDeployUnlock(OpContext& c) { return self(c)->_auth.opUnlock(c); }
 

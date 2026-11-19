@@ -55,6 +55,7 @@ void writeEntry(JsonWriter& w, const InboxEntry& e, uint32_t now_ms) {
     w.key("kind"); w.str("direct");
     w.key("from"); hexOf(e.from, sizeof(e.from), hex); w.str(hex);
   }
+  if (e.has_identity) { w.key("identity"); hexOf(e.identity, sizeof(e.identity), hex); w.str(hex); }
   w.key("source"); w.str(e.from_manager ? "manager" : "radio");
   w.key("type"); w.str(typeName(e.type));
   if (e.type == 2) { w.key("signer"); hexOf(e.signer, sizeof(e.signer), hex); w.str(hex); }

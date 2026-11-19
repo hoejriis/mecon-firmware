@@ -55,6 +55,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect", "contact.capacity",
                                     "message.send", "message.get", "message.list", "message.ack",
                                     "inbox.list", "inbox.ack", "message.deliver", "lora.trace",
+                                    "identity.delegate.put", "identity.delegate.delete", "identity.delegate.list",
                                     "scope.default.get", "scope.default.set", "scope.default.clear", "audit.list"
 #if defined(BLE_PIN_CODE)
                                     , "ble.bonds", "ble.pin.get", "ble.pin.set"
@@ -221,6 +222,11 @@ const OpEntry OPS[] = {
   {"inbox.ack", opInbAck, PRIV_READ, false},
   // A write, and kept by id: a retry whose reply was lost is the same delivery (section 6.5).
   {"message.deliver", opMsgDeliver, PRIV_WRITE, true},
+  // Delegated receive identities (AUTHORITY.md section 10b): the sealed key is never kept in the result cache, and a list
+  // reads public keys only.
+  {"identity.delegate.put", MeconIface::opDelegatePut, PRIV_WRITE, false},
+  {"identity.delegate.delete", MeconIface::opDelegateDelete, PRIV_WRITE, true},
+  {"identity.delegate.list", MeconIface::opDelegateList, PRIV_READ, false},
   // The native channel table; the secret is written, never read (OPERATIONS.md section 5.1).
   {"channel.list", opChanList, PRIV_READ, false},
   {"channel.get", opChanGet, PRIV_READ, false},
@@ -1901,6 +1907,7 @@ void MeconIface::loop(uint32_t now) {
   _gap.tick(now);
   _jobs.tick(now);
   _auth.continuityReconcile(Posture::isHardened(_mesh->postureValue()));   // Hardened holds no package (#118)
+  _auth.delegateReconcile(Posture::isHardened(_mesh->postureValue()));     // and no delegated identity (Issue #552)
   _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) {
     _mesh->saveDirtyContacts();   // as the native CMD_REBOOT does: a contact change still waiting for its lazy save

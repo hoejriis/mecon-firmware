@@ -144,6 +144,11 @@
             "maximum": 255,
             "description": "Route flood only: as the native frame carries it."
           },
+          "identity": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Direct only, and only for a message to a delegated receive identity (Since v0.4.0): that identity's public key. The primary identity's messages carry none. The device sets it, so no contact can."
+          },
           "source": {
             "type": "string",
             "enum": [

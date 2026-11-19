@@ -252,6 +252,14 @@ void BaseChatMesh::getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) {
   }
 }
 
+// MECON (Issue #552): the secret with a delegated identity is made on receipt, and never cached per contact.
+bool BaseChatMesh::getPeerSharedSecretFor(uint8_t* dest_secret, int peer_idx, const mesh::LocalIdentity& as) {
+  ContactInfo* c = contactByHandle(matching_peer_indexes[peer_idx]);
+  if (!c) return false;
+  as.calcSharedSecret(dest_secret, c->id.pub_key);
+  return true;
+}
+
 void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) {
   ContactInfo* sender = contactByHandle(matching_peer_indexes[sender_idx]);
   if (!sender) {

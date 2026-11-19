@@ -87,6 +87,7 @@ OpClass contractOpClass(const char* op, const JsonDoc& body) {
   if (strcmp(op, "identity.key.export") == 0 || strcmp(op, "ble.pin.get") == 0 || strcmp(op, "deployment.set_unlock") == 0 || strcmp(op, "deployment.continuity.put") == 0 ||
       strcmp(op, "identity.rotate") == 0)
     return OPC_SENSITIVE;
+  if (strcmp(op, "identity.delegate.put") == 0) return OPC_SENSITIVE;   // the sealed key of a delegated identity (AUTHORITY 10b)
   return OPC_JOB;
 }
 

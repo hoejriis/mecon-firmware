@@ -245,6 +245,9 @@ protected:
   void queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt, uint32_t sender_timestamp,
                     const uint8_t *extra, int extra_len, const char *text);
 
+#ifdef ENABLE_MECON_IFACE
+  const mesh::LocalIdentity* delegatedIdentity(int n) override { return _iface.delegatedIdentity(n); }   // Issue #552
+#endif
   void onMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                      const char *text) override;
   void onCommandDataRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
