@@ -182,6 +182,8 @@ public:
   // (AUTHORITY.md section 9). The CLI privilege table takes it as Context.enrolled.
   bool enrolled() const { return _auth.enrolled(); }
   const mesh::LocalIdentity* delegatedIdentity(int n) const { return _auth.delegated(n); }   // the mesh tries a DM against each
+  int delegatedChannel(int n) const { return _auth.delegatedChannel(n); }   // its local channel slot, -1 for none
+  bool localChannel(int slot) const { return _auth.localChannel(slot); }    // a slot no send may use
   const Cli::Context& callerContext() const { return _ctx; }
   uint8_t auditCaller() const { return _caller; }   // the caller's audit identity (Posture::CALLER_*)
   const Iface::DeployAuth& authState() const { return _auth; }

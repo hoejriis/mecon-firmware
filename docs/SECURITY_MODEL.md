@@ -69,7 +69,7 @@ Normal/Hardened posture is orthogonal to Deployment membership: **Normal → Har
 
 Built for the continuity package (design decisions of 2026-11-08 and 2026-11-14): the operations, the sealing at rest and the destruction are in [AUTHORITY section 10a](contract/AUTHORITY.md). A MECON Companion holds the package by default; its export is protected by a passphrase the device never sees.
 
-A Companion can also receive for up to four **delegated identities** (Since v0.4.0; [AUTHORITY section 10b](contract/AUTHORITY.md)). Their private keys arrive sealed to the node key (`mecon-dl-v1`) in a member's signed, sensitive request over any wire link, are held sealed at rest under a key the device never exports, are never readable on any link, and are destroyed by Hardened, a Deployment reset and a factory reset. The device only receives, decrypts and acknowledges as one; it never sends as one.
+A Companion can also receive for up to four **delegated identities** (Since v0.4.0; [AUTHORITY section 10b](contract/AUTHORITY.md)). Their private keys arrive sealed to the node key (`mecon-dl-v1`) in a member's signed, sensitive request over any wire link, are held sealed at rest under a key the device never exports, are never readable on any link, and are destroyed by Hardened, a Deployment reset and a factory reset. The device only receives, decrypts and acknowledges as one; it never sends as one. An identity may name a local channel slot where its messages are shown as `sender: text`; no send on that slot is accepted.
 
 Firmware provides a bounded protected storage boundary for Deployment continuity/recovery material.
 

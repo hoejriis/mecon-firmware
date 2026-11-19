@@ -68,7 +68,7 @@ inline bool messageFinal(const MessageEntry& e) {
 }
 const char* messageStateName(uint8_t s);
 
-enum MessageSend { MS_OK, MS_NOT_FOUND, MS_TOO_LONG, MS_QUEUE_FULL };
+enum MessageSend { MS_OK, MS_NOT_FOUND, MS_TOO_LONG, MS_QUEUE_FULL, MS_LOCAL_ONLY };
 
 // What the native send reports.
 struct MessageSent {

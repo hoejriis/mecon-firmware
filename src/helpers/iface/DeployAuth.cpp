@@ -1265,6 +1265,18 @@ const mesh::LocalIdentity* DeployAuth::delegated(int n) const {
   return nullptr;
 }
 
+int DeployAuth::delegatedChannel(int n) const {
+  for (int i = 0; i < DELEGATES_MAX; i++)
+    if (_dlg[i] && n-- == 0) return _dlg_ch[i];
+  return -1;
+}
+
+bool DeployAuth::localChannel(int slot) const {
+  for (int i = 0; i < DELEGATES_MAX; i++)
+    if (_dlg[i] && _dlg_ch[i] == slot) return true;
+  return false;
+}
+
 void DeployAuth::delegatesDestroy() {
   if (!delegatesBuilt()) return;
   _env.dlg_key->discard();
@@ -1272,6 +1284,7 @@ void DeployAuth::delegatesDestroy() {
   _dlg_key_present = false;
   for (int i = 0; i < DELEGATES_MAX; i++) {
     if (_dlg[i]) { wipe(_dlg[i], sizeof(mesh::LocalIdentity)); delete _dlg[i]; _dlg[i] = nullptr; }
+    _dlg_ch[i] = -1;
   }
 }
 
@@ -1291,12 +1304,13 @@ void DeployAuth::delegatesLoad() {
       const size_t len = _env.dlg_blob->load(sealed, Dep::DLG_SEALED_MAX);
       if (len && Dep::dlgOpen(key, sealed, len, plain, Dep::DLG_PLAIN_MAX, &n)) {
         for (size_t o = 0; o + Dep::DLG_REC <= n; o += Dep::DLG_REC) {
-          const uint8_t slot = plain[o];
-          if (slot >= DELEGATES_MAX || _dlg[slot]) continue;
+          const uint8_t slot = plain[o] & 3;   // the low two bits: the slot; the rest: the local channel slot plus one, 0 for none
+          if (_dlg[slot]) continue;
           mesh::LocalIdentity* li = new (std::nothrow) mesh::LocalIdentity();
           if (!li) continue;
           li->readFrom(plain + o + 1, PRV_KEY_SIZE + PUB_KEY_SIZE);
           _dlg[slot] = li;
+          _dlg_ch[slot] = (int8_t)((plain[o] >> 2) - 1);
         }
       }
     }
@@ -1333,7 +1347,7 @@ bool DeployAuth::delegatesSave() {
     size_t o = 0;
     for (int i = 0; i < DELEGATES_MAX; i++) {
       if (!_dlg[i]) continue;
-      plain[o] = (uint8_t)i;
+      plain[o] = (uint8_t)(i | (_dlg_ch[i] + 1) << 2);
       _dlg[i]->writeTo(plain + o + 1, PRV_KEY_SIZE + PUB_KEY_SIZE);
       o += Dep::DLG_REC;
     }
@@ -1364,7 +1378,8 @@ bool delegateGate(bool built, Dep::LoadState ls, bool signed_, const Cli::Contex
 }
 }  // namespace
 
-// identity.delegate.put {"slot": 0..3, "pub": 64 hex, "sealed": base64 of mecon-dl-v1 (112 bytes)}. A sensitive operation:
+// identity.delegate.put {"slot": 0..3, "pub": 64 hex, "sealed": base64 of mecon-dl-v1 (112 bytes), "channel": 0..62 (optional)}.
+// A put replaces the whole record: without "channel" the identity has no local channel. A sensitive operation:
 // a member's signature, a job id and this link's channel nonce. The private key arrives only sealed to the node key.
 Status DeployAuth::opDelegatePut(OpContext& c) {
   const char* err = nullptr;
@@ -1377,14 +1392,16 @@ Status DeployAuth::opDelegatePut(OpContext& c) {
   const int ts = obj ? jsonFind(d, c.req->args, "slot") : -1;
   const int tp = obj ? jsonFind(d, c.req->args, "pub") : -1;
   const int tx = obj ? jsonFind(d, c.req->args, "sealed") : -1;
-  int64_t slot = 0;
+  int64_t slot = 0, chan = -1;
+  const int tc = obj ? jsonFind(d, c.req->args, "channel") : -1;
   char pub_hex[2 * PUB_KEY_SIZE + 1], b64[4 * ((Iface::Dl::SEALED + 2) / 3) + 1];
   uint8_t pub[PUB_KEY_SIZE], sealed[Iface::Dl::SEALED + 1], shared[32], k[32], prv[PRV_KEY_SIZE];
   if (ts < 0 || tp < 0 || tx < 0 || !jsonGetInt(d, ts, 0, DELEGATES_MAX - 1, &slot) ||
       !jsonGetString(d, tp, pub_hex, sizeof(pub_hex), CS_ANY, 2 * PUB_KEY_SIZE) || strlen(pub_hex) != 2 * PUB_KEY_SIZE ||
       !mesh::Utils::fromHex(pub, PUB_KEY_SIZE, pub_hex) ||
       !jsonGetString(d, tx, b64, sizeof(b64), CS_ANY, 4) ||
-      Upd::base64Decode(b64, strlen(b64), sealed, sizeof(sealed)) != (long)Iface::Dl::SEALED) {
+      Upd::base64Decode(b64, strlen(b64), sealed, sizeof(sealed)) != (long)Iface::Dl::SEALED ||
+      (tc >= 0 && !jsonGetInt(d, tc, 0, 62, &chan))) {
     c.error = "bad-args";
     return ST_INVALID;
   }
@@ -1406,9 +1423,12 @@ Status DeployAuth::opDelegatePut(OpContext& c) {
   if (memcmp(li->pub_key, pub, PUB_KEY_SIZE) != 0) { c.error = "key_mismatch"; goto done; }
   {
     mesh::LocalIdentity* old = _dlg[slot];
+    const int8_t old_ch = _dlg_ch[slot];
     _dlg[slot] = li;
+    _dlg_ch[slot] = (int8_t)chan;
     if (!delegatesSave()) {
       _dlg[slot] = old;   // the table in memory stays what is stored
+      _dlg_ch[slot] = old_ch;
       c.error = "storage";
       st = ST_BUSY;
       goto done;
@@ -1419,6 +1439,7 @@ Status DeployAuth::opDelegatePut(OpContext& c) {
   c.out->key("delegate"); c.out->str("stored");
   c.out->key("slot"); c.out->num((int)slot);
   c.out->key("pub"); c.out->str(pub_hex);
+  if (chan >= 0) { c.out->key("channel"); c.out->num((int)chan); }
   st = ST_OK;
 done:
   if (li) { wipe(li, sizeof(mesh::LocalIdentity)); delete li; }
@@ -1443,8 +1464,10 @@ Status DeployAuth::opDelegateDelete(OpContext& c) {
   const bool had = _dlg[slot] != nullptr;
   if (had) {
     mesh::LocalIdentity* old = _dlg[slot];
+    const int8_t old_ch = _dlg_ch[slot];
     _dlg[slot] = nullptr;
-    if (!delegatesSave()) { _dlg[slot] = old; c.error = "storage"; return ST_BUSY; }
+    _dlg_ch[slot] = -1;
+    if (!delegatesSave()) { _dlg[slot] = old; _dlg_ch[slot] = old_ch; c.error = "storage"; return ST_BUSY; }
     wipe(old, sizeof(mesh::LocalIdentity));
     delete old;
   }
@@ -1466,6 +1489,7 @@ Status DeployAuth::opDelegateList(OpContext& c) {
     w.beginObject();
     w.key("slot"); w.num(i);
     w.key("pub"); w.str(hex);
+    if (_dlg_ch[i] >= 0) { w.key("channel"); w.num(_dlg_ch[i]); }
     w.endObject();
   }
   w.endArray();

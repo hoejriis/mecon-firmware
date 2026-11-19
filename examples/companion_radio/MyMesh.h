@@ -244,6 +244,15 @@ protected:
   ContactInfo* processAck(const uint8_t *data) override;
   void queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt, uint32_t sender_timestamp,
                     const uint8_t *extra, int extra_len, const char *text);
+  void queueChannelMessage(mesh::Packet *pkt, uint8_t channel_idx, uint32_t timestamp, const char *text);
+  // A channel slot a delegated identity shows its messages on: never transmitted on (AUTHORITY section 10b).
+  bool localOnly(int slot) const {
+#ifdef ENABLE_MECON_IFACE
+    return _iface.localChannel(slot);
+#else
+    return false;
+#endif
+  }
 
 #ifdef ENABLE_MECON_IFACE
   const mesh::LocalIdentity* delegatedIdentity(int n) override { return _iface.delegatedIdentity(n); }   // Issue #552
