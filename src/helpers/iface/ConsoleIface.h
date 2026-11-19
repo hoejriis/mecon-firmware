@@ -329,6 +329,7 @@ private:
   bool _raw_tok_init = false;
   static const uint32_t RAW_RATE_PER_MIN = 6, RAW_BURST = 3, RAW_MIN_FREE = 8, RAW_SENT_GRACE_MS = 30000;
   bool rawTake(uint32_t now);
+  void rawDropCancelled();
   void rawTick(uint32_t now);
   void rawFinish(uint8_t state, const char* outcome);
 };

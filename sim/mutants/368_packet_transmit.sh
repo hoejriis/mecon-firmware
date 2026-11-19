@@ -12,3 +12,7 @@ mutate ptx_sent_not_marked_seen examples/simple_repeater/MyMesh.cpp '  getTables
 mutate ptx_sent_reported_failed src/helpers/iface/ConsoleIface.cpp '  rawFinish(ok ? JOB_APPLIED : JOB_FAILED, ok ? "transmitted" : "failed");' '  rawFinish(JOB_FAILED, "failed");' $P::test_a_repeater_transmits_a_captured_packet_once_and_a_stock_companion_receives_it
 # ptx_same_job_sent_again is equivalent: packet.transmit takes signed callers only, and DeployAuth answers the same signed
 # job id from its result cache (or duplicate/replay) before the handler runs, so the handler's FOUND branch is never reached.
+mutate ptx_cancel_keeps_the_held_packet src/helpers/iface/ConsoleIface.cpp '  rawDropCancelled();
+  if (!_raw_p.active) return;' '  if (!_raw_p.active) return;' sim/tests/test_packet_transmit.py::test_a_cancelled_held_packet_never_goes_on_air_and_frees_the_slot
+mutate ptx_cancel_slot_not_freed src/helpers/iface/ConsoleIface.cpp '  rawDropCancelled();   // a held packet whose job was cancelled no longer holds the slot
+' '' sim/tests/test_packet_transmit.py::test_a_cancelled_held_packet_never_goes_on_air_and_frees_the_slot

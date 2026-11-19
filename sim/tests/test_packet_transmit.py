@@ -40,15 +40,19 @@ def capabilities(srv):
 
 def captured_channel_message(ether, sender, text):
     """sender's channel message on the Public channel, sent where nobody hears it: its raw bytes from the air log."""
+    return captured_channel_message_from(ether, sender, "pta", text)
+
+
+def captured_channel_message_from(ether, sender, src, text):
     seen = len(ether.tx_log)
     assert sender.send_channel(0, text, RTC + 100)[0] == 0
     end = time.time() + 20
     while time.time() < end:
         for t in ether.tx_log[seen:]:
-            if t.src == "pta" and (t.data[0] >> 2) & 0x0F == PAYLOAD_TYPE_GRP_TXT:
+            if t.src == src and (t.data[0] >> 2) & 0x0F == PAYLOAD_TYPE_GRP_TXT:
                 return t.data
         time.sleep(0.1)
-    raise AssertionError("the channel message never went on air")
+    raise AssertionError("the channel message never went on air: %s" % [(t.src, t.data[0]) for t in ether.tx_log[seen:]][:10])
 
 
 def test_a_repeater_transmits_a_captured_packet_once_and_a_stock_companion_receives_it(ether, nodes):
@@ -128,3 +132,26 @@ def test_a_channel_message_a_manager_built_reaches_a_stock_companion_through_the
     got = b.sync_messages(timeout=90)   # the duty window starts full after a boot: it is held until there is room
     assert got and got[0]["kind"] == "channel" and got[0]["channel"] == 1, got
     assert got[0]["text"] == "bench: built by the manager", got
+
+
+def test_a_cancelled_held_packet_never_goes_on_air_and_frees_the_slot(ether, nodes):
+    # A packet held for the duty window is dropped when its job is cancelled: cancelled means it never went out, and the
+    # next packet.transmit is taken. A job already handed to the radio can't be recalled, so job.cancel refuses it.
+    r = Srv(nodes("repeater", "ptc", seed=46, rtc=RTC, ether_path=ether.path).start())
+    assert "OK" in r.cli.command("set dutycycle 1")   # before enrolment, when the cable may still change it unsigned
+    assert r.provision()["status"] == "ok"
+    a = companion(nodes, ether, "pta", 45)
+    other = captured_channel_message(ether, a, "the next one")
+    b = companion(nodes, ether, "ptd", 42)
+    raw = captured_channel_message_from(ether, b, "ptd", "held then cancelled " + "x" * 40)
+    res = r.send(wrap(r.node_key, "packet.transmit", {"packet": base64.b64encode(raw).decode(), "within_s": 120}, job=6), 10)
+    assert res["status"] == "ok" and res["result"]["duty_held"] is True, res
+    job = res["result"]["job"]
+    c = r.send(wrap(r.node_key, "job.cancel", {"job": job}, job=7), 10)
+    assert c["status"] == "ok" and c["result"]["state"] == "cancelled", c
+    nxt = r.send(wrap(r.node_key, "packet.transmit", {"packet": base64.b64encode(other).decode(), "within_s": 5}, job=8), 10)
+    assert nxt["status"] == "ok", "the slot is free once the held packet is dropped: %s" % nxt
+    time.sleep(8)
+    assert not [t for t in ether.tx_log if t.src == "ptc" and t.data == raw], "a cancelled packet never goes on air"
+    st = r.i.request("job.get", {"job": job})["result"]
+    assert st["state"] == "cancelled", st
