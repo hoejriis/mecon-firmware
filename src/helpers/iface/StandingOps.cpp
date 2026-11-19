@@ -6,16 +6,16 @@ namespace Iface {
 
 namespace {
 
-const char* const NAMES[] = {"health", "radio", "location"};
+const char* const NAMES[] = {"health", "radio", "location", "counters"};
 
 bool fieldsOf(const JsonDoc& d, int arr, uint8_t* out) {
-  if (arr < 0 || d.tok[arr].type != JSMN_ARRAY || d.tok[arr].size < 1 || d.tok[arr].size > 3) return false;
+  if (arr < 0 || d.tok[arr].type != JSMN_ARRAY || d.tok[arr].size < 1 || d.tok[arr].size > 4) return false;
   uint8_t m = 0;
   for (int i = 0, t = arr + 1; i < d.tok[arr].size; i++, t = jsonSkip(d, t)) {
-    char name[12];
+    char name[12];   // "counters" is the longest
     if (!jsonGetString(d, t, name, sizeof(name), CS_NAME, 1)) return false;
     uint8_t bit = 0;
-    for (int k = 0; k < 3; k++) if (strcmp(name, NAMES[k]) == 0) bit = (uint8_t)(1u << k);
+    for (int k = 0; k < 4; k++) if (strcmp(name, NAMES[k]) == 0) bit = (uint8_t)(1u << k);
     if (!bit) return false;
     m |= bit;
   }
@@ -34,7 +34,7 @@ bool hexKey(const char* hex, uint8_t out[32]) {
 
 void writeFields(JsonWriter& w, uint8_t m) {
   w.beginArray();
-  for (int k = 0; k < 3; k++) if (m & (1u << k)) w.str(NAMES[k]);
+  for (int k = 0; k < 4; k++) if (m & (1u << k)) w.str(NAMES[k]);
   w.endArray();
 }
 

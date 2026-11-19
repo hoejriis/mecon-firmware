@@ -1500,7 +1500,7 @@ uint8_t ConsoleIface::reportProduced(void* user) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
   LocationFix f;
   const bool loc = s->_host.sensors && readLocation(s->_host.sensors->getLocationProvider(), f);
-  return RF_HEALTH | RF_RADIO | (loc ? RF_LOCATION : 0);
+  return RF_HEALTH | RF_RADIO | RF_COUNTERS | (loc ? RF_LOCATION : 0);
 }
 
 bool ConsoleIface::reportMayRead(void* user) { return streamAllow(user, Cli::C_PRIVATE); }
@@ -1530,6 +1530,7 @@ bool ConsoleIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int
   RadioCounts counts;
   if (s->_host.radio_counts) s->_host.radio_counts(s->_host.user, &counts);
   fillReportRadio(d, *s->_host.dispatcher, *s->_host.radio, counts);
+  fillReportCounters(d, *s->_host.dispatcher);
   if (fields & RF_LOCATION) {
     LocationFix f;
     if (!s->_host.sensors || !readLocation(s->_host.sensors->getLocationProvider(), f)) return false;

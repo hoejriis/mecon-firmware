@@ -1797,7 +1797,7 @@ void MeconIface::rfLost(const char* from, uint32_t xid, size_t size, uint32_t se
 
 uint8_t MeconIface::reportProduced(void*) {
   LocationFix f;
-  return RF_HEALTH | RF_RADIO | (readLocation(sensors.getLocationProvider(), f) ? RF_LOCATION : 0);
+  return RF_HEALTH | RF_RADIO | RF_COUNTERS | (readLocation(sensors.getLocationProvider(), f) ? RF_LOCATION : 0);
 }
 bool MeconIface::reportMayRead(void* user) { return streamAllow(user, Cli::C_PRIVATE); }
 const char* MeconIface::reportIssuer(void* user) { return static_cast<MeconIface*>(user)->_auth.signingIssuer(); }
@@ -1825,6 +1825,7 @@ bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int s
   counts.tx_total = radio_driver.getPacketsSent();
   counts.rx_errors = radio_driver.getPacketsRecvErrors();
   fillReportRadio(d, *m->_mesh, radio_driver, counts);
+  fillReportCounters(d, *m->_mesh);
   if (fields & RF_LOCATION) {
     LocationFix f;
     if (!readLocation(sensors.getLocationProvider(), f)) return false;
@@ -1842,7 +1843,7 @@ bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int s
 void MeconIface::onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n) {
   if (n < REPORT_HEADER + REPORT_SIG || bytes[1] != REPORT_VERSION) return;
   const uint8_t fields = bytes[2];
-  const size_t len = REPORT_HEADER + ((fields & RF_HEALTH) ? 8 : 0) + ((fields & RF_RADIO) ? 12 : 0) + ((fields & RF_LOCATION) ? 14 : 0) + REPORT_SIG;
+  const size_t len = REPORT_HEADER + reportFieldsLen(fields) + REPORT_SIG;
   if (len > n) return;   // the datagram pads to whole blocks: the fields say where it ends
   char* data = static_cast<char*>(malloc(400));
   char* ev = static_cast<char*>(malloc(700));

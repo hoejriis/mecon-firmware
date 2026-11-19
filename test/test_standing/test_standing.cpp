@@ -21,7 +21,7 @@ struct RamStore : SnapStore {
 
 static int g_sends = 0;
 static bool hSend(void*, uint8_t, const uint8_t*, int, uint32_t* seq) { g_sends++; *seq = g_sends; return true; }
-static uint8_t hProduced(void*) { return RF_HEALTH | RF_RADIO; }
+static uint8_t hProduced(void*) { return RF_HEALTH | RF_RADIO | RF_COUNTERS; }
 static bool hNo(void*) { return false; }
 static const char* hIssuer(void*) { return ""; }
 static bool hValid(void*, const char*) { return true; }
@@ -98,6 +98,19 @@ TEST_F(StandingTest, ABoundedInstructionKeepsItsCountAcrossAReboot) {
   c.tick(1000);
   c.tick(1000 + 900000);
   EXPECT_EQ(g_sends, 2) << "no third run";
+}
+
+TEST_F(StandingTest, TheCountersAreNamedAndKeptWithTheOtherFields) {
+  g_put_at = 5000;
+  const std::string put = R"({"id":"c","fields":["radio","counters"],"every_s":900,"to":"abababababababababababababababababababababababababababababababab"})";
+  ASSERT_NE(call(s, "standing.put", put).find("\"ok\""), std::string::npos) << call(s, "standing.put", put);
+  const std::string list = call(s, "standing.list");
+  EXPECT_NE(list.find(R"("fields":["radio","counters"])"), std::string::npos) << list;
+  StandingService b;   // after a reboot: the bit is kept as stored
+  b.begin(ReportHost{hSend, hProduced, hNo, hIssuer, hValid, hRandom, hYes, &store, nullptr}, 1000);
+  EXPECT_NE(call(b, "standing.list").find(R"("fields":["radio","counters"])"), std::string::npos) << call(b, "standing.list");
+  const std::string four = R"({"id":"d","fields":["health","radio","location","counters"],"every_s":900,"to":"abababababababababababababababababababababababababababababababab"})";
+  EXPECT_EQ(call(s, "standing.put", four).find("\"invalid\""), std::string::npos) << "four names are a valid list";
 }
 
 int main(int argc, char** argv) {

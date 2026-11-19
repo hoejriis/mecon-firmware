@@ -161,7 +161,7 @@ An instruction set by an unsigned caller on a standalone device has no member an
 
 ### The compact report
 
-Layout 0x1E, version 1, little-endian: fields, boot u32, seq u32, time u32 (0 when the device does not know the time), the fields in bit order, then a 64-byte signature. The fields are `health` (8 bytes), `radio` (12 bytes) and `location` (14 bytes). A full report is at most 113 bytes. 0xFFFF (u16) and 0x7F (i8) mean unknown, never zero. A board that cannot produce a field answers `unsupported-field`. `location` needs the right to read it and never goes on a channel. All of this is in [TELEMETRY](contract/TELEMETRY.md), compact reports.
+Layout 0x1E, version 1, little-endian: fields, boot u32, seq u32, time u32 (0 when the device does not know the time), the fields in bit order, then a 64-byte signature. The fields are `health` (8 bytes), `radio` (12 bytes), `location` (14 bytes) and, since v0.4.0 and only when asked for by name, `counters` (16 bytes: the radio's drop and queue counters as 16-bit values). A full report is at most 113 bytes, 129 with `counters`. 0xFFFF (u16) and 0x7F (i8) mean unknown, never zero. A board that cannot produce a field answers `unsupported-field`. `location` needs the right to read it and never goes on a channel. All of this is in [TELEMETRY](contract/TELEMETRY.md), compact reports.
 
 ### Bounds a manager must plan for
 
@@ -170,7 +170,7 @@ Layout 0x1E, version 1, little-endian: fields, boot u32, seq u32, time u32 (0 wh
 | At most 4 standing instructions | [OPERATIONS](contract/OPERATIONS.md) section 5.1 |
 | `every_s` from 900 s to 30 days, jitter up to a tenth of the period and at most 5 minutes | [OPERATIONS](contract/OPERATIONS.md) section 5.1 |
 | `report.now` at most once in 30 s, else `busy` / `rate-limited` | [TELEMETRY](contract/TELEMETRY.md), compact reports |
-| A full report is at most 113 bytes, signed with the node key. A boot that cannot sign sends none | [TELEMETRY](contract/TELEMETRY.md), compact reports |
+| A full report is at most 113 bytes (129 with the optional `counters`), signed with the node key. A boot that cannot sign sends none | [TELEMETRY](contract/TELEMETRY.md), compact reports |
 | Every report goes through the duty window like any transmission. The window is seeded at the limit after boot and drains over an hour, so a reboot cannot exceed the limit | [TELEMETRY](contract/TELEMETRY.md), `radio` |
 | A management message over LoRa is at most 1,024 bytes (8 frames). A `standing.put` request is several frames | [LORA_MANAGEMENT](contract/LORA_MANAGEMENT.md) section 4 |
 | A message missing frames is discarded after 60 s. A reply held by the duty window is dropped after 10 min and stays owed or cached | [LORA_MANAGEMENT](contract/LORA_MANAGEMENT.md) section 8 |

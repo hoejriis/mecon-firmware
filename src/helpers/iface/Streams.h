@@ -214,6 +214,7 @@ bool readLocation(LocationProvider* p, LocationFix& out);
 struct ReportData;
 void fillReportCommon(ReportData& d, mesh::MainBoard& b, uint32_t uptime_s);
 void fillReportRadio(ReportData& d, mesh::Dispatcher& disp, mesh::Radio& r, const RadioCounts& counts);
+void fillReportCounters(ReportData& d, mesh::Dispatcher& disp);   // the radio stream's diagnostic counters, as 16 bits
 void fillReportLocation(ReportData& d, const LocationFix& f);
 
 // Inventory entries (TELEMETRY.md, class private): a snapshot of the Companion's contacts and channels in pages, each

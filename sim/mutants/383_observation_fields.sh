@@ -43,3 +43,25 @@ mutate obsout_direct_in_turn_not_filtered src/Mesh.cpp '    if (self_id.isHashMa
 mutate obsout_held_back_packet_takes_the_last_outcome src/Dispatcher.cpp '  uint8_t obs_outcome = Iface::OUTCOME_UNKNOWN;' '  uint8_t obs_outcome = rx_outcome;' $O5
 mutate obsout_not_in_event src/helpers/iface/Streams.cpp 'info.outcome < sizeof(OUTCOMES) / sizeof(OUTCOMES[0]) ? info.outcome : 0' '0' $O1
 mutate obsout_names_swapped src/helpers/iface/Streams.cpp '"\"forwarded\"", "\"duplicate\""' '"\"duplicate\"", "\"forwarded\""' $O4
+# The counters field of the compact report (TELEMETRY.md): CompactReport.h, Streams.cpp, StandingOps.cpp, tools/mecon_report.py
+RC=sim/tests/test_report_counters.py
+CR=unit:test_compact_report
+mutate rptctr_not_encoded src/helpers/iface/CompactReport.h '  if (fields & RF_COUNTERS) {
+    p = put16' '  if (false) {
+    p = put16' $CR
+mutate rptctr_first_two_swapped src/helpers/iface/CompactReport.h 'p = put16(p, d.rx_dup); p = put16(p, d.rx_dropped);' 'p = put16(p, d.rx_dropped); p = put16(p, d.rx_dup);' $CR
+mutate rptctr_length_ignores_the_field src/helpers/iface/CompactReport.h '((fields & RF_COUNTERS) ? REPORT_COUNTERS_BYTES : 0);' '0;' $CR
+mutate rptctr_bit_not_allowed src/helpers/iface/CompactReport.h 'const uint8_t RF_ALL = RF_HEALTH | RF_RADIO | RF_LOCATION | RF_COUNTERS;' 'const uint8_t RF_ALL = RF_HEALTH | RF_RADIO | RF_LOCATION;' $CR
+mutate rptctr_older_fields_moved src/helpers/iface/CompactReport.h '*p++ = d.err_flags; *p++ = (uint8_t)d.noise_dbm;' '*p++ = (uint8_t)d.noise_dbm; *p++ = d.err_flags;' $CR
+mutate rptctr_duplicates_filled_from_drops src/helpers/iface/Streams.cpp 'd.rx_dup = (uint16_t)disp.getNumRxDup();' 'd.rx_dup = (uint16_t)disp.getNumRxDropped();' $RC::test_a_report_with_counters_carries_what_the_radio_stream_counts
+mutate rptctr_queue_figures_swapped src/helpers/iface/Streams.cpp 'd.queue_depth = (uint8_t)(depth < 0 ? 0 : depth > 255 ? 255 : depth);' 'd.queue_depth = (uint8_t)(free < 0 ? 0 : free > 255 ? 255 : free);' $RC::test_a_report_with_counters_carries_what_the_radio_stream_counts
+mutate rptctr_not_filled src/helpers/iface/ConsoleIface.cpp '  fillReportCounters(d, *s->_host.dispatcher);
+' '' $RC::test_a_report_with_counters_carries_what_the_radio_stream_counts
+mutate rptctr_not_produced_by_the_console src/helpers/iface/ConsoleIface.cpp '  return RF_HEALTH | RF_RADIO | RF_COUNTERS | (loc ? RF_LOCATION : 0);' '  return RF_HEALTH | RF_RADIO | (loc ? RF_LOCATION : 0);' $RC::test_a_report_with_counters_carries_what_the_radio_stream_counts
+mutate rptctr_not_produced_by_the_companion examples/companion_radio/MeconIface.cpp '  return RF_HEALTH | RF_RADIO | RF_COUNTERS | (readLocation(sensors.getLocationProvider(), f) ? RF_LOCATION : 0);' '  return RF_HEALTH | RF_RADIO | (readLocation(sensors.getLocationProvider(), f) ? RF_LOCATION : 0);' $RC::test_a_report_with_counters_carries_what_the_radio_stream_counts
+mutate rptctr_companion_not_filled examples/companion_radio/MeconIface.cpp '  fillReportCounters(d, *m->_mesh);
+' '' $RC::test_a_report_with_counters_carries_what_the_radio_stream_counts
+mutate rptctr_name_unknown src/helpers/iface/StandingOps.cpp '{"health", "radio", "location", "counters"};' '{"health", "radio", "location", "counter"};' $RC::test_the_counters_can_be_asked_for_by_a_standing_instruction
+mutate rptctr_name_unknown_native src/helpers/iface/StandingOps.cpp 'd.tok[arr].size > 4)' 'd.tok[arr].size > 3)' unit:test_standing
+mutate rptctr_decoder_skips_a_byte_too_few tools/mecon_report.py '        p += 16' '        p += 15' $RC::test_a_report_with_counters_carries_what_the_radio_stream_counts
+mutate rptctr_relay_cuts_the_field examples/companion_radio/MeconIface.cpp '  const size_t len = REPORT_HEADER + reportFieldsLen(fields) + REPORT_SIG;' '  const size_t len = REPORT_HEADER + ((fields & RF_HEALTH) ? 8 : 0) + ((fields & RF_RADIO) ? 12 : 0) + ((fields & RF_LOCATION) ? 14 : 0) + REPORT_SIG;' $RC::test_a_report_with_counters_carries_what_the_radio_stream_counts

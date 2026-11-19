@@ -15,10 +15,11 @@ const uint8_t REPORT_MARKER = 0x1E;
 const uint8_t REPORT_VERSION = 1;
 const size_t REPORT_HEADER = 15;
 const size_t REPORT_SIG = 64;
+const size_t REPORT_COUNTERS_BYTES = 16;   // the counters field
 const size_t REPORT_MAX = 132;   // what an anonymous datagram takes after its tag
 
-enum ReportField : uint8_t { RF_HEALTH = 1, RF_RADIO = 2, RF_LOCATION = 4 };
-const uint8_t RF_ALL = RF_HEALTH | RF_RADIO | RF_LOCATION;
+enum ReportField : uint8_t { RF_HEALTH = 1, RF_RADIO = 2, RF_LOCATION = 4, RF_COUNTERS = 8 };
+const uint8_t RF_ALL = RF_HEALTH | RF_RADIO | RF_LOCATION | RF_COUNTERS;
 const uint8_t RF_PRIVATE = RF_LOCATION;   // what a caller must be allowed to read, and what a channel never carries
 
 const uint16_t REPORT_NONE16 = 0xFFFF;
@@ -35,7 +36,15 @@ struct ReportData {
   int16_t alt_m = 0;
   uint8_t sats = 0;
   uint16_t age_s = REPORT_NONE16;
+  uint16_t rx_dup = 0, rx_dropped = 0, rx_unparsable = 0, tx_failed = 0, queue_full = 0, cad_retries = 0, duty_holds = 0;   // low 16 bits
+  uint8_t queue_depth = 0, queue_free = 0;   // saturating at 255
 };
+
+// The size of the fields a report carries, in bit order, without header or signature.
+inline size_t reportFieldsLen(uint8_t fields) {
+  return ((fields & RF_HEALTH) ? 8 : 0) + ((fields & RF_RADIO) ? 12 : 0) + ((fields & RF_LOCATION) ? 14 : 0) +
+         ((fields & RF_COUNTERS) ? REPORT_COUNTERS_BYTES : 0);
+}
 
 inline uint8_t* put16(uint8_t* p, uint16_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); return p + 2; }
 inline uint8_t* put32(uint8_t* p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24); return p + 4; }
@@ -43,7 +52,7 @@ inline uint8_t* put32(uint8_t* p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8
 // The report without its signature; its length, or 0 when it does not fit with the signature. `fields`: what this board has.
 inline size_t encodeReport(uint8_t* out, size_t cap, uint8_t fields, uint32_t boot, uint32_t seq, uint32_t time_s, const ReportData& d) {
   if (cap > REPORT_MAX) cap = REPORT_MAX;
-  const size_t need = REPORT_HEADER + ((fields & RF_HEALTH) ? 8 : 0) + ((fields & RF_RADIO) ? 12 : 0) + ((fields & RF_LOCATION) ? 14 : 0) + REPORT_SIG;
+  const size_t need = REPORT_HEADER + reportFieldsLen(fields) + REPORT_SIG;
   if (need > cap || (fields & ~RF_ALL)) return 0;
   uint8_t* p = out;
   *p++ = REPORT_MARKER; *p++ = REPORT_VERSION; *p++ = fields;
@@ -56,6 +65,11 @@ inline size_t encodeReport(uint8_t* out, size_t cap, uint8_t fields, uint32_t bo
   if (fields & RF_LOCATION) {
     *p++ = d.fix ? 1 : 0; p = put32(p, (uint32_t)d.lat_e6); p = put32(p, (uint32_t)d.lon_e6);
     p = put16(p, (uint16_t)d.alt_m); *p++ = d.sats; p = put16(p, d.age_s);
+  }
+  if (fields & RF_COUNTERS) {
+    p = put16(p, d.rx_dup); p = put16(p, d.rx_dropped); p = put16(p, d.rx_unparsable); p = put16(p, d.tx_failed);
+    p = put16(p, d.queue_full); p = put16(p, d.cad_retries); p = put16(p, d.duty_holds);
+    *p++ = d.queue_depth; *p++ = d.queue_free;
   }
   return (size_t)(p - out);
 }

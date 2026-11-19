@@ -371,6 +371,15 @@ void fillReportRadio(ReportData& d, mesh::Dispatcher& disp, mesh::Radio& r, cons
   }
 }
 
+void fillReportCounters(ReportData& d, mesh::Dispatcher& disp) {
+  d.rx_dup = (uint16_t)disp.getNumRxDup(); d.rx_dropped = (uint16_t)disp.getNumRxDropped(); d.rx_unparsable = (uint16_t)disp.getNumRxUnparsable();
+  d.tx_failed = (uint16_t)disp.getNumTxFail(); d.queue_full = (uint16_t)disp.getNumQueueFull();
+  d.cad_retries = (uint16_t)disp.getNumCadRetries(); d.duty_holds = (uint16_t)disp.getNumDutyHolds();
+  const int depth = disp.getOutboundDepth(), free = disp.getPoolFree();
+  d.queue_depth = (uint8_t)(depth < 0 ? 0 : depth > 255 ? 255 : depth);
+  d.queue_free = (uint8_t)(free < 0 ? 0 : free > 255 ? 255 : free);
+}
+
 void fillReportLocation(ReportData& d, const LocationFix& f) {
   d.fix = f.fix;
   d.sats = (uint8_t)f.sats;

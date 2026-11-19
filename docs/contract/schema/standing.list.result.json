@@ -36,13 +36,14 @@
           },
           "fields": {
             "type": "array",
-            "maxItems": 3,
+            "maxItems": 4,
             "items": {
               "type": "string",
               "enum": [
                 "health",
                 "radio",
-                "location"
+                "location",
+                "counters"
               ]
             }
           },
