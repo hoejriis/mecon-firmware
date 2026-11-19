@@ -161,7 +161,7 @@ An instruction set by an unsigned caller on a standalone device has no member an
 
 ### The compact report
 
-Layout 0x1E, version 1, little-endian: fields, boot u32, seq u32, time u32 (0 when the device does not know the time), the fields in bit order, then a 64-byte signature. The fields are `health` (8 bytes), `radio` (12 bytes), `location` (14 bytes) and, since v0.4.0 and only when asked for by name, `counters` (16 bytes: the radio's drop and queue counters as 16-bit values). A full report is at most 113 bytes, 129 with `counters`. 0xFFFF (u16) and 0x7F (i8) mean unknown, never zero. A board that cannot produce a field answers `unsupported-field`. `location` needs the right to read it and never goes on a channel. All of this is in [TELEMETRY](contract/TELEMETRY.md), compact reports.
+Layout 0x1E, version 1, little-endian: fields, boot u32, seq u32, time u32 (0 when the device does not know the time), the fields in bit order, then a 64-byte signature. The fields are `health` (8 bytes), `radio` (12 bytes), `location` (14 bytes) and, since v0.3.10 and only when asked for by name, `counters` (16 bytes: the radio's drop and queue counters as 16-bit values). A full report is at most 113 bytes, 129 with `counters`. 0xFFFF (u16) and 0x7F (i8) mean unknown, never zero. A board that cannot produce a field answers `unsupported-field`. `location` needs the right to read it and never goes on a channel. All of this is in [TELEMETRY](contract/TELEMETRY.md), compact reports.
 
 ### Bounds a manager must plan for
 

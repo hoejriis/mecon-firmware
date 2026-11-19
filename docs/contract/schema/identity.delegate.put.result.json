@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/identity.delegate.put.result.json",
   "title": "Result of identity.delegate.put",
-  "description": "AUTHORITY.md section 10b (Since v0.4.0): the delegated receive identity is stored in the slot. The sealed private key is never echoed, and no operation reads a private key back.",
+  "description": "AUTHORITY.md section 10b (Since v0.3.10): the delegated receive identity is stored in the slot. The sealed private key is never echoed, and no operation reads a private key back.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -27,7 +27,7 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 62,
-      "description": "The local channel slot the identity's messages are shown on (Since v0.4.0); absent when it has none."
+      "description": "The local channel slot the identity's messages are shown on (Since v0.3.10); absent when it has none."
     }
   }
 }
