@@ -1,5 +1,5 @@
-"""The human-readable ping on the management channel (docs/contract/MANAGEMENT_CHANNEL.md section 7), on the simulated Companion and
-Repeater, with the Room server as the role that must stay silent. A second Companion is the channel member: it sends "ping" as an
+"""The human-readable ping on the management channel (docs/contract/MANAGEMENT_CHANNEL.md section 7), on the simulated Companion, Repeater
+and Room server. A second Companion is the channel member: it sends "ping" as an
 ordinary channel message and reads the replies as a stock app would. The jitter and the five minute gap run on the fast clock."""
 import os
 import re
@@ -13,7 +13,8 @@ from test_deployment_authority import wrap  # noqa: E402
 from test_lora_management import CH, FAST, KEY, RTC, Radio, Dev, Srv, target  # noqa: E402
 
 pytestmark = pytest.mark.timescale(10)
-BOTH = ["companion_standalone", "repeater"]
+BOTH = ["companion_standalone", "repeater", "room_server"]
+SERVERS = ["repeater", "room_server"]
 POSTURES = ["normal", "hardened"]
 PONG = re.compile(r"^(?P<who>.+): pong v\S+ up \d+\w( bat \d+\.\d\dV)?( temp -?\d+\.\dC)? rx \d+ tx \d+ (ok|err \d+)$")
 SCALE = 10
@@ -119,11 +120,12 @@ def test_a_ping_with_a_name_is_answered_only_by_that_device(ether, nodes, kind):
     assert replies(m, wait_s=4.0) == [], "a name nobody has is answered by nobody"
 
 
-def test_devices_that_share_a_name_all_answer_a_ping_for_it(ether, nodes):
+@pytest.mark.parametrize("kind", SERVERS)
+def test_devices_that_share_a_name_all_answer_a_ping_for_it(ether, nodes, kind):
     # Deterministic rule: the name decides, so every device that carries it answers.
-    a, b = "sna", "snb"
-    bound(nodes, ether, "repeater", a, seed=31)
-    bound(nodes, ether, "repeater", b, seed=32, shared_name=a)
+    a, b = "sna" + kind[:2], "snb" + kind[:2]
+    bound(nodes, ether, kind, a, seed=31)
+    bound(nodes, ether, kind, b, seed=32, shared_name=a)
     m = member(nodes, ether, a, b)
     ping(m, "ping " + a)
     got = replies(m, want=2, wait_s=8.0)
@@ -146,16 +148,6 @@ def test_a_device_without_a_binding_stays_silent(ether, nodes, kind):
     m = member(nodes, ether, name)
     ping(m)
     assert replies(m, wait_s=5.0) == []
-
-
-def test_the_room_server_never_answers(ether, nodes):
-    name = "frs"
-    bound(nodes, ether, "room_server", name)
-    m = member(nodes, ether, name)
-    ping(m)
-    ping(m, "ping " + name)
-    assert replies(m, wait_s=5.0) == []
-    assert not frames(ether, name, 0), "and sends no channel text"
 
 
 def test_a_companion_answers_only_on_its_bound_channel(ether, nodes):
