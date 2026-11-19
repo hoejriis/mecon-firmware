@@ -799,6 +799,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
 
   uint8_t channel_idx = findChannelIdx(channel);
 #ifdef ENABLE_MECON_IFACE
+  if (channel_idx < 127) _iface.onChannelText(channel_idx, text);   // a ping on the management channel; the message itself is kept as any other
   // It was decrypted with a stored channel, so there is a slot to name; with none, -1 would read as a direct message.
   if (channel_idx < 127 && !keepReceived(pkt, nullptr, channel_idx, TXT_TYPE_PLAIN, timestamp, nullptr, text)) return;
 #endif
@@ -974,6 +975,12 @@ bool MyMesh::loraChannelSend(int slot, const uint8_t* to_key, const uint8_t* fra
   if (!pkt) return false;
   sendFlood(pkt, 300);
   return true;
+}
+
+bool MyMesh::fmcSend(int slot, const char* text, size_t n) {
+  ChannelDetails ch;
+  if (!getChannel(slot, ch)) return false;
+  return sendGroupMessage(getRTCClock()->getCurrentTimeUnique(), ch.channel, _prefs.node_name, text, (int)n);
 }
 
 bool MyMesh::rfSend(const uint8_t* to, const uint8_t* frame, size_t n) {

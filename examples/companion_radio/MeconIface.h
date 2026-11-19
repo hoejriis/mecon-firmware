@@ -23,6 +23,7 @@
 #include <helpers/iface/DeployAuth.h>
 #include <helpers/iface/CableLine.h>
 #include <helpers/iface/LoraLink.h>
+#include <helpers/iface/FmcPing.h>
 #include <helpers/iface/Provenance.h>
 #include <helpers/iface/ScreenFeed.h>
 #include <helpers/iface/StandingOps.h>
@@ -85,6 +86,8 @@ public:
   void writeLoraTrace(Iface::JsonWriter& w) const;   // lora.trace (#542)
   bool onLora() const { return _on_lora; }
   bool onLoraChannel(int slot, const uint8_t* data, size_t n);
+  // A text heard on a channel slot: a ping on the bound management channel of an enrolled device is answered (MANAGEMENT_CHANNEL.md section 7).
+  void onChannelText(int slot, const char* text);
   void onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n);
   Iface::StandingService& standing() { return _standing; }
   const Iface::LoraLink& lora() const { return _lora; }
@@ -290,6 +293,8 @@ private:
                           const uint8_t* frame, size_t n);
   static bool loraSend(void* user, const Iface::LoraLink::Peer& p, const uint8_t* frame, size_t n, bool flood_ok);
   void loraTick(uint32_t now);
+  void fmcTick(uint32_t now);
+  bool fmcMay(int slot) const;   // enrolled, and slot is the bound management channel
   void rfTick(uint32_t now);
   // An rf reply whose event no subscribed link's queue could take yet: held, as inventory pages are, rather than dropped
   // behind periodic events (#531). One at a time, for at most RF_PEND_MS; then a short queue-full event says it was lost.
@@ -328,6 +333,7 @@ private:
   int _lora_slot = -1;          // the bound slot a channel reply goes out on
   int _lora_bound_slot = -1;    // the binding, read on the main pass
   bool _lora_bound_read = false, _lora_bound_dirty = false;
+  Iface::FmcPing _fmc;
   uint32_t _rf_next = 0;
   uint32_t _rf_frames_in = 0, _rf_completed = 0;
   struct RfHeard { uint8_t xid, idx; uint32_t ms; };

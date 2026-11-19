@@ -127,7 +127,7 @@ public:
   void setLoraSend(LoraLink::SendFn fn, void* user) {
     _lora_send = fn; _lora_send_user = user;
     loraSink().fn = onLoraFrame; loraSink().user = this;
-    loraChannelSink().key = loraChannelKey; loraChannelSink().frame = onLoraChannelFrame; loraChannelSink().user = this;
+    loraChannelSink().key = loraChannelKey; loraChannelSink().frame = onLoraChannelFrame; loraChannelSink().ping_ok = loraPingOk; loraChannelSink().user = this;
   }
   LoraLink::Counts loraCounts() const { return _lora.counts(); }
   // The role's way to put a report on the air: to a node, or on the bound channel.
@@ -264,6 +264,7 @@ private:
   static bool loraChannelKey(void* user, uint8_t out[16]);
   static bool onLoraChannelFrame(void* user, const uint8_t* data, size_t n);
   void loraKeyRefresh();
+  static bool loraPingOk(void* user);
   uint8_t _lora_key[16] = {0};   // the bound channel's key, read on the main pass: the mesh asks on each group packet
   bool _lora_key_ok = false, _lora_key_read = false, _lora_key_dirty = false;
   StandingService _standing;

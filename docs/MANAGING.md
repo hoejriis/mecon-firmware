@@ -88,6 +88,8 @@ A device can have a **management channel**: the private channel a manager reache
 
 From anything but the cable, each of these steps takes a `confirm` and is reverted if not confirmed, so a wrong key cannot strand the device. The public channel cannot be bound, and binding starts no traffic of its own ([management channel](contract/MANAGEMENT_CHANNEL.md)).
 
+*(Since v0.3.9.)* An enrolled Companion or Repeater with a bound management channel answers `ping`, or `ping <device name>`, typed into any app on that channel, with one short readable status message: name, version, uptime, battery, temperature and radio counts, the same in Normal and Hardened, and never a key or a position. Replies are spread over 30 s and limited to one broadcast reply in 5 minutes per device. The Room server does not answer. A ping grants no authority ([ping](contract/MANAGEMENT_CHANNEL.md#7-ping)).
+
 ## Over LoRa
 
 A node with no IP link can still be managed over LoRa, point to point or on its management channel. An operation keeps its meaning and authorization there, and LoRa adds no operation and no permission. It carries less than the other paths:

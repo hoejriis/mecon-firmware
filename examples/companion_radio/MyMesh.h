@@ -169,6 +169,8 @@ public:
   bool rfSend(const uint8_t* to, const uint8_t* frame, size_t n);
   void traceQueued(mesh::Packet* pkt, uint8_t idx);
   bool loraChannelSend(int slot, const uint8_t* to_key, const uint8_t* frame, size_t n);
+  // A plain channel text from this node (the management channel ping's reply).
+  bool fmcSend(int slot, const char* text, size_t n);
   bool ifaceWritable(const BaseSerialInterface* src) const { return _serial && !_serial->isWriteBusy() && src; }
   void ifaceWrite(const BaseSerialInterface* src, const uint8_t* frame, size_t len) {
     _serial->bindReply(src);

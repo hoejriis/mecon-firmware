@@ -5,6 +5,7 @@
 #endif
 #include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
+#include <helpers/CryptoRNG.h>
 #include <helpers/iface/Observe.h>
 #include <helpers/AuditStore.h>
 #include <algorithm>
@@ -627,10 +628,57 @@ int MyMesh::searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channel
 
 void MyMesh::onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel&, uint8_t* data, size_t len) {
   Iface::LoraChannelSink& s = Iface::loraChannelSink();
+  if (type == PAYLOAD_TYPE_GRP_TXT) {   // the one channel text this role reads: a ping on the bound channel (MANAGEMENT_CHANNEL.md section 7)
+    if (len < 6 || (data[4] >> 2) != 0 || !fmcMay()) return;
+    data[len] = 0;
+    CryptoRNG rng;
+    uint32_t r = 0;
+    rng.random(reinterpret_cast<uint8_t*>(&r), sizeof(r));
+    _fmc.onText((const char*)&data[5], _prefs.node_name, millis(), r);
+    return;
+  }
   if (type != PAYLOAD_TYPE_GRP_DATA || len < 3 || !s.frame) return;
   const uint16_t data_type = (uint16_t)data[0] | ((uint16_t)data[1] << 8);
   if (data_type != Iface::LORA_CHANNEL_TYPE || (size_t)data[2] > len - 3) return;
   if (s.frame(s.user, data + 3, data[2])) packet->markDoNotRetransmit();   // it has arrived: no need to carry it further
+}
+
+// Enrolled, with the management channel bound: the interface's verdict, the one check for hearing a ping and for answering it.
+bool MyMesh::fmcMay() const {
+  const Iface::LoraChannelSink& s = Iface::loraChannelSink();
+  return s.ping_ok && s.ping_ok(s.user);
+}
+
+// The reply to a ping, when due: a plain channel text on the bound channel, with the airtime to spare.
+void MyMesh::fmcTick() {
+  if (!_fmc.pending()) return;
+  uint8_t key[16];
+  Iface::LoraChannelSink& s = Iface::loraChannelSink();
+  if (!fmcMay() || !s.key || !s.key(s.user, key)) { _fmc.cancel(); return; }
+  if (!_fmc.due(millis())) return;
+  if (getRemainingTxBudget() < _radio->getEstAirtimeFor((int)Iface::FMC_REPLY_MAX + 40)) { _fmc.defer(millis()); return; }
+  Iface::FmcFacts f;
+  f.version = mecon::versionShort();
+  f.uptime_s = Uptime::secs(millis());
+  f.battery_mv = board.getBattMilliVolts();
+  f.temp_c = board.getMCUTemperature();
+  f.counts = true;
+  f.rx = radio_driver.getPacketsRecv();
+  f.tx = radio_driver.getPacketsSent();
+  f.err_flags = (uint8_t)getErrFlags();
+  uint8_t temp[5 + sizeof(_prefs.node_name) + 2 + Iface::FMC_REPLY_MAX + 1];
+  const uint32_t ts = getRTCClock()->getCurrentTimeUnique();
+  memcpy(temp, &ts, 4);
+  temp[4] = 0;   // TXT_TYPE_PLAIN
+  const size_t pre = (size_t)snprintf((char*)&temp[5], sizeof(_prefs.node_name) + 3, "%s: ", _prefs.node_name);
+  const size_t n = Iface::fmcBuild((char*)&temp[5 + pre], Iface::FMC_REPLY_MAX + 1, f);
+  mesh::GroupChannel ch;
+  memset(&ch, 0, sizeof(ch));
+  memcpy(ch.secret, key, sizeof(key));
+  mesh::Utils::sha256(ch.hash, sizeof(ch.hash), ch.secret, sizeof(key));
+  mesh::Packet* pkt = n ? createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, ch, temp, 5 + pre + n) : NULL;
+  if (!pkt) { _fmc.dropped(); return; }
+  sendFlood(pkt, SERVER_RESPONSE_DELAY);
 }
 
 // A reply frame on the bound channel, addressed to the sender's prefix.
@@ -1579,6 +1627,9 @@ void MyMesh::loop() {
 
   mesh::Mesh::loop();
   auditStore().service(millis());
+#ifdef ENABLE_MECON_IFACE
+  fmcTick();
+#endif
 
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
     mesh::Packet *pkt = createSelfAdvert();
