@@ -336,6 +336,7 @@ inline LoraSink& loraSink() {
 struct LoraChannelSink {
   bool (*key)(void* user, uint8_t out[16]) = nullptr;
   bool (*frame)(void* user, const uint8_t* data, size_t n) = nullptr;   // true: addressed to this node
+  bool (*ping_ok)(void* user) = nullptr;   // the Repeater answers a channel ping only while this says the device is enrolled and bound
   void* user = nullptr;
 };
 inline LoraChannelSink& loraChannelSink() {

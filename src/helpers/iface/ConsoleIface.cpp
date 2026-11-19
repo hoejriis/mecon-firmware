@@ -1557,6 +1557,12 @@ void ConsoleIface::loraKeyRefresh() {
   _lora_key_ok = mgmtState(h, &rec) == MGMT_BOUND && _mgmt_slot.read(name, _lora_key);
 }
 
+// A channel ping is answered only by an enrolled device whose management channel is bound (read on the main pass).
+bool ConsoleIface::loraPingOk(void* user) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  return s->_lora_key_ok && s->_auth.enrolled();
+}
+
 bool ConsoleIface::onLoraChannelFrame(void* user, const uint8_t* data, size_t n) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
   if (n <= LORA_CH_ADDR + LORA_HDR || !s->_host.node_key || memcmp(data, s->_host.node_key, LORA_CH_PREFIX) != 0) return false;

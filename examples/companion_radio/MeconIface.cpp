@@ -1484,6 +1484,36 @@ bool MeconIface::onLoraChannel(int slot, const uint8_t* data, size_t n) {
   return true;
 }
 
+// A ping heard on the bound management channel, by a device that is enrolled: one reply, scheduled by FmcPing. Never on another
+// slot, never unenrolled, never before the binding was read (the slot is -1 until then).
+void MeconIface::onChannelText(int slot, const char* text, uint32_t stamp) {
+  if (slot < 0 || slot != _lora_bound_slot || !_auth.enrolled()) return;
+  CryptoRNG rng;
+  uint32_t r = 0;
+  rng.random(reinterpret_cast<uint8_t*>(&r), sizeof(r));
+  _fmc.onText(text, _mesh->_prefs.node_name, millis(), r, stamp);
+}
+
+// The reply, when due: only on the bound channel of an enrolled device, and only with the airtime to spare.
+void MeconIface::fmcTick(uint32_t now) {
+  if (!_fmc.pending()) return;
+  if (_lora_bound_slot < 0 || !_auth.enrolled()) { _fmc.cancel(); return; }
+  if (!_fmc.due(now)) return;
+  if (_mesh->getRemainingTxBudget() < radio_driver.getEstAirtimeFor((int)FMC_REPLY_MAX + 40)) { _fmc.defer(now); return; }
+  FmcFacts f;
+  f.version = mecon::versionShort();
+  f.uptime_s = Uptime::secs(now);
+  f.battery_mv = board.getBattMilliVolts();
+  f.temp_c = board.getMCUTemperature();
+  f.counts = true;
+  f.rx = radio_driver.getPacketsRecv();
+  f.tx = radio_driver.getPacketsSent();
+  f.err_flags = (uint8_t)_mesh->getErrFlags();
+  char text[FMC_REPLY_MAX + 1];
+  const size_t n = fmcBuild(text, sizeof(text), f);
+  if (!n || !_mesh->fmcSend(_lora_bound_slot, text, n)) _fmc.dropped();
+}
+
 // rf.request {"to":"<node key hex>","message":"<the signed request, as text>"[,"slot":n]}: this Companion is the manager's radio.
 // With a slot it goes on that channel, else point to point. It adds no authority: the message is carried as it came, and the
 // target verifies it. Replies come back on the rf stream.
@@ -1887,6 +1917,7 @@ void MeconIface::loop(uint32_t now) {
     inventoryTick(now);
   }
   loraTick(now);
+  fmcTick(now);
   rfTick(now);
   _rf.expireReplies(now);   // a reply still missing frames at its deadline is counted and freed (#539)
   _standing.tick(now);

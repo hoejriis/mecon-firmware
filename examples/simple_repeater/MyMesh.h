@@ -31,6 +31,7 @@
 #ifdef ENABLE_MECON_IFACE
   #include <helpers/iface/IdentityRotationFile.h>
   #include <helpers/iface/ResetOps.h>
+  #include <helpers/iface/FmcPing.h>
 #endif
 #include <helpers/CommonCLI.h>
 #include <helpers/IdentityStore.h>
@@ -207,6 +208,7 @@ public:
   bool loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n,
                  bool flood_ok);
   bool loraChannelReply(const uint8_t* to_key, const uint8_t* frame, size_t n);
+  void fmcTick();   // the answer to a ping on the management channel, when due
   bool reportSend(const uint8_t* to, int slot, const uint8_t* bytes, size_t n);
   // packet.transmit (#537): the seen table, the pool and the duty window as the interface needs them, and the send.
   bool rawSeen(const mesh::Packet& p) { return getTables()->wasSeen(&p); }
@@ -336,6 +338,7 @@ public:
 
 #ifdef ENABLE_MECON_IFACE
   RawTxDoneFn _raw_done = nullptr;
+  Iface::FmcPing _fmc;
   void* _raw_done_user = nullptr;
 #endif
 };
