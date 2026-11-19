@@ -145,7 +145,7 @@ int writeLog(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_k
 
 // Writes one observations event envelope (seq advanced in clock) into ev; its length, or -1 when it does not fit.
 int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts, float snr,
-                     float rssi, const uint8_t* raw, int len, uint32_t dropped);
+                     float rssi, const uint8_t* raw, int len, const uint8_t* fp, uint32_t dropped);
 
 // The capability names of the streams in supported ("stream.health", ...), for hello.
 void writeStreamCapabilities(JsonWriter& w, uint32_t supported);

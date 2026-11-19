@@ -1054,6 +1054,7 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _prov.begin(&_mesh->self_id, &_auth, epoch, epoch_saved);
   _updates.begin(_mesh->hardwareName(), "companion", _mesh->hardwareNames());
   observeSink().fn = onObserve;
+  observeSink().want = observeWanted;
   observeSink().user = this;
   loraSink().fn = onLoraFrame;
   loraSink().user = this;
@@ -1085,7 +1086,14 @@ bool MeconIface::streamAllow(void* user, uint8_t cls) {
 }
 
 // One received packet: an observations event to every transport subscribed, within the stream's rate.
-void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
+bool MeconIface::observeWanted(void* user) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  bool any = m->_mqtt_subs.s[SID_OBSERVATIONS].active;
+  for (Link& l : m->_links) any = any || l.subs.s[SID_OBSERVATIONS].active;
+  return any;
+}
+
+void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len, const ObserveInfo& info) {
   MeconIface* m = static_cast<MeconIface*>(user);
   bool any = m->_mqtt_subs.s[SID_OBSERVATIONS].active;
   for (Link& l : m->_links) any = any || l.subs.s[SID_OBSERVATIONS].active;
@@ -1095,7 +1103,7 @@ void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
   if (!ev) { m->_obs.dropped++; return; }
   const uint32_t ts = m->_mesh->getRTCClock()->knownTime();
-  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts != 0, ts, snr, rssi, raw, len,
+  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts != 0, ts, snr, rssi, raw, len, info.fp,
                                  m->_obs.dropped);
   if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);   // -1: not signable, so not sent
   if (n <= 0) m->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing

@@ -50,6 +50,11 @@
       ],
       "description": "route type, read from the first byte; t = with transport codes"
     },
+    "fp": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "packet fingerprint (since v0.4.0): the first 8 bytes of the packet hash, same for one packet whatever path it took; absent when the frame is not a valid packet"
+    },
     "path_len": {
       "type": [
         "integer",

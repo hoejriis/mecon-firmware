@@ -106,7 +106,7 @@ uint32_t StreamClock::due(SubSet* const* sets, int nsets, uint32_t now) {
 }
 
 int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts, float snr,
-                     float rssi, const uint8_t* raw, int len, uint32_t dropped) {
+                     float rssi, const uint8_t* raw, int len, const uint8_t* fp, uint32_t dropped) {
   if (len < 0 || len > 255) return -1;
   // Built on the heap: this runs in the radio's receive path, where the loop task's stack is short.
   const size_t data_cap = 2 * 255 + 192;
@@ -117,10 +117,17 @@ int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, b
   for (int i = 0; i < len; i++) { data[n++] = H[raw[i] >> 4]; data[n++] = H[raw[i] & 15]; }
   const RawHeader hdr = parseRawHeader(raw, len);
   char path[8];
+  char fps[32];
+  fps[0] = 0;
+  if (fp) {
+    int k = snprintf(fps, sizeof(fps), ",\"fp\":\"");
+    for (int i = 0; i < 8; i++) { fps[k++] = H[fp[i] >> 4]; fps[k++] = H[fp[i] & 15]; }
+    fps[k++] = '"'; fps[k] = 0;
+  }
   if (hdr.path_known) snprintf(path, sizeof(path), "%u", (unsigned)hdr.path_len); else snprintf(path, sizeof(path), "null");
   n += snprintf(data + n, data_cap - n,
-                "\",\"len\":%d,\"type\":%u,\"route\":\"%s\",\"path_len\":%s,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}",
-                len, (unsigned)hdr.type, hdr.route, path, (int)rssi, (double)snr, (unsigned long)dropped);
+                "\",\"len\":%d,\"type\":%u,\"route\":\"%s\",\"path_len\":%s%s,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}",
+                len, (unsigned)hdr.type, hdr.route, path, fps, (int)rssi, (double)snr, (unsigned long)dropped);
   int out = -1;
   if (n > 0 && (size_t)n < data_cap)
     out = writeEvent(ev, cap, STREAMS[SID_OBSERVATIONS].name, ++clock.seq[SID_OBSERVATIONS], epoch, ts_known, ts, data);

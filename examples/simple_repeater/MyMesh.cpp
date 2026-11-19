@@ -6,7 +6,6 @@
 #include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
 #include <helpers/CryptoRNG.h>
-#include <helpers/iface/Observe.h>
 #include <helpers/AuditStore.h>
 #include <algorithm>
 
@@ -494,7 +493,6 @@ const char *MyMesh::getLogDateTime() {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
-  Iface::observe(snr, rssi, raw, len);   // the observations stream, when the device interface is built in
   _last_rx_ms = millis();   // the front page's "Last LoRa": a received packet, never a sent one
   _rx_seen = true;
 #if MESH_PACKET_LOGGING
