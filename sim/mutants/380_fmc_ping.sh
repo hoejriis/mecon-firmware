@@ -1,4 +1,4 @@
-# The readable ping on the management channel: src/helpers/iface/FmcPing.h, examples/companion_radio/MeconIface.cpp, src/helpers/iface/ConsoleIface.cpp
+# The readable ping on the management channel: src/helpers/iface/FmcPing.h, examples/simple_room_server/MyMesh.cpp, examples/companion_radio/MeconIface.cpp, src/helpers/iface/ConsoleIface.cpp
 TS=sim/tests/test_fmc_ping.py
 # Who answers: enrolled, bound, on the bound channel only
 mutate fmc_companion_unenrolled examples/companion_radio/MeconIface.cpp 'return slot >= 0 && slot == _lora_bound_slot && _auth.enrolled(); }' 'return slot >= 0 && slot == _lora_bound_slot; }' $TS::test_a_device_that_is_not_enrolled_stays_silent
@@ -6,6 +6,9 @@ mutate fmc_companion_any_channel examples/companion_radio/MeconIface.cpp 'return
 mutate fmc_repeater_unenrolled src/helpers/iface/ConsoleIface.cpp '  return s->_lora_key_ok && s->_auth.enrolled();' '  return s->_lora_key_ok;' $TS::test_a_device_that_is_not_enrolled_stays_silent
 # The Repeater reads group text only through the interface's verdict
 mutate fmc_repeater_no_verdict examples/simple_repeater/MyMesh.cpp '  return s.ping_ok && s.ping_ok(s.user);' '  return s.ping_ok != nullptr;' $TS::test_a_device_that_is_not_enrolled_stays_silent
+# The Room server hears group text only through the same verdict, and answers only when its loop runs the tick
+mutate fmc_room_no_verdict examples/simple_room_server/MyMesh.cpp '  return s.ping_ok && s.ping_ok(s.user);' '  return s.ping_ok != nullptr;' $TS::test_a_device_that_is_not_enrolled_stays_silent
+mutate fmc_room_no_tick examples/simple_room_server/MyMesh.cpp '  fmcTick();' '  (void)0;' $TS::test_a_ping_is_answered_with_one_readable_status_on_the_channel
 # What is a ping
 mutate fmc_parse_case src/helpers/iface/FmcPing.h '  for (int i = 0; i < 4; i++) if (fmcLower(m[i]) != p[i]) return FMC_NONE;' '  for (int i = 0; i < 4; i++) if (m[i] != p[i]) return FMC_NONE;' $TS::test_the_word_ping_is_matched_without_regard_to_case_and_nothing_else_is
 mutate fmc_parse_word_boundary src/helpers/iface/FmcPing.h '  if (*m != '"' '"') return FMC_NONE;

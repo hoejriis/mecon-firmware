@@ -24,6 +24,7 @@
 #ifdef ENABLE_MECON_IFACE
   #include <helpers/iface/IdentityRotationFile.h>
   #include <helpers/iface/ResetOps.h>
+  #include <helpers/iface/FmcPing.h>
 #endif
 #include <helpers/RegionMap.h>
 #include <helpers/RoutingPolicy.h>
@@ -107,6 +108,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   ClientACL acl;
 #ifdef ENABLE_MECON_IFACE
   Iface::RoleRotation<FILESYSTEM> _rotation;
+  Iface::FmcPing _fmc;
   bool dropOldKeyState();
   static bool rotSaveKey(void* u, const mesh::LocalIdentity& id);
   static bool rotDrop(void* u);
@@ -200,6 +202,8 @@ public:
   bool loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n,
                  bool flood_ok);
   bool loraChannelReply(const uint8_t* to_key, const uint8_t* frame, size_t n);
+  bool fmcMay() const;
+  void fmcTick();   // the answer to a ping on the management channel, when due
   bool reportSend(const uint8_t* to, int slot, const uint8_t* bytes, size_t n);
 #endif
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
