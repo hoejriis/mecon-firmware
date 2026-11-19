@@ -40,7 +40,12 @@ mutate obsout_no_route_reported_as_filtered src/Mesh.cpp '!room ? Iface::OUTCOME
 mutate obsout_flood_not_forwarded_untagged src/Mesh.cpp '  if (packet->isRouteFlood()) {   // why it goes no further' '  if (false) {   // why it goes no further' $O3
 mutate obsout_direct_in_turn_not_filtered src/Mesh.cpp '    if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize())) noteRxOutcome(Iface::OUTCOME_FILTERED);   // its turn, but forwarding is not allowed here
 ' '' $O3
-mutate obsout_held_back_packet_takes_the_last_outcome src/Dispatcher.cpp '  uint8_t obs_outcome = Iface::OUTCOME_UNKNOWN;' '  uint8_t obs_outcome = rx_outcome;' $O5
+# The held-back packet is given the outcome left by the packet before. rx_outcome exists only with the interface, so the
+# mutant carries its own guard to keep the builds without it compiling.
+mutate obsout_held_back_packet_takes_the_last_outcome src/Dispatcher.cpp '        _mgr->queueInbound(pkt, futureMillis(_delay)); // add to delayed inbound queue' '        _mgr->queueInbound(pkt, futureMillis(_delay)); // add to delayed inbound queue
+#ifdef ENABLE_MECON_IFACE
+        obs_outcome = rx_outcome;
+#endif' $O5
 mutate obsout_not_in_event src/helpers/iface/Streams.cpp 'info.outcome < sizeof(OUTCOMES) / sizeof(OUTCOMES[0]) ? info.outcome : 0' '0' $O1
 mutate obsout_names_swapped src/helpers/iface/Streams.cpp '"\"forwarded\"", "\"duplicate\""' '"\"duplicate\"", "\"forwarded\""' $O4
 # The counters field of the compact report (TELEMETRY.md): CompactReport.h, Streams.cpp, StandingOps.cpp, tools/mecon_report.py
