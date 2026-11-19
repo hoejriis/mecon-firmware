@@ -6,7 +6,6 @@
 #include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
 #include <helpers/CryptoRNG.h>
-#include <helpers/iface/Observe.h>
 #include <helpers/AuditStore.h>
 #include <algorithm>
 
@@ -494,7 +493,6 @@ const char *MyMesh::getLogDateTime() {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
-  Iface::observe(snr, rssi, raw, len);   // the observations stream, when the device interface is built in
   _last_rx_ms = millis();   // the front page's "Last LoRa": a received packet, never a sent one
   _rx_seen = true;
 #if MESH_PACKET_LOGGING
@@ -1176,7 +1174,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-  radio_freq = _prefs.freq; radio_bw = _prefs.bw;
+  radio_freq = _prefs.freq; radio_bw = _prefs.bw; radio_sf = _prefs.sf; radio_cr = _prefs.cr;
   radio_driver.setTxPower(_prefs.tx_power_dbm);
 
   radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
@@ -1648,14 +1646,14 @@ void MyMesh::loop() {
   if (set_radio_at && millisHasNowPassed(set_radio_at)) { // apply pending (temporary) radio params
     set_radio_at = 0;                                     // clear timer
     radio_driver.setParams(pending_freq, pending_bw, pending_sf, pending_cr);
-    radio_freq = pending_freq; radio_bw = pending_bw;
+    radio_freq = pending_freq; radio_bw = pending_bw; radio_sf = pending_sf; radio_cr = pending_cr;
     MESH_DEBUG_PRINTLN("Temp radio params");
   }
 
   if (revert_radio_at && millisHasNowPassed(revert_radio_at)) { // revert radio params to orig
     revert_radio_at = 0;                                        // clear timer
     radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-    radio_freq = _prefs.freq; radio_bw = _prefs.bw;
+    radio_freq = _prefs.freq; radio_bw = _prefs.bw; radio_sf = _prefs.sf; radio_cr = _prefs.cr;
     MESH_DEBUG_PRINTLN("Radio params restored");
   }
 

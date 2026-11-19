@@ -3,6 +3,7 @@
 #include <MeshCore.h>
 #include <Identity.h>
 #include <Packet.h>
+#include <helpers/iface/Observe.h>
 #include <Utils.h>
 #include <string.h>
 #include <helpers/DutyWindow.h>
@@ -129,6 +130,9 @@ class Dispatcher {
   uint32_t n_sent_flood, n_sent_direct;
   uint32_t n_recv_flood, n_recv_direct;
   // Always-on diagnostic counters (TELEMETRY.md `radio`): since boot or the last resetStats(), wrapping at 2^32.
+#ifdef ENABLE_MECON_IFACE
+  uint8_t rx_outcome = 0;              // what handling the packet in hand came to (Iface::Outcome), for the observations stream
+#endif
   uint32_t n_rx_dup, n_rx_dropped, n_rx_unparsable, n_tx_fail, n_cad_retries, n_duty_holds, n_queue_full;
   DutyWindow duty;                     // airtime of the trailing hour (see helpers/DutyWindow.h)
   uint32_t outbound_est_ms;            // estimated airtime of the packet being transmitted
@@ -171,8 +175,13 @@ protected:
   virtual DispatcherAction onRecvPacket(Packet* pkt) = 0;
 
   // For the layer above, which alone knows why it ignores a parsed packet.
-  void countRxDup() { n_rx_dup++; }          // a packet whose hash was already seen
-  void countRxDropped() { n_rx_dropped++; }  // a direct packet that is not for this node's hop
+  void countRxDup() { n_rx_dup++; noteRxOutcome(Iface::OUTCOME_DUPLICATE); }          // a packet whose hash was already seen
+  void countRxDropped() { n_rx_dropped++; noteRxOutcome(Iface::OUTCOME_NOT_NEXT_HOP); }  // a direct packet that is not for this node's hop
+#ifdef ENABLE_MECON_IFACE
+  void noteRxOutcome(uint8_t o) { if (!rx_outcome) rx_outcome = o; }   // the first reason a packet is given is the one kept
+#else
+  void noteRxOutcome(uint8_t) {}                                       // no device interface: nothing reads it
+#endif
 
   virtual void logRxRaw(float snr, float rssi, const uint8_t raw[], int len) { }   // custom hook
 
@@ -189,6 +198,8 @@ protected:
    * Roles override this and report the parameters last applied to the radio, not merely stored in prefs.
   */
   virtual bool getRadioChannel(float& freq_mhz, float& bw_khz) const { return false; }
+  // The spreading factor and coding rate (5..8) last applied to the radio, for the observations stream; false if unknown.
+  virtual bool getRadioModulation(uint8_t& sf, uint8_t& cr) const { return false; }
   /**
    * \brief  Where this node's duty-window bins start, as an offset in ms into the first 30 s bin. A packet held for
    *          duty is released when a bin ages out, so nodes that boot together (a power restore) would otherwise all

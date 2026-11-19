@@ -121,11 +121,17 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         return ACTION_RETRANSMIT_DELAYED(0, d);  // Routed traffic is HIGHEST priority 
       }
     }
+#ifdef ENABLE_MECON_IFACE
+    if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize())) noteRxOutcome(Iface::OUTCOME_FILTERED);   // its turn, but forwarding is not allowed here
+#endif
     countRxDropped();
     return ACTION_RELEASE;   // this node is NOT the next hop (OR this packet has already been forwarded), so discard.
   }
 
-  if (pkt->isRouteFlood() && filterRecvFloodPacket(pkt)) return ACTION_RELEASE;
+  if (pkt->isRouteFlood() && filterRecvFloodPacket(pkt)) {
+    noteRxOutcome(Iface::OUTCOME_FILTERED);
+    return ACTION_RELEASE;
+  }
 
   DispatcherAction action = ACTION_RELEASE;
 
@@ -376,6 +382,10 @@ DispatcherAction Mesh::routeRecvPacket(Packet* packet) {
     uint32_t d = getRetransmitDelay(packet);
     // as this propagates outwards, give it lower and lower priority
     return ACTION_RETRANSMIT_DELAYED(packet->getPathHashCount(), d);   // give priority to closer sources, than ones further away
+  }
+  if (packet->isRouteFlood()) {   // why it goes no further, for the observations stream
+    const bool room = (n + 1)*packet->getPathHashSize() <= MAX_PATH_SIZE;
+    noteRxOutcome(!packet->isMarkedDoNotRetransmit() && !room ? Iface::OUTCOME_NO_ROUTE : Iface::OUTCOME_FILTERED);
   }
   return ACTION_RELEASE;
 }

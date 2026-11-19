@@ -914,6 +914,7 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
     Cli::serverCaller().unlocked_user = this;
   }
   observeSink().fn = onObserve;
+  observeSink().want = observeWanted;
   observeSink().user = this;
 }
 
@@ -1031,7 +1032,12 @@ bool ConsoleIface::streamAllow(void* user, uint8_t cls) {
 
 // One received packet, as a console line and on the broker, within the stream's rate. Not on the console while a request
 // is being typed: a line never lands inside another, so with no broker subscriber that packet counts as dropped.
-void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
+bool ConsoleIface::observeWanted(void* user) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  return (s->_subs.s[SID_OBSERVATIONS].active && s->_out) || (s->_mqtt_subs.s[SID_OBSERVATIONS].active && s->_ev_publish);
+}
+
+void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len, const ObserveInfo& info) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
   const bool con = s->_subs.s[SID_OBSERVATIONS].active && s->_out;
   const bool net = s->_mqtt_subs.s[SID_OBSERVATIONS].active && s->_ev_publish;
@@ -1043,7 +1049,7 @@ void ConsoleIface::onObserve(void* user, float snr, float rssi, const uint8_t* r
   if (!ev) { s->_obs.dropped++; return; }
   bool known;
   const uint32_t ts = s->knownSeconds(&known);
-  int n = writeObservation(ev, CAP, s->_clock, s->_epoch, known, ts, snr, rssi, raw, len, s->_obs.dropped);
+  int n = writeObservation(ev, CAP, s->_clock, s->_epoch, known, ts, snr, rssi, raw, len, info, s->_obs.dropped);
   if (n > 0) n = s->_prov.sign("observations", ev, (size_t)n, CAP);   // -1: not signable, so not sent
   if (n <= 0) s->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing
   if (n > 0) {
@@ -1494,7 +1500,7 @@ uint8_t ConsoleIface::reportProduced(void* user) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
   LocationFix f;
   const bool loc = s->_host.sensors && readLocation(s->_host.sensors->getLocationProvider(), f);
-  return RF_HEALTH | RF_RADIO | (loc ? RF_LOCATION : 0);
+  return RF_HEALTH | RF_RADIO | RF_COUNTERS | (loc ? RF_LOCATION : 0);
 }
 
 bool ConsoleIface::reportMayRead(void* user) { return streamAllow(user, Cli::C_PRIVATE); }
@@ -1524,6 +1530,7 @@ bool ConsoleIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int
   RadioCounts counts;
   if (s->_host.radio_counts) s->_host.radio_counts(s->_host.user, &counts);
   fillReportRadio(d, *s->_host.dispatcher, *s->_host.radio, counts);
+  fillReportCounters(d, *s->_host.dispatcher);
   if (fields & RF_LOCATION) {
     LocationFix f;
     if (!s->_host.sensors || !readLocation(s->_host.sensors->getLocationProvider(), f)) return false;

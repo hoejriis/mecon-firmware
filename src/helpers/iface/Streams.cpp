@@ -106,10 +106,11 @@ uint32_t StreamClock::due(SubSet* const* sets, int nsets, uint32_t now) {
 }
 
 int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts, float snr,
-                     float rssi, const uint8_t* raw, int len, uint32_t dropped) {
+                     float rssi, const uint8_t* raw, int len, const ObserveInfo& info, uint32_t dropped) {
+  const uint8_t* fp = info.fp;
   if (len < 0 || len > 255) return -1;
   // Built on the heap: this runs in the radio's receive path, where the loop task's stack is short.
-  const size_t data_cap = 2 * 255 + 192;
+  const size_t data_cap = 2 * 255 + 256;
   char* data = static_cast<char*>(malloc(data_cap));
   if (!data) return -1;
   static const char H[] = "0123456789abcdef";
@@ -117,10 +118,23 @@ int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, b
   for (int i = 0; i < len; i++) { data[n++] = H[raw[i] >> 4]; data[n++] = H[raw[i] & 15]; }
   const RawHeader hdr = parseRawHeader(raw, len);
   char path[8];
+  char fps[96];
+  fps[0] = 0;
+  int k = 0;
+  if (fp) {
+    k = snprintf(fps, sizeof(fps), ",\"fp\":\"");
+    for (int i = 0; i < 8; i++) { fps[k++] = H[fp[i] >> 4]; fps[k++] = H[fp[i] & 15]; }
+    fps[k++] = '"'; fps[k] = 0;
+  }
+  if (info.freq_known) k += snprintf(fps + k, sizeof(fps) - k, ",\"freq_mhz\":%.3f,\"bw_khz\":%.4g", (double)info.freq_mhz, (double)info.bw_khz);
+  if (k > (int)sizeof(fps) - 24) k = (int)sizeof(fps) - 24;   // the figures are bounded; this only keeps the arithmetic safe
+  if (info.mod_known) snprintf(fps + k, sizeof(fps) - k, ",\"sf\":%u,\"cr\":%u", (unsigned)info.sf, (unsigned)info.cr);
+  static const char* const OUTCOMES[] = {"null", "\"forwarded\"", "\"duplicate\"", "\"not-next-hop\"", "\"filtered\"", "\"no-route\"", "\"unparsable\""};
+  const char* outcome = OUTCOMES[info.outcome < sizeof(OUTCOMES) / sizeof(OUTCOMES[0]) ? info.outcome : 0];
   if (hdr.path_known) snprintf(path, sizeof(path), "%u", (unsigned)hdr.path_len); else snprintf(path, sizeof(path), "null");
   n += snprintf(data + n, data_cap - n,
-                "\",\"len\":%d,\"type\":%u,\"route\":\"%s\",\"path_len\":%s,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}",
-                len, (unsigned)hdr.type, hdr.route, path, (int)rssi, (double)snr, (unsigned long)dropped);
+                "\",\"len\":%d,\"type\":%u,\"route\":\"%s\",\"path_len\":%s%s,\"outcome\":%s,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}",
+                len, (unsigned)hdr.type, hdr.route, path, fps, outcome, (int)rssi, (double)snr, (unsigned long)dropped);
   int out = -1;
   if (n > 0 && (size_t)n < data_cap)
     out = writeEvent(ev, cap, STREAMS[SID_OBSERVATIONS].name, ++clock.seq[SID_OBSERVATIONS], epoch, ts_known, ts, data);
@@ -355,6 +369,15 @@ void fillReportRadio(ReportData& d, mesh::Dispatcher& disp, mesh::Radio& r, cons
     d.last_rssi = (int8_t)r.getLastRSSI();
     d.last_snr_q = (int8_t)(r.getLastSNR() * 4);
   }
+}
+
+void fillReportCounters(ReportData& d, mesh::Dispatcher& disp) {
+  d.rx_dup = (uint16_t)disp.getNumRxDup(); d.rx_dropped = (uint16_t)disp.getNumRxDropped(); d.rx_unparsable = (uint16_t)disp.getNumRxUnparsable();
+  d.tx_failed = (uint16_t)disp.getNumTxFail(); d.queue_full = (uint16_t)disp.getNumQueueFull();
+  d.cad_retries = (uint16_t)disp.getNumCadRetries(); d.duty_holds = (uint16_t)disp.getNumDutyHolds();
+  const int depth = disp.getOutboundDepth(), free = disp.getPoolFree();
+  d.queue_depth = (uint8_t)(depth < 0 ? 0 : depth > 255 ? 255 : depth);
+  d.queue_free = (uint8_t)(free < 0 ? 0 : free > 255 ? 255 : free);
 }
 
 void fillReportLocation(ReportData& d, const LocationFix& f) {

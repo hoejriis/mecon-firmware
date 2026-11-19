@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "IfaceDispatch.h"
+#include "Observe.h"
 #include "../AuditRing.h"
 #include "IfaceJson.h"
 #include "../GnssHealth.h"
@@ -145,7 +146,7 @@ int writeLog(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_k
 
 // Writes one observations event envelope (seq advanced in clock) into ev; its length, or -1 when it does not fit.
 int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts, float snr,
-                     float rssi, const uint8_t* raw, int len, uint32_t dropped);
+                     float rssi, const uint8_t* raw, int len, const ObserveInfo& info, uint32_t dropped);
 
 // The capability names of the streams in supported ("stream.health", ...), for hello.
 void writeStreamCapabilities(JsonWriter& w, uint32_t supported);
@@ -213,6 +214,7 @@ bool readLocation(LocationProvider* p, LocationFix& out);
 struct ReportData;
 void fillReportCommon(ReportData& d, mesh::MainBoard& b, uint32_t uptime_s);
 void fillReportRadio(ReportData& d, mesh::Dispatcher& disp, mesh::Radio& r, const RadioCounts& counts);
+void fillReportCounters(ReportData& d, mesh::Dispatcher& disp);   // the radio stream's diagnostic counters, as 16 bits
 void fillReportLocation(ReportData& d, const LocationFix& f);
 
 // Inventory entries (TELEMETRY.md, class private): a snapshot of the Companion's contacts and channels in pages, each

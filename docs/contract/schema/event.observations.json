@@ -50,6 +50,47 @@
       ],
       "description": "route type, read from the first byte; t = with transport codes"
     },
+    "fp": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "packet fingerprint (since v0.3.10): the first 8 bytes of the packet hash, same for one packet whatever path it took; absent when the frame is not a valid packet"
+    },
+    "freq_mhz": {
+      "type": "number",
+      "description": "radio frequency in MHz as last applied (since v0.3.10); absent before the radio is configured"
+    },
+    "bw_khz": {
+      "type": "number",
+      "description": "radio bandwidth in kHz as last applied (since v0.3.10)"
+    },
+    "sf": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 12,
+      "description": "spreading factor as last applied (since v0.3.10)"
+    },
+    "cr": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 8,
+      "description": "coding rate denominator (4/5 to 4/8) as last applied (since v0.3.10)"
+    },
+    "outcome": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "forwarded",
+        "duplicate",
+        "not-next-hop",
+        "filtered",
+        "no-route",
+        "unparsable",
+        null
+      ],
+      "description": "what handling the packet came to (since v0.3.10); null where the code does not know, and for a flood packet held back by the receive delay"
+    },
     "path_len": {
       "type": [
         "integer",

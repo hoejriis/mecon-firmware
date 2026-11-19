@@ -2,7 +2,6 @@
 #include <helpers/PassBlame.h>
 #include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
-#include <helpers/iface/Observe.h>
 #include <helpers/iface/DeviceId.h>
 #include <helpers/iface/DevIdSig.h>
 #include <helpers/iface/Provenance.h>
@@ -309,7 +308,6 @@ uint8_t MyMesh::getExtraAckTransmitCount() const {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
-  Iface::observe(snr, rssi, raw, len);   // the observations stream, when the device interface is built in
   _last_rx_ms = millis();   // the front page's "Last LoRa": a received packet, never a sent one
   _rx_seen = true;
   if (_serial->isConnected() && len + 3 <= MAX_FRAME_SIZE) {
@@ -1387,7 +1385,7 @@ void MyMesh::begin() {
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-  _radio_freq = _prefs.freq; _radio_bw = _prefs.bw;
+  _radio_freq = _prefs.freq; _radio_bw = _prefs.bw; _radio_sf = _prefs.sf; _radio_cr = _prefs.cr;
   radio_driver.setTxPower(_prefs.tx_power_dbm);
   radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
 
@@ -1998,7 +1996,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       savePrefs();
 
       radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-      _radio_freq = _prefs.freq; _radio_bw = _prefs.bw;   // the duty-cycle floor follows at once
+      _radio_freq = _prefs.freq; _radio_bw = _prefs.bw; _radio_sf = _prefs.sf; _radio_cr = _prefs.cr;   // the duty-cycle floor follows at once
       MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d", freq, bw, (uint32_t)sf,
                          (uint32_t)cr);
 

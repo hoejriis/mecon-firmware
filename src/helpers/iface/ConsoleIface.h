@@ -297,7 +297,8 @@ private:
   SubSet _subs;
   StreamClock _clock;
   bool writeStream(int stream, JsonWriter& w);
-  static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len);
+  static void onObserve(void* self, float snr, float rssi, const uint8_t* raw, int len, const Iface::ObserveInfo& info);
+  static bool observeWanted(void* self);
   ObsLimiter _obs;
   bool _env_ok = false, _env_checked = false;
   bool _loc_ok = false;   // the build has a location provider (the location stream)

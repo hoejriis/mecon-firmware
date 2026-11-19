@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Decode a compact report (docs/contract/TELEMETRY.md, "Compact reports over LoRa"). decode(bytes) returns the fields, the bytes
-the signature covers and the signature. A field the device did not send is absent; the reserved values read as None."""
+the signature covers and the signature. A field the device did not send is absent; the reserved values read as None. The counters (bit 8) are the low 16 bits of the device's counters, so a difference
+between two reports is taken modulo 65536."""
 import struct
 
 DOMAIN = b"MECON-UPLINK-v1\x00report\x00"
@@ -29,6 +30,12 @@ def decode(raw):
         if fix:
             out["location"].update(lat_e6=lat, lon_e6=lon, alt_m=alt, age_s=None if age == 0xFFFF else age)
         p += 14
+    if fields & 8:
+        dup, dropped, unparsable, failed, qfull, cad, duty, depth, free = struct.unpack_from("<HHHHHHHBB", raw, p)
+        out["counters"] = {"rx_dup": dup, "rx_dropped": dropped, "rx_unparsable": unparsable, "tx_failed": failed,
+                           "queue_full": qfull, "cad_busy_retries": cad, "duty_holds": duty,
+                           "queue_depth": depth, "queue_free": free}
+        p += 16
     if len(raw) != p + 64:
         raise ValueError("length does not match its fields")
     return out, DOMAIN + raw[:p], raw[p:]

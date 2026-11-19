@@ -1054,6 +1054,7 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
   _prov.begin(&_mesh->self_id, &_auth, epoch, epoch_saved);
   _updates.begin(_mesh->hardwareName(), "companion", _mesh->hardwareNames());
   observeSink().fn = onObserve;
+  observeSink().want = observeWanted;
   observeSink().user = this;
   loraSink().fn = onLoraFrame;
   loraSink().user = this;
@@ -1085,7 +1086,14 @@ bool MeconIface::streamAllow(void* user, uint8_t cls) {
 }
 
 // One received packet: an observations event to every transport subscribed, within the stream's rate.
-void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len) {
+bool MeconIface::observeWanted(void* user) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  bool any = m->_mqtt_subs.s[SID_OBSERVATIONS].active;
+  for (Link& l : m->_links) any = any || l.subs.s[SID_OBSERVATIONS].active;
+  return any;
+}
+
+void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw, int len, const ObserveInfo& info) {
   MeconIface* m = static_cast<MeconIface*>(user);
   bool any = m->_mqtt_subs.s[SID_OBSERVATIONS].active;
   for (Link& l : m->_links) any = any || l.subs.s[SID_OBSERVATIONS].active;
@@ -1095,7 +1103,7 @@ void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
   if (!ev) { m->_obs.dropped++; return; }
   const uint32_t ts = m->_mesh->getRTCClock()->knownTime();
-  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts != 0, ts, snr, rssi, raw, len,
+  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts != 0, ts, snr, rssi, raw, len, info,
                                  m->_obs.dropped);
   if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);   // -1: not signable, so not sent
   if (n <= 0) m->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing
@@ -1789,7 +1797,7 @@ void MeconIface::rfLost(const char* from, uint32_t xid, size_t size, uint32_t se
 
 uint8_t MeconIface::reportProduced(void*) {
   LocationFix f;
-  return RF_HEALTH | RF_RADIO | (readLocation(sensors.getLocationProvider(), f) ? RF_LOCATION : 0);
+  return RF_HEALTH | RF_RADIO | RF_COUNTERS | (readLocation(sensors.getLocationProvider(), f) ? RF_LOCATION : 0);
 }
 bool MeconIface::reportMayRead(void* user) { return streamAllow(user, Cli::C_PRIVATE); }
 const char* MeconIface::reportIssuer(void* user) { return static_cast<MeconIface*>(user)->_auth.signingIssuer(); }
@@ -1817,6 +1825,7 @@ bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int s
   counts.tx_total = radio_driver.getPacketsSent();
   counts.rx_errors = radio_driver.getPacketsRecvErrors();
   fillReportRadio(d, *m->_mesh, radio_driver, counts);
+  fillReportCounters(d, *m->_mesh);
   if (fields & RF_LOCATION) {
     LocationFix f;
     if (!readLocation(sensors.getLocationProvider(), f)) return false;
@@ -1834,7 +1843,7 @@ bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int s
 void MeconIface::onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n) {
   if (n < REPORT_HEADER + REPORT_SIG || bytes[1] != REPORT_VERSION) return;
   const uint8_t fields = bytes[2];
-  const size_t len = REPORT_HEADER + ((fields & RF_HEALTH) ? 8 : 0) + ((fields & RF_RADIO) ? 12 : 0) + ((fields & RF_LOCATION) ? 14 : 0) + REPORT_SIG;
+  const size_t len = REPORT_HEADER + reportFieldsLen(fields) + REPORT_SIG;
   if (len > n) return;   // the datagram pads to whole blocks: the fields say where it ends
   char* data = static_cast<char*>(malloc(400));
   char* ev = static_cast<char*>(malloc(700));
