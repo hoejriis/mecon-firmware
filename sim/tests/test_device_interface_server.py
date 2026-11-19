@@ -125,6 +125,24 @@ def test_a_line_too_long_is_refused_not_truncated(nodes):
     assert ok(i.request("hello"), "hello.result.json")["role"] == "repeater", "the next line is read normally"
 
 
+def test_the_line_bound_counts_the_envelope_after_the_prefix(nodes):
+    # The bound is 1,600 bytes of envelope after "mecon> ", without the ending CR: exactly that many is read, one more is not.
+    n, (cli, i) = start(nodes, "repeater", "edge")
+
+    def env(size, rid):
+        base = json.dumps({"v": 1, "id": rid, "op": "hello", "pad": ""}, separators=(",", ":"))
+        text = base.replace('"pad":""', '"pad":"%s"' % ("x" * (size - len(base))))
+        assert len(text.encode()) == size
+        return text
+
+    i.send_raw(env(1600, "at-bound"))
+    r = i.wait_result("at-bound")
+    assert r.get("error") != "line-too-long", r
+    i.send_raw(env(1601, "past-bound"))
+    r = i.wait_result("")
+    assert r["status"] == "busy" and r["error"] == "line-too-long", r
+
+
 def test_health_events_come_back_as_console_lines(nodes):
     n, (cli, i) = start(nodes, "repeater", "ev")
     assert i.request("sub.start", {"stream": "health", "period_s": 5, "lifetime_s": 30})["status"] == "ok"
