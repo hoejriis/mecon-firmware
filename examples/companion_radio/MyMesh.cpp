@@ -538,6 +538,7 @@ Iface::MessageSend MyMesh::messageSendChannel(int slot, uint32_t ts, const char*
 #ifdef MAX_GROUP_CHANNELS
   ChannelDetails ch;
   if (!getChannel(slot, ch) || !ch.name[0]) return Iface::MS_NOT_FOUND;
+  if (localOnly(slot)) return Iface::MS_LOCAL_ONLY;
   if (strlen(_prefs.node_name) + 2 + len > MAX_TEXT_LEN) return Iface::MS_TOO_LONG;
   _msg_capture = &out;
   ScopedSend scoped(*this, scope);
@@ -756,6 +757,19 @@ void MyMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pk
 void MyMesh::onMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                            const char *text) {
   markConnectionActive(from); // in case this is from a server, and we have a connection
+#ifdef ENABLE_MECON_IFACE
+  // A message to a delegated identity that has a local channel (AUTHORITY section 10b): the stock app gets it there, as a channel
+  // message reads, and the manager's copy is the direct one. With no such channel, or none stored on the slot, it goes the usual way.
+  const int lc = _rx_delegate >= 0 ? _iface.delegatedChannel(_rx_delegate) : -1;
+  ChannelDetails lch;
+  if (lc >= 0 && getChannel(lc, lch) && lch.name[0]) {
+    if (!keepReceived(pkt, from.id.pub_key, -1, TXT_TYPE_PLAIN, sender_timestamp, nullptr, text)) return;
+    char line[MAX_TEXT_LEN + 1];
+    snprintf(line, sizeof(line), "%s: %s", from.name, text);
+    queueChannelMessage(pkt, (uint8_t)lc, sender_timestamp, line);
+    return;
+  }
+#endif
   queueMessage(from, TXT_TYPE_PLAIN, pkt, sender_timestamp, NULL, 0, text);
 }
 
@@ -791,6 +805,17 @@ void MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uin
 
 void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint32_t timestamp,
                                   const char *text) {
+  uint8_t channel_idx = findChannelIdx(channel);
+#ifdef ENABLE_MECON_IFACE
+  if (channel_idx < 127) _iface.onChannelText(channel_idx, text);   // a ping on the management channel; the message itself is kept as any other
+  // It was decrypted with a stored channel, so there is a slot to name; with none, -1 would read as a direct message.
+  if (channel_idx < 127 && !keepReceived(pkt, nullptr, channel_idx, TXT_TYPE_PLAIN, timestamp, nullptr, text)) return;
+#endif
+  queueChannelMessage(pkt, channel_idx, timestamp, text);
+}
+
+// A channel text on the native queue, as the stock app reads one (also a delegated identity's local channel).
+void MyMesh::queueChannelMessage(mesh::Packet *pkt, uint8_t channel_idx, uint32_t timestamp, const char *text) {
   int i = 0;
   if (app_target_ver >= 3) {
     out_frame[i++] = RESP_CODE_CHANNEL_MSG_RECV_V3;
@@ -800,13 +825,6 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   } else {
     out_frame[i++] = RESP_CODE_CHANNEL_MSG_RECV;
   }
-
-  uint8_t channel_idx = findChannelIdx(channel);
-#ifdef ENABLE_MECON_IFACE
-  if (channel_idx < 127) _iface.onChannelText(channel_idx, text);   // a ping on the management channel; the message itself is kept as any other
-  // It was decrypted with a stored channel, so there is a slot to name; with none, -1 would read as a direct message.
-  if (channel_idx < 127 && !keepReceived(pkt, nullptr, channel_idx, TXT_TYPE_PLAIN, timestamp, nullptr, text)) return;
-#endif
   out_frame[i++] = channel_idx;
   uint8_t path_len = out_frame[i++] = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
 
@@ -965,7 +983,7 @@ bool MyMesh::loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t*
 // A frame on a channel slot, with its two addresses, as a flood on that channel.
 bool MyMesh::loraChannelSend(int slot, const uint8_t* to_key, const uint8_t* frame, size_t n) {
   ChannelDetails ch;
-  if (n > 160 || !getChannel(slot, ch)) return false;
+  if (n > 160 || localOnly(slot) || !getChannel(slot, ch)) return false;
   uint8_t temp[3 + Iface::LORA_CH_ADDR + 160];
   temp[0] = (uint8_t)(Iface::LORA_CHANNEL_TYPE & 0xFF);
   temp[1] = (uint8_t)(Iface::LORA_CHANNEL_TYPE >> 8);
@@ -983,7 +1001,7 @@ bool MyMesh::loraChannelSend(int slot, const uint8_t* to_key, const uint8_t* fra
 
 bool MyMesh::fmcSend(int slot, const char* text, size_t n) {
   ChannelDetails ch;
-  if (!getChannel(slot, ch)) return false;
+  if (localOnly(slot) || !getChannel(slot, ch)) return false;
   return sendGroupMessage(getRTCClock()->getCurrentTimeUnique(), ch.channel, _prefs.node_name, text, (int)n);
 }
 
@@ -1719,6 +1737,8 @@ void MyMesh::handleCmdFrame(size_t len) {
 
     if (txt_type != TXT_TYPE_PLAIN) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+    } else if (localOnly(channel_idx)) {
+      writeErrFrame(ERR_CODE_NOT_PERMITTED);   // a delegated identity's local channel is never transmitted
     } else {
       ChannelDetails channel;
       bool success = getChannel(channel_idx, channel);
@@ -1758,6 +1778,8 @@ void MyMesh::handleCmdFrame(size_t len) {
     ChannelDetails channel;
     if (!getChannel(channel_idx, channel)) {
       writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx
+    } else if (localOnly(channel_idx)) {
+      writeErrFrame(ERR_CODE_NOT_PERMITTED);   // a delegated identity's local channel is never transmitted
     } else if (data_type == DATA_TYPE_RESERVED) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else if (payload_len > MAX_GROUP_DATA_LENGTH) {

@@ -233,7 +233,7 @@ Status opMessageSend(OpContext& c) {
   if (r != MS_OK) {
     memset(e, 0, sizeof(*e));   // nothing was sent: the request's own answer is the whole record
     if (r == MS_QUEUE_FULL) { c.error = "queue-full"; return ST_BUSY; }
-    c.error = r == MS_TOO_LONG ? "text-too-long" : (to >= 0 ? "no-contact" : "no-channel");
+    c.error = r == MS_TOO_LONG ? "text-too-long" : r == MS_LOCAL_ONLY ? "local-channel" : (to >= 0 ? "no-contact" : "no-channel");
     return ST_FAILED;
   }
   memcpy(e->hash, sent.hash, sizeof(e->hash));

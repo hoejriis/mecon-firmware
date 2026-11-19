@@ -148,6 +148,10 @@ public:
   bool delegatesBuilt() const { return _env.dlg_blob && _env.dlg_key && _env.node_id; }
   // The n-th delegated identity (in slot order), null past the last: what the mesh tries a direct message against.
   const mesh::LocalIdentity* delegated(int n) const;
+  // The local channel slot of the n-th delegated identity (as delegated() numbers them), or -1 for none: its messages are
+  // shown on that slot, which is never transmitted (AUTHORITY section 10b). localChannel: whether any identity holds `slot`.
+  int delegatedChannel(int n) const;
+  bool localChannel(int slot) const;
   // The gate of identity.rotate (AUTHORITY.md section 11): ST_OK only for a verified signed request on a device whose record
   // reads back healthy. Anything else is a refusal with a contract code and nothing changes.
   Status rotateGate(OpContext& c);
@@ -212,6 +216,7 @@ private:
   bool continuityRead(uint8_t* pkg, size_t cap, size_t* n, uint32_t* gen);
   void writeContinuity(JsonWriter& w);
   mesh::LocalIdentity* _dlg[DELEGATES_MAX] = {};   // the live identities, by slot (null: empty)
+  int8_t _dlg_ch[DELEGATES_MAX] = {-1, -1, -1, -1};   // the local channel slot of each, -1 for none; stored in the slot byte
   bool _dlg_key_present = false;
   void delegatesDestroy();                  // the key first, then the blob and the identities in memory
   void delegatesLoad();

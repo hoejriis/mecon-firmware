@@ -45,10 +45,13 @@ def sealed_args(d, job, slot, who, node_pub=None, **bad):
                                 bad.get("seal_slot", slot), bad.get("seal_pub", pub), prv))
     if "flip" in bad:
         s[bad["flip"]] ^= 1
-    return {"slot": slot, "pub": pub.hex(), "sealed": base64.b64encode(bytes(s)).decode()}
+    a = {"slot": slot, "pub": pub.hex(), "sealed": base64.b64encode(bytes(s)).decode()}
+    if "channel" in bad:
+        a["channel"] = bad["channel"]
+    return a
 
 
-def put(d, who, slot=0, job=None, nonce=True, **bad):
+def put(d, who, slot=0, job=None, nonce=True, **bad):   # channel=<slot> gives the identity a local channel
     job = job or next_job(d)
     return d.send(wrap(d.node_key, "identity.delegate.put", sealed_args(d, job, slot, who, **bad), job=job,
                        nonce=d.nonce() if nonce else None))
@@ -342,3 +345,138 @@ def test_two_identities_that_share_a_hash_are_tried_in_order(nodes, ether):
     wait_received(d, 1)
     m = d.i.request("inbox.list")["result"]["messages"][0]
     assert m["text"] == "to the twin" and m["identity"] == twin[1].hex(), m
+
+
+# ------------------------------------------------------------------ the optional local channel
+
+SECRET = bytes(range(16, 32))
+
+
+def chput(d, slot, name, secret):
+    """A channel on the enrolled device: signed, as a native set is refused once a record exists."""
+    r = d.send(wrap(d.node_key, "channel.put", {"slot": slot, "name": name, "secret": secret.hex()}, job=next_job(d)))
+    assert r["status"] == "ok", r
+
+
+def test_a_local_channel_is_set_listed_stored_sealed_and_cleared_by_a_put_without_one(nodes):
+    d = boot(nodes, "dc1")
+    assert d.provision()["status"] == "ok"
+    r = put(d, CAR, slot=0, channel=5)
+    assert r["status"] == "ok" and r["result"] == {"delegate": "stored", "slot": 0, "pub": CAR[1].hex(), "channel": 5}, r
+    assert not mecon_schema.check(r["result"], mecon_schema.load("identity.delegate.put.result.json"))
+    assert put(d, BOAT, slot=3)["status"] == "ok"
+    expect = {"max": 4, "identities": [{"slot": 0, "pub": CAR[1].hex(), "channel": 5}, {"slot": 3, "pub": BOAT[1].hex()}]}
+    assert dlist(d) == expect
+    assert not mecon_schema.check(dlist(d), mecon_schema.load("identity.delegate.list.result.json"))
+    assert files_holding(d, b"MDG1") != [] and files_holding(d, CAR[2][:32]) == [], "still sealed at rest"
+    d.reboot()
+    assert dlist(d) == expect, "the channel is stored with the table"
+    r = put(d, CAR, slot=0)
+    assert r["status"] == "ok" and "channel" not in r["result"], "a put replaces the whole record: %s" % r
+    assert dlist(d)["identities"][0] == {"slot": 0, "pub": CAR[1].hex()}
+    d.reboot()
+    assert dlist(d)["identities"][0] == {"slot": 0, "pub": CAR[1].hex()}, "and the cleared channel stays cleared"
+    for bad in (63, -1, "x", 1.5, None):
+        r = put(d, CAR, slot=0, channel=bad)
+        assert r["status"] == "invalid" and r["error"] == "bad-args", "%r: %s" % (bad, r)
+    assert "channel" not in dlist(d)["identities"][0]
+    assert put(d, CAR, slot=0, channel=62)["status"] == "ok", "the highest slot a record holds"
+    d.reboot()
+    assert dlist(d)["identities"][0]["channel"] == 62
+
+
+def test_a_message_to_an_identity_with_a_local_channel_shows_on_that_slot_and_lists_with_the_identity(nodes, ether):
+    import time
+    d, cs = pair(nodes, ether, "dca", "dcb", who=CAR)
+    assert put(d, CAR, slot=0, channel=2)["status"] == "ok"
+    assert put(d, BOAT, slot=1)["status"] == "ok"
+    assert cs.add_contact(BOAT[1], "boat")[0] == 0
+    chput(d, 2, "car inbox", SECRET)
+    assert d.c.add_contact(cs.pub_key, "sender")[0] == 0
+    r = cs.send_direct(CAR[1], "hello car", RTC + 5)
+    assert cs.wait_push(PUSH_SEND_CONFIRMED, timeout=60.0) is not None, "still ACKed natively"
+    wait_received(d, 1)
+    got = d.c.sync_messages(timeout=10, want=1)
+    assert len(got) == 1 and got[0]["kind"] == "channel" and got[0]["channel"] == 2 and got[0]["txt_type"] == 0, got
+    assert got[0]["text"] == "sender: hello car" and got[0]["ts"] == RTC + 5, "read as a channel message reads: %s" % got
+    m = d.i.request("inbox.list")["result"]["messages"]
+    assert len(m) == 1 and m[0]["text"] == "hello car" and m[0]["identity"] == CAR[1].hex() and m[0]["from"] == cs.pub_key.hex(), m
+    assert "channel" not in m[0], "the manager's copy is the direct message: %s" % m
+    assert not mecon_schema.check(d.i.request("inbox.list")["result"], mecon_schema.load("inbox.list.result.json"))
+    # an identity without a slot, and the primary identity, are unchanged: the sender's thread
+    cs.send_direct(BOAT[1], "to the boat", RTC + 6)
+    wait_received(d, 2)
+    cs.send_direct(bytes.fromhex(d.node_key), "to the node", RTC + 7)
+    wait_received(d, 3)
+    got = d.c.sync_messages(timeout=10, want=2)
+    assert [(g["kind"], g["text"]) for g in got] == [("direct", "to the boat"), ("direct", "to the node")], got
+    # a repeat is not shown twice
+    assert len(d.i.request("inbox.list")["result"]["messages"]) == 3
+    # the slot's channel is gone: back to the sender's thread
+    r = d.send(wrap(d.node_key, "channel.remove", {"slot": 2}, job=next_job(d)))
+    assert r["status"] == "ok", r
+    cs.send_direct(CAR[1], "after the removal", RTC + 8)
+    wait_received(d, 4)
+    got = d.c.sync_messages(timeout=10, want=1)
+    assert [(g["kind"], g["text"]) for g in got] == [("direct", "after the removal")], "the default path: %s" % got
+    allm = d.i.request("inbox.list", {"after": 3})["result"]
+    last = [x for x in allm["messages"] if x["text"] == "after the removal"]
+    assert len(last) == 1 and last[0]["identity"] == CAR[1].hex(), json.dumps(allm)
+    # a channel put on the slot again: the binding is the identity's, so delivery returns
+    chput(d, 2, "reused", SECRET)
+    cs.send_direct(CAR[1], "after the reuse", RTC + 9)
+    wait_received(d, 5)
+    got = d.c.sync_messages(timeout=10, want=1)
+    assert [(g["kind"], g["channel"], g["text"]) for g in got] == [("channel", 2, "sender: after the reuse")], got
+    # and the binding survives a reboot
+    d.reboot()
+    d.c.device_query()
+    d.c.app_start()
+    assert dlist(d)["identities"][0]["channel"] == 2
+    cs.send_direct(CAR[1], "after the reboot", RTC + 10)
+    wait_received(d, 1)
+    got = d.c.sync_messages(timeout=10, want=1)
+    assert [(g["kind"], g["channel"]) for g in got] == [("channel", 2)], got
+
+
+def test_the_local_channel_is_never_transmitted_on_and_a_send_on_it_is_refused(nodes, ether):
+    import time
+    d, cs = pair(nodes, ether, "dcc", "dcd", who=CAR)
+    assert put(d, CAR, slot=0, channel=2)["status"] == "ok"
+    chput(d, 2, "car inbox", SECRET)
+    assert cs.set_channel(2, "car inbox", SECRET)[0] == 0, "the far end holds the same channel: a send would reach it"
+    assert cs.set_channel(3, "open", SECRET[::-1])[0] == 0
+    chput(d, 3, "open", SECRET[::-1])
+    # the native text send, and the native datagram send (CMD_SEND_CHANNEL_DATA), on the slot
+    f = d.c.send_channel(2, "leak", RTC + 5)
+    assert f[0] == 1 and f[1] == 7, "ERR_CODE_NOT_PERMITTED: %s" % f
+    f = d.c.request(bytes([62, 2, 0xFF]) + struct.pack("<H", 1) + b"data")
+    assert f[0] == 1 and f[1] == 7, "CMD_SEND_CHANNEL_DATA: %s" % f
+    # message.send to the slot
+    r = d.send(wrap(d.node_key, "message.send", {"channel": 2, "text": "leak", "timestamp": RTC + 6}, job=next_job(d)))
+    assert r["status"] == "failed" and r["error"] == "local-channel", r
+    assert d.i.request("message.list")["result"]["open"] == 0
+    assert cs.sync_messages(timeout=6, want=1) == [], "nothing went on the air"
+    # another slot still sends, natively and through message.send
+    assert d.c.send_channel(3, "fine", RTC + 7)[0] == 0
+    r = d.send(wrap(d.node_key, "message.send", {"channel": 3, "text": "fine too", "timestamp": RTC + 8}, job=next_job(d)))
+    assert r["status"] == "ok", r
+    got = cs.sync_messages(timeout=60, want=2)
+    assert sorted(g["text"].split(": ", 1)[1] for g in got) == ["fine", "fine too"], got
+    # removing the identity frees the slot
+    r = d.send(wrap(d.node_key, "identity.delegate.delete", {"slot": 0}, job=next_job(d)))
+    assert r["status"] == "ok"
+    assert d.c.send_channel(2, "free again", RTC + 9)[0] == 0
+    assert [g["text"].split(": ", 1)[1] for g in cs.sync_messages(timeout=60, want=1)] == ["free again"]
+
+
+def test_a_reboot_and_a_reset_keep_and_release_the_local_channel_slot(nodes):
+    d = boot_with_secret(nodes, "dc4")
+    assert put(d, CAR, slot=1, channel=4)["status"] == "ok"
+    chput(d, 4, "car inbox", SECRET)
+    assert d.c.send_channel(4, "x", RTC + 5)[0] == 1, "refused while held"
+    d.reboot()
+    assert d.c.send_channel(4, "x", RTC + 6)[0] == 1, "and after a reboot"
+    assert d.send(wrap(d.node_key, "deployment.reset", job=next_job(d)))["status"] == "ok"
+    assert dlist(d)["identities"] == [] and files_holding(d, b"MDG1") == []
+    assert d.c.send_channel(4, "x", RTC + 9)[0] == 0, "the reset released it"

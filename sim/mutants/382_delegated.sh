@@ -33,7 +33,7 @@ mutate dl_slot_range $F '!jsonGetInt(d, ts, 0, DELEGATES_MAX - 1, &slot) ||' '!j
 mutate dl_hardened_keeps_them $F '  if (hardened && _dlg_key_present) delegatesDestroy();' '  (void)hardened;' $T::test_hardened_and_reset_destroy_every_key_and_rotation_keeps_them
 mutate dl_hardened_never_reconciled examples/companion_radio/MeconIface.cpp '  _auth.delegateReconcile(Posture::isHardened(_mesh->postureValue()));     // and no delegated identity (Issue #552)' '' $T::test_hardened_and_reset_destroy_every_key_and_rotation_keeps_them
 mutate dl_reset_keeps_them $F '  if (ok) delegatesDestroy();    // and so do the delegated identities' '  (void)0;' $T::test_hardened_and_reset_destroy_every_key_and_rotation_keeps_them
-mutate dl_delete_keeps_the_file $F '    if (!delegatesSave()) { _dlg[slot] = old; c.error = "storage"; return ST_BUSY; }' '' $T::test_a_member_provisions_an_identity_whose_key_is_sealed_in_flight_and_at_rest
+mutate dl_delete_keeps_the_file $F '    if (!delegatesSave()) { _dlg[slot] = old; _dlg_ch[slot] = old_ch; c.error = "storage"; return ST_BUSY; }' '' $T::test_a_member_provisions_an_identity_whose_key_is_sealed_in_flight_and_at_rest
 # receiving
 M=src/Mesh.cpp
 mutate dl_receive_hook_off $M '        if (!found && pkt->getPayloadType() == PAYLOAD_TYPE_TXT_MSG) {' '        if (false) {' $T::test_a_message_to_a_delegated_identity_is_received_acked_and_listed_with_it
@@ -47,3 +47,24 @@ mutate dl_removed_still_received $F '    if (_dlg[i] && n-- == 0) return _dlg[i]
 # and the reboot that follows reloads from them (the continuity package's cont_reset mutant has the same note).
 # A mutant on `di->isHashMatch(&dest_hash)` in Mesh.cpp is equivalent: a message whose destination hash does not match fails
 # the MAC of every delegated identity, so the hash test only saves key agreements (a cost, not a check).
+# the optional local channel (Issue #602)
+MM=examples/companion_radio/MyMesh.cpp
+T2=sim/tests/test_delegates.py
+mutate dlc_delivery_off $MM '  if (lc >= 0 && getChannel(lc, lch) && lch.name[0]) {' '  if (false) {' $T2::test_a_message_to_an_identity_with_a_local_channel_shows_on_that_slot_and_lists_with_the_identity
+mutate dlc_slot_not_bound $F '          _dlg_ch[slot] = (int8_t)((plain[o] >> 2) - 1);' '' $T2::test_a_local_channel_is_set_listed_stored_sealed_and_cleared_by_a_put_without_one
+mutate dlc_slot_unsaved $F '      plain[o] = (uint8_t)(i | (_dlg_ch[i] + 1) << 2);' '      plain[o] = (uint8_t)i;' $T2::test_a_local_channel_is_set_listed_stored_sealed_and_cleared_by_a_put_without_one
+mutate dlc_put_keeps_old_channel $F '    _dlg_ch[slot] = (int8_t)chan;' '    if (chan >= 0) _dlg_ch[slot] = (int8_t)chan;' $T2::test_a_local_channel_is_set_listed_stored_sealed_and_cleared_by_a_put_without_one
+mutate dlc_name_dropped $MM '    snprintf(line, sizeof(line), "%s: %s", from.name, text);' '    snprintf(line, sizeof(line), "%s", text);' $T2::test_a_message_to_an_identity_with_a_local_channel_shows_on_that_slot_and_lists_with_the_identity
+mutate dlc_inbox_dropped $MM '    if (!keepReceived(pkt, from.id.pub_key, -1, TXT_TYPE_PLAIN, sender_timestamp, nullptr, text)) return;
+    char line' '    char line' $T2::test_a_message_to_an_identity_with_a_local_channel_shows_on_that_slot_and_lists_with_the_identity
+mutate dlc_text_send_allowed $MM '    } else if (localOnly(channel_idx)) {
+      writeErrFrame(ERR_CODE_NOT_PERMITTED);   // a delegated identity'"'"'s local channel is never transmitted
+    } else {' '    } else {' $T2::test_the_local_channel_is_never_transmitted_on_and_a_send_on_it_is_refused
+mutate dlc_data_send_allowed $MM '    } else if (localOnly(channel_idx)) {
+      writeErrFrame(ERR_CODE_NOT_PERMITTED);   // a delegated identity'"'"'s local channel is never transmitted
+    } else if (data_type == DATA_TYPE_RESERVED) {' '    } else if (data_type == DATA_TYPE_RESERVED) {' $T2::test_the_local_channel_is_never_transmitted_on_and_a_send_on_it_is_refused
+mutate dlc_message_send_allowed $MM '  if (localOnly(slot)) return Iface::MS_LOCAL_ONLY;' '' $T2::test_the_local_channel_is_never_transmitted_on_and_a_send_on_it_is_refused
+# dlc_lora_send_allowed ($MM loraChannelSend) and dlc_fmc_send_allowed (fmcSend): the same one-line guard on a path the simulator
+# does not drive with a delegated slot; covered by review, not by a test.
+# Resetting _dlg_ch[] on a delete or a destroy is equivalent: delegatedChannel() and localChannel() read a slot only while its identity
+# is held, and a put sets the channel afresh.
