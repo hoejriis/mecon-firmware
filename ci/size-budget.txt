@@ -19,7 +19,7 @@ t1000e_companion_radio_ble               579584     168960
 t1000e_companion_radio_usb               572416     164864
 t1000e_repeater                           535552      43008
 t1000e_room_server                        526336      49152
-WioTrackerL1_companion_radio_ble         673792      94208
+WioTrackerL1_companion_radio_ble         678912      94208
 WioTrackerL1_companion_radio_usb         669696      90112
 WioTrackerL1_repeater                     622592      46080
 WioTrackerL1_room_server                  608256      51200
