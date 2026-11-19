@@ -94,7 +94,7 @@ A manager supplies messages a Companion missed while it was away, so the stock a
 | (request) | they match one of the last 16 | `duplicate`; nothing is queued |
 | (request) | text does not fit with the marker | failed with `text-too-long` |
 | (request) | native queue full of direct messages | `busy` with `queue-full` |
-| (request) | contact or slot not stored | failed with `no-contact` or `no-channel`; no contact is created |
+| (request) | contact or slot not stored | failed with `no-contact` or `no-channel`; no contact is created; a delegated identity's local channel slot is failed with `local-channel` |
 | `delivered` | a radio copy arrives | native ACK is sent; the copy is not queued a second time |
 | `delivered` | the 16-entry memory moves past it, or the device reboots | a repeat reads as `delivered` again, under a new `epoch` after a reboot |
 | (request, repeated) | the same request is sent again | the kept result |

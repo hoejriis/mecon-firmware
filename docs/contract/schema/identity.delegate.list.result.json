@@ -32,6 +32,12 @@
           "pub": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
+          },
+          "channel": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 62,
+            "description": "The local channel slot the identity's messages are shown on (Since v0.4.0); absent when it has none."
           }
         }
       }
