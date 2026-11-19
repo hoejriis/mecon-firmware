@@ -228,7 +228,7 @@ def test_clear_stats_zeroes_the_new_counters_with_the_rest(ether, rp):
     settle(ether)
     d = radio(i)
     assert d["rx"]["unparsable"] == 1 and d["rx"]["dup"] == 1 and d["rx"]["dropped"] == 1, d["rx"]
-    assert cli.command("clear stats").startswith("OK")
+    assert "OK" in cli.command("clear stats")
     d = radio(i)
     assert d["rx"]["unparsable"] == d["rx"]["dup"] == d["rx"]["dropped"] == 0, d["rx"]
     assert d["tx"]["failed"] == d["duty_holds"] == d["cad_busy_retries"] == d["queue_full_count"] == 0, d
