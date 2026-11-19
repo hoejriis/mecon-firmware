@@ -12,7 +12,7 @@ ONLY="${1:-}"
 SURVIVED=0
 MATCHED=0
 DRY=0
-if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; fi   # --dry: only check that every mutant's target text exists (no build, no tests)
+if [ "$ONLY" = "--dry" ]; then DRY=1; ONLY=""; DRY_IDS=$(mktemp); fi   # --dry: only check that every mutant's target text exists (no build, no tests)
 FILES=0
 if [ "$ONLY" = "--files" ]; then FILES=1; ONLY=""; fi
 # Each mutant is undone with `git checkout`, which would also throw away uncommitted work: refuse a dirty tree.
@@ -49,6 +49,11 @@ if s.count(old) > 1:
     print("AMBIGUOUS TARGET (%d occurrences) in %s" % (s.count(old), p)); sys.exit(1)
 PY
     if [ $? -ne 0 ]; then echo "  -> $name"; SURVIVED=1; fi
+    # The test it names must exist too: a renamed test or parameter id made a mutant error out only in the nightly.
+    case "$target" in
+      unit:*) [ -d "test/${target#unit:}" ] || { echo "TEST MISSING: $target  -> $name"; SURVIVED=1; } ;;
+      *) printf '%s\t%s\n' "$name" "$target" >> "$DRY_IDS" ;;
+    esac
     return 0
   fi
   python3 - "$file" "$old" "$new" <<'PY'
@@ -100,7 +105,19 @@ for f in sim/mutants/*.sh; do TOPIC="$f"; . "./$f"; done
 [ "$FILES" = 1 ] && exit 0
 
 # --dry ends here, after every mutant above has had its target checked (it used to exit two thirds of the way down)
-if [ "$DRY" = 1 ]; then [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target exists"; exit $SURVIVED; fi
+if [ "$DRY" = 1 ]; then
+  # Every pytest id a mutant names must collect: one collection for all of them.
+  if python3 -c "import pytest" 2>/dev/null; then
+    if ! cut -f2 "$DRY_IDS" | tr ' ' '\n' | sort -u | xargs python3 -m pytest --collect-only -q -p no:cacheprovider > "$DRY_IDS.out" 2>&1; then
+      grep -E "^ERROR: not found|no match in any of" "$DRY_IDS.out" | head -20
+      echo "TEST ID MISSING: a mutant names a test that does not collect (above)"; SURVIVED=1
+    fi
+  else
+    echo "pytest is not installed: the test ids the mutants name were not checked"
+  fi
+  rm -f "$DRY_IDS" "$DRY_IDS.out"
+  [ "$SURVIVED" = 0 ] && echo "DRY CHECK: every mutant target and test exists"; exit $SURVIVED
+fi
 echo "RESTORED; final clean run:"
 if [ -z "$ONLY" ] && [ "$DRY" = 0 ]; then build; sim/run.sh python3 -m pytest sim/tests -q -p no:cacheprovider 2>&1 | tail -3; fi
 # One mutant: no suite, but the restored source is built, or the next test runs the mutant's binary and fails for nothing
