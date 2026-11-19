@@ -1103,7 +1103,7 @@ void MeconIface::onObserve(void* user, float snr, float rssi, const uint8_t* raw
   char* ev = static_cast<char*>(malloc(RESULT_MAX));
   if (!ev) { m->_obs.dropped++; return; }
   const uint32_t ts = m->_mesh->getRTCClock()->knownTime();
-  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts != 0, ts, snr, rssi, raw, len, info.fp,
+  int n = writeObservation(ev, RESULT_MAX, m->_clock, m->_epoch, ts != 0, ts, snr, rssi, raw, len, info,
                                  m->_obs.dropped);
   if (n > 0) n = m->_prov.sign("observations", ev, (size_t)n, RESULT_MAX);   // -1: not signable, so not sent
   if (n <= 0) m->_obs.dropped++;   // and counted, so the next event tells the manager how many went missing

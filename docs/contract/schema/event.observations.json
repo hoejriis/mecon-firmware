@@ -55,6 +55,26 @@
       "pattern": "^[0-9a-f]{16}$",
       "description": "packet fingerprint (since v0.4.0): the first 8 bytes of the packet hash, same for one packet whatever path it took; absent when the frame is not a valid packet"
     },
+    "freq_mhz": {
+      "type": "number",
+      "description": "radio frequency in MHz as last applied (since v0.4.0); absent before the radio is configured"
+    },
+    "bw_khz": {
+      "type": "number",
+      "description": "radio bandwidth in kHz as last applied (since v0.4.0)"
+    },
+    "sf": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 12,
+      "description": "spreading factor as last applied (since v0.4.0)"
+    },
+    "cr": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 8,
+      "description": "coding rate denominator (4/5 to 4/8) as last applied (since v0.4.0)"
+    },
     "path_len": {
       "type": [
         "integer",

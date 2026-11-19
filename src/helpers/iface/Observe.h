@@ -9,6 +9,10 @@ namespace Iface {
 // What the dispatcher knows about a packet beyond its bytes.
 struct ObserveInfo {
   const uint8_t* fp = nullptr;   // the packet hash, 8 bytes; null when the frame is not a valid packet
+  bool freq_known = false;       // the radio's frequency and bandwidth as applied
+  float freq_mhz = 0, bw_khz = 0;
+  bool mod_known = false;        // the spreading factor and coding rate (5..8) as applied
+  uint8_t sf = 0, cr = 0;
 };
 
 typedef void (*ObserveFn)(void* user, float snr, float rssi, const uint8_t* raw, int len, const ObserveInfo& info);

@@ -18,7 +18,6 @@
 #include <helpers/iface/KeyExportOps.h>
 #include <helpers/iface/IfaceFrames.h>
 #include <helpers/iface/Streams.h>
-#include <helpers/iface/Observe.h>
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/AuditLog.h>
 #include <helpers/iface/DeployAuth.h>

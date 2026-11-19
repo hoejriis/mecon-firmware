@@ -1367,7 +1367,7 @@ void MyMesh::begin() {
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-  _radio_freq = _prefs.freq; _radio_bw = _prefs.bw;
+  _radio_freq = _prefs.freq; _radio_bw = _prefs.bw; _radio_sf = _prefs.sf; _radio_cr = _prefs.cr;
   radio_driver.setTxPower(_prefs.tx_power_dbm);
   radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
 
@@ -1974,7 +1974,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       savePrefs();
 
       radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-      _radio_freq = _prefs.freq; _radio_bw = _prefs.bw;   // the duty-cycle floor follows at once
+      _radio_freq = _prefs.freq; _radio_bw = _prefs.bw; _radio_sf = _prefs.sf; _radio_cr = _prefs.cr;   // the duty-cycle floor follows at once
       MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d", freq, bw, (uint32_t)sf,
                          (uint32_t)cr);
 

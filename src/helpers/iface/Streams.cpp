@@ -106,10 +106,11 @@ uint32_t StreamClock::due(SubSet* const* sets, int nsets, uint32_t now) {
 }
 
 int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, bool ts_known, uint32_t ts, float snr,
-                     float rssi, const uint8_t* raw, int len, const uint8_t* fp, uint32_t dropped) {
+                     float rssi, const uint8_t* raw, int len, const ObserveInfo& info, uint32_t dropped) {
+  const uint8_t* fp = info.fp;
   if (len < 0 || len > 255) return -1;
   // Built on the heap: this runs in the radio's receive path, where the loop task's stack is short.
-  const size_t data_cap = 2 * 255 + 192;
+  const size_t data_cap = 2 * 255 + 256;
   char* data = static_cast<char*>(malloc(data_cap));
   if (!data) return -1;
   static const char H[] = "0123456789abcdef";
@@ -117,13 +118,17 @@ int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, b
   for (int i = 0; i < len; i++) { data[n++] = H[raw[i] >> 4]; data[n++] = H[raw[i] & 15]; }
   const RawHeader hdr = parseRawHeader(raw, len);
   char path[8];
-  char fps[32];
+  char fps[96];
   fps[0] = 0;
+  int k = 0;
   if (fp) {
-    int k = snprintf(fps, sizeof(fps), ",\"fp\":\"");
+    k = snprintf(fps, sizeof(fps), ",\"fp\":\"");
     for (int i = 0; i < 8; i++) { fps[k++] = H[fp[i] >> 4]; fps[k++] = H[fp[i] & 15]; }
     fps[k++] = '"'; fps[k] = 0;
   }
+  if (info.freq_known) k += snprintf(fps + k, sizeof(fps) - k, ",\"freq_mhz\":%.3f,\"bw_khz\":%.4g", (double)info.freq_mhz, (double)info.bw_khz);
+  if (k > (int)sizeof(fps) - 24) k = (int)sizeof(fps) - 24;   // the figures are bounded; this only keeps the arithmetic safe
+  if (info.mod_known) snprintf(fps + k, sizeof(fps) - k, ",\"sf\":%u,\"cr\":%u", (unsigned)info.sf, (unsigned)info.cr);
   if (hdr.path_known) snprintf(path, sizeof(path), "%u", (unsigned)hdr.path_len); else snprintf(path, sizeof(path), "null");
   n += snprintf(data + n, data_cap - n,
                 "\",\"len\":%d,\"type\":%u,\"route\":\"%s\",\"path_len\":%s%s,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}",

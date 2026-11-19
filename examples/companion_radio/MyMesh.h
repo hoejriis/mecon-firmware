@@ -208,6 +208,10 @@ protected:
     freq_mhz = _radio_freq; bw_khz = _radio_bw;
     return _radio_freq > 0;
   }
+  bool getRadioModulation(uint8_t& sf, uint8_t& cr) const override {
+    sf = _radio_sf; cr = _radio_cr;
+    return _radio_sf > 0;
+  }
   int getInterferenceThreshold() const override;
   bool getCADEnabled() const override;
   int getAGCResetInterval() const override {
@@ -439,6 +443,7 @@ private:
   void recordFactoryReset(uint8_t caller);
   char reply_buf[166];
   float _radio_freq = 0, _radio_bw = 0;
+  uint8_t _radio_sf = 0, _radio_cr = 0;   // as applied to the radio, for the observations stream
   uint8_t app_target_ver;
   bool _clock_set = false;        // CMD_SET_DEVICE_TIME has set the clock since boot (frameGate)
   uint8_t *sign_data;

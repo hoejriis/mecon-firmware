@@ -337,6 +337,8 @@ void Dispatcher::checkRecv() {
   if (obs_raw) {
     Iface::ObserveInfo info;
     info.fp = obs_has_fp ? obs_fp : NULL;
+    info.freq_known = getRadioChannel(info.freq_mhz, info.bw_khz);
+    info.mod_known = getRadioModulation(info.sf, info.cr);
     Iface::observe(obs_snr, obs_rssi, obs_raw, obs_len, info);
     free(obs_raw);
   }

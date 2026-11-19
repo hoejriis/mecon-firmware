@@ -189,6 +189,8 @@ protected:
    * Roles override this and report the parameters last applied to the radio, not merely stored in prefs.
   */
   virtual bool getRadioChannel(float& freq_mhz, float& bw_khz) const { return false; }
+  // The spreading factor and coding rate (5..8) last applied to the radio, for the observations stream; false if unknown.
+  virtual bool getRadioModulation(uint8_t& sf, uint8_t& cr) const { return false; }
   /**
    * \brief  Where this node's duty-window bins start, as an offset in ms into the first 30 s bin. A packet held for
    *          duty is released when a bin ages out, so nodes that boot together (a power restore) would otherwise all

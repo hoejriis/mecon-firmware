@@ -71,3 +71,28 @@ def test_the_fingerprint_of_a_trace_is_taken_as_heard_not_after_this_node_added_
     trace = bytes([(TRACE << 2) | 0x02, 0]) + b"\x01\x00\x00\x00" + b"\x02\x00\x00\x00" + b"\x00" + bytes([mine, 0x55])
     d = observed(ether, i, "fp", [trace])[0]
     assert d["fp"] == fingerprint(trace), d
+
+
+def stored_radio(i):
+    f, bw, sf, cr = i.request("config.get", {"keys": ["radio"]})["result"]["values"]["radio"].split(",")
+    return float(f), float(bw), int(sf), int(cr)
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_an_observation_carries_the_radio_parameters_the_radio_is_set_to(ether, nodes, kind):
+    n, cli, i = open_stream(ether, nodes, kind, "rp")
+    freq, bw, sf, cr = stored_radio(i)
+    d = observed(ether, i, "rp", [txt_flood()])[0]
+    assert (d["freq_mhz"], d["bw_khz"], d["sf"], d["cr"]) == (pytest.approx(freq, abs=0.0006), pytest.approx(bw, rel=1e-3), sf, cr), (d, (freq, bw, sf, cr))
+    assert isinstance(d["sf"], int) and isinstance(d["cr"], int) and 5 <= d["cr"] <= 8 and 5 <= d["sf"] <= 12, d
+
+
+def test_the_radio_parameters_follow_a_temporary_radio_change_and_not_only_the_stored_settings(ether, nodes):
+    n, cli, i = open_stream(ether, nodes, "repeater", "rp")
+    before = observed(ether, i, "rp", [txt_flood()])[0]
+    assert (before["sf"], before["cr"]) != (9, 6) and before["freq_mhz"] != pytest.approx(868.1), before
+    assert cli.command("tempradio 868.1,125,9,6,30").startswith("OK")
+    ether.wait_until_us(ether.now_us() + 3e6, timeout=60)
+    after = observed(ether, i, "rp", [txt_flood(fill=0x6B)])[0]
+    assert (after["freq_mhz"], after["bw_khz"], after["sf"], after["cr"]) == (pytest.approx(868.1, abs=0.0006), 125, 9, 6), after
+    assert stored_radio(i)[2:] == (before["sf"], before["cr"]), "the stored settings did not change"

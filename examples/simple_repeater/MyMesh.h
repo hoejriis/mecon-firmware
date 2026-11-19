@@ -122,6 +122,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   CayenneLPP telemetry;
   unsigned long set_radio_at, revert_radio_at;
   float radio_freq = 0, radio_bw = 0;   // as applied to the radio
+  uint8_t radio_sf = 0, radio_cr = 0;   // likewise
   float pending_freq;
   float pending_bw;
   uint8_t pending_sf;
@@ -156,6 +157,10 @@ protected:
   bool getRadioChannel(float& freq_mhz, float& bw_khz) const override {
     freq_mhz = radio_freq; bw_khz = radio_bw;
     return radio_freq > 0;
+  }
+  bool getRadioModulation(uint8_t& sf, uint8_t& cr) const override {
+    sf = radio_sf; cr = radio_cr;
+    return radio_sf > 0;
   }
 
   bool allowPacketForward(const mesh::Packet* packet) override;
