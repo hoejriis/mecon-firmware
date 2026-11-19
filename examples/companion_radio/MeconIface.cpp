@@ -1486,18 +1486,20 @@ bool MeconIface::onLoraChannel(int slot, const uint8_t* data, size_t n) {
 
 // A ping heard on the bound management channel, by a device that is enrolled: one reply, scheduled by FmcPing. Never on another
 // slot, never unenrolled, never before the binding was read (the slot is -1 until then).
-void MeconIface::onChannelText(int slot, const char* text, uint32_t stamp) {
-  if (slot < 0 || slot != _lora_bound_slot || !_auth.enrolled()) return;
+bool MeconIface::fmcMay(int slot) const { return slot >= 0 && slot == _lora_bound_slot && _auth.enrolled(); }
+
+void MeconIface::onChannelText(int slot, const char* text) {
+  if (!fmcMay(slot)) return;
   CryptoRNG rng;
   uint32_t r = 0;
   rng.random(reinterpret_cast<uint8_t*>(&r), sizeof(r));
-  _fmc.onText(text, _mesh->_prefs.node_name, millis(), r, stamp);
+  _fmc.onText(text, _mesh->_prefs.node_name, millis(), r);
 }
 
 // The reply, when due: only on the bound channel of an enrolled device, and only with the airtime to spare.
 void MeconIface::fmcTick(uint32_t now) {
   if (!_fmc.pending()) return;
-  if (_lora_bound_slot < 0 || !_auth.enrolled()) { _fmc.cancel(); return; }
+  if (!fmcMay(_lora_bound_slot)) { _fmc.cancel(); return; }
   if (!_fmc.due(now)) return;
   if (_mesh->getRemainingTxBudget() < radio_driver.getEstAirtimeFor((int)FMC_REPLY_MAX + 40)) { _fmc.defer(now); return; }
   FmcFacts f;

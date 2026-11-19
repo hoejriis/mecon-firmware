@@ -101,16 +101,14 @@ inline size_t fmcBuild(char* out, size_t cap, const FmcFacts& f) {
   return n;
 }
 
-// The state of the answer: one pending reply, the times of the last replies, and the last pings heard.
+// The state of the answer: one pending reply and the times of the last replies.
 class FmcPing {
 public:
   // A channel message heard on the bound channel by an enrolled device: schedules a reply when it asks for one. True when it did.
-  bool onText(const char* text, const char* name, uint32_t now, uint32_t rnd, uint32_t stamp) {
+  // A packet heard twice reaches here once: the mesh drops a packet it has seen (its hash is in the seen table).
+  bool onText(const char* text, const char* name, uint32_t now, uint32_t rnd) {
     const FmcAsk ask = fmcParse(text, name);
     if (ask == FMC_NONE) return false;
-    const uint32_t id = hash(text, stamp);
-    for (uint8_t i = 0; i < SEEN; i++) if (_seen_ok[i] && _seen[i] == id) return false;   // the same ping again
-    _seen[_next] = id; _seen_ok[_next] = true; _next = (uint8_t)((_next + 1) % SEEN);
     if (_pending) return false;   // one reply is waiting: the queue is one deep
     if (ask == FMC_ALL) {
       if (_bcast_ok && (uint32_t)(now - _bcast_ms) < FMC_BROADCAST_GAP_MS) return false;
@@ -142,20 +140,11 @@ public:
   bool pending() const { return _pending; }
 
 private:
-  static const uint8_t SEEN = 4;
-  static uint32_t hash(const char* s, uint32_t stamp) {
-    uint32_t h = 2166136261u ^ stamp;
-    for (; *s; s++) h = (h ^ (uint8_t)*s) * 16777619u;
-    return h;
-  }
   bool _pending = false, _pending_all = false;
   uint32_t _due = 0;
   uint8_t _retries = 0;
   bool _bcast_ok = false, _target_ok = false;
   uint32_t _bcast_ms = 0, _target_ms = 0;
-  uint32_t _seen[SEEN] = {0};
-  bool _seen_ok[SEEN] = {false};
-  uint8_t _next = 0;
 };
 
 }  // namespace Iface

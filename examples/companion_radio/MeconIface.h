@@ -87,7 +87,7 @@ public:
   bool onLora() const { return _on_lora; }
   bool onLoraChannel(int slot, const uint8_t* data, size_t n);
   // A text heard on a channel slot: a ping on the bound management channel of an enrolled device is answered (MANAGEMENT_CHANNEL.md section 7).
-  void onChannelText(int slot, const char* text, uint32_t stamp);
+  void onChannelText(int slot, const char* text);
   void onRfReport(const uint8_t* key, size_t key_len, const uint8_t* bytes, size_t n);
   Iface::StandingService& standing() { return _standing; }
   const Iface::LoraLink& lora() const { return _lora; }
@@ -294,6 +294,7 @@ private:
   static bool loraSend(void* user, const Iface::LoraLink::Peer& p, const uint8_t* frame, size_t n, bool flood_ok);
   void loraTick(uint32_t now);
   void fmcTick(uint32_t now);
+  bool fmcMay(int slot) const;   // enrolled, and slot is the bound management channel
   void rfTick(uint32_t now);
   // An rf reply whose event no subscribed link's queue could take yet: held, as inventory pages are, rather than dropped
   // behind periodic events (#531). One at a time, for at most RF_PEND_MS; then a short queue-full event says it was lost.

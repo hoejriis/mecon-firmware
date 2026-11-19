@@ -629,14 +629,12 @@ int MyMesh::searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channel
 void MyMesh::onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel&, uint8_t* data, size_t len) {
   Iface::LoraChannelSink& s = Iface::loraChannelSink();
   if (type == PAYLOAD_TYPE_GRP_TXT) {   // the one channel text this role reads: a ping on the bound channel (MANAGEMENT_CHANNEL.md section 7)
-    if (len < 6 || (data[4] >> 2) != 0 || !s.ping_ok || !s.ping_ok(s.user)) return;
+    if (len < 6 || (data[4] >> 2) != 0 || !fmcMay()) return;
     data[len] = 0;
     CryptoRNG rng;
     uint32_t r = 0;
     rng.random(reinterpret_cast<uint8_t*>(&r), sizeof(r));
-    uint32_t stamp;
-    memcpy(&stamp, data, 4);
-    _fmc.onText((const char*)&data[5], _prefs.node_name, millis(), r, stamp);
+    _fmc.onText((const char*)&data[5], _prefs.node_name, millis(), r);
     return;
   }
   if (type != PAYLOAD_TYPE_GRP_DATA || len < 3 || !s.frame) return;
@@ -645,12 +643,18 @@ void MyMesh::onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::Gro
   if (s.frame(s.user, data + 3, data[2])) packet->markDoNotRetransmit();   // it has arrived: no need to carry it further
 }
 
+// Enrolled, with the management channel bound: the interface's verdict, the one check for hearing a ping and for answering it.
+bool MyMesh::fmcMay() const {
+  const Iface::LoraChannelSink& s = Iface::loraChannelSink();
+  return s.ping_ok && s.ping_ok(s.user);
+}
+
 // The reply to a ping, when due: a plain channel text on the bound channel, with the airtime to spare.
 void MyMesh::fmcTick() {
   if (!_fmc.pending()) return;
   uint8_t key[16];
   Iface::LoraChannelSink& s = Iface::loraChannelSink();
-  if (!s.ping_ok || !s.ping_ok(s.user) || !s.key || !s.key(s.user, key)) { _fmc.cancel(); return; }
+  if (!fmcMay() || !s.key || !s.key(s.user, key)) { _fmc.cancel(); return; }
   if (!_fmc.due(millis())) return;
   if (getRemainingTxBudget() < _radio->getEstAirtimeFor((int)Iface::FMC_REPLY_MAX + 40)) { _fmc.defer(millis()); return; }
   Iface::FmcFacts f;

@@ -187,7 +187,7 @@ def test_a_broadcast_is_answered_once_in_five_minutes_and_again_after(ether, nod
 
 
 @pytest.mark.parametrize("kind", BOTH)
-def test_one_ping_sends_one_frame_and_the_same_ping_twice_is_one_answer(ether, nodes, kind):
+def test_one_ping_sends_one_frame_and_the_same_packet_again_is_one_answer(ether, nodes, kind):
     name = "fd" + kind[:2]
     bound(nodes, ether, kind, name)
     m = member(nodes, ether, name)
@@ -198,7 +198,8 @@ def test_one_ping_sends_one_frame_and_the_same_ping_twice_is_one_answer(ether, n
     mine = [t for t in frames(ether, name, t0) if t.length > 60]
     assert len(mine) == 1, "one reply on the air: %d" % len(mine)
     assert not [t for t in ether.tx_of(name) if t.start_us >= t0 and (t.data[0] >> 2) & 15 not in (4, 5)], "and nothing else of its own"
-    # the same text under the same stamp, as another route would bring it
+    # the same packet again, as another route would bring it: the mesh has seen it, so nothing more is scheduled. The ping is
+    # a targeted one with its gap long past (this clock runs ten times fast), so only that drop stands between it and a second reply
     _ts[0] -= 1
     ping(m, "ping " + name)
     assert replies(m, wait_s=4.0) == []

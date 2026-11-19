@@ -53,58 +53,50 @@ TEST(FmcBuild, OnlyKnownFieldsAndNeverPastTheBuffer) {
 
 TEST(FmcPing, ABroadcastIsAnsweredOnceInFiveMinutesAfterItsJitter) {
   FmcPing p;
-  EXPECT_TRUE(p.onText("A: ping", "n1", 1000, 12345, 1));
+  EXPECT_TRUE(p.onText("A: ping", "n1", 1000, 12345));
   EXPECT_FALSE(p.due(1000 + 12344));
   EXPECT_TRUE(p.due(1000 + 12345));
   EXPECT_FALSE(p.due(1000 + 12346));                                   // taken once
   const uint32_t sent = 1000 + 12345;                                   // the gap runs from the send
-  EXPECT_FALSE(p.onText("A: ping", "n1", sent + 1000, 0, 2));           // inside five minutes
-  EXPECT_FALSE(p.onText("A: ping", "n1", sent + FMC_BROADCAST_GAP_MS - 1, 0, 3));
-  EXPECT_TRUE(p.onText("A: ping", "n1", sent + FMC_BROADCAST_GAP_MS, 0, 4));
+  EXPECT_FALSE(p.onText("A: ping", "n1", sent + 1000, 0));           // inside five minutes
+  EXPECT_FALSE(p.onText("A: ping", "n1", sent + FMC_BROADCAST_GAP_MS - 1, 0));
+  EXPECT_TRUE(p.onText("A: ping", "n1", sent + FMC_BROADCAST_GAP_MS, 0));
 }
 
 TEST(FmcPing, TheJitterNeverPassesThirtySeconds) {
   FmcPing p;
-  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 0xFFFFFFFFu, 1));
+  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 0x7FFFFFFFu));
   EXPECT_TRUE(p.due(FMC_BROADCAST_JITTER_MS));
 }
 
 TEST(FmcPing, ATargetedPingIsNotHeldByTheBroadcastGapButHasItsOwn) {
   FmcPing p;
-  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 0, 1));
+  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 0));
   ASSERT_TRUE(p.due(0));
-  EXPECT_TRUE(p.onText("A: ping n1", "n1", 100, 0, 2));
+  EXPECT_TRUE(p.onText("A: ping n1", "n1", 100, 0));
   ASSERT_TRUE(p.due(100));
-  EXPECT_FALSE(p.onText("A: ping n1", "n1", 100 + FMC_TARGET_GAP_MS - 1, 0, 3));
-  EXPECT_TRUE(p.onText("A: ping n1", "n1", 100 + FMC_TARGET_GAP_MS, 0, 4));
+  EXPECT_FALSE(p.onText("A: ping n1", "n1", 100 + FMC_TARGET_GAP_MS - 1, 0));
+  EXPECT_TRUE(p.onText("A: ping n1", "n1", 100 + FMC_TARGET_GAP_MS, 0));
 }
 
 TEST(FmcPing, ThePingForAnotherNameSchedulesNothing) {
   FmcPing p;
-  EXPECT_FALSE(p.onText("A: ping n2", "n1", 0, 0, 1));
+  EXPECT_FALSE(p.onText("A: ping n2", "n1", 0, 0));
   EXPECT_FALSE(p.pending());
-}
-
-TEST(FmcPing, TheSamePingAgainIsOneAnswerButANewOneUnderAnotherStampIsNot) {
-  FmcPing p;
-  ASSERT_TRUE(p.onText("A: ping n1", "n1", 0, 0, 7));
-  ASSERT_TRUE(p.due(0));
-  EXPECT_FALSE(p.onText("A: ping n1", "n1", 20000, 0, 7));   // after the gap, but the same ping
-  EXPECT_TRUE(p.onText("A: ping n1", "n1", 20000, 0, 8));
 }
 
 TEST(FmcPing, OneReplyWaitsAtATimeAndADroppedOneDoesNotCountAgainstTheGap) {
   FmcPing p;
-  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 5000, 1));
-  EXPECT_FALSE(p.onText("B: ping n1", "n1", 10, 0, 2));       // the queue is one deep
+  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 5000));
+  EXPECT_FALSE(p.onText("B: ping n1", "n1", 10, 0));       // the queue is one deep
   ASSERT_TRUE(p.due(5000));
   p.dropped();                                               // no airtime: nothing went out
-  EXPECT_TRUE(p.onText("A: ping", "n1", 6000, 0, 3));
+  EXPECT_TRUE(p.onText("A: ping", "n1", 6000, 0));
 }
 
 TEST(FmcPing, AReplyWithNoAirtimeWaitsAndTriesAgainThenGivesUp) {
   FmcPing p;
-  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 0, 1));
+  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 0));
   uint32_t t = 0;
   for (int i = 0; i < FMC_RETRIES; i++) {
     ASSERT_TRUE(p.due(t));
@@ -115,19 +107,19 @@ TEST(FmcPing, AReplyWithNoAirtimeWaitsAndTriesAgainThenGivesUp) {
   ASSERT_TRUE(p.due(t));
   EXPECT_FALSE(p.defer(t));                                          // the last try has failed: given up
   EXPECT_FALSE(p.pending());
-  EXPECT_TRUE(p.onText("A: ping", "n1", t + 1, 0, 2));               // and the gap was not used up
+  EXPECT_TRUE(p.onText("A: ping", "n1", t + 1, 0));               // and the gap was not used up
 }
 
 TEST(FmcPing, ThePingIsHeldByTheGapFromTheSendNotFromTheArrival) {
   FmcPing p;
-  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 20000, 1));               // sent at 20 s after a jitter
+  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 20000));               // sent at 20 s after a jitter
   ASSERT_TRUE(p.due(20000));
-  EXPECT_FALSE(p.onText("A: ping", "n1", 20000 + FMC_BROADCAST_GAP_MS - 1, 0, 2));
+  EXPECT_FALSE(p.onText("A: ping", "n1", 20000 + FMC_BROADCAST_GAP_MS - 1, 0));
 }
 
 TEST(FmcPing, ACancelledReplyIsGone) {
   FmcPing p;
-  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 100, 1));
+  ASSERT_TRUE(p.onText("A: ping", "n1", 0, 100));
   p.cancel();
   EXPECT_FALSE(p.due(100000));
 }
@@ -135,10 +127,10 @@ TEST(FmcPing, ACancelledReplyIsGone) {
 TEST(FmcPing, TheClockMayWrap) {
   FmcPing p;
   const uint32_t t = 0xFFFFFF00u;
-  ASSERT_TRUE(p.onText("A: ping", "n1", t, 0x400, 1));
+  ASSERT_TRUE(p.onText("A: ping", "n1", t, 0x400));
   EXPECT_FALSE(p.due(t + 0x3FF));
   EXPECT_TRUE(p.due(t + 0x400));
-  EXPECT_FALSE(p.onText("A: ping", "n1", t + 0x500, 0, 2));    // inside the gap across the wrap
+  EXPECT_FALSE(p.onText("A: ping", "n1", t + 0x500, 0));    // inside the gap across the wrap
 }
 
 int main(int argc, char** argv) {
