@@ -527,6 +527,7 @@ RESP_NO_MORE_MESSAGES = 10
 CMD_GET_CHANNEL, RESP_CHANNEL_INFO = 31, 18
 CMD_SEND_LOGIN, PUSH_LOGIN_SUCCESS, PUSH_LOGIN_FAIL = 26, 0x85, 0x86
 RESP_CONTACT_MSG_RECV_V3, RESP_CHANNEL_MSG_RECV_V3 = 16, 17
+RESP_CHANNEL_MSG_RECV = 8
 PUSH_MSG_WAITING = 0x83
 CMD_GET_CONTACTS, CMD_REBOOT, CMD_SET_AUTOADD_CONFIG = 4, 19, 58
 RESP_CONTACTS_START, RESP_CONTACT, RESP_END_OF_CONTACTS = 2, 3, 4
@@ -735,6 +736,9 @@ class CompanionClient:
             return {"kind": "channel", "snr": struct.unpack_from("b", f, 1)[0] / 4.0, "channel": f[4],
                     "path_len": f[5], "txt_type": f[6], "ts": struct.unpack_from("<I", f, 7)[0],
                     "text": f[11:].decode(errors="replace")}
+        if f[0] == RESP_CHANNEL_MSG_RECV:       # chan_idx, path_len, txt_type, ts, text (an app that did not ask for V3)
+            return {"kind": "channel", "snr": 0.0, "channel": f[1], "path_len": f[2], "txt_type": f[3],
+                    "ts": struct.unpack_from("<I", f, 4)[0], "text": f[8:].decode(errors="replace")}
         raise AssertionError("unexpected message frame %r" % f[:20])
 
     def close(self):
