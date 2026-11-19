@@ -128,6 +128,8 @@ class Dispatcher {
   bool  prev_isrecv_mode;
   uint32_t n_sent_flood, n_sent_direct;
   uint32_t n_recv_flood, n_recv_direct;
+  // Always-on diagnostic counters (TELEMETRY.md `radio`): since boot or the last resetStats(), wrapping at 2^32.
+  uint32_t n_rx_dup, n_rx_dropped, n_rx_unparsable, n_tx_fail, n_cad_retries, n_duty_holds, n_queue_full;
   DutyWindow duty;                     // airtime of the trailing hour (see helpers/DutyWindow.h)
   uint32_t outbound_est_ms;            // estimated airtime of the packet being transmitted
 
@@ -167,6 +169,10 @@ protected:
   }
 
   virtual DispatcherAction onRecvPacket(Packet* pkt) = 0;
+
+  // For the layer above, which alone knows why it ignores a parsed packet.
+  void countRxDup() { n_rx_dup++; }          // a packet whose hash was already seen
+  void countRxDropped() { n_rx_dropped++; }  // a direct packet that is not for this node's hop
 
   virtual void logRxRaw(float snr, float rssi, const uint8_t raw[], int len) { }   // custom hook
 
@@ -218,8 +224,18 @@ public:
   uint32_t getNumSentDirect() const { return n_sent_direct; }
   uint32_t getNumRecvFlood() const { return n_recv_flood; }
   uint32_t getNumRecvDirect() const { return n_recv_direct; }
+  uint32_t getNumRxDup() const { return n_rx_dup; }
+  uint32_t getNumRxDropped() const { return n_rx_dropped; }
+  uint32_t getNumRxUnparsable() const { return n_rx_unparsable; }   // received frames that were not a valid packet
+  uint32_t getNumTxFail() const { return n_tx_fail; }               // packets dropped for a failed or timed-out send
+  uint32_t getNumCadRetries() const { return n_cad_retries; }       // sends put off because the channel was busy
+  uint32_t getNumDutyHolds() const { return n_duty_holds; }         // sends put back to wait for airtime
+  uint32_t getNumQueueFull() const { return n_queue_full; }         // times no packet was free (the flag says only "ever")
+  int getOutboundDepth() const { return _mgr->getOutboundTotal(); } // queued to send, including those waiting for their time
+  int getPoolFree() const { return _mgr->getFreeCount(); }          // unused packets left in the pool
   void resetStats() {
     n_sent_flood = n_sent_direct = n_recv_flood = n_recv_direct = 0;
+    n_rx_dup = n_rx_dropped = n_rx_unparsable = n_tx_fail = n_cad_retries = n_duty_holds = n_queue_full = 0;
     _err_flags = 0;
   }
 

@@ -1,6 +1,7 @@
 #include "Streams.h"
 #include "../HeapWatch.h"
 #include "CompactReport.h"
+#include "RawHeader.h"
 #include "helpers/MemStats.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -108,14 +109,18 @@ int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, b
                      float rssi, const uint8_t* raw, int len, uint32_t dropped) {
   if (len < 0 || len > 255) return -1;
   // Built on the heap: this runs in the radio's receive path, where the loop task's stack is short.
-  const size_t data_cap = 2 * 255 + 128;
+  const size_t data_cap = 2 * 255 + 192;
   char* data = static_cast<char*>(malloc(data_cap));
   if (!data) return -1;
   static const char H[] = "0123456789abcdef";
   int n = snprintf(data, data_cap, "{\"raw\":\"");
   for (int i = 0; i < len; i++) { data[n++] = H[raw[i] >> 4]; data[n++] = H[raw[i] & 15]; }
-  n += snprintf(data + n, data_cap - n, "\",\"len\":%d,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}", len, (int)rssi,
-                (double)snr, (unsigned long)dropped);
+  const RawHeader hdr = parseRawHeader(raw, len);
+  char path[8];
+  if (hdr.path_known) snprintf(path, sizeof(path), "%u", (unsigned)hdr.path_len); else snprintf(path, sizeof(path), "null");
+  n += snprintf(data + n, data_cap - n,
+                "\",\"len\":%d,\"type\":%u,\"route\":\"%s\",\"path_len\":%s,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}",
+                len, (unsigned)hdr.type, hdr.route, path, (int)rssi, (double)snr, (unsigned long)dropped);
   int out = -1;
   if (n > 0 && (size_t)n < data_cap)
     out = writeEvent(ev, cap, STREAMS[SID_OBSERVATIONS].name, ++clock.seq[SID_OBSERVATIONS], epoch, ts_known, ts, data);
@@ -146,15 +151,26 @@ void writeRadio(JsonWriter& w, mesh::Dispatcher& d, mesh::Radio& r, const RadioC
   w.key("flood"); w.unum(d.getNumRecvFlood());
   w.key("direct"); w.unum(d.getNumRecvDirect());
   if (counts.known) { w.key("total"); w.unum(counts.rx_total); w.key("errors"); w.unum(counts.rx_errors); }
+  w.key("dup"); w.unum(d.getNumRxDup());
+  w.key("dropped"); w.unum(d.getNumRxDropped());
+  w.key("unparsable"); w.unum(d.getNumRxUnparsable());
   w.endObject();
   w.key("tx"); w.beginObject();
   w.key("flood"); w.unum(d.getNumSentFlood());
   w.key("direct"); w.unum(d.getNumSentDirect());
   if (counts.known) { w.key("total"); w.unum(counts.tx_total); }
+  w.key("failed"); w.unum(d.getNumTxFail());
   w.endObject();
   const uint16_t err = d.getErrFlags();
   w.key("queue_full"); w.boolean((err & ERR_EVENT_FULL) != 0);
+  w.key("queue_full_count"); w.unum(d.getNumQueueFull());
   w.key("cad_timeout"); w.boolean((err & ERR_EVENT_CAD_TIMEOUT) != 0);
+  w.key("cad_busy_retries"); w.unum(d.getNumCadRetries());
+  w.key("duty_holds"); w.unum(d.getNumDutyHolds());
+  w.key("queue"); w.beginObject();
+  w.key("depth"); w.num(d.getOutboundDepth());
+  w.key("free"); w.num(d.getPoolFree());
+  w.endObject();
   w.key("startrx_timeout"); w.boolean((err & ERR_EVENT_STARTRX_TIMEOUT) != 0);
   // A noise floor of 0 dBm is not a reading: the driver reports 0 until it has calibrated.
   const int nf = r.getNoiseFloor();
