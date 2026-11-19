@@ -59,6 +59,18 @@ TEST(DepDelegates, AnotherKeyAnotherLengthAndATruncationAreRefused) {
   EXPECT_FALSE(dlgOpen(KEY, sealed, len, out, p.size() - 1, &m)) << "a destination too small";
 }
 
+TEST(DepDelegates, AFileCutShortOrWithBytesAddedIsRefused) {
+  const auto p = records(2);
+  uint8_t sealed[DLG_SEALED_MAX + 1], out[DLG_PLAIN_MAX];
+  const size_t len = dlgSeal(KEY, NONCE, p.data(), p.size(), sealed, DLG_SEALED_MAX);
+  ASSERT_GT(len, 0u);
+  size_t m = 0;
+  EXPECT_TRUE(dlgOpen(KEY, sealed, len, out, sizeof(out), &m));
+  EXPECT_FALSE(dlgOpen(KEY, sealed, len - 1, out, sizeof(out), &m)) << "cut: the tag would be read past the end";
+  sealed[len] = 0;
+  EXPECT_FALSE(dlgOpen(KEY, sealed, len + 1, out, sizeof(out), &m)) << "a byte added";
+}
+
 TEST(DepDelegates, OnlyWholeRecordsUpToTheLimitAreSealed) {
   const auto p = records(DLG_SLOTS + 1);
   uint8_t sealed[DLG_SEALED_MAX + DLG_REC];

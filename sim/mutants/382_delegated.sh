@@ -27,7 +27,7 @@ mutate dl_bad_key_stored $F '  if (!mesh::LocalIdentity::validatePrivateKey(prv)
 mutate dl_key_mismatch $F '  if (memcmp(li->pub_key, pub, PUB_KEY_SIZE) != 0) { c.error = "key_mismatch"; goto done; }' '' $T::test_the_sealed_key_must_open_for_this_device_job_slot_and_key_and_nothing_else_is_accepted
 mutate dl_reserved_hash $F '  if (pub[0] == 0x00 || pub[0] == 0xFF) { c.error = "reserved_hash"; return ST_REFUSED; }' '' $T::test_the_sealed_key_must_open_for_this_device_job_slot_and_key_and_nothing_else_is_accepted
 mutate dl_same_as_node $F '  if (memcmp(pub, _env.node_id->pub_key, PUB_KEY_SIZE) == 0) { c.error = "same_as_node"; return ST_REFUSED; }' '' $T::test_the_published_vector_is_what_the_firmware_opens
-mutate dl_duplicate_key $F '    if (i != (int)slot && _dlg[i] && memcmp(_dlg[i]->pub_key, pub, PUB_KEY_SIZE) == 0) { c.error = "duplicate"; return ST_REFUSED; }' '' $T::test_the_sealed_key_must_open_for_this_device_job_slot_and_key_and_nothing_else_is_accepted
+mutate dl_duplicate_key $F '    if (i != (int)slot && _dlg[i] && memcmp(_dlg[i]->pub_key, pub, PUB_KEY_SIZE) == 0) { c.error = "duplicate"; return ST_REFUSED; }' '    ;' $T::test_the_sealed_key_must_open_for_this_device_job_slot_and_key_and_nothing_else_is_accepted
 mutate dl_slot_range $F '!jsonGetInt(d, ts, 0, DELEGATES_MAX - 1, &slot) ||' '!jsonGetInt(d, ts, 0, DELEGATES_MAX, &slot) ||' $T::test_the_sealed_key_must_open_for_this_device_job_slot_and_key_and_nothing_else_is_accepted
 # where they go: Hardened, reset, factory reset (equivalent below)
 mutate dl_hardened_keeps_them $F '  if (hardened && _dlg_key_present) delegatesDestroy();' '  (void)hardened;' $T::test_hardened_and_reset_destroy_every_key_and_rotation_keeps_them
