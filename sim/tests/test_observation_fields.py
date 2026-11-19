@@ -96,3 +96,70 @@ def test_the_radio_parameters_follow_a_temporary_radio_change_and_not_only_the_s
     after = observed(ether, i, "rp", [txt_flood(fill=0x6B)])[0]
     assert (after["freq_mhz"], after["bw_khz"], after["sf"], after["cr"]) == (pytest.approx(868.1, abs=0.0006), 125, 9, 6), after
     assert stored_radio(i)[2:] == (before["sf"], before["cr"]), "the stored settings did not change"
+
+
+def mine(cli):
+    return bytes.fromhex(cli.command("get public.key").lstrip("> ").strip())[0]
+
+
+def outcomes(ether, i, frames):
+    return [d["outcome"] for d in observed(ether, i, "oc", frames)]
+
+
+def test_a_repeater_reports_what_became_of_each_packet(ether, nodes):
+    n, cli, i = open_stream(ether, nodes, "repeater", "oc")
+    me = mine(cli)
+    other = (me + 1) & 0xFF
+    unique = txt_flood(fill=0x21)
+    got = outcomes(ether, i, [
+        unique,                                                       # a flood this node repeats
+        unique,                                                       # the same packet again
+        bytes([HDR_TXT_DIRECT, 1, other]) + b"\x44" * 40,             # a direct packet whose next hop is another node
+        bytes([HDR_TXT_DIRECT, 1, me]) + b"\x45" * 40,                # a direct packet for this node's hop
+        bytes([HDR_TXT_DIRECT, 1, me]) + b"\x45" * 40,                # and again
+        bytes([0xC0 | HDR_TXT_FLOOD, 0]) + b"\x11" * 20,              # a version this firmware refuses
+        bytes([HDR_TXT_DIRECT, 0]) + b"\x46" * 40,                    # a direct packet with no hops left: for this node or nobody
+    ])
+    assert got == ["forwarded", "duplicate", "not-next-hop", "forwarded", "duplicate", "unparsable", None], got
+
+
+def test_a_flood_packet_whose_path_is_full_has_no_route_on(ether, nodes):
+    n, cli, i = open_stream(ether, nodes, "repeater", "oc")
+    # two-byte hashes, 32 of them: this node's own would not fit in the 64 bytes of path
+    full = bytes([HDR_TXT_FLOOD, 0x40 | 32]) + bytes(range(64)) + b"\x5A" * 20
+    ok = bytes([HDR_TXT_FLOOD, 0x40 | 31]) + bytes(range(62)) + b"\x5B" * 20     # one fewer: room for one more
+    assert outcomes(ether, i, [full, ok]) == ["no-route", "forwarded"]
+
+
+def test_a_repeater_that_does_not_repeat_says_the_packet_was_filtered(ether, nodes):
+    n, cli, i = open_stream(ether, nodes, "repeater", "oc")
+    assert cli.command("set repeat off").startswith("OK")
+    me = mine(cli)
+    got = outcomes(ether, i, [txt_flood(fill=0x31), bytes([HDR_TXT_DIRECT, 1, me]) + b"\x47" * 40,
+                              bytes([HDR_TXT_DIRECT, 1, (me + 1) & 0xFF]) + b"\x48" * 40])
+    assert got == ["filtered", "filtered", "not-next-hop"], got
+
+
+def test_a_companion_does_not_forward_and_says_so(ether, nodes):
+    n, cli, i = open_stream(ether, nodes, "companion_standalone", "oc")
+    unique = txt_flood(fill=0x41)
+    got = outcomes(ether, i, [unique, unique, bytes([HDR_TXT_DIRECT, 1, 0x7F]) + b"\x44" * 40])
+    assert got == ["filtered", "duplicate", "not-next-hop"], got
+
+
+def test_a_flood_packet_held_back_by_the_receive_delay_is_reported_as_heard_with_no_outcome(ether, nodes):
+    # The packet is handled after the delay, so nothing is known when it is observed. A weak signal (a low score)
+    # with a receive delay set is held back; it must not carry the outcome of the packet handled before it.
+    n, cli, i = open_stream(ether, nodes, "repeater", "oc")
+    assert cli.command("set rxdelay 20").startswith("OK")
+    assert outcomes(ether, i, [txt_flood(fill=0x53, payload_len=150)]) == ["forwarded"], "a strong signal is handled at once"
+    got = []
+    for fill in (0x51, 0x52):
+        while i.read_message(0.05):
+            pass
+        f = txt_flood(fill=fill, payload_len=150)
+        ether.inject("oc", f, snr=-20.0)
+        d = check(wait_event(i, "observations", 20), "observations")
+        assert d["raw"] == f.hex()
+        got.append(d["outcome"])
+    assert got == [None, None], got

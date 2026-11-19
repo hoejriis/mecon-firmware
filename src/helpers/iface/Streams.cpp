@@ -129,10 +129,12 @@ int writeObservation(char* ev, size_t cap, StreamClock& clock, uint32_t epoch, b
   if (info.freq_known) k += snprintf(fps + k, sizeof(fps) - k, ",\"freq_mhz\":%.3f,\"bw_khz\":%.4g", (double)info.freq_mhz, (double)info.bw_khz);
   if (k > (int)sizeof(fps) - 24) k = (int)sizeof(fps) - 24;   // the figures are bounded; this only keeps the arithmetic safe
   if (info.mod_known) snprintf(fps + k, sizeof(fps) - k, ",\"sf\":%u,\"cr\":%u", (unsigned)info.sf, (unsigned)info.cr);
+  static const char* const OUTCOMES[] = {"null", "\"forwarded\"", "\"duplicate\"", "\"not-next-hop\"", "\"filtered\"", "\"no-route\"", "\"unparsable\""};
+  const char* outcome = OUTCOMES[info.outcome < sizeof(OUTCOMES) / sizeof(OUTCOMES[0]) ? info.outcome : 0];
   if (hdr.path_known) snprintf(path, sizeof(path), "%u", (unsigned)hdr.path_len); else snprintf(path, sizeof(path), "null");
   n += snprintf(data + n, data_cap - n,
-                "\",\"len\":%d,\"type\":%u,\"route\":\"%s\",\"path_len\":%s%s,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}",
-                len, (unsigned)hdr.type, hdr.route, path, fps, (int)rssi, (double)snr, (unsigned long)dropped);
+                "\",\"len\":%d,\"type\":%u,\"route\":\"%s\",\"path_len\":%s%s,\"outcome\":%s,\"rssi_dbm\":%d,\"snr_db\":%.2f,\"dropped\":%lu}",
+                len, (unsigned)hdr.type, hdr.route, path, fps, outcome, (int)rssi, (double)snr, (unsigned long)dropped);
   int out = -1;
   if (n > 0 && (size_t)n < data_cap)
     out = writeEvent(ev, cap, STREAMS[SID_OBSERVATIONS].name, ++clock.seq[SID_OBSERVATIONS], epoch, ts_known, ts, data);

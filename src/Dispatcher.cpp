@@ -262,6 +262,7 @@ void Dispatcher::checkRecv() {
   bool obs_has_fp = false;
   int obs_len = 0;
   float obs_snr = 0, obs_rssi = 0;
+  uint8_t obs_outcome = Iface::OUTCOME_UNKNOWN;
   {
     uint8_t raw[MAX_TRANS_UNIT+1];
     int len = _radio->recvRaw(raw, MAX_TRANS_UNIT);
@@ -286,6 +287,7 @@ void Dispatcher::checkRecv() {
           if (obs_raw) { pkt->calculatePacketHash(obs_fp); obs_has_fp = true; }
         } else {
           n_rx_unparsable++;
+          obs_outcome = Iface::OUTCOME_UNPARSABLE;
           _mgr->free(pkt);  // put back into pool
           pkt = NULL;
         }
@@ -322,6 +324,7 @@ void Dispatcher::checkRecv() {
       if (_delay < 50) {
         MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(), score delay below threshold (%d)", getLogDateTime(), _delay);
         processRecvPacket(pkt);   // is below the score delay threshold, so process immediately
+        obs_outcome = rx_outcome;
       } else {
         MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(), score delay is: %d millis", getLogDateTime(), _delay);
         if (_delay > MAX_RX_DELAY_MILLIS) {
@@ -332,11 +335,13 @@ void Dispatcher::checkRecv() {
     } else {
       n_recv_direct++;
       processRecvPacket(pkt);
+      obs_outcome = rx_outcome;
     }
   }
   if (obs_raw) {
     Iface::ObserveInfo info;
     info.fp = obs_has_fp ? obs_fp : NULL;
+    info.outcome = obs_outcome;
     info.freq_known = getRadioChannel(info.freq_mhz, info.bw_khz);
     info.mod_known = getRadioModulation(info.sf, info.cr);
     Iface::observe(obs_snr, obs_rssi, obs_raw, obs_len, info);
@@ -387,12 +392,14 @@ DispatcherAction Dispatcher::recvOnWorker(Packet* pkt) {
 }
 
 void Dispatcher::processRecvPacket(Packet* pkt) {
+  rx_outcome = Iface::OUTCOME_UNKNOWN;
   DispatcherAction action = recvOnWorker(pkt);
   if (action == ACTION_RELEASE) {
     _mgr->free(pkt);
   } else if (action == ACTION_MANUAL_HOLD) {
     // sub-class is wanting to manually hold Packet instance, and call releasePacket() at appropriate time
   } else {   // ACTION_RETRANSMIT*
+    rx_outcome = Iface::OUTCOME_FORWARDED;
     uint8_t priority = (action >> 24) - 1;
     uint32_t _delay = action & 0xFFFFFF;
 

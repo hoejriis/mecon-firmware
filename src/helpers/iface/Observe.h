@@ -6,6 +6,17 @@
 
 namespace Iface {
 
+// What handling a received packet came to, where the code that decided it knows (TELEMETRY.md, `observations`).
+enum Outcome : uint8_t {
+  OUTCOME_UNKNOWN = 0,    // delivered here, or ignored for a reason that is not one of these, or not handled yet
+  OUTCOME_FORWARDED,      // queued to be sent on
+  OUTCOME_DUPLICATE,      // its hash was already seen
+  OUTCOME_NOT_NEXT_HOP,   // a direct packet whose next hop is another node
+  OUTCOME_FILTERED,       // not forwarded because this node's rules do not allow it
+  OUTCOME_NO_ROUTE,       // a flood packet whose path has no room for this node's hash
+  OUTCOME_UNPARSABLE      // the frame is not a valid packet
+};
+
 // What the dispatcher knows about a packet beyond its bytes.
 struct ObserveInfo {
   const uint8_t* fp = nullptr;   // the packet hash, 8 bytes; null when the frame is not a valid packet
@@ -13,6 +24,7 @@ struct ObserveInfo {
   float freq_mhz = 0, bw_khz = 0;
   bool mod_known = false;        // the spreading factor and coding rate (5..8) as applied
   uint8_t sf = 0, cr = 0;
+  uint8_t outcome = 0;           // what handling the packet came to (Outcome); 0: not known
 };
 
 typedef void (*ObserveFn)(void* user, float snr, float rssi, const uint8_t* raw, int len, const ObserveInfo& info);
