@@ -39,9 +39,18 @@ def boot(nodes, kind, name):
 
 
 def status(i):
-    r = i.request("status.get")
+    """The data of a fresh health event: the stream is restarted for each look, so it is never an older one queued."""
+    i.request("sub.stop", {"stream": "health"})
+    time.sleep(0.3)
+    while i.read_message(0.1) is not None:
+        pass
+    r = i.request("sub.start", {"stream": "health", "period_s": 5, "lifetime_s": 600})
     assert r["status"] == "ok", r
-    return r["result"]
+    for _ in range(40):
+        m = i.read_message(0.5)
+        if m and m.get("ev") == "health":
+            return m["data"]
+    raise AssertionError("no health event")
 
 
 def level_is(i, want, timeout=12.0):
@@ -70,7 +79,7 @@ def hold(i, seconds):
 def test_the_level_walks_ok_low_critical_ok_with_hysteresis(nodes, kind):
     n, i = boot(nodes, kind, "bl")
     s = status(i)
-    assert not mecon_schema.check(s, mecon_schema.load("status.get.result.json"))
+    assert not mecon_schema.check(s, mecon_schema.load("event.health.json"))
     assert s["battery_level_method"] == "mv_mean_60s"
     assert s["battery_mv"] == 4000
     level_is(i, "ok")
@@ -93,7 +102,7 @@ def test_the_level_walks_ok_low_critical_ok_with_hysteresis(nodes, kind):
     set_battery(n, 3700)
     s = level_is(i, "ok")
     assert s["battery_level_changes"] == changes_ok + 4
-    assert not mecon_schema.check(s, mecon_schema.load("status.get.result.json"))
+    assert not mecon_schema.check(s, mecon_schema.load("event.health.json"))
 
 
 @pytest.mark.timescale(20)

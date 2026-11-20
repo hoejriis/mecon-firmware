@@ -448,7 +448,9 @@ Status opHello(OpContext& c) {
 }
 
 // The health fields, shared by status.get and the health stream so the two never disagree.
-void writeHealth(JsonWriter& w, MyMesh* mesh) {
+// `stream`: the health stream also carries the battery level; status.get does not (its whole answer must fit one signed
+// LoRa reply).
+void writeHealth(JsonWriter& w, MyMesh* mesh, bool stream = false) {
   w.key("uptime_s"); w.unum(Uptime::secs(millis()));
   const MemStats ms = memStats();
   w.key("heap");
@@ -465,7 +467,7 @@ void writeHealth(JsonWriter& w, MyMesh* mesh) {
   }
   const uint16_t mv = mesh->batteryMilliVolts();
   w.key("battery_mv"); if (mv) w.unum(mv); else w.null();
-  writeBatteryLevelOf(w, &board);
+  if (stream) writeBatteryLevelOf(w, &board);
   w.key("contacts"); w.beginObject();
   w.key("count"); w.unum(mesh->getNumContacts());
   w.key("capacity"); w.unum(mesh->getContactCapacity());
@@ -1204,7 +1206,7 @@ SubSet* MeconIface::currentSubs() { return _cur_link ? &_cur_link->subs : &_mqtt
 bool MeconIface::writeStream(int s, JsonWriter& w) {
   w.beginObject();
   switch (s) {
-    case SID_HEALTH: writeHealth(w, _mesh); break;
+    case SID_HEALTH: writeHealth(w, _mesh, true); break;
     case SID_RADIO: {
       RadioCounts counts;
       counts.known = true;
