@@ -6,8 +6,6 @@ BS=sim/tests/test_battery_level.py
 BLW=$BS::test_the_level_walks_ok_low_critical_ok_with_hysteresis
 mutate battery_hysteresis_removed src/helpers/BatteryGuardCfg.h 'margin_mv = 100; ' 'margin_mv = 0;   ' $BL
 mutate battery_hysteresis_removed_sim src/helpers/BatteryGuardCfg.h 'margin_mv = 100; ' 'margin_mv = 0;   ' $BLW
-mutate battery_hysteresis_removed src/helpers/BatteryLevel.h 'HYST_MV = 100; ' 'HYST_MV = 0;   ' $BL
-mutate battery_hysteresis_removed_sim src/helpers/BatteryLevel.h 'HYST_MV = 100; ' 'HYST_MV = 0;   ' $BLW
 mutate battery_invalid_read_as_critical src/helpers/BatteryLevel.h '{ _sum += mv; _n++; }' '{ _sum += mv; _n++; } else { _n++; }' $BL
 mutate battery_invalid_read_as_critical_sim src/helpers/BatteryLevel.h '{ _sum += mv; _n++; }' '{ _sum += mv; _n++; } else { _n++; }' $BS::test_an_invalid_reading_is_unknown_never_critical
 mutate battery_mean_is_the_last_sample src/helpers/BatteryLevel.h '{ _sum += mv; _n++; }' '{ _sum = (uint16_t)(mv * (_n + 1)); _n++; }' $BL
@@ -20,9 +18,3 @@ mutate battery_thresholds_swapped src/helpers/BatteryGuardCfg.h 'low_mv = 3550; 
 mutate battery_thresholds_swapped_sim src/helpers/BatteryGuardCfg.h 'low_mv = 3550;       // a level below this mean is low
   uint16_t critical_mv = 3400;' 'low_mv = 3400;       // a level below this mean is low
   uint16_t critical_mv = 3550;' $BLW
-mutate battery_thresholds_swapped src/helpers/BatteryLevel.h 'LOW_MV = 3550;        // below this: low
-    static const uint16_t CRITICAL_MV = 3400;' 'LOW_MV = 3400;        // below this: low
-    static const uint16_t CRITICAL_MV = 3550;' $BL
-mutate battery_thresholds_swapped_sim src/helpers/BatteryLevel.h 'LOW_MV = 3550;        // below this: low
-    static const uint16_t CRITICAL_MV = 3400;' 'LOW_MV = 3400;        // below this: low
-    static const uint16_t CRITICAL_MV = 3550;' $BLW
