@@ -302,9 +302,10 @@ TEST(IfaceConfig, TheBatteryGuardIsOneCompositeKeyInBothTables) {
   }
   EXPECT_TRUE(checkFormat("battery.guard", "enabled=on low=3550 critical=3400 margin=100 wake=900"));
   EXPECT_TRUE(checkFormat("battery.guard", "low=3600"));
-  EXPECT_FALSE(checkFormat("battery.guard", "low=abc"));
+  // only a character screen here; the device checks the whole combination before any write
   EXPECT_FALSE(checkFormat("battery.guard", "3550,3400"));
-  EXPECT_FALSE(checkFormat("battery.guard", "enabled=on enabled=off"));
+  EXPECT_FALSE(checkFormat("battery.guard", "LOW=3600"));
+  EXPECT_FALSE(checkFormat("battery.guard", "low=3600\n"));
   // the whole stored value, as `get` gives it, fits the snapshot a revert keeps and the key's own length limit
   EXPECT_LE(strlen("enabled=off low=3550 critical=3400 margin=100 wake=900"), (size_t)c->max);
   EXPECT_LE(strlen("enabled=off low=3550 critical=3400 margin=100 wake=900"), ConfigSnap::VALUE_MAX);

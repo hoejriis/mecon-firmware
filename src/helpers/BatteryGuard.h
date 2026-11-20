@@ -30,7 +30,7 @@ struct Verdict {
   const char* reason;
 };
 
-inline Verdict decide(const Cfg& c, const BatteryLevel& bl, bool external) {
+__attribute__((noinline)) inline Verdict decide(const Cfg& c, const BatteryLevel& bl, bool external) {
   Verdict v;
   v.level = bl.levelUnder(c);
   v.would_sleep = false;
@@ -45,7 +45,7 @@ inline Verdict decide(const Cfg& c, const BatteryLevel& bl, bool external) {
 // The whole of a request: parse over the stored settings, validate the combination, and refuse what would put the guard at
 // critical at once. Null when accepted (*out is the combination), else the
 // reason. With an empty `text` the stored settings are re-checked unchanged.
-inline const char* check(const char* text, const BatteryLevel& bl, bool external, Cfg* out) {
+__attribute__((noinline)) inline const char* check(const char* text, const BatteryLevel& bl, bool external, Cfg* out) {
   Cfg c = bl.settings();
   if (*text) {
     const char* e = parse(text, bl.settings(), &c);

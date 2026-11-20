@@ -126,7 +126,8 @@ TEST(BatteryGuardCfg, TheFormatIsStrict) {
   BatteryGuard::format(out, text, sizeof(text));
   EXPECT_STREQ("enabled=off low=3600 critical=3400 margin=100 wake=900", text);
   EXPECT_TRUE(BatteryGuard::formatOk("low=3600"));
-  EXPECT_FALSE(BatteryGuard::formatOk("low=x"));
+  EXPECT_FALSE(BatteryGuard::formatOk(""));       // only a character screen: parse() and validate() judge the rest
+  EXPECT_FALSE(BatteryGuard::formatOk("low=3.5"));
 }
 
 // The private firmware validated one key against the other key's old stored value. A change of both thresholds that is

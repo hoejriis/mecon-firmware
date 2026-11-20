@@ -37,7 +37,7 @@ struct Range {
 static const size_t TEXT_MAX = 64;
 
 // The checks of one whole combination. Null when it is valid, else the name of the first rule it breaks.
-inline const char* validate(const Cfg& c) {
+__attribute__((noinline)) inline const char* validate(const Cfg& c) {
   if (c.critical_mv < Range::CRITICAL_MIN || c.critical_mv > Range::CRITICAL_MAX) return "critical-out-of-range";
   if (c.low_mv < Range::LOW_MIN || c.low_mv > Range::LOW_MAX) return "low-out-of-range";
   if (c.low_mv < c.critical_mv + Range::MIN_GAP) return "low-not-above-critical";
@@ -46,73 +46,59 @@ inline const char* validate(const Cfg& c) {
   return nullptr;
 }
 
-namespace detail {
-inline bool number(const char* s, size_t n, uint32_t* out) {
-  if (n == 0 || n > 5) return false;
-  uint32_t v = 0;
-  for (size_t i = 0; i < n; i++) {
-    if (s[i] < '0' || s[i] > '9') return false;
-    v = v * 10 + (uint32_t)(s[i] - '0');
-  }
-  *out = v;
-  return true;
-}
-}  // namespace detail
-
 // "enabled=on low=3550 critical=3400 margin=100 wake=900", in any order, any subset, each name once, single spaces.
 // Applies the named fields on top of `base` into *out, with no range check (validate() does that, on the whole). Null
 // on success, else "bad-format".
-inline const char* parse(const char* text, const Cfg& base, Cfg* out) {
+__attribute__((noinline)) inline const char* parse(const char* text, const Cfg& base, Cfg* out) {
   Cfg c = base;
-  bool seen[5] = {false, false, false, false, false};
+  uint16_t* const num[5] = {nullptr, &c.low_mv, &c.critical_mv, &c.margin_mv, &c.wake_s};
+  static const char* const NAME[5] = {"enabled", "low", "critical", "margin", "wake"};
+  uint8_t seen = 0;
   const char* p = text;
-  if (!*p) return "bad-format";
-  while (*p) {
+  do {
     const char* eq = strchr(p, '=');
     if (!eq) return "bad-format";
     const char* end = strchr(eq, ' ');
-    const size_t nlen = (size_t)(eq - p);
-    const size_t vlen = end ? (size_t)(end - eq - 1) : strlen(eq + 1);
+    const size_t nlen = (size_t)(eq - p), vlen = end ? (size_t)(end - eq - 1) : strlen(eq + 1);
     const char* v = eq + 1;
-    int f = -1;
-    if (nlen == 7 && memcmp(p, "enabled", 7) == 0) f = 0;
-    else if (nlen == 3 && memcmp(p, "low", 3) == 0) f = 1;
-    else if (nlen == 8 && memcmp(p, "critical", 8) == 0) f = 2;
-    else if (nlen == 6 && memcmp(p, "margin", 6) == 0) f = 3;
-    else if (nlen == 4 && memcmp(p, "wake", 4) == 0) f = 4;
-    if (f < 0 || seen[f]) return "bad-format";
-    seen[f] = true;
+    int f = 0;
+    while (f < 5 && !(strlen(NAME[f]) == nlen && memcmp(p, NAME[f], nlen) == 0)) f++;
+    if (f == 5 || (seen & (1u << f))) return "bad-format";
+    seen |= (uint8_t)(1u << f);
     if (f == 0) {
       if (vlen == 2 && memcmp(v, "on", 2) == 0) c.enabled = 1;
       else if (vlen == 3 && memcmp(v, "off", 3) == 0) c.enabled = 0;
       else return "bad-format";
     } else {
-      uint32_t n;
-      if (!detail::number(v, vlen, &n) || n > 65535) return "bad-format";
-      if (f == 1) c.low_mv = (uint16_t)n;
-      else if (f == 2) c.critical_mv = (uint16_t)n;
-      else if (f == 3) c.margin_mv = (uint16_t)n;
-      else c.wake_s = (uint16_t)n;
+      if (vlen == 0 || vlen > 5) return "bad-format";
+      uint32_t n = 0;
+      for (size_t i = 0; i < vlen; i++) {
+        if (v[i] < '0' || v[i] > '9') return "bad-format";
+        n = n * 10 + (uint32_t)(v[i] - '0');
+      }
+      if (n > 65535) return "bad-format";
+      *num[f] = (uint16_t)n;
     }
-    if (!end) break;
-    p = end + 1;
-    if (!*p) return "bad-format";   // a trailing space
-  }
+    p = end ? end + 1 : nullptr;
+    if (p && !*p) return "bad-format";   // a trailing space
+  } while (p);
   *out = c;
   return nullptr;
 }
 
 // The value as the CLI and config.get give it.
-inline void format(const Cfg& c, char* out, size_t cap) {
+__attribute__((noinline)) inline void format(const Cfg& c, char* out, size_t cap) {
   snprintf(out, cap, "enabled=%s low=%u critical=%u margin=%u wake=%u", c.enabled ? "on" : "off", (unsigned)c.low_mv,
            (unsigned)c.critical_mv, (unsigned)c.margin_mv, (unsigned)c.wake_s);
 }
 
-// The syntax of a value, for the settings table (any subset of the fields, each once, numbers only). The ranges are
-// checked on the device against the whole combination.
+// A cheap syntax screen for the settings table (the revert path and config.apply): only the characters of a value. The
+// whole check, ranges and combination, is made on the device by check() before anything is written.
 inline bool formatOk(const char* text) {
-  Cfg c;
-  return parse(text, Cfg(), &c) == nullptr;
+  if (!*text) return false;
+  for (const char* p = text; *p; p++)
+    if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '=' || *p == ' ')) return false;
+  return true;
 }
 
 }  // namespace BatteryGuard
