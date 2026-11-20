@@ -4,6 +4,7 @@
 #include <helpers/CommonRadioPrefs.h>
 #include <helpers/DynamicConfigSerializer.h>
 #include <helpers/net/NetPrefs.h>
+#include <helpers/BatteryGuardPrefs.h>
 #ifdef ENABLE_WIFI_INTERFACE
   #include <helpers/wifi/WifiProfiles.h>
 #endif
@@ -204,6 +205,8 @@ private:
   };
   CompanionPrefs companion;
 
+  BatteryGuardPrefs batt_guard;   // the battery guard's settings (BatteryGuardPrefs.h)
+
   DynamicConfigSerializer custom;
 
 #ifdef ENABLE_WIFI_INTERFACE
@@ -226,6 +229,7 @@ protected:
     def("gps", gps);
     def("repeat", repeat);
     def("comp", companion);
+    def("batt_guard", batt_guard);
     def("custom", custom);
 #ifdef ENABLE_WIFI_INTERFACE
     def("wifi", wifi);

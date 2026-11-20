@@ -288,6 +288,28 @@ struct ServerRig {
 };
 }  // namespace
 
+TEST(IfaceConfig, TheBatteryGuardIsOneCompositeKeyInBothTables) {
+  unsigned i;
+  const KeyDef* c = findKey("battery.guard", 13, &i);
+  const KeyDef* r = findKey(SERVER_KEYS, N_SERVER_KEYS, "battery.guard", 13, &i);
+  ASSERT_NE(nullptr, c);
+  ASSERT_NE(nullptr, r);
+  for (const KeyDef* k : {c, r}) {
+    EXPECT_EQ(K_STRING, k->type);
+    EXPECT_EQ(KF_WRITABLE | KF_CONFIRM, k->flags);   // write class; a remote caller must confirm
+    EXPECT_STREQ("get battery.guard", k->get_line);
+    EXPECT_STREQ("set battery.guard %s", k->set_line);
+  }
+  EXPECT_TRUE(checkFormat("battery.guard", "enabled=on low=3550 critical=3400 margin=100 wake=900"));
+  EXPECT_TRUE(checkFormat("battery.guard", "low=3600"));
+  EXPECT_FALSE(checkFormat("battery.guard", "low=abc"));
+  EXPECT_FALSE(checkFormat("battery.guard", "3550,3400"));
+  EXPECT_FALSE(checkFormat("battery.guard", "enabled=on enabled=off"));
+  // the whole stored value, as `get` gives it, fits the snapshot a revert keeps and the key's own length limit
+  EXPECT_LE(strlen("enabled=off low=3550 critical=3400 margin=100 wake=900"), (size_t)c->max);
+  EXPECT_LE(strlen("enabled=off low=3550 critical=3400 margin=100 wake=900"), ConfigSnap::VALUE_MAX);
+}
+
 TEST(IfaceConfig, ServerTableHasItsOwnKeys) {
   unsigned i;
   EXPECT_NE(nullptr, findKey(SERVER_KEYS, N_SERVER_KEYS, "lat", 3, &i));

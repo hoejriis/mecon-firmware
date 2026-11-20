@@ -7,6 +7,7 @@
 #include <helpers/Uptime.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/AuditStore.h>
+#include <helpers/BatteryGuard.h>
 #include <algorithm>
 
 /* ------------------------------ Config -------------------------------- */
@@ -1239,6 +1240,7 @@ bool MyMesh::resetScope(Iface::ResetScope s, uint8_t caller) {
       const bool ok = formatFileSystem();
       if (ok) {
         _prefs.posture = Posture::NORMAL;
+        batteryLevel().settings() = BatteryGuard::Cfg();   // the erased prefs file takes the guard with it
         Posture::audit().add(getRTCClock()->getCurrentTime(), Posture::EV_FACTORY_RESET, caller, Posture::W_NONE);
         auditStore().flush(millis());
       }
@@ -1554,6 +1556,15 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
 #ifdef ENABLE_WIFI_INTERFACE
   if (netCommand(_prefs, savePrefsNow, this, command, reply)) return;
 #endif
+
+  {   // the battery guard's settings and dry run (docs/contract/OPERATIONS.md): checked as one whole, then saved
+    bool changed = false;
+    if (BatteryGuard::handleCommand(command, reply, 150, batteryLevel(), board.hasUsbPowerDetect() && board.isUsbPowered(),
+                                    &changed)) {
+      if (changed) savePrefs();
+      return;
+    }
+  }
 
   // handle ACL related commands
   if (memcmp(command, "setperm ", 8) == 0) {   // format:  setperm {pubkey-hex} {permissions-int8}

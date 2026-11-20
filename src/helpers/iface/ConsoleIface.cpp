@@ -168,7 +168,7 @@ void writeHealth(JsonWriter& w, ConsoleIface* m, bool stream = false) {
   }
   const uint16_t mv = m->host().battery_mv(m->host().user);
   w.key("battery_mv"); if (mv) w.unum(mv); else w.null();
-  if (stream) writeBatteryLevelOf(w, m->host().board);
+  if (stream) writeBatteryLevelOf(w, m->host().board, strcmp(m->host().role, "repeater") == 0);
 }
 
 Status opStatus(OpContext& c) {
@@ -1104,8 +1104,9 @@ bool ConsoleIface::mqttSubscribed() const {
 }
 
 ConfigHost ConsoleIface::configHost() {
-  // region.neutral is the last SERVER_KEYS entry and a Repeater setting: any other role lists the table without it.
-  const size_t nkeys = strcmp(host().role, "repeater") == 0 ? N_SERVER_KEYS : N_SERVER_KEYS - 1;
+  // battery.guard and region.neutral are the last two SERVER_KEYS entries and Repeater settings: any other role lists the
+  // table without them.
+  const size_t nkeys = strcmp(host().role, "repeater") == 0 ? N_SERVER_KEYS : N_SERVER_KEYS - 2;
   return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, nkeys, &_confirm,
                     [](void* u) { return static_cast<ConsoleIface*>(u)->onLora(); }};
 }
