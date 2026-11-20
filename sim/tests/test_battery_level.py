@@ -111,12 +111,14 @@ def test_a_dip_shorter_than_the_mean_does_not_move_the_level(nodes, kind):
     n, i = boot(nodes, kind, "bd")
     level_is(i, "ok")
     changes = status(i)["battery_level_changes"]
-    # three readings (15 s of node time, 0.75 s here) at a critical voltage inside every window: a TX-sag-like dip
-    for _ in range(4):
+    # a dip of a third of the time, to a critical voltage, in step with no window: a window ends inside one now and then,
+    # so a level taken from the last reading would trip; the mean of a window is about 3670 mV
+    end = time.time() + 8 * WINDOW_S
+    while time.time() < end:
         set_battery(n, 3000)
         time.sleep(0.5)
         set_battery(n, 4000)
-        time.sleep(WINDOW_S - 0.5)
+        time.sleep(1.0)
     s = status(i)
     assert s["battery_level"] == "ok" and s["battery_level_changes"] == changes, s
 
