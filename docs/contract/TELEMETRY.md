@@ -42,6 +42,10 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 | `heap.worker_stack_free` | bytes | `NrfWorker::workerStackFree()` | nRF52, every role | least free stack of the interface worker task, which runs every request on nRF52, since it started (FreeRTOS high-water mark); absent elsewhere, and while no worker exists |
 | `heap.psram_free` | bytes | `memStats()` | boards with PSRAM | absent without |
 | `battery_mv` | mV | `getBattMilliVolts()` | all | `null` when the board cannot measure it |
+| `battery_level` | text | `BatteryLevel` | all | *(since v0.3.12.)* `ok`, `low`, `critical` or `unknown`: the level of the mean of the valid battery readings of 60 s (a reading every 5 s). It is the observed voltage level of a single Li-ion or LiPo cell, not a state of charge. `low` is a mean below 3550 mV and `critical` below 3400 mV; a level goes down as soon as a window's mean is below its threshold and comes back up only 100 mV above the threshold it crossed (3650 mV to leave `low` or `critical` for `ok`, 3500 mV to leave `critical` for `low`). A dip shorter than the window, such as the sag while the radio transmits, does not move it. `unknown` is a value, not `ok`: it is reported before the first window is full (the first 60 s after boot), while the board cannot measure, and when fewer than 8 of the 12 readings of a window are valid (a reading of 0 or outside 2000 to 4600 mV is not a reading). A missing or invalid reading is never `critical`. A USB-powered board with no cell can read the supply, not a cell: the level is of the voltage read. The level only reports: nothing sleeps, shuts down or changes the radio because of it, and the thresholds are fixed in this release |
+| `battery_level_method` | text | firmware | all | *(since v0.3.12.)* How `battery_level` was derived: `mv_mean_60s` |
+| `battery_level_changes` | count | `BatteryLevel` | all | *(since v0.3.12.)* Times `battery_level` changed since boot, the first change after boot (from `unknown` to a level) and every change to or from `unknown` included. A 16-bit counter that wraps at 65536 and restarts at 0 with a new `epoch`; `0` is a measured zero. A level that flaps shows as a count that keeps rising |
+| `power_source` | text | board | all | *(since v0.3.12.)* `external` or `battery` on a board that senses USB power (the Wio Tracker L1: the nRF52 USB regulator's VBUS flag, so `battery` means no USB power, not that a cell is fitted or that no other supply is connected), otherwise `unknown`. The Heltec V3 and V4 have no way to sense the supply, so they report `unknown`: a voltage is never taken for a source, and a USB-powered V3 with no cell, reading the rail at about 4.2 V, reports `ok` and `unknown`. The T1000-E reports `unknown` here too: its power-detect pins feed the `power` stream's `external`, but their polarity has not been confirmed on a board, so `power_source` does not rely on them |
 | `contacts.count`, `.capacity` | entries | contact store | Companion | absent on the server roles |
 
 ### `runtime`
@@ -112,7 +116,7 @@ Events: one on every state change of Wi-Fi, MQTT, BLE or USB, carrying the new s
 | `battery_mv` | mV | board | `null` when not measurable |
 | `external` | bool | board | the nRF52 power manager, or the board's own detect pin (`hasPowerDetect`: the T1000-E); `null` where the board cannot tell |
 | `charging` | bool | board | the same; on the T1000-E the charger's status pin. `null` where the board cannot tell |
-| `usb_power`, `solar` | bool | board detection | absent where the board has no detection |
+| `usb_power`, `solar` | bool | board detection | absent where the board has no detection. *(`usb_power` on the Wio Tracker L1 since v0.3.12: the USB regulator's VBUS flag.)* |
 | `boot_mv` | mV | nRF52 | battery at boot |
 
 No state of charge is reported: no board here measures it, and a percentage computed from voltage is not a measurement.

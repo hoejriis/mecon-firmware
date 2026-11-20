@@ -149,7 +149,9 @@ Status opHello(OpContext& c) {
 }
 
 // Shared by status.get and the health stream. A server has no contact list, so "contacts" is absent.
-void writeHealth(JsonWriter& w, ConsoleIface* m) {
+// `stream`: the health stream also carries the battery level; status.get does not (its whole answer must fit one signed
+// LoRa reply).
+void writeHealth(JsonWriter& w, ConsoleIface* m, bool stream = false) {
   w.key("uptime_s"); w.unum(Uptime::secs(millis()));
   const MemStats ms = memStats();
   w.key("heap");
@@ -166,6 +168,7 @@ void writeHealth(JsonWriter& w, ConsoleIface* m) {
   }
   const uint16_t mv = m->host().battery_mv(m->host().user);
   w.key("battery_mv"); if (mv) w.unum(mv); else w.null();
+  if (stream) writeBatteryLevelOf(w, m->host().board);
 }
 
 Status opStatus(OpContext& c) {
@@ -1450,7 +1453,7 @@ void ConsoleIface::answer(Print& out) {
 bool ConsoleIface::writeStream(int s, JsonWriter& w) {
   w.beginObject();
   switch (s) {
-    case SID_HEALTH: writeHealth(w, this); break;
+    case SID_HEALTH: writeHealth(w, this, true); break;
     case SID_RADIO: {
       RadioCounts counts;
       if (_host.radio_counts) _host.radio_counts(_host.user, &counts);
@@ -1615,6 +1618,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   _standing.tick(now);
   if (!cableLineUp()) _unlock.clear();   // the cable's host went (AUTHORITY.md section 10)
   _gap.tick(now);
+  tickBatteryLevel(now, _host.board);
   _jobs.tick(now);
   rawTick(now);   // a held packet.transmit, when the duty window has room (#537)
   _auth.continuityReconcile(Posture::isHardened(_host.posture(_host.user)));   // Hardened holds no package (#118)

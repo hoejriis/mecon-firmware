@@ -17,7 +17,9 @@ public:
   void attachDynamicPrefs(KeyValueStore*) {}
   void setInhibitSleep(bool) {}
   void sleep(uint32_t) override {}
-  uint16_t getBattMilliVolts() override { return 4000; }
+  // The battery voltage in mV, from "<dir>.batt" (one number, read at every call, so a test changes it while the node
+  // runs; 0 reads as a board that cannot measure it). No file: 4000.
+  uint16_t getBattMilliVolts() override;
   const char* getManufacturerName() const override { return "Simulated Board"; }
   uint8_t getStartupReason() const override { return BD_STARTUP_NORMAL; }
   void reboot() override;     // exits with status 75 so the runner can restart the node

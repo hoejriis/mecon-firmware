@@ -11,6 +11,7 @@
 #include "../AuditRing.h"
 #include "IfaceJson.h"
 #include "../GnssHealth.h"
+#include "../BatteryLevel.h"
 
 namespace mesh { class Dispatcher; class Radio; class MainBoard; }
 namespace Posture { struct StaleLogins; }
@@ -310,6 +311,24 @@ template <class Board> void writePowerOf(JsonWriter& w, Board& b) {
   if (b.hasSolarChargerDetect()) { w.key("solar"); w.boolean(b.isSolarChargerActive()); }
   const uint16_t boot_mv = b.getBootVoltage();
   if (boot_mv) { w.key("boot_mv"); w.unum(boot_mv); }
+}
+
+// The health stream's battery level (TELEMETRY.md), from the tracker the role's loop feeds, and where the board can tell,
+// what it runs from. `power_source` is `external` or `battery` only on a board that senses USB power (hasUsbPowerDetect);
+// every other board says `unknown`, and a voltage is never taken for a source. `b` may be null (no board: unknown).
+template <class Board> void writeBatteryLevelOf(JsonWriter& w, Board* b) {
+  const BatteryLevel& bl = batteryLevel();
+  w.key("battery_level"); w.str(BatteryLevel::name(bl.level()));
+  w.key("battery_level_method"); w.str(BatteryLevel::method());
+  w.key("battery_level_changes"); w.unum(bl.changes());
+  w.key("power_source");
+  w.str(b && b->hasUsbPowerDetect() ? (b->isUsbPowered() ? "external" : "battery") : "unknown");
+}
+
+// Feed the tracker from the board when a reading is due. Called every loop pass.
+template <class Board> void tickBatteryLevel(uint32_t now, Board* b) {
+  BatteryLevel& bl = batteryLevel();
+  if (b && bl.due(now)) bl.sample(now, b->getBattMilliVolts());
 }
 
 // The runtime stream's `gnss` object. Called only for a board that has a receiver, so it is absent
