@@ -85,7 +85,7 @@ A crash record (panic backtrace kept across a reset) is **unsupported** in this 
 | `queue_full`, `cad_timeout`, `startrx_timeout` | bool | Dispatcher error flags | set since the last `clear stats` |
 | `queue_full_count` | count | Dispatcher | *(Since v0.3.9.)* Times no packet was free, to receive into or to build; the flag above says only that it happened |
 | `cad_busy_retries` | count | Dispatcher | *(Since v0.3.9.)* Sends put off for 200 ms because the channel was busy (one count per retry; a send forced through after 4 s of busy is the `cad_timeout` flag) |
-| `duty_holds` | count | Dispatcher | *(Since v0.3.9.)* Sends put back to wait for airtime under the duty limit. A boot starts the window at the limit, so the first sends after a boot are held |
+| `duty_holds` | count | Dispatcher | *(Since v0.3.9.)* Sends in the radio queue put back to wait for airtime under the duty limit, counted at each hold. A boot starts the window at the limit, so the first sends after a boot are held. A `packet.transmit` waiting for its budget is not counted here: it waits before the radio queue, and its job reports `duty_held` |
 | `queue.depth`, `queue.free` | packets | packet pool | *(Since v0.3.9.)* Packets waiting to send (including those waiting for their time) and unused packets in the pool. Their sum is the pool size, a fixed number per role. A reading at the moment of the event, not a history |
 | `noise_floor_dbm` | dBm | radio driver | `null` until calibrated |
 | `last.rssi_dbm`, `last.snr_db` | dBm, dB | last received packet | `null` before the first packet |
