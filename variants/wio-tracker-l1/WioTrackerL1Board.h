@@ -30,6 +30,12 @@ public:
     return (adcvalue * ADC_MULTIPLIER * AREF_VOLTAGE) / 4.096;
   }
 
+  // USB power from the nRF52 USB regulator's VBUS flag (NRF52Board::isExternalPowered): present or not. It says nothing
+  // about a solar or other supply on the battery connector, so it is reported as `usb_power` and the health stream's
+  // `power_source`, not as `external` (hasPowerDetect stays false, as no charger pin exists).
+  bool hasUsbPowerDetect() const override { return true; }
+  bool isUsbPowered() override { return NRF52Board::isExternalPowered(); }
+
   const char* getManufacturerName() const override {
     return "Seeed Wio Tracker L1";
   }

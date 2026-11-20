@@ -133,6 +133,17 @@ const char* SimBoard::getResetReasonString(uint32_t reason) {
   return reason && !resetKnob().why.empty() ? resetKnob().why.c_str() : "Not available";
 }
 
+uint16_t SimBoard::getBattMilliVolts() {
+  std::string d = g_sim.dir;
+  while (d.size() > 1 && d.back() == '/') d.pop_back();
+  FILE* f = fopen((d + ".batt").c_str(), "r");
+  if (!f) return 4000;
+  unsigned v = 4000;
+  if (fscanf(f, "%u", &v) != 1) v = 4000;
+  fclose(f);
+  return v > 65535 ? 65535 : (uint16_t)v;
+}
+
 void SimBoard::reboot() { fflush(NULL); exit(75); }
 void SimBoard::powerOff() { fflush(NULL); exit(0); }
 

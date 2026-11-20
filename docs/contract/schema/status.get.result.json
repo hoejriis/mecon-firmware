@@ -22,6 +22,10 @@
       }
     },
     "battery_mv": {"type": ["integer", "null"], "description": "null when the board cannot measure it."},
+    "battery_level": {"type": "string", "enum": ["ok", "low", "critical", "unknown"], "description": "The level from the mean of 60 s of battery readings (since v0.3.12). unknown while no valid reading can be had; never critical for a missing or invalid reading. The observed level, not a state of charge."},
+    "battery_level_method": {"type": "string", "enum": ["mv_mean_60s"], "description": "How battery_level was derived (since v0.3.12)."},
+    "battery_level_changes": {"type": "integer", "minimum": 0, "maximum": 65535, "description": "Changes of battery_level since boot, the first reading included; wraps at 65536 (since v0.3.12)."},
+    "power_source": {"type": "string", "enum": ["external", "battery", "unknown"], "description": "external or battery only on a board that senses USB power; unknown otherwise (since v0.3.12)."},
     "contacts": {
       "description": "The contact list; absent on a role that has none (the Repeater and Room server).",
       "type": "object",
