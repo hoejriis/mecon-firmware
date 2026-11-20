@@ -11,9 +11,9 @@
 //                                        (or accepted=no refusal=<reason> ...); writes nothing
 namespace BatteryGuard {
 
-// Whether this board's battery reading is proven for the guard: the four boards of the support matrix (the Heltec V3
-// and V4 voltage-only, the Wio Tracker L1 and the T1000-E) and the simulated board define BATTERY_GUARD_BOARD. Any other
-// board refuses `enabled=on` and reports supported false.
+// Whether this build has the guard: the four boards of the support matrix (the Heltec V3 and V4 voltage-only, the Wio
+// Tracker L1 and the T1000-E) and the simulated board define BATTERY_GUARD_BOARD. Any other board leaves the settings, the
+// CLI lines and the key out (its flash is tight) and the health stream reports `supported` false.
 inline bool supported() {
 #ifdef BATTERY_GUARD_BOARD
   return true;
@@ -30,12 +30,11 @@ struct Verdict {
   const char* reason;
 };
 
-inline Verdict decide(const Cfg& c, const BatteryLevel& bl, bool sup, bool external) {
+inline Verdict decide(const Cfg& c, const BatteryLevel& bl, bool external) {
   Verdict v;
   v.level = bl.levelUnder(c);
   v.would_sleep = false;
-  if (!sup) v.reason = "unsupported";
-  else if (!c.enabled) v.reason = "guard-off";
+  if (!c.enabled) v.reason = "guard-off";
   else if (v.level == BatteryLevel::UNKNOWN) v.reason = "level-unknown";
   else if (external) v.reason = "external-power";
   else if (v.level == BatteryLevel::CRITICAL) { v.would_sleep = true; v.reason = "level-critical"; }
@@ -43,10 +42,10 @@ inline Verdict decide(const Cfg& c, const BatteryLevel& bl, bool sup, bool exter
   return v;
 }
 
-// The whole of a request: parse over the stored settings, validate the combination, refuse a board that cannot do it
-// and refuse what would put the guard at critical at once. Null when accepted (*out is the combination), else the
+// The whole of a request: parse over the stored settings, validate the combination, and refuse what would put the guard at
+// critical at once. Null when accepted (*out is the combination), else the
 // reason. With an empty `text` the stored settings are re-checked unchanged.
-inline const char* check(const char* text, const BatteryLevel& bl, bool sup, bool external, Cfg* out) {
+inline const char* check(const char* text, const BatteryLevel& bl, bool external, Cfg* out) {
   Cfg c = bl.settings();
   if (*text) {
     const char* e = parse(text, bl.settings(), &c);
@@ -54,8 +53,7 @@ inline const char* check(const char* text, const BatteryLevel& bl, bool sup, boo
   }
   const char* e = validate(c);
   if (e) return e;
-  if (c.enabled && !sup) return "unsupported";
-  if (decide(c, bl, sup, external).would_sleep) return "would-sleep-now";
+  if (decide(c, bl, external).would_sleep) return "would-sleep-now";
   *out = c;
   return nullptr;
 }
@@ -76,7 +74,7 @@ inline bool handleCommand(const char* command, char* reply, size_t cap, BatteryL
   if (memcmp(command, SET, sizeof(SET) - 1) == 0) {
     Cfg c;
     const char* arg = command + sizeof(SET) - 1;
-    const char* e = *arg ? check(arg, bl, supported(), external, &c) : "bad-format";
+    const char* e = *arg ? check(arg, bl, external, &c) : "bad-format";
     if (e) {
       snprintf(reply, cap, "Err - %s", e);
     } else {
@@ -99,10 +97,9 @@ inline bool handleCommand(const char* command, char* reply, size_t cap, BatteryL
       const char* e = parse(arg, bl.settings(), &proposed);
       if (e) { snprintf(reply, cap, "Err - %s", e); return true; }
     }
-    const char* refusal = check(arg, bl, supported(), external, &c);
+    const char* refusal = check(arg, bl, external, &c);
     // A refused proposal is answered against what is stored; an accepted one against itself.
-    const Verdict v = decide(refusal && strcmp(refusal, "would-sleep-now") != 0 ? bl.settings() : proposed, bl,
-                             supported(), external);
+    const Verdict v = decide(refusal && strcmp(refusal, "would-sleep-now") != 0 ? bl.settings() : proposed, bl, external);
     if (refusal) {
       snprintf(reply, cap, "> accepted=no refusal=%s level=%s would_sleep=%s reason=%s", refusal, levelName(v.level),
                v.would_sleep ? "yes" : "no", v.reason);

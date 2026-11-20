@@ -1106,7 +1106,12 @@ bool ConsoleIface::mqttSubscribed() const {
 ConfigHost ConsoleIface::configHost() {
   // battery.guard and region.neutral are the last two SERVER_KEYS entries and Repeater settings: any other role lists the
   // table without them.
-  const size_t nkeys = strcmp(host().role, "repeater") == 0 ? N_SERVER_KEYS : N_SERVER_KEYS - 2;
+#ifdef BATTERY_GUARD_BOARD
+  const size_t only = 2;   // battery.guard and region.neutral
+#else
+  const size_t only = 1;   // region.neutral
+#endif
+  const size_t nkeys = strcmp(host().role, "repeater") == 0 ? N_SERVER_KEYS : N_SERVER_KEYS - only;
   return ConfigHost{cliRun, cliAllow, this, SERVER_KEYS, nkeys, &_confirm,
                     [](void* u) { return static_cast<ConsoleIface*>(u)->onLora(); }};
 }

@@ -21,12 +21,12 @@ mutate guard_validates_against_stored_sim src/helpers/BatteryGuard.h '  const ch
 mutate guard_low_not_above_critical src/helpers/BatteryGuardCfg.h 'c.low_mv < c.critical_mv + Range::MIN_GAP' 'c.low_mv < c.critical_mv' $BG
 mutate guard_low_not_above_critical_sim src/helpers/BatteryGuardCfg.h 'c.low_mv < c.critical_mv + Range::MIN_GAP' 'c.low_mv < c.critical_mv' $BS::test_the_interface_checks_the_whole_value_and_refuses_it_all_or_changes_it_all
 # the would-sleep-now refusal removed
-mutate guard_would_sleep_now_removed src/helpers/BatteryGuard.h 'if (decide(c, bl, sup, external).would_sleep) return "would-sleep-now";' '(void)external;' $BG
-mutate guard_would_sleep_now_removed_sim src/helpers/BatteryGuard.h 'if (decide(c, bl, sup, external).would_sleep) return "would-sleep-now";' '(void)external;' $BS::test_arming_at_critical_is_refused_would_sleep_now
+mutate guard_would_sleep_now_removed src/helpers/BatteryGuard.h 'if (decide(c, bl, external).would_sleep) return "would-sleep-now";' '(void)external;' $BG
+mutate guard_would_sleep_now_removed_sim src/helpers/BatteryGuard.h 'if (decide(c, bl, external).would_sleep) return "would-sleep-now";' '(void)external;' $BS::test_arming_at_critical_is_refused_would_sleep_now
 # a dry run that stores the proposal
-mutate guard_dry_writes src/helpers/BatteryGuard.h '    const char* refusal = check(arg, bl, supported(), external, &c);' '    const char* refusal = check(arg, bl, supported(), external, &c);
+mutate guard_dry_writes src/helpers/BatteryGuard.h '    const char* refusal = check(arg, bl, external, &c);' '    const char* refusal = check(arg, bl, external, &c);
     if (!refusal) bl.settings() = c;' $BG
-mutate guard_dry_writes_sim src/helpers/BatteryGuard.h '    const char* refusal = check(arg, bl, supported(), external, &c);' '    const char* refusal = check(arg, bl, supported(), external, &c);
+mutate guard_dry_writes_sim src/helpers/BatteryGuard.h '    const char* refusal = check(arg, bl, external, &c);' '    const char* refusal = check(arg, bl, external, &c);
     if (!refusal) bl.settings() = c;' $BS::test_the_dry_run_answers_and_changes_nothing
 # an unsigned write allowed on an enrolled device: the set line classed as a read
 mutate guard_unsigned_write_allowed src/helpers/cli/CliRegistry.h '    // reads

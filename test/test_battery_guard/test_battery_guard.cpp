@@ -1,6 +1,5 @@
 // The battery guard's settings, validation, dry run and CLI lines (src/helpers/BatteryGuard.h, BatteryGuardCfg.h), and the
 // classifier reading its thresholds from them.
-#define BATTERY_GUARD_BOARD 1   // as a board of the support matrix defines it
 #include <gtest/gtest.h>
 #include <stdint.h>
 #include <string.h>
@@ -242,17 +241,6 @@ TEST(BatteryGuard, TheDryRunAnswersAndWritesNothing) {
   g.window(3300);
   EXPECT_EQ("> accepted=no refusal=would-sleep-now level=critical would_sleep=yes reason=level-critical",
             g.cli("get battery.guard.dry"));
-}
-
-TEST(BatteryGuard, AnUnsupportedBoardRefusesToArm) {
-  Feed f;
-  Cfg out;
-  // the support flag is a parameter of check(), so the refusal is tested without a build per board
-  EXPECT_STREQ("unsupported", BatteryGuard::check("enabled=on", f.b, false, false, &out));
-  EXPECT_EQ(nullptr, BatteryGuard::check("enabled=off low=3600", f.b, false, false, &out));
-  EXPECT_EQ(nullptr, BatteryGuard::check("enabled=on", f.b, true, false, &out));
-  EXPECT_FALSE(BatteryGuard::decide(out, f.b, false, false).would_sleep);
-  EXPECT_STREQ("unsupported", BatteryGuard::decide(out, f.b, false, false).reason);
 }
 
 TEST(BatteryGuardPrefs, TheSettingsSurviveARoundTrip) {

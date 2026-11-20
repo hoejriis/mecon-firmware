@@ -1,5 +1,5 @@
 {
- "description": "Every config.schema page answered by the Repeater and the Room server, in order, as recorded from the simulated builds: `plain` is a build without Wi-Fi (SERVER_KEYS), `wifi` one with ENABLE_WIFI_INTERFACE (SERVER_KEYS plus the Wi-Fi and broker keys). The two roles answer the same pages except for `region.neutral`, which only the Repeater lists, as the last key. A Backend maps its own keys only to keys listed here. sim/tests/test_device_interface_server.py fails if the firmware's schema drifts from this recording.",
+ "description": "Every config.schema page answered by the Repeater and the Room server, in order, as recorded from the simulated builds: `plain` is a build without Wi-Fi (SERVER_KEYS), `wifi` one with ENABLE_WIFI_INTERFACE (SERVER_KEYS plus the Wi-Fi and broker keys). The two roles answer the same pages except for `battery.guard` and `region.neutral`, which only the Repeater lists, as the last two keys. A Backend maps its own keys only to keys listed here. sim/tests/test_device_interface_server.py fails if the firmware's schema drifts from this recording.",
  "builds": {
   "plain_room": {
    "roles": [
@@ -632,6 +632,18 @@
      "result": {
       "profile": "config/1.0",
       "keys": [
+       {
+        "key": "battery.guard",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 63,
+        "format": "battery.guard",
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
        {
         "key": "region.neutral",
         "type": "boolean",
@@ -1747,6 +1759,18 @@
          0,
          5
         ],
+        "writable": true,
+        "write_only": false,
+        "reboot": false,
+        "restarts": false,
+        "confirm": true
+       },
+       {
+        "key": "battery.guard",
+        "type": "string",
+        "min_len": 1,
+        "max_len": 63,
+        "format": "battery.guard",
         "writable": true,
         "write_only": false,
         "reboot": false,

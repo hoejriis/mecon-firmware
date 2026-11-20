@@ -16,9 +16,11 @@ const KeyDef KEYS[] = {
   {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
 #include "IfaceRadioKeys.inc"
 #include "IfaceContactPolicyKeys.inc"
+#ifdef BATTERY_GUARD_BOARD   // only a board of the support matrix lists it (flash on the others is tight)
   // Since v0.3.12. One composite value, checked as a whole on the device against the stored one; this release never sleeps.
   {"battery.guard", K_STRING, 1, 63, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get battery.guard", F_WHOLE,
    "set battery.guard %s", "battery.guard"},
+#endif
 #ifdef ENABLE_WIFI_INTERFACE   // a board without Wi-Fi has neither the mode switch nor the profiles: `invalid`, as any key it lacks
   {"connectivity.mode", K_ENUM, 0, 0, "ble|wifi", KF_WRITABLE | KF_CONFIRM | KF_RESTARTS, 0, "get connectivity.mode", F_WHOLE,
    "set connectivity.mode %s"},
@@ -52,9 +54,11 @@ const KeyDef SERVER_KEYS[] = {
 #ifdef ENABLE_WIFI_INTERFACE
 #include "IfaceNetKeys.inc"
 #endif
+#ifdef BATTERY_GUARD_BOARD
   // Since v0.3.12. Repeater only, One composite value, checked as a whole on the device against the stored one; this release never sleeps.
   {"battery.guard", K_STRING, 1, 63, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get battery.guard", F_WHOLE,
    "set battery.guard %s", "battery.guard"},
+#endif
   // Repeater only: this one and region.neutral are the last two entries, and the Room server lists the table without them
   // (ConsoleIface::configHost).
   {"region.neutral", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get region.neutral", F_WHOLE,
@@ -88,7 +92,9 @@ bool checkFormat(const char* format, const char* value) {
     const double lim = lat ? 90 : 180;
     return decimal(p, &p, 0, lim) && *p == 0;
   }
+#ifdef BATTERY_GUARD_BOARD
   if (strcmp(format, "battery.guard") == 0) return BatteryGuard::formatOk(value);
+#endif
   if (strcmp(format, "multiplier") == 0) {   // the battery divider: 0 to 10, at most three places, as the CLI prints it
     const char* p = value;
     const char* dot = strchr(value, '.');
@@ -367,6 +373,7 @@ bool restoreLine(const KeyDef* tk, size_t nk, const ConfigSnap::Rec& r, char* li
 const char APPLY_FAILED_REVERTED[] = "{\"error\":\"apply-failed\",\"reverted\":true}";
 const char APPLY_FAILED_KEPT[] = "{\"error\":\"apply-failed\",\"reverted\":false}";
 
+#ifdef BATTERY_GUARD_BOARD
 // The battery guard answers, for a proposed value, what it would do now, without writing: `get battery.guard.dry <value>`.
 // Returns null and fills the reply when the line ran, else the error to give.
 const char* guardDry(const ConfigHost* h, const char* value, char* reply, size_t cap) {
@@ -425,6 +432,7 @@ Status applyDry(OpContext& c, ConfigHost* h, int set) {
   memset(val, 0, sizeof(val));
   return ST_OK;
 }
+#endif  // BATTERY_GUARD_BOARD
 
 }  // namespace
 
@@ -637,6 +645,7 @@ Status opConfigApply(OpContext& c) {
   char key[48], val[VALUE_MAX], line[LINE_MAX], reply[LINE_MAX];
   // "dry":true asks what the battery guard would do now with the proposed value: nothing is written and nothing needs
   // confirming.
+#ifdef BATTERY_GUARD_BOARD
   const int dryt = c.req->args >= 0 ? jsonFind(d, c.req->args, "dry") : -1;
   if (dryt >= 0) {
     bool dry;
@@ -646,6 +655,9 @@ Status opConfigApply(OpContext& c) {
       return applyDry(c, h, set);
     }
   }
+#else
+  if (c.req->args >= 0 && jsonFind(d, c.req->args, "dry") >= 0) { c.error = "dry-unsupported"; return ST_INVALID; }   // never a write by mistake
+#endif
   // "confirm":{"within_s":N} asks for commit-or-revert (OPERATIONS.md 3.4); N from 30 to 900, 300 when absent.
   const ConfirmHost* ch = h->confirm;
   const int conf = jsonFind(d, c.req->args, "confirm");
@@ -676,6 +688,7 @@ Status opConfigApply(OpContext& c) {
     const bool allowed = h->allow(h->user, line);
     if (ch && ch->line_class) cls |= (uint8_t)(1u << ch->line_class(h->user, line));
     if (k->flags & KF_CONFIRM) needs = true;
+#ifdef BATTERY_GUARD_BOARD
     // The battery guard's value is checked as one whole against the device, before any write: its ranges, the order of
     // its thresholds, the board, and a setting that would put it at critical at once.
     const char* guard_err = nullptr;
@@ -685,10 +698,13 @@ Status opConfigApply(OpContext& c) {
       if (!guard_err && guardRefusal(reply, refusal, sizeof(refusal))) guard_err = refusal;
       if (guard_err) { c.error = keyError(guard_err, key); }
     }
+#endif
     memset(val, 0, sizeof(val));
     memset(line, 0, sizeof(line));
     if (!allowed) { c.error = keyError("refused", key); return ST_REFUSED; }
+#ifdef BATTERY_GUARD_BOARD
     if (guard_err) return guardStatus(guard_err);
+#endif
   }
   // Only the unsigned cable keeps its path whatever it changes; anyone else asks for confirmation, and a confirmation
   // that protects nothing is refused rather than ignored.

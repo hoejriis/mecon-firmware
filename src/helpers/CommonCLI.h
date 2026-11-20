@@ -9,7 +9,9 @@
 #include <helpers/CommonRadioPrefs.h>
 #include <helpers/DynamicConfigSerializer.h>
 #include <helpers/net/NetPrefs.h>
+#ifdef BATTERY_GUARD_BOARD
 #include <helpers/BatteryGuardPrefs.h>
+#endif
 
 #if defined(WITH_RS232_BRIDGE) || defined(WITH_ESPNOW_BRIDGE)
 #define WITH_BRIDGE
@@ -216,7 +218,9 @@ private:
   };
   RoomPrefs room;
 
+#ifdef BATTERY_GUARD_BOARD
   BatteryGuardPrefs batt_guard;   // the battery guard's settings (BatteryGuardPrefs.h)
+#endif
 
   DynamicConfigSerializer custom;
 
@@ -244,7 +248,9 @@ protected:
     def("repeat", repeat);
     def("room", room);
     def("power", power);
+#ifdef BATTERY_GUARD_BOARD
     def("batt_guard", batt_guard);
+#endif
     def("custom", custom);
 #ifdef ENABLE_WIFI_INTERFACE
     def("wifi", wifi);

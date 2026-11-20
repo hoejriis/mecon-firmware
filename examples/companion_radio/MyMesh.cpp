@@ -2753,7 +2753,9 @@ bool MyMesh::resetScope(Iface::ResetScope s, uint8_t caller) {
     case Iface::RS_FACTORY: {   // the native factory reset (CMD_FACTORY_RESET)
       const bool ok = _store->formatFileSystem();
       if (ok) recordFactoryReset(caller);
+#ifdef BATTERY_GUARD_BOARD
       if (ok) batteryLevel().settings() = BatteryGuard::Cfg();   // the erased prefs file takes the guard with it
+#endif
       dirty_contacts_expiry = 0;   // nothing written back into the erased files before the reboot
       return ok;
     }
@@ -2998,6 +3000,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   if (handleContactPolicyCommand(command, reply)) return true;
 #endif
 
+#ifdef BATTERY_GUARD_BOARD
   {   // the battery guard's settings and dry run (docs/contract/OPERATIONS.md): checked as one whole, then saved
     bool changed = false;
     if (BatteryGuard::handleCommand(command, reply, 150, batteryLevel(), board.hasUsbPowerDetect() && board.isUsbPowered(),
@@ -3006,6 +3009,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
       return true;
     }
   }
+#endif
 
   if (strcmp(command, "get tz.offset") == 0) {
     sprintf(reply, "> %d", _prefs.tz_offset);
