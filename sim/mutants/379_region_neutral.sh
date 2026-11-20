@@ -10,5 +10,5 @@ mutate neutral_lets_unscoped_through examples/simple_repeater/MyMesh.cpp '    if
 mutate neutral_counts_native_forwards examples/simple_repeater/MyMesh.cpp '  if (neutral_pass) n_neutral_forwarded++;' '  if (packet->isRouteFlood()) n_neutral_forwarded++;' $T::test_an_explicit_deny_beats_neutral_and_an_allowed_region_is_not_counted
 # The setting is kept across a reboot
 mutate neutral_not_persisted src/helpers/CommonCLI.h '      def("neutral", _parent->region_neutral);' '      (void)_parent;' $T::test_the_setting_survives_a_reboot
-# Only the Repeater lists the key: the Room server's table stops before the last entry
-mutate neutral_listed_on_room src/helpers/iface/ConsoleIface.cpp '  const size_t nkeys = strcmp(host().role, "repeater") == 0 ? N_SERVER_KEYS : N_SERVER_KEYS - 1;' '  const size_t nkeys = N_SERVER_KEYS;' $T::test_a_room_server_has_no_such_key_or_line
+# Only the Repeater lists the key: the Room server's table stops before the last two entries (battery.guard and region.neutral)
+mutate neutral_listed_on_room src/helpers/iface/ConsoleIface.cpp '  const size_t nkeys = strcmp(host().role, "repeater") == 0 ? N_SERVER_KEYS : N_SERVER_KEYS - 2;' '  const size_t nkeys = N_SERVER_KEYS;' $T::test_a_room_server_has_no_such_key_or_line

@@ -49,7 +49,7 @@ public:
     if (!_seen) return;
     const Level before = level();
     _level = classify(_mean, _cfg, true, _level);
-    if (level() != before) _changes++;
+    if (level() != before) ++_changes;
   }
   // The level the next window would give with other settings, from the last valid window and the level held now:
   // UNKNOWN when there is no valid level. For a dry run and for refusing a setting that would put the guard at critical.
