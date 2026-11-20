@@ -280,6 +280,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 - Every other native check still applies: the hop limits, duplicate suppression, loop detection, `repeat off`, the back-off and the duty-cycle limit. The packet is forwarded as received, with only the path extended as for any flood; the Repeater does not join, decrypt or originate the scope.
 - It adds airtime on a mesh where many scopes are in use, and no limit of its own is added: the native limits above are all that bound it. The CLI line `get region.neutral.count` reports how many floods were forwarded only because of this mode since boot.
 - The Room server does not list the key: `config.get` of it is an unknown key, and its CLI does not answer the line. An unsupported role says so rather than ignoring the write.
+- To see it work, send a flood scoped to a region the Repeater has not configured from a Companion it hears, and check whether a second Companion that hears only the Repeater receives it. `python3 tools/bench/scoped_flood.py --port <port> --channel <private slot> --region <unknown name> "<text>"` does the sending: it sets the Companion's flood scope for that connection only, sends one channel text, and clears the scope again, changing nothing the Companion stores.
 
 Not in `config.*` in this firmware: neither key table (`KEYS`, `SERVER_KEYS` in `src/helpers/iface/IfaceConfig.cpp`) has them, so each is reached by its CLI line only:
 - **Companion:** `dutycycle`, which is `af` seen as a percentage, so the `af` key reaches it.

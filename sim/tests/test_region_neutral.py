@@ -210,3 +210,36 @@ def test_a_room_server_has_no_such_key_or_line(nodes):
     assert r["status"] != "ok", r
     assert not cli.command("get region.neutral").startswith("> o"), "the Room server does not answer the line"
     assert cli.command("set region.neutral on") != "OK"
+
+
+@radio
+def test_the_bench_tool_sends_a_flood_scoped_to_an_unknown_region(ether, nodes):
+    """tools/bench/scoped_flood.py is what a hardware session uses to show region.neutral: prove it against a simulated
+    Companion, sending through a Repeater with the setting on and then off."""
+    import subprocess
+    tool = os.path.join(os.path.dirname(__file__), "..", "..", "tools", "bench", "scoped_flood.py")
+    r = Rig(ether, nodes)
+    r.a.close()   # the tool opens its own connection to the sender
+
+    def run(text):
+        before = len(ether.tx_log)
+        out = subprocess.run([sys.executable, tool, "--tcp", "127.0.0.1:%d" % r.ca.port, "--channel", "1",
+                              "--region", "bench-unknown", text], capture_output=True, text=True, timeout=60)
+        assert out.returncode == 0, out.stdout + out.stderr
+        assert "accepted" in out.stdout and "scope cleared" in out.stdout, out.stdout
+        assert ether.wait_until_us(ether.now_us() + 60e6, timeout=60)
+        txs = ether.tx_log[before:]
+        sent = [t.data for t in txs if t.src == "ca" and (t.data[0] >> 2) & 0x0F == PAYLOAD_GRP_TXT]
+        relayed = [t.data for t in txs if t.src == "rr" and (t.data[0] >> 2) & 0x0F == PAYLOAD_GRP_TXT]
+        assert len(sent) == 1, "one message per run"
+        return sent[0], relayed
+
+    assert r.cli.command("set region.neutral on") == "OK"
+    sent, relayed = run("tool on")
+    route, codes, _, _ = split(sent)
+    assert route == 0 and codes != b"\0\0\0\0", "a flood with the region's transport code"
+    assert relayed, "neutral on: the Repeater forwards a scope it does not know"
+    assert r.cli.command("get region.neutral.count") == "> 1"
+    assert r.cli.command("set region.neutral off") == "OK"
+    _, relayed = run("tool off")
+    assert not relayed, "neutral off: dropped"
