@@ -54,7 +54,7 @@ def status(i):
 
 
 def level_is(i, want, timeout=12.0):
-    """Poll status.get until battery_level is `want`; returns the last answer."""
+    """Poll the health event until battery_level is `want`; returns the last answer."""
     end = time.time() + timeout
     s = status(i)
     while s["battery_level"] != want and time.time() < end:
@@ -65,7 +65,7 @@ def level_is(i, want, timeout=12.0):
 
 
 def hold(i, seconds):
-    """Wait `seconds` of wall time; every status.get must still say the level it had."""
+    """Wait `seconds` of wall time; every health event must still say the level it had."""
     first = status(i)["battery_level"]
     end = time.time() + seconds
     while time.time() < end:
