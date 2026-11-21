@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/BootTrace.h>
 #include <helpers/PassBlame.h>
 #include <helpers/net/NetCommands.h>
 #include <helpers/Uptime.h>
@@ -1553,6 +1554,13 @@ bool MyMesh::sendSelfAdvert(bool flood) {
 }
 
 void MyMesh::handleCmdFrame(size_t len) {
+#ifdef MECON_BOOT_TRACE
+  if (cmd_frame[0] == CMD_DEVICE_QUERY || cmd_frame[0] == CMD_APP_START || cmd_frame[0] == CMD_MECON) {
+    MECON_TRACE("rx ms=%lu cmd=%s len=%u src=%s", (unsigned long)millis(),
+                cmd_frame[0] == CMD_DEVICE_QUERY ? "device_query" : cmd_frame[0] == CMD_APP_START ? "app_start" : "mecon",
+                (unsigned)len, _cmd_src ? (_cmd_src->isCableTransport() ? "usb" : _cmd_src->isBleTransport() ? "ble" : "net") : "?");
+  }
+#endif
   const uint32_t now = getRTCClock()->getCurrentTime();
   {
     const uint8_t frame = frameGate(len);

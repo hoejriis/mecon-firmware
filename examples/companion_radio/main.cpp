@@ -1,5 +1,6 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <helpers/BootTimes.h>
+#include <helpers/BootTrace.h>
 #include <helpers/PassBlame.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/BootPresence.h>
@@ -211,6 +212,14 @@ void setup() {
   Serial.setRxBufferSize(MECON_IFACE_SERIAL_RX);
 #endif
   Serial.begin(115200);
+#ifdef MECON_BOOT_TRACE
+  MECON_TRACE("boot ms=%lu version=%s reset=%d", (unsigned long)millis(), mecon::versionShort(),
+#ifdef ESP32
+              (int)esp_reset_reason());
+#else
+              -1);
+#endif
+#endif
 #if defined(ENABLE_MECON_IFACE) && defined(ESP32) && !ARDUINO_USB_CDC_ON_BOOT
   // At this baud rate the core raises the UART interrupt only at 120 of the FIFO's 128 bytes, about 0.7 ms before an
   // overflow. Mesh traffic delays that interrupt by more, and the bytes lost drop a multi-frame request (#199). At 32

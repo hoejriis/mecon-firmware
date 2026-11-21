@@ -1,6 +1,7 @@
 #include "MeconIface.h"
 #include <helpers/BleStart.h>
 #include <helpers/Uptime.h>
+#include <helpers/BootTrace.h>
 #include <helpers/iface/DevIdHello.h>
 #include <helpers/iface/Wipe.h>
 #ifdef ENABLE_MECON_IFACE
@@ -1912,6 +1913,24 @@ bool MeconIface::rxPartial() const {
 }
 
 void MeconIface::loop(uint32_t now) {
+#ifdef MECON_BOOT_TRACE
+  {
+    static uint32_t next = 60000;
+    if ((int32_t)(now - next) >= 0) {
+      next = now + 60000;
+      char jid[Iface::Job::ID_CAP + 1] = "";
+      uint8_t jst = 0;
+      const bool open = _updates.traceOpenJob(jid, sizeof(jid), &jst);
+      MECON_TRACE("minute ms=%lu heap=%lu open_update_job=%s state=%u", (unsigned long)now,
+#ifdef ESP32
+                  (unsigned long)ESP.getFreeHeap(),
+#else
+                  0ul,
+#endif
+                  open ? "yes" : "no", open ? (unsigned)jst : 0u);
+    }
+  }
+#endif
   if (!_standing_begun) {
     _standing_begun = true;
     _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, reportAirtimeOk, standingStore(), this}, now);

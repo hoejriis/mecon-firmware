@@ -1,6 +1,7 @@
 #include "ArduinoSerialInterface.h"
 #include "esp32/NativeUsbTx.h"
 #include "SerialTxGate.h"
+#include "BootTrace.h"
 
 #define RECV_STATE_IDLE        0
 #define RECV_STATE_HDR_FOUND   1
@@ -89,6 +90,7 @@ size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
         if (rx_len >= _frame_len) {  // received a complete frame?
           if (_frame_len > MAX_FRAME_SIZE) _frame_len = MAX_FRAME_SIZE;    // truncate
           memcpy(dest, rx_buf, _frame_len);
+          if (_serial == &Serial) MECON_TRACE_MUTE();   // a host speaks frames here: no text on this port from now on
           _state = RECV_STATE_IDLE;  // reset state, for next frame
           return _frame_len;
         }
