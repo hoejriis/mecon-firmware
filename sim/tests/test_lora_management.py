@@ -760,9 +760,12 @@ def test_a_job_event_waits_for_room_on_a_full_queue(ether, nodes, tmp_path):
     while d.i.read_message(0.5):                               # the apply's own job events
         pass
     hold.write_text("")                                        # the host stops reading
-    for stream in ("health", "radio", "connectivity"):         # their results and first snapshots: what is left of the
+    # Their results and first snapshots fill the queue's event slots (7 of 8) whatever their sizes, so no job event fits
+    # (mecon-firmware #615: with three streams a snapshot dropped for bytes left a slot, the job event fitted at once, and
+    # a mutant that never holds it survived).
+    for stream in ("health", "radio", "connectivity", "power"):
         d.i.send_raw(json.dumps(d.i.envelope("sub.start", {"stream": stream, "lifetime_s": 300})).encode())
-        time.sleep(1)                                          # events' room is under a job event
+        time.sleep(1)
     w = wrap(d.node_key, "job.confirm", {"job": job}, job=8)
     d.i.send_raw(json.dumps(w, separators=(",", ":")).encode())   # runs now; its result and the job event wait
     time.sleep(2)
