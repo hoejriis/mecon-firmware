@@ -269,6 +269,12 @@ private:
   Iface::MessageTable* _messages = nullptr;   // allocated on the first message.send, or at begin() in Wi-Fi mode
   uint32_t _msg_ev_seq = 0;
   void tellMessages();
+  // #621: a message.send outcome no reading link's queue could take yet waits as a job event does (JOB_PEND_MS, room
+  // kept by applyHolds): told once by MessageTable, a dropped outcome was never told again.
+  char* _msg_pend = nullptr;
+  size_t _msg_pend_len = 0;
+  uint32_t _msg_pend_until = 0;
+  void msgPendingTick(uint32_t now);
   Iface::Inbox _inbox;
   uint32_t _inbox_ev_seq = 0, _inbox_told = 0;
   bool _inbox_tried = false;

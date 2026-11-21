@@ -24,9 +24,9 @@ def client(n):
     return c, mecon_iface.IfaceClient(c._send, c._read_frame)
 
 
-def pair(nodes, ether, a="ma", b="mb"):
+def pair(nodes, ether, a="ma", b="mb", extra=None):
     """Two Companions in radio range, each holding the other as a contact. The sender's interface client, and both apps."""
-    na = nodes("companion_standalone", a, ether_path=ether.path, seed=31, rtc=RTC).start()
+    na = nodes("companion_standalone", a, ether_path=ether.path, seed=31, rtc=RTC, **({"extra": extra} if extra else {})).start()
     nb = nodes("companion_standalone", b, ether_path=ether.path, seed=32, rtc=RTC).start()
     ca, ia = client(na)
     cb = CompanionClient(nb)
@@ -361,3 +361,36 @@ def test_a_scope_for_one_send_is_named_as_the_default_is(nodes, ether):
         assert r["status"] == "invalid" and r.get("error") == err, (args, r)
     r = ia.request("message.send", {"to": to, "text": "ops", "scope": "$ops", "scope_key": "22" * 16}, rid="sp-1")
     assert r["status"] == "ok", r
+
+
+def test_a_message_outcome_waits_for_room_on_a_full_queue(nodes, ether, tmp_path):
+    # mecon-firmware #621: on a busy link (a Reader holding a Companion over BLE with a dozen streams) a message.send's
+    # transmitted and acked events were pushed onto a full queue, dropped and never told again, so the manager never
+    # learned the DM was delivered. Here the host stops reading while subscriptions fill the queue, the DM goes out and is
+    # acked, and then the host reads again: the outcome must still arrive as an event.
+    hold = tmp_path / "tx-hold"
+    na, nb, ca, ia, cb = pair(nodes, ether, a="mq", b="mr", extra=["--tx-hold-file", str(hold)])
+    while ia.read_message(0.5):
+        pass
+    hold.write_text("")                                        # the host stops reading
+    for stream in ("health", "radio", "connectivity", "power"):  # their results and snapshots fill the queue's event slots
+        ia.send_raw(json.dumps(ia.envelope("sub.start", {"stream": stream, "lifetime_s": 300})).encode())
+        time.sleep(1)
+    env = ia.envelope("message.send", {"to": cb.pub_key.hex(), "text": "while the host is away", "timestamp": RTC + 9}, rid="dm-q")
+    ia.send_raw(json.dumps(env).encode())
+    got = cb.sync_messages(timeout=75, want=1)                 # it went out and the receiver acks it, the host still away
+    assert [m["text"] for m in got] == ["while the host is away"], got
+    time.sleep(6)                                              # the ACK comes back and the state becomes acked
+    hold.unlink()                                              # the host reads again
+    end, states = time.time() + 30, []
+    while time.time() < end and "acked" not in states:
+        m = ia.read_message(0.5)
+        if m and m.get("ev") == "message" and m["data"].get("message") == "dm-q":
+            states.append(m["data"]["state"])
+    states += [e["data"]["state"] for e in ia.events if e.get("ev") == "message" and e["data"].get("message") == "dm-q"]
+    final = wait_state(ia, "dm-q", ("acked",))   # the device itself knows the DM was acked
+    assert final["state"] == "acked", final
+    assert "acked" in states, "the DM's acked outcome was lost on the full queue: %s" % states
+    # Each state is told once, in order: the one that waited for room (transmitted) as well as the one after it.
+    seen = [x for x in states if x in ("transmitted", "acked")]
+    assert seen[:2] == ["transmitted", "acked"], "an outcome was lost or reordered on the full queue: %s" % states
