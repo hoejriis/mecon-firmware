@@ -16,9 +16,11 @@ One source: the build script `bin/mecon_version.py` (a PlatformIO `pre:` script 
 | `v0.1.2-5-gabc1234` (5 commits after the tag) | `v1.18.0-mecon.0.1.2+5.gabc1234` | `v1.18.0-mecon.0.1.2` |
 | `v0.1.2-5-gabc1234-dirty` | `v1.18.0-mecon.0.1.2+5.gabc1234.dirty` | `v1.18.0-mecon.0.1.2` |
 | `v0.1.2-dirty` | `v1.18.0-mecon.0.1.2+dirty` | `v1.18.0-mecon.0.1.2` |
+| `v0.3.14` | `v1.18.0-mecon.0.3.14` | `v1.18.0-m.0.3.14` |
+| `v0.10.0-2-gabc1234` | `v1.18.0-mecon.0.10.0+2.gabc1234` | `v1.18.0-m.0.10.0` |
 | no git or no `v*` tag (source tarball) | `v1.18.0-mecon.unknown` | `v1.18.0-mecon.unk` |
 
-- The Companion device-info frame has a 20-byte version field (19 characters and the terminator), so it carries the short form, cut at 19 characters. A release tag of the form `v0.1.2` fills it exactly; a tag with two-digit components is cut. The frame does not grow.
+- The Companion device-info frame has a 20-byte version field (19 characters and the terminator), so it carries the short form. A release tag of the form `v0.1.2` fills it exactly as `v1.18.0-mecon.<tag>`. A longer tag (any two-digit component, from `v0.3.10` on) is written as `v1.18.0-m.<tag>`, so the whole tag still shows. Only a tag over 9 characters is cut at 19. The frame does not grow.
 - `ver` prints the full form on the Companion, Repeater, Room server and Sensor. `get mecon.version` answers `> <full> (describe <git describe>, upstream <base>)`.
 - `FIRMWARE_VER_CODE` (the Companion protocol level) is a separate number and does not change with the version string.
 - A build with `-D FIRMWARE_VERSION=...` overrides only the short form that the Companion app and the screen show. `hello`, the runtime stream and the console still report the described version. Release artifacts take their version from the tag they are built from.
