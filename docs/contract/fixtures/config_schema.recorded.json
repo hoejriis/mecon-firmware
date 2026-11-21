@@ -323,6 +323,18 @@
             "confirm": false
           },
           {
+            "key": "battery.guard",
+            "type": "string",
+            "min_len": 1,
+            "max_len": 63,
+            "format": "battery.guard",
+            "writable": true,
+            "write_only": false,
+            "reboot": false,
+            "restarts": false,
+            "confirm": true
+          },
+          {
             "key": "connectivity.mode",
             "type": "enum",
             "choices": [
@@ -373,7 +385,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 30
+      }
+    },
+    {
+      "cursor": 30,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "wifi.profile.{n}.priority",
             "type": "integer",
@@ -388,16 +409,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 30
-      }
-    },
-    {
-      "cursor": 30,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "mqtt.enabled",
             "type": "boolean",
@@ -466,7 +478,16 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          },
+          }
+        ],
+        "next": 36
+      }
+    },
+    {
+      "cursor": 36,
+      "result": {
+        "profile": "config/1.0",
+        "keys": [
           {
             "key": "mqtt.profile.{n}.transport",
             "type": "enum",
@@ -483,16 +504,7 @@
             "reboot": false,
             "restarts": false,
             "confirm": true
-          }
-        ],
-        "next": 36
-      }
-    },
-    {
-      "cursor": 36,
-      "result": {
-        "profile": "config/1.0",
-        "keys": [
+          },
           {
             "key": "mqtt.profile.{n}.path",
             "type": "string",

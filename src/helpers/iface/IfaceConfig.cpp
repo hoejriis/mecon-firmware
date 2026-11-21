@@ -1,5 +1,6 @@
 #include "IfaceConfig.h"
 #include <helpers/PrefsBatch.h>
+#include <helpers/BatteryGuardCfg.h>
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +16,11 @@ const KeyDef KEYS[] = {
   {"radio", K_STRING, 7, 40, nullptr, KF_WRITABLE | KF_CONFIRM | KF_REBOOT, 0, "get radio", F_WHOLE, "set radio %s", "freq,bw,sf,cr"},
 #include "IfaceRadioKeys.inc"
 #include "IfaceContactPolicyKeys.inc"
+#ifdef BATTERY_GUARD_BOARD   // only a board of the support matrix lists it (flash on the others is tight)
+  // Since v0.3.12. One composite value, checked as a whole on the device against the stored one; this release never sleeps.
+  {"battery.guard", K_STRING, 1, 63, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get battery.guard", F_WHOLE,
+   "set battery.guard %s", "battery.guard"},
+#endif
 #ifdef ENABLE_WIFI_INTERFACE   // a board without Wi-Fi has neither the mode switch nor the profiles: `invalid`, as any key it lacks
   {"connectivity.mode", K_ENUM, 0, 0, "ble|wifi", KF_WRITABLE | KF_CONFIRM | KF_RESTARTS, 0, "get connectivity.mode", F_WHOLE,
    "set connectivity.mode %s"},
@@ -48,7 +54,13 @@ const KeyDef SERVER_KEYS[] = {
 #ifdef ENABLE_WIFI_INTERFACE
 #include "IfaceNetKeys.inc"
 #endif
-  // Repeater only, and it must stay the last entry: the Room server lists the table without it (ConsoleIface::configHost).
+#ifdef BATTERY_GUARD_BOARD
+  // Since v0.3.12. Repeater only, One composite value, checked as a whole on the device against the stored one; this release never sleeps.
+  {"battery.guard", K_STRING, 1, 63, nullptr, KF_WRITABLE | KF_CONFIRM, 0, "get battery.guard", F_WHOLE,
+   "set battery.guard %s", "battery.guard"},
+#endif
+  // Repeater only: this one and region.neutral are the last two entries, and the Room server lists the table without them
+  // (ConsoleIface::configHost).
   {"region.neutral", K_BOOL, 0, 1, nullptr, KF_WRITABLE | KF_ONOFF, 0, "get region.neutral", F_WHOLE,
    "set region.neutral %s"},
 };
@@ -80,6 +92,9 @@ bool checkFormat(const char* format, const char* value) {
     const double lim = lat ? 90 : 180;
     return decimal(p, &p, 0, lim) && *p == 0;
   }
+#ifdef BATTERY_GUARD_BOARD
+  if (strcmp(format, "battery.guard") == 0) return BatteryGuard::formatOk(value);
+#endif
   if (strcmp(format, "multiplier") == 0) {   // the battery divider: 0 to 10, at most three places, as the CLI prints it
     const char* p = value;
     const char* dot = strchr(value, '.');
@@ -358,6 +373,67 @@ bool restoreLine(const KeyDef* tk, size_t nk, const ConfigSnap::Rec& r, char* li
 const char APPLY_FAILED_REVERTED[] = "{\"error\":\"apply-failed\",\"reverted\":true}";
 const char APPLY_FAILED_KEPT[] = "{\"error\":\"apply-failed\",\"reverted\":false}";
 
+#ifdef BATTERY_GUARD_BOARD
+// The battery guard answers, for a proposed value, what it would do now, without writing: `get battery.guard.dry <value>`.
+// Returns null and fills the reply when the line ran, else the error to give.
+const char* guardDry(const ConfigHost* h, const char* value, char* reply, size_t cap) {
+  char line[LINE_MAX];
+  snprintf(line, sizeof(line), "get battery.guard.dry %s", value);
+  const bool ok = h->run(h->user, line, reply, cap);
+  wipe(line, sizeof(line));
+  if (!ok) return "unsupported";
+  if (strncmp(reply, "Err - ", 6) == 0) return reply + 6;
+  return strncmp(reply, "> ", 2) == 0 ? nullptr : "unsupported";
+}
+
+// The refusal inside a dry answer ("> accepted=no refusal=<reason> ..."), or null when it is accepted.
+bool guardRefusal(const char* reply, char* out, size_t cap) {
+  if (strstr(reply, " accepted=yes ")) return false;
+  if (!tokenAfter(reply, "refusal", out, cap)) copyOut(out, cap, "refused", 7);
+  return true;
+}
+
+// One of the two refusals that are about the device, not the request, is a refusal of a valid request.
+Status guardStatus(const char* why) {
+  return strcmp(why, "would-sleep-now") == 0 || strcmp(why, "unsupported") == 0 ? ST_REFUSED : ST_INVALID;
+}
+
+// `config.apply` with "dry":true on battery.guard: what the guard would do now with the proposed value, changing nothing.
+Status applyDry(OpContext& c, ConfigHost* h, int set) {
+  const JsonDoc& d = *c.doc;
+  char key[48], val[VALUE_MAX], line[LINE_MAX], reply[LINE_MAX], why[24];
+  if (d.tok[set].size != 1 || !jsonGetString(d, set + 1, key, sizeof(key), CS_NAME, 1)) { c.error = "dry-one-key"; return ST_INVALID; }
+  if (strcmp(key, "battery.guard") != 0) { c.error = keyError("dry-unsupported", key); return ST_INVALID; }
+  size_t nk;
+  const KeyDef* tk = tableOf(h, &nk);
+  unsigned idx;
+  const KeyDef* k = findKey(tk, nk, key, strlen(key), &idx);
+  if (!k) { c.error = keyError("unknown-key", key); return ST_INVALID; }
+  const char* bad = nullptr;
+  if (!cliValue(d, set + 2, *k, val, sizeof(val), &bad)) { c.error = keyError(bad, key); return ST_INVALID; }
+  // A dry run changes nothing, so it needs only what a read needs.
+  snprintf(line, sizeof(line), "get battery.guard.dry %s", val);
+  if (!h->allow(h->user, line)) { c.error = keyError("refused", key); return ST_REFUSED; }
+  const char* err = guardDry(h, val, reply, sizeof(reply));
+  if (err) { c.error = keyError(err, key); return ST_INVALID; }
+  const bool refused = guardRefusal(reply, why, sizeof(why));
+  JsonWriter& w = *c.out;
+  char lvl[12], sleep[4], reason[24];
+  if (!tokenAfter(reply, "level", lvl, sizeof(lvl)) || !tokenAfter(reply, "would_sleep", sleep, sizeof(sleep)) ||
+      !tokenAfter(reply, "reason", reason, sizeof(reason))) { c.error = keyError("unreadable", key); return ST_FAILED; }
+  w.key("dry"); w.boolean(true);
+  w.key("battery_guard"); w.beginObject();
+  w.key("accepted"); w.boolean(!refused);
+  if (refused) { w.key("refusal"); w.str(why); }
+  w.key("level"); w.str(lvl);
+  w.key("would_sleep"); w.boolean(strcmp(sleep, "yes") == 0);
+  w.key("reason"); w.str(reason);
+  w.endObject();
+  memset(val, 0, sizeof(val));
+  return ST_OK;
+}
+#endif  // BATTERY_GUARD_BOARD
+
 }  // namespace
 
 bool configRevert(const ConfigHost& h, const Job& j, bool* reboot) {
@@ -567,6 +643,21 @@ Status opConfigApply(OpContext& c) {
   const int set = c.req->args >= 0 ? jsonFind(d, c.req->args, "set") : -1;
   if (!isObject(d, set) || d.tok[set].size < 1 || (unsigned)d.tok[set].size > GET_MAX_KEYS) return ST_INVALID;
   char key[48], val[VALUE_MAX], line[LINE_MAX], reply[LINE_MAX];
+  // "dry":true asks what the battery guard would do now with the proposed value: nothing is written and nothing needs
+  // confirming.
+#ifdef BATTERY_GUARD_BOARD
+  const int dryt = c.req->args >= 0 ? jsonFind(d, c.req->args, "dry") : -1;
+  if (dryt >= 0) {
+    bool dry;
+    if (!jsonGetBool(d, dryt, &dry)) return ST_INVALID;
+    if (dry) {
+      if (jsonFind(d, c.req->args, "confirm") >= 0) { c.error = "confirm-not-needed"; return ST_INVALID; }
+      return applyDry(c, h, set);
+    }
+  }
+#else
+  if (c.req->args >= 0 && jsonFind(d, c.req->args, "dry") >= 0) { c.error = "dry-unsupported"; return ST_INVALID; }   // never a write by mistake
+#endif
   // "confirm":{"within_s":N} asks for commit-or-revert (OPERATIONS.md 3.4); N from 30 to 900, 300 when absent.
   const ConfirmHost* ch = h->confirm;
   const int conf = jsonFind(d, c.req->args, "confirm");
@@ -597,9 +688,23 @@ Status opConfigApply(OpContext& c) {
     const bool allowed = h->allow(h->user, line);
     if (ch && ch->line_class) cls |= (uint8_t)(1u << ch->line_class(h->user, line));
     if (k->flags & KF_CONFIRM) needs = true;
+#ifdef BATTERY_GUARD_BOARD
+    // The battery guard's value is checked as one whole against the device, before any write: its ranges, the order of
+    // its thresholds, the board, and a setting that would put it at critical at once.
+    const char* guard_err = nullptr;
+    char refusal[24];
+    if (allowed && strcmp(k->key, "battery.guard") == 0) {
+      guard_err = guardDry(h, val, reply, sizeof(reply));
+      if (!guard_err && guardRefusal(reply, refusal, sizeof(refusal))) guard_err = refusal;
+      if (guard_err) { c.error = keyError(guard_err, key); }
+    }
+#endif
     memset(val, 0, sizeof(val));
     memset(line, 0, sizeof(line));
     if (!allowed) { c.error = keyError("refused", key); return ST_REFUSED; }
+#ifdef BATTERY_GUARD_BOARD
+    if (guard_err) return guardStatus(guard_err);
+#endif
   }
   // Only the unsigned cable keeps its path whatever it changes; anyone else asks for confirmation, and a confirmation
   // that protects nothing is refused rather than ignored.

@@ -12,6 +12,7 @@
 #include "IfaceJson.h"
 #include "../GnssHealth.h"
 #include "../BatteryLevel.h"
+#include "../BatteryGuard.h"
 
 namespace mesh { class Dispatcher; class Radio; class MainBoard; }
 namespace Posture { struct StaleLogins; }
@@ -316,13 +317,21 @@ template <class Board> void writePowerOf(JsonWriter& w, Board& b) {
 // The health stream's battery level (TELEMETRY.md), from the tracker the role's loop feeds, and where the board can tell,
 // what it runs from. `power_source` is `external` or `battery` only on a board that senses USB power (hasUsbPowerDetect);
 // every other board says `unknown`, and a voltage is never taken for a source. `b` may be null (no board: unknown).
-template <class Board> void writeBatteryLevelOf(JsonWriter& w, Board* b) {
+// `guard_role`: false on the roles that have no battery guard (the Room server, the Sensor): `supported` is then false.
+template <class Board> void writeBatteryLevelOf(JsonWriter& w, Board* b, bool guard_role = true) {
   const BatteryLevel& bl = batteryLevel();
   w.key("battery_level"); w.str(BatteryLevel::name(bl.level()));
   w.key("battery_level_method"); w.str(BatteryLevel::method());
   w.key("battery_level_changes"); w.unum(bl.changes());
   w.key("power_source");
   w.str(b && b->hasUsbPowerDetect() ? (b->isUsbPowered() ? "external" : "battery") : "unknown");
+  // The guard's own state, small: this release reports and answers a dry run, it never sleeps, so `effective` is always
+  // `report-only`.
+  w.key("battery_guard"); w.beginObject();
+  w.key("enabled"); w.boolean(bl.settings().enabled != 0);
+  w.key("supported"); w.boolean(guard_role && BatteryGuard::supported());
+  w.key("effective"); w.str("report-only");
+  w.endObject();
 }
 
 // Feed the tracker from the board when a reading is due. Called every loop pass.
