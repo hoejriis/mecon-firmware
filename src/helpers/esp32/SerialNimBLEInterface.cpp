@@ -5,6 +5,7 @@
 #include "SerialNimBLEInterface.h"
 #include "esp_mac.h"
 #include <helpers/BleStart.h>
+#include <helpers/BootTrace.h>
 
 // Same UUIDs as SerialBLEInterface.cpp: the Nordic UART service the MeshCore apps look for.
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
@@ -15,6 +16,7 @@
 
 void SerialNimBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code) {
   _pin_code = pin_code;
+  MECON_TRACE("ble transport start ms=%lu interface=nimble", (unsigned long)millis());
 
   if (strcmp(name, "@@MAC") == 0) {
     uint8_t addr[8];
@@ -113,7 +115,9 @@ void SerialNimBLEInterface::onAuthenticationComplete(NimBLEConnInfo& connInfo) {
   if (connInfo.isEncrypted() && connInfo.isAuthenticated()) {
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Success");
     deviceConnected = true;
+    MECON_TRACE("ble link up ms=%lu (encrypted, authenticated)", (unsigned long)millis());
   } else {
+    MECON_TRACE("ble authentication failed ms=%lu", (unsigned long)millis());
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Failure*");
 
     pServer->disconnect(connInfo.getConnHandle());
@@ -127,6 +131,7 @@ void SerialNimBLEInterface::onAuthenticationComplete(NimBLEConnInfo& connInfo) {
 // Bluedroid, deviceConnected waits for onAuthenticationComplete().
 void SerialNimBLEInterface::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
   BLE_DEBUG_PRINTLN("onConnect(), conn_handle=%d, mtu=%d", connInfo.getConnHandle(), connInfo.getMTU());
+  MECON_TRACE("ble connect ms=%lu handle=%d mtu=%d", (unsigned long)millis(), (int)connInfo.getConnHandle(), (int)connInfo.getMTU());
   last_conn_id = connInfo.getConnHandle();
 }
 
@@ -136,6 +141,7 @@ void SerialNimBLEInterface::onMTUChange(uint16_t MTU, NimBLEConnInfo& connInfo) 
 
 void SerialNimBLEInterface::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
   BLE_DEBUG_PRINTLN("onDisconnect(), reason=%d", reason);
+  MECON_TRACE("ble disconnect ms=%lu reason=%d", (unsigned long)millis(), reason);
   deviceConnected = false;
   if (_isEnabled) {
     adv_restart_time = millis() + ADVERT_RESTART_DELAY;

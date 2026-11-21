@@ -10,6 +10,7 @@
 #include "helpers/CryptoRNG.h"
 #include "helpers/MeconVersion.h"
 #include "helpers/MemStats.h"
+#include "helpers/BootTrace.h"
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/deployment/DepAuthority.h"
 #include "helpers/iface/IfaceJson.h"
@@ -767,7 +768,18 @@ void UpdateService::downloadStep(uint32_t now_ms) {
 // slot, and the running image hashes to the manifest's digest. Anything less ends with the previous image as the one the
 // device runs, or, where the device cannot tell which that is, with a failed job that says nothing was reverted.
 
+#ifdef MECON_BOOT_TRACE
+bool UpdateService::traceOpenJob(char* id, size_t cap, uint8_t* state) const {
+  Job* j = openUpdateJob();
+  if (!j) return false;
+  snprintf(id, cap, "%s", j->id);
+  *state = j->state;
+  return true;
+}
+#endif
+
 void UpdateService::markProven() {
+  MECON_TRACE("markProven ms=%lu running=%s", (unsigned long)millis(), runningState() == RS_PENDING ? "pending" : "valid");
   if (runningState() == RS_PENDING) markValid();
   if (!_stranded) floorAtBoot();   // the floor follows a proven image (section 4), unless it runs unconfirmed
   settleRecord();
@@ -802,6 +814,9 @@ UpdateService::Back UpdateService::backToPrevious(const Record* r) {
 bool UpdateService::revertJob(Job& j, const Record* r, const char* reason) {
   _attested = false;
   const Back b = backToPrevious(r);
+#ifdef MECON_BOOT_TRACE
+  _recon = b == BACK_FAILED ? "revert-failed" : "reverted";
+#endif
   if (b == BACK_FAILED) return false;
   char members[80];
   if (b == BACK_UNKNOWN) snprintf(members, sizeof(members), "\"error\":\"revert-unknown\",\"reverted\":false");
@@ -826,6 +841,9 @@ bool UpdateService::revertJob(Job& j, const Record* r, const char* reason) {
 
 // The record's job was confirmed before the job table could be saved (a power cut after job.confirm): confirmed.
 void UpdateService::confirmFromRecord(Job& j) {
+#ifdef MECON_BOOT_TRACE
+  _recon = "confirmed-by-record";
+#endif
   finish(j, JOB_CONFIRMED, "\"confirmed_by\":\"record\"");
   markProven();
 }
@@ -906,6 +924,9 @@ void UpdateService::reconcile() {
     if (run && run == r.new_id && _running_known && memcmp(_running_sha, r.image_sha, 32) == 0) {
       // The new image runs and is the one installed: it attests, and awaits confirmation.
       _attested = true;
+#ifdef MECON_BOOT_TRACE
+      _recon = "attested";
+#endif
       strncpy(_attested_job, r.job, sizeof(_attested_job) - 1);
       char sha[65], m[Job::RESULT_CAP];
       hexOf(sha, _running_sha, 32);
@@ -933,6 +954,9 @@ void UpdateService::reconcile() {
   if (!r.confirmed && run && run == r.new_id) {
     if (r.attempts >= MAX_SEND_BACK) {   // the previous image failed its trial each time: stay, and say so
       _stranded = true;
+#ifdef MECON_BOOT_TRACE
+      _recon = "stranded";
+#endif
       strncpy(_stranded_job, r.job, sizeof(_stranded_job) - 1);
       return;
     }
