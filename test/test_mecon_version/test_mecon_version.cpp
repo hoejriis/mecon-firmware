@@ -49,9 +49,24 @@ TEST(MeconVersion, PrereleaseTagKeepsItsHyphenAndStillSplitsTheDescribeSuffix) {
 
 TEST(MeconVersion, ShortFormNeverExceedsTheFrameField) {
   EXPECT_EQ(strlen("v1.18.0-mecon.0.1.2"), 19u);   // the usual release tag exactly fills the field
-  EXPECT_EQ(shortOf("v0.12.34").size(), (size_t)MECON_VERSION_SHORT_MAX);   // cut, still starts with the upstream base
-  EXPECT_EQ(shortOf("v0.12.34").compare(0, 14, "v1.18.0-mecon."), 0);
-  EXPECT_LE(shortOf("v10.200.3000-rc1-1-gabc").size(), (size_t)MECON_VERSION_SHORT_MAX);
+  EXPECT_EQ(shortOf("v0.12.34"), "v1.18.0-m.0.12.34");   // too long for "-mecon.": the whole tag after "-m."
+  EXPECT_EQ(shortOf("v10.200.3000-rc1-1-gabc").size(), (size_t)MECON_VERSION_SHORT_MAX);   // nothing fits: cut
+  EXPECT_EQ(shortOf("v10.200.3000-rc1-1-gabc").compare(0, 10, "v1.18.0-m."), 0);   // still the upstream base first
+}
+
+// A two-digit patch or minor number lost its last digit in the short form (v0.3.10 to v0.3.14 showed as v0.3.1).
+TEST(MeconVersion, ShortFormKeepsTheWholeTag) {
+  EXPECT_EQ(shortOf("v0.3.9"), "v1.18.0-mecon.0.3.9");   // fits: unchanged
+  EXPECT_EQ(shortOf("v0.3.10"), "v1.18.0-m.0.3.10");
+  EXPECT_EQ(shortOf("v0.3.14"), "v1.18.0-m.0.3.14");
+  EXPECT_EQ(shortOf("v0.3.14-5-gabc1234-dirty"), "v1.18.0-m.0.3.14");   // a dev build: the tag it is based on
+  EXPECT_EQ(shortOf("v0.10.0"), "v1.18.0-m.0.10.0");
+  EXPECT_EQ(shortOf("v0.10.0-2-gdeadbee"), "v1.18.0-m.0.10.0");
+  EXPECT_EQ(shortOf("v1.0.0"), "v1.18.0-mecon.1.0.0");
+  EXPECT_EQ(shortOf("v1.0.0-1-gabc1234"), "v1.18.0-mecon.1.0.0");
+  for (const char* d : {"v0.3.9", "v0.3.10", "v0.10.0", "v1.0.0", "v0.99.99-3-gabc"}) {
+    EXPECT_LE(shortOf(d).size(), (size_t)MECON_VERSION_SHORT_MAX) << d;
+  }
 }
 
 TEST(MeconVersion, FullFormIsAlwaysTerminatedInASmallBuffer) {

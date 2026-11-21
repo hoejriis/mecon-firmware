@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BaseSerialInterface.h"
+#include "BootTrace.h"
 
 #ifndef MAX_INTERFACES
   // ble, usb, wifi, ethernet
@@ -193,6 +194,13 @@ public:
       return 0;
     }
 
+#ifdef MECON_BOOT_TRACE
+    // The replies to the three requests the trace follows: device info (13), self info (5), the device interface (0x7F).
+    if (_bound != nullptr && (src[0] == 13 || src[0] == 5 || src[0] == 0x7F)) {
+      MECON_TRACE("tx ms=%lu reply=%s len=%u dst=%s", (unsigned long)millis(), src[0] == 13 ? "device_info" : src[0] == 5 ? "self_info" : "mecon",
+                  (unsigned)len, _bound->isCableTransport() ? "usb" : _bound->isBleTransport() ? "ble" : "net");
+    }
+#endif
     // a reply goes to the interface its request came from; an unbound frame (a push) to all enabled interfaces
     bool allSuccessful = true;
     for(auto iface : _interfaces){

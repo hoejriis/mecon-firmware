@@ -10,6 +10,8 @@
 #include <helpers/iface/JobFsStore.h>
 #include <helpers/iface/MgmtFsStore.h>
 #include <helpers/cli/CliRegistry.h>
+#include <helpers/BootTrace.h>
+#include <helpers/updates/UpdSlot.h>
 
 using namespace Iface;
 
@@ -47,6 +49,17 @@ void MeconIface::jobsLoad() {
   _jobs.begin(&g_job_file, abnormalReset(board) == 1, jobRevert, jobConfirm, this);
   _jobs_booting = false;
   _updates.bootReconcile();   // an installed image attests, or the bootloader rolled it back
+#ifdef MECON_BOOT_TRACE
+  {
+    char jid[Iface::Job::ID_CAP + 1] = "";
+    uint8_t jst = 0;
+    const bool open = _updates.traceOpenJob(jid, sizeof(jid), &jst);
+    const Upd::RunState rs = Upd::runningState();
+    MECON_TRACE("updates ms=%lu running=%s reconcile=%s attested_job=%s open_job=%s state=%u", (unsigned long)millis(),
+                rs == Upd::RS_PENDING ? "pending" : rs == Upd::RS_VALID ? "valid" : "unknown", _updates.reconcileOutcome(),
+                _updates.attestedJob()[0] ? _updates.attestedJob() : "-", open ? jid : "-", open ? (unsigned)jst : 0u);
+  }
+#endif
   Iface::configSnapBoot(configHost());   // a snapshot no awaiting job owns goes: it holds old secrets
   Iface::mgmtSnapBoot(mgmtHost());       // likewise the management channel's: it holds an old key
   { Iface::ScopeHost sh = scopeHost(); Iface::scopeSnapBoot(sh); }   // and the default scope's previous key

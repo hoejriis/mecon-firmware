@@ -8,10 +8,14 @@
 //   v0.1.2-5-gabc1234         v1.18.0-mecon.0.1.2+5.gabc1234       v1.18.0-mecon.0.1.2
 //   v0.1.2-5-gabc1234-dirty   v1.18.0-mecon.0.1.2+5.gabc1234.dirty v1.18.0-mecon.0.1.2
 //   v0.1.2-dirty              v1.18.0-mecon.0.1.2+dirty            v1.18.0-mecon.0.1.2
+//   v0.3.14                   v1.18.0-mecon.0.3.14                 v1.18.0-m.0.3.14
+//   v0.10.0-2-gabc1234        v1.18.0-mecon.0.10.0+2.gabc1234      v1.18.0-m.0.10.0
 //   unknown (no git, no tag)  v1.18.0-mecon.unknown                v1.18.0-mecon.unk
 //
 // The upstream base stays first so an app that reads the leading "v1.18.0" still does. The short form is what the
-// Companion device-info frame has room for (a 20-byte field: 19 characters and the terminator); it is cut at 19.
+// Companion device-info frame has room for (a 20-byte field: 19 characters and the terminator). A tag too long for
+// "-mecon." there (from v0.3.10 on) is written after "-m." instead, so the whole tag still shows; only a tag that
+// does not fit even then (over 9 characters) is cut at 19.
 // FIRMWARE_VER_CODE (the protocol level) is a different number and is never touched here.
 
 #include <stddef.h>
@@ -83,7 +87,9 @@ inline void formatVersion(const char* describe, const char* upstream, char* full
   const char* base = upstream ? upstream : MECON_UPSTREAM_BASE;
   if (full && fullN) snprintf(full, fullN, "%s-mecon.%s%s", base, tag, extra);
   if (shortv && shortN) {
-    snprintf(shortv, shortN, "%s-mecon.%s", base, strcmp(tag, "unknown") == 0 ? "unk" : tag);   // "unknown" would not fit
+    const char* t = strcmp(tag, "unknown") == 0 ? "unk" : tag;   // "unknown" would not fit
+    const bool longForm = strlen(base) + strlen("-mecon.") + strlen(t) <= MECON_VERSION_SHORT_MAX;
+    snprintf(shortv, shortN, longForm ? "%s-mecon.%s" : "%s-m.%s", base, t);
     if (shortN > MECON_VERSION_SHORT_MAX + 1) shortv[MECON_VERSION_SHORT_MAX] = 0;
   }
 }

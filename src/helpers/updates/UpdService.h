@@ -96,6 +96,14 @@ public:
   // bootloader rolled it back.
   void bootReconcile();
 
+#ifdef MECON_BOOT_TRACE
+  // Read-only, for the diagnostic trace (helpers/BootTrace.h): what bootReconcile did ("nothing", "attested",
+  // "confirmed-by-record", "reverted", "revert-failed", "stranded"), and the open update job's id and state (false if none).
+  const char* reconcileOutcome() const { return _recon; }
+  bool traceOpenJob(char* id, size_t cap, uint8_t* state) const;
+  const char* attestedJob() const { return _attested ? _attested_job : ""; }
+#endif
+
   // { "manifest": "<text>", "manifest_sig": "<base64>" } -> { "sha256", "version", "preflight" }
   Iface::Status opManifest(Iface::OpContext& c, uint32_t now_ms);
   // { "job", "running": { "version", "sha256" }, "security_floor", "staged": [{ "sha256", "version" }] }
@@ -147,6 +155,9 @@ private:
   // The running image, hashed at boot.
   uint8_t _running_sha[32] = {};
   bool _running_known = false;
+#ifdef MECON_BOOT_TRACE
+  const char* _recon = "nothing";
+#endif
   bool _attested = false;     // an update job's image runs and awaits confirmation
   bool _stranded = false;     // an image never confirmed runs, and the previous one kept failing its trial (section 7)
   char _stranded_job[33] = {};
