@@ -13,6 +13,16 @@ BASE = "v1.18.0-mecon."
 RTC = 1760000000
 
 
+def _described_tag():
+    """The release tag this build is described from (bin/mecon_version.py's input), without the leading "v"."""
+    try:
+        d = subprocess.run(["git", "-C", REPO, "describe", "--tags", "--match", "v[0-9]*", "--abbrev=0"],
+                           capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return d[1:] if d.startswith("v") else None
+
+
 def test_companion_device_info_frame_carries_the_mecon_version_and_the_unchanged_protocol_level(nodes):
     n = nodes("companion", "id1", rtc=RTC, seed=3).start()
     c = CompanionClient(n)
@@ -20,8 +30,12 @@ def test_companion_device_info_frame_carries_the_mecon_version_and_the_unchanged
     assert f[0] == 13   # RESP_CODE_DEVICE_INFO
     assert f[1] == 14, "FIRMWARE_VER_CODE is the protocol level and must not change (got %d)" % f[1]
     ver = bytes(f[60:80]).split(b"\0")[0].decode()
-    assert ver.startswith(BASE), ver
-    assert len(ver) <= 19 and re.fullmatch(r"v1\.18\.0-mecon\.[0-9A-Za-z.+-]+", ver), ver
+    # The short form: "-mecon.<tag>" when it fits the 19 characters, else "-m.<tag>", so the whole tag still shows.
+    assert ver.startswith("v1.18.0-m"), ver
+    assert len(ver) <= 19 and re.fullmatch(r"v1\.18\.0-m(econ)?\.[0-9A-Za-z.+-]+", ver), ver
+    tag = _described_tag()
+    if tag and len(tag) <= 9:
+        assert ver.endswith("." + tag) or ver.endswith("-m." + tag), (ver, tag)   # not cut
     assert len(f) == 82   # the frame did not grow: the string fits the existing 20-byte field
 
 
