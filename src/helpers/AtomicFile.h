@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "BootPresence.h"
+#include "BusyGate.h"
 
 #if defined(ESP32)
   #define ATOMIC_FILE_TWO_STEP_SWAP 1
@@ -120,6 +121,7 @@ inline void discard(FS_T* fs, const char* path) {
 // lookup of a missing name that scans the whole SPIFFS file table. A wrong hint costs a retry, never the save.
 template <typename FS_T, typename WRITER>
 inline bool save(FS_T* fs, const char* path, WRITER writer, bool is_new = false) {
+  BusyGate::FlashScope busy;   // a protective sleep waits for the save (BusyGate.h)
   char tmp[48], nw[48];
   nameWith(tmp, sizeof(tmp), path, ".tmp");
   nameWith(nw, sizeof(nw), path, ".new");

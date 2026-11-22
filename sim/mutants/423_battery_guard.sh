@@ -52,4 +52,4 @@ mutate guard_confirm_dropped src/helpers/iface/IfaceConfig.cpp '  // Since v0.3.
 # the dry run of config.apply writing through the normal path
 mutate guard_dry_apply_not_dry src/helpers/iface/IfaceConfig.cpp '      return applyDry(c, h, set);' '      (void)applyDry;' $BS::test_the_dry_run_answers_and_changes_nothing
 # the health stream claiming the guard acts
-mutate guard_health_effective src/helpers/iface/Streams.h 'w.key("effective"); w.str("report-only");' 'w.key("effective"); w.str(bl.settings().enabled ? "active" : "report-only");' $BS::test_the_health_stream_carries_battery_guard
+mutate guard_health_effective src/helpers/iface/Streams.h '  c.effective(eff, sizeof(eff));' '  snprintf(eff, sizeof(eff), "armed");' $BS::test_the_health_stream_carries_battery_guard

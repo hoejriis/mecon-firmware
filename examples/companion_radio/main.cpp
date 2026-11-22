@@ -9,6 +9,7 @@
 #include <helpers/net/NetTelemetry.h>
 #include <helpers/HeapFloor.h>
 #include <helpers/HeapWatch.h>
+#include <helpers/BatterySleepRun.h>
 #if defined(ESP32) && defined(ENABLE_CONNMODE) && !defined(SIM_BLE_STUB)   // the simulated board has no BT controller
   #include <esp_bt.h>   // esp_bt_controller_mem_release, in Wi-Fi mode
 #endif
@@ -204,6 +205,9 @@ static uint64_t ifaceConnSignature() {
 #endif  // ENABLE_MECON_IFACE
 
 void setup() {
+#ifdef BATTERY_SLEEP
+  BatterySleep::early();   // the pads a protective sleep held, let go of without a glitch
+#endif
   CryptoRNG::seedAtBoot();
   Posture::audit().setClockCheck([]() -> bool { return rtc_clock.isSet(); });
 #if defined(ENABLE_MECON_IFACE) && defined(ESP32)
@@ -227,6 +231,11 @@ void setup() {
   Serial.setRxFIFOFull(32);
 #endif
   board.begin();
+#ifdef BATTERY_SLEEP
+  // The battery guard's boot check (helpers/BatterySleep.h): on a wake from a protective sleep, before the display, the
+  // radio, the file system or any link starts. Back to sleep from here while the battery has not recovered.
+  BatterySleep::bootGuard();
+#endif
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.begin();

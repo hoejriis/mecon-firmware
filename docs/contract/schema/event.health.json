@@ -17,8 +17,16 @@
     "battery_level_changes": {"type": "integer", "minimum": 0, "maximum": 65535, "description": "Changes of battery_level since boot, the first reading included; wraps at 65536 (since v0.3.12)."},
     "power_source": {"type": "string", "enum": ["external", "battery", "unknown"], "description": "external or battery only on a board that senses USB power; unknown otherwise (since v0.3.12)."},
     "battery_guard": {"type": "object", "required": ["enabled", "supported", "effective"],
-                      "description": "The battery guard (since v0.3.12). enabled: the stored setting. supported: whether this board is in the support matrix. effective: report-only in every release so far; nothing sleeps.",
-                      "properties": {"enabled": {"type": "boolean"}, "supported": {"type": "boolean"}, "effective": {"type": "string", "enum": ["report-only"]}}},
+                      "description": "The battery guard (since v0.3.12). enabled: the stored setting. supported: whether this board is in the support matrix. effective: report-only where the build has no protective sleep; where it has one (not yet in a release: the Heltec V3 and V4 Companion and Repeater), what the guard does now, and the members after it, null while the guard keeps no state.",
+                      "properties": {"enabled": {"type": "boolean"}, "supported": {"type": "boolean"},
+                                     "effective": {"type": "string", "pattern": "^(report-only|off|armed|confirming|probation|blocked:(lease|level-unknown|external-power|timer-failed|flash-write|update-trial|update-transfer|job-open))$"},
+                                     "last_entry": {"type": ["string", "null"], "enum": ["critical", "emergency", "brownout", null]},
+                                     "last_recovery": {"type": ["string", "null"], "enum": ["voltage", "button", "sensor-invalid", "timer-failed", "reset", "state-lost", null]},
+                                     "failed_recoveries": {"type": ["integer", "null"], "minimum": 0, "maximum": 20},
+                                     "sleeps": {"type": ["integer", "null"], "minimum": 0, "maximum": 65535},
+                                     "interval_s": {"type": ["integer", "null"], "minimum": 300, "maximum": 3600},
+                                     "recover_mv": {"type": ["integer", "null"], "minimum": 0},
+                                     "test_offset_mv": {"type": "integer", "minimum": 0, "maximum": 2000, "description": "A bench build only: the offset the guard takes off each reading."}}},
     "contacts": {"type": "object", "description": "Absent on a role with no contact list.", "required": ["count", "capacity"],
                  "properties": {"count": {"type": "integer", "minimum": 0}, "capacity": {"type": "integer", "minimum": 0}}}
   }

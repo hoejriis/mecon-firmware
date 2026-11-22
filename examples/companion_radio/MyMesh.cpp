@@ -9,6 +9,7 @@
 #include <helpers/iface/Wipe.h>
 #include <helpers/AuditStore.h>
 #include <helpers/BatteryGuard.h>
+#include <helpers/BatterySleepRun.h>
 #include <helpers/LazySaveRetry.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/NrfWorker.h>
@@ -3017,6 +3018,10 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
       return true;
     }
   }
+#endif
+#if defined(MECON_BATTERY_TEST_OFFSET) && defined(BATTERY_SLEEP)
+  // The bench offset (a bench build only): the USB cable alone, not a signed request and not BLE.
+  if (Cli::principalOf(_cli_ctx) == Cli::P_CABLE && BatterySleep::testLine(command, reply, 150)) return true;
 #endif
 
   if (strcmp(command, "get tz.offset") == 0) {

@@ -13,6 +13,10 @@
 #include "../GnssHealth.h"
 #include "../BatteryLevel.h"
 #include "../BatteryGuard.h"
+#include "../BatterySleep.h"
+#ifdef MECON_BATTERY_TEST_OFFSET
+#include "../BatterySleepRun.h"
+#endif
 
 namespace mesh { class Dispatcher; class Radio; class MainBoard; }
 namespace Posture { struct StaleLogins; }
@@ -314,6 +318,28 @@ template <class Board> void writePowerOf(JsonWriter& w, Board& b) {
   if (boot_mv) { w.key("boot_mv"); w.unum(boot_mv); }
 }
 
+// The protective sleep's members of the health stream's battery_guard object (TELEMETRY.md). Each count is null while
+// the guard keeps no block (off, or before its first loop pass), so a null is never a zero.
+inline void writeSleepState(JsonWriter& w, const BatteryLevel& bl) {
+  const BatterySleep::Controller& c = BatterySleep::controller();
+  const BatterySleep::State* s = c.state();
+  char eff[40];
+  c.effective(eff, sizeof(eff));
+  w.key("effective"); w.str(eff);
+  const char* e = s ? BatterySleep::entryName(s->entry) : nullptr;
+  const char* v = s ? BatterySleep::recoveryName(s->recovery) : nullptr;
+  w.key("last_entry"); if (e) w.str(e); else w.null();
+  w.key("last_recovery"); if (v) w.str(v); else w.null();
+  w.key("failed_recoveries"); if (s) w.unum(s->failed); else w.null();
+  w.key("sleeps"); if (s) w.unum(s->sleeps); else w.null();
+  w.key("interval_s"); if (s) w.unum(s->interval_s); else w.null();
+  w.key("recover_mv"); if (s) w.unum(BatterySleep::recoverMv(*s)); else w.null();
+#ifdef MECON_BATTERY_TEST_OFFSET
+  w.key("test_offset_mv"); w.unum((uint32_t)BatterySleep::testOffset());   // a bench build only
+#endif
+  (void)bl;
+}
+
 // The health stream's battery level (TELEMETRY.md), from the tracker the role's loop feeds, and where the board can tell,
 // what it runs from. `power_source` is `external` or `battery` only on a board that senses USB power (hasUsbPowerDetect);
 // every other board says `unknown`, and a voltage is never taken for a source. `b` may be null (no board: unknown).
@@ -325,11 +351,18 @@ template <class Board> void writeBatteryLevelOf(JsonWriter& w, Board* b, bool gu
   w.key("battery_level_changes"); w.unum(bl.changes());
   w.key("power_source");
   w.str(b && b->hasUsbPowerDetect() ? (b->isUsbPowered() ? "external" : "battery") : "unknown");
-  // The guard's own state, small: this release reports and answers a dry run, it never sleeps, so `effective` is always
-  // `report-only`.
+  // The guard's own state. A board and role without the protective sleep reports and answers a dry run only:
+  // `effective` is `report-only`. With it (BatterySleep.h), what the guard does now and the block it keeps.
   w.key("battery_guard"); w.beginObject();
   w.key("enabled"); w.boolean(bl.settings().enabled != 0);
   w.key("supported"); w.boolean(guard_role && BatteryGuard::supported());
+#ifdef BATTERY_SLEEP_BOARD
+  if (guard_role) {
+    writeSleepState(w, bl);
+    w.endObject();
+    return;
+  }
+#endif
   w.key("effective"); w.str("report-only");
   w.endObject();
 }
@@ -337,7 +370,11 @@ template <class Board> void writeBatteryLevelOf(JsonWriter& w, Board* b, bool gu
 // Feed the tracker from the board when a reading is due. Called every loop pass.
 template <class Board> void tickBatteryLevel(uint32_t now, Board* b) {
   BatteryLevel& bl = batteryLevel();
+#ifdef MECON_BATTERY_TEST_OFFSET
+  if (b && bl.due(now)) bl.sample(now, BatterySleep::offsetReading(b->getBattMilliVolts()));   // the bench offset
+#else
   if (b && bl.due(now)) bl.sample(now, b->getBattMilliVolts());
+#endif
 }
 
 // The runtime stream's `gnss` object. Called only for a board that has a receiver, so it is absent

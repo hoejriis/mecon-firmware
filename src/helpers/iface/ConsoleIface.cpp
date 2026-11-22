@@ -2,6 +2,7 @@
 #include "AuditOps.h"
 #include "../HeapFloor.h"
 #include "../HeapWatch.h"
+#include "../BatterySleepRun.h"
 #include <helpers/esp32/NativeUsbTx.h>
 #include <helpers/CryptoRNG.h>
 #include <helpers/Uptime.h>
@@ -1625,6 +1626,13 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   if (!cableLineUp()) _unlock.clear();   // the cable's host went (AUTHORITY.md section 10)
   _gap.tick(now);
   tickBatteryLevel(now, _host.board);
+#ifdef BATTERY_SLEEP
+  if (strcmp(_host.role, "repeater") == 0)   // the protective sleep (helpers/BatterySleep.h): the Repeater only here
+    BatterySleep::loopTick(now, batteryLevel(), _host.board, [](void* u, bool emergency) {
+      ConsoleIface* self = static_cast<ConsoleIface*>(u);
+      return BatterySleep::busyOf(self->_jobs, self->_updates, emergency);
+    }, this, nullptr);
+#endif
   _jobs.tick(now);
   rawTick(now);   // a held packet.transmit, when the duty window has room (#537)
   _auth.continuityReconcile(Posture::isHardened(_host.posture(_host.user)));   // Hardened holds no package (#118)
