@@ -728,11 +728,51 @@ void MeconIface::tellMessages() {
   if (!_messages) return;
   const uint32_t now = millis();
   _messages->tick(now);
+  if (_msg_pend) {   // one outcome at a time, so a later state never overtakes an earlier one
+    msgPendingTick(now);
+    if (_msg_pend) return;
+  }
   const MessageEntry* e = _messages->nextToTell();
   if (!e) return;
   char data[96];
   if (!writeMessageEventData(data, sizeof(data), *e)) return;
-  tellReaders("message", ++_msg_ev_seq, data);   // if this cannot be told, the state is still in message.get and message.list
+  char* ev = static_cast<char*>(malloc(RESULT_MAX));
+  if (!ev) return;   // the state is still in message.get and message.list
+  const uint32_t ts = _mesh->getRTCClock()->knownTime();
+  int n = writeEvent(ev, RESULT_MAX, "message", ++_msg_ev_seq, _epoch, ts != 0, ts, data);
+  if (n > 0) n = _prov.sign("message", ev, (size_t)n, RESULT_MAX);
+  if (n <= 0) { free(ev); return; }
+  if (_mqtt_may_read && _ev_publish && _ev_up && _ev_up()) _ev_publish("message", ev, (size_t)n);
+  applyHolds(false);
+  const bool fits = jobFitsAll((size_t)n);   // the readers tellReaders writes to: a reading, connected link
+  applyHolds(true);
+  if (fits) {
+    jobSend(ev, (size_t)n);
+    free(ev);
+    return;
+  }
+  // #621: a full queue would drop it, and MessageTable tells each state once. Held until it fits, as a job event.
+  char* held = static_cast<char*>(realloc(ev, (size_t)n));
+  _msg_pend = held ? held : ev;
+  _msg_pend_len = (size_t)n;
+  _msg_pend_until = now + JOB_PEND_MS;
+  applyHolds(true);
+}
+
+void MeconIface::msgPendingTick(uint32_t now) {
+  if (!_msg_pend) return;
+  applyHolds(false);
+  if (jobFitsAll(_msg_pend_len)) {
+    jobSend(_msg_pend, _msg_pend_len);
+  } else if ((int32_t)(now - _msg_pend_until) >= 0) {
+    _held_lost++;   // given up: its state is still in message.get and message.list
+  } else {
+    applyHolds(true);
+    return;
+  }
+  free(_msg_pend);
+  _msg_pend = nullptr;
+  applyHolds(true);
 }
 
 // An inbox event says only that something arrived, so it goes where a job event goes, and many receptions in one pass are
@@ -1730,6 +1770,7 @@ void MeconIface::applyHolds(bool on) {
     size_t n = 0;
     if (on && _rf_pend && l.subs.s[SID_RF].active) n += _rf_pend_len;
     if (on && _job_pend && jobLink(l)) n += _job_pend_len;
+    if (on && _msg_pend && jobLink(l)) n += _msg_pend_len;
     l.q->hold(n);
   }
 }

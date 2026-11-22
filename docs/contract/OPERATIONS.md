@@ -537,6 +537,7 @@ Nothing here selects a gateway, retries by itself or decides which messages to c
 - `hash` is the native packet hash, the same id a receiver or an observer computes. `ack` is the native ACK code.
 - `message` is the identity of the request (section 3): the request id, or `#<issuer>:<job_id>` for a signed one.
 - Each change of state is a `message` event (`ev/message` on MQTT), `{"message","hash","state"}`. It goes where a `job` event goes. Reading a recipient takes `message.get`, which is private, like `contact.get`.
+- A `message` event is sent once, in order. On a Companion, one that a reading link's queue has no room for waits up to 10 s, one at a time, as a `job` event does, with other events on that queue leaving room for it meanwhile. After that it is dropped and counted in `status.get` `events_dropped`. Before this change a full queue dropped it at once, so a busy link (a Reader holding a Companion over Bluetooth with a dozen streams) could miss a send's `transmitted` and `acked`. A manager that has not heard a send's final state reads it with `message.get`. *(Since v0.3.17.)*
 - `status.get` carries `messages.open` and `messages.owed`, so a manager that reconnects learns there is something to collect.
 
 ### 6.2 Bounds
