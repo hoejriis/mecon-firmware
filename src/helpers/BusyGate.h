@@ -21,11 +21,16 @@ inline volatile uint8_t& flashWrites() {
   return n;
 }
 
-// Held for the length of one file save.
+// Held for the length of one file save. It counts only where something reads the count: a board with the protective
+// sleep, and the native tests. Elsewhere it is empty, so a board without the sleep carries no code for it in any save.
+#if defined(BATTERY_SLEEP_BOARD) || !defined(ARDUINO)
 struct FlashScope {
   FlashScope() { flashWrites() = (uint8_t)(flashWrites() + 1); }
   ~FlashScope() { flashWrites() = (uint8_t)(flashWrites() - 1); }
 };
+#else
+struct FlashScope {};
+#endif
 
 struct Inputs {
   bool flash_write;
