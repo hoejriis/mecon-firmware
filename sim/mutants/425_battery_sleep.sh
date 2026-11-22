@@ -54,7 +54,11 @@ mutate relapse_not_counted_sim src/helpers/BatterySleep.h '  if (s.phase == PH_P
 mutate damaged_block_trusted src/helpers/BatterySleep.h 'inline bool valid(const State& s) { return s.magic == MAGIC && s.version == VERSION && s.crc == crcOf(s); }' 'inline bool valid(const State& s) { return s.magic == MAGIC && s.version == VERSION; }' $U
 # an update offered at a low battery with the guard on
 mutate update_preflight_battery_ignored src/helpers/updates/UpdService.cpp '  if (batteryLevel().settings().enabled && batteryLevel().level() != BatteryLevel::OK) {' '  if (false) {' $BS::test_an_update_is_refused_while_the_battery_is_not_ok
-# the bench offset taken from a paired link, and the bench flag in a release environment
-mutate bench_offset_not_cable_only examples/companion_radio/MyMesh.cpp '  if (Cli::principalOf(_cli_ctx) == Cli::P_CABLE && BatterySleep::testLine(command, reply, 150)) return true;' '  if (BatterySleep::testLine(command, reply, 150)) return true;' $BS::test_the_bench_offset_is_refused_over_a_paired_link
+# the bench flag in a release environment
+# Not run: dropping the Companion handler's cable check (MyMesh.cpp, `Cli::principalOf(_cli_ctx) == Cli::P_CABLE`) is
+# equivalent for every caller a test can reach. The CLI gate refuses the line first for a paired link and every remote
+# caller (the registry entry is destructive and cable-only: `ERR: not permitted`, checked by
+# test_the_bench_offset_is_refused_over_a_paired_link), and no operation runs an arbitrary CLI line for a signed
+# request, the one caller the gate's cable-only flag lets through. The handler check stays as the second guard for that.
 mutate bench_offset_in_a_release_build variants/heltec_v3/platformio.ini '  -D BATTERY_SLEEP_BOARD   ; and its protective sleep: a timed deep sleep (src/helpers/BatterySleep.h)' '  -D BATTERY_SLEEP_BOARD   ; and its protective sleep: a timed deep sleep (src/helpers/BatterySleep.h)
   -D MECON_BATTERY_TEST_OFFSET' $BS::test_no_release_build_defines_the_bench_offset
