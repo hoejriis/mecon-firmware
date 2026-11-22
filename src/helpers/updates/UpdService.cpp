@@ -8,6 +8,9 @@
 #include "UpdRecord.h"
 #include "UpdSlot.h"
 #include "helpers/CryptoRNG.h"
+#ifdef BATTERY_SLEEP_BOARD
+#include "helpers/BatteryLevel.h"
+#endif
 #include "helpers/MeconVersion.h"
 #include "helpers/MemStats.h"
 #include "helpers/BootTrace.h"
@@ -341,6 +344,14 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   // An image on trial (installed, its start-up checks not yet passed): the slot an install writes holds the image the
   // bootloader would return to, so nothing is written until this one is proven (esp_ota_begin refuses then too).
   if (runningState() == RS_PENDING) { c.error = "verifying"; return ST_BUSY; }
+#ifdef BATTERY_SLEEP_BOARD
+  // The battery guard is on and the battery is not ok (low, critical or not yet known): a transfer and its trial boot
+  // could be cut by a protective sleep, so no install starts (section 4, "Battery").
+  if (batteryLevel().settings().enabled && batteryLevel().level() != BatteryLevel::OK) {
+    c.error = "battery-low";
+    return ST_REFUSED;
+  }
+#endif
   Job* open = t->openJob();                                                                                         // 3
   static char g_open_error[16 + Job::ID_CAP];
   // Another kind of job, or an update whose image is activated but has not booted yet (writing the slot now would

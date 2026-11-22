@@ -76,6 +76,10 @@ inline const Entry* entries(size_t& count) {
     {"poweroff",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     // a clock that ran ahead, set back: only someone at the cable, since peers then ignore the device's adverts for as long
     {"clock back",             M_WORD,    ROLE_COMPANION,                 C_DESTRUCTIVE, F_CABLE_ONLY, Posture::W_CLOCK_BACK, nullptr,                     nullptr,        nullptr},
+#ifdef MECON_BATTERY_TEST_OFFSET
+    // a bench build's battery test offset: the role's handler takes it from the USB cable only
+    {"battery test offset",    M_WORD,    ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE, F_CABLE_ONLY, Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
+#endif
     {"shutdown",               M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_DESTRUCTIVE, 0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},
     // reads
     {"get ",                   M_PREFIX,  ROLE_COMPANION | ROLE_REPEATER, C_READ,        0,            Posture::W_NONE,      nullptr,                      nullptr,                                            nullptr},

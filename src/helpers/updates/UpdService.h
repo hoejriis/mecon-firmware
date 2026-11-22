@@ -119,6 +119,10 @@ public:
   // here, so a slow job-table save inside the offer cannot spend it before the answer goes out.
   void replyWritten(uint32_t now_ms) { if (_dfu_pending) _dfu_at = now_ms + DFU_DELAY_MS; }
 
+  // An image is being received, downloaded, verified or erased, or a reset into the bootloader is pending: the battery
+  // guard does not sleep then (BusyGate.h).
+  bool transferBusy() const { return _phase != IDLE || _erasing || _dfu_pending; }
+
   // The role's job hooks, for a job whose op is OP. revert: puts the previous image back (or abandons the transfer) and
   // sets the terminal state; confirm: only once the new image runs.
   static bool owns(const Iface::Job& j);

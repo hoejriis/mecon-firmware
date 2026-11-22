@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include "BatteryGuardCfg.h"
 
-// The battery level the health stream reports: ok, low, critical, or unknown. It only reports. Nothing sleeps, shuts
-// down or changes the radio because of it.
+// The battery level the health stream reports: ok, low, critical, or unknown. On its own it only reports; the opt-in
+// protective sleep (BatterySleep.h, on the boards that have it) acts on a confirmed critical level.
 //
 // A level comes from the mean of the valid readings of one 60-second window, read every 5 seconds (12 readings), so
 // a dip shorter than the window, such as the sag while the radio transmits, cannot move it. A reading outside
@@ -40,6 +40,11 @@ public:
   }
 
   Level level() const { return _valid ? _level : UNKNOWN; }
+  // Windows closed since boot (wraps at 65536), whether the latest one gave a level, and its mean: what the protective
+  // sleep (BatterySleep.h) counts its confirmations and its emergency margin from.
+  uint16_t windows() const { return _windows; }
+  bool valid() const { return _valid; }
+  uint16_t lastMean() const { return _mean; }
 
   // The guard's settings, the one copy: the prefs files read and write these fields, and the classifier uses them.
   BatteryGuard::Cfg& settings() { return _cfg; }
@@ -81,6 +86,7 @@ private:
       _seen = true;
     }
     if (level() != before) _changes++;
+    _windows++;
     _sum = 0; _n = 0; _slot = 0;
   }
 
@@ -105,6 +111,7 @@ private:
   uint32_t _due = 0;
   uint16_t _sum = 0;       // at most 12 x 4600, which fits
   uint16_t _changes = 0;
+  uint16_t _windows = 0;
   uint8_t _n = 0, _slot = 0;
   Level _level = OK;       // the last level a window gave
   bool _valid = false;     // whether the latest window gave one

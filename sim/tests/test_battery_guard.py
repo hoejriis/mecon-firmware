@@ -1,5 +1,6 @@
 """The battery guard's settings, CLI and dry run (docs/contract/OPERATIONS.md, TELEMETRY.md), on a Companion and on a Repeater.
-This release never sleeps: the settings are stored and classify the battery level, and `dry` says what the guard would do.
+The settings are stored and classify the battery level, and `dry` says what the guard would do; the protective sleep they
+arm is test_battery_sleep.py's.
 The simulated board reads its voltage from "<dir>.batt" (see test_battery_level.py); the node runs 20 times faster than real
 time, so a 60 s window is 3 s."""
 import os
@@ -193,17 +194,21 @@ def test_an_unconfirmed_change_goes_back(nodes, kind):
 def test_the_health_stream_carries_battery_guard(nodes, kind):
     d = boot(nodes, kind, "bg8")
     s = status(d.i)
-    assert s["battery_guard"] == {"enabled": False, "supported": True, "effective": "report-only"}, s
+    g = s["battery_guard"]
+    assert (g["enabled"], g["supported"], g["effective"]) == (False, True, "off"), s
+    assert (g["last_entry"], g["last_recovery"], g["failed_recoveries"], g["sleeps"]) == (None, None, None, None), \
+        "no state while off: null, not zero: %s" % g
     assert not mecon_schema.check(s, mecon_schema.load("event.health.json"))
     assert line(d)("set battery.guard enabled=on") == "OK"
-    s = status(d.i)
-    assert s["battery_guard"] == {"enabled": True, "supported": True, "effective": "report-only"}, "enabled, and still only reporting"
-    assert not mecon_schema.check(s, mecon_schema.load("event.health.json"))
     time.sleep(WINDOW_S)
+    s = status(d.i)
+    g = s["battery_guard"]
+    assert (g["enabled"], g["effective"], g["failed_recoveries"], g["sleeps"]) == (True, "armed", 0, 0), g
+    assert not mecon_schema.check(s, mecon_schema.load("event.health.json"))
     set_battery(d.n, 3300)
     level_is(d.i, "critical")
     s = status(d.i)
-    assert s["battery_guard"]["effective"] == "report-only", "critical and armed, and it does nothing but say so"
+    assert s["battery_guard"]["effective"] == "confirming", "critical: three windows before it sleeps (test_battery_sleep.py)"
     assert d.i.request("status.get")["status"] == "ok"
     assert "battery_guard" not in d.i.request("status.get")["result"], "status.get must fit one signed LoRa reply"
 

@@ -1,6 +1,7 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <helpers/HeapFloor.h>
 #include <helpers/HeapWatch.h>
+#include <helpers/BatterySleepRun.h>
 #include <helpers/AuditLog.h>
 #include <helpers/BootTimes.h>
 #include <helpers/BootPresence.h>
@@ -137,6 +138,9 @@ static unsigned long userBtnDownAt = 0;
 #endif
 
 void setup() {
+#ifdef BATTERY_SLEEP
+  BatterySleep::early();   // the pads a protective sleep held, let go of without a glitch
+#endif
   CryptoRNG::seedAtBoot();
   Posture::audit().setClockCheck([]() -> bool { return the_mesh.getRTCClock()->isSet(); });
 #if defined(ESP_PLATFORM) && defined(ENABLE_MECON_IFACE)
@@ -150,9 +154,23 @@ void setup() {
   // 0.7 ms before an overflow, and mesh traffic delays that interrupt by more. At 32 the margin is about 8 ms (#199).
   Serial.setRxFIFOFull(32);
 #endif
+#ifdef BATTERY_SLEEP
+  // The battery guard's boot check (helpers/BatterySleep.h), when it keeps a block (it is on): before the display, the
+  // radio, the file system or any link starts, and before the second's wait for the console, so a wake that goes back
+  // to sleep is short. With the guard off the order is the usual one.
+  if (BatterySleep::holdsBlock()) {
+    board.begin();
+    BatterySleep::bootGuard();
+    delay(1000);
+  } else {
+    delay(1000);
+    board.begin();
+  }
+#else
   delay(1000);
 
   board.begin();
+#endif
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.begin();
@@ -395,12 +413,16 @@ void loop() {
     command[len - 1] = 0;  // replace newline with C string null terminator
     char reply[160];
     reply[0] = 0;
+    bool done = false;
+#if defined(MECON_BATTERY_TEST_OFFSET) && defined(BATTERY_SLEEP)
+    done = BatterySleep::testLine(command, reply, sizeof(reply));   // the bench offset: this cable's lines only
+#endif
 #ifdef ETHERNET_ENABLED
-    if (!ethernet_handle_command(command, reply)) {
+    if (!done && !ethernet_handle_command(command, reply)) {
       the_mesh.handleCommand(0, command, reply);
     }
 #else
-    the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
+    if (!done) the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
 #endif
     if (reply[0]) {
       Serial.print("  -> "); Serial.println(reply);

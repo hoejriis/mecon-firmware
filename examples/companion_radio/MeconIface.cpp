@@ -1,6 +1,7 @@
 #include "MeconIface.h"
 #include <helpers/BleStart.h>
 #include <helpers/Uptime.h>
+#include <helpers/BatterySleepRun.h>
 #include <helpers/BootTrace.h>
 #include <helpers/iface/DevIdHello.h>
 #include <helpers/iface/Wipe.h>
@@ -1978,6 +1979,12 @@ void MeconIface::loop(uint32_t now) {
   }
   _gap.tick(now);
   tickBatteryLevel(now, &board);
+#ifdef BATTERY_SLEEP
+  BatterySleep::loopTick(now, batteryLevel(), &board, [](void* u, bool emergency) {   // the protective sleep
+    MeconIface* self = static_cast<MeconIface*>(u);
+    return BatterySleep::busyOf(self->_jobs, self->_updates, emergency);
+  }, this, [](void* u) { static_cast<MeconIface*>(u)->_mesh->saveDirtyContacts(); });   // what is already dirty, once
+#endif
   _jobs.tick(now);
   _auth.continuityReconcile(Posture::isHardened(_mesh->postureValue()));   // Hardened holds no package (#118)
   _auth.delegateReconcile(Posture::isHardened(_mesh->postureValue()));     // and no delegated identity (Issue #552)
