@@ -112,6 +112,12 @@ bool parseField(uint8_t field, const char* reply, char* out, size_t cap, bool* i
 Status opConfigSchema(OpContext& ctx);
 Status opConfigGet(OpContext& ctx);
 Status opConfigApply(OpContext& ctx);
+// A CLI gate refusal text and the reason it names (cli/CliEngine.h); refusalReason() maps a reply to the name, or
+// "not-permitted" for anything else.
+struct RefusalName { const char* text; const char* name; };
+extern const RefusalName REFUSAL_NAMES[];
+extern const size_t REFUSAL_NAMES_COUNT;
+const char* refusalReason(const char* reply);
 Status opPostureSet(OpContext& ctx);   // {"posture":"normal"|"hardened"}: the caller's own `set posture` line
 
 // The revert of a config.apply job: replays its snapshot as the caller who applied it and removes the snapshot. True

@@ -77,7 +77,7 @@ def test_raising_without_an_unlock_secret_is_refused_and_a_bad_value_is_invalid(
     d = boot_companion(nodes, "pn")
     d.provision()
     r = d.send(wrap(d.node_key, "posture.set", {"posture": "hardened"}, job=1))
-    assert r["status"] == "refused" and r["error"] == "not-permitted", r
+    assert r["status"] == "refused" and r["error"] == "no-unlock-secret", r   # the gate's reason, by name (DEVICE_INTERFACE)
     assert posture(d) == "normal"
     assert d.send(wrap(d.node_key, "posture.set", {"posture": "open"}, job=2))["status"] == "invalid"
 

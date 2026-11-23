@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <helpers/iface/IfaceConfig.h>
+#include <helpers/cli/CliEngine.h>
 
 using namespace Iface;
 
@@ -19,6 +20,7 @@ struct FakeCli {
   std::vector<std::string> ran;            // every line run, in order
   std::vector<std::string> refuse;         // lines the caller may not run (by prefix)
   std::vector<std::string> fail;           // lines that fail when run (by prefix)
+  std::string posture_reply = "OK - posture hardened";   // what "set posture ..." answers
 
   bool refused(const std::string& l) const {
     for (auto& p : refuse) if (l.compare(0, p.size(), p) == 0) return true;
@@ -37,6 +39,7 @@ struct FakeCli {
       r = "> " + std::to_string(n) + ": " + ssid[n] + " prio=" + std::to_string(prio[n]) + " pwd=" + (pwd[n].empty() ? "unset" : "set") + " last=none";
       return true;
     }
+    if (l.rfind("set posture ", 0) == 0) { r = posture_reply; return true; }
     if (l.rfind("set name ", 0) == 0) { name = l.substr(9); r = "OK"; return true; }
     if (l.rfind("set tx ", 0) == 0) { tx = atoi(l.c_str() + 7); r = "OK"; return true; }
     if (l.rfind("set wifi.enabled ", 0) == 0) { wifi_on = l.back() == '1'; r = "> wifi.enabled is now 1"; return true; }
@@ -630,4 +633,52 @@ TEST(ConfigSnapImage, ADamagedOrForeignImageReadsAsNone) {
     EXPECT_EQ(0, t.count());
   }
   EXPECT_FALSE(t.parse(img.data(), img.size() - 1));
+}
+
+// IfaceConfig keeps its own copy of the gate's refusal texts (it cannot include cli/CliEngine.h on ESP32): every row must
+// be the engine's text for a reason and that reason's name, and every reason the gate can name for posture must be there.
+TEST(IfaceConfig, TheRefusalTableIsTheEnginesOwn) {
+  const Cli::Resolved plain;
+  const uint8_t reasons[] = {Cli::R_REMOTE_LIMITED, Cli::R_HARDENED, Cli::R_CLI_OFF, Cli::R_DEFAULT_PW,
+                             Cli::R_MQTT_UNVERIFIED, Cli::R_MQTT_READONLY, Cli::R_NETCON_OFF, Cli::R_ENROLLED,
+                             Cli::R_LOCKED, Cli::R_NO_UNLOCK_SECRET};
+  ASSERT_EQ(sizeof(reasons), REFUSAL_NAMES_COUNT);
+  for (uint8_t r : reasons) {
+    EXPECT_STREQ(Cli::reasonName(r), refusalReason(Cli::refusalText(r, plain))) << (int)r;
+  }
+  EXPECT_STREQ("not-permitted", refusalReason(Cli::refusalText(Cli::R_NOT_PERMITTED, plain)));
+}
+
+// DEVICE_INTERFACE.md: a refusal names its reason in the CLI's words. posture.set runs the caller's own `set posture`
+// line, so the gate's reason comes back in its refusal text and must not be flattened to not-permitted.
+TEST(IfaceConfig, PostureSetNamesTheGatesReason) {
+  static const OpEntry POSTURE[] = {{"posture.set", opPostureSet, PRIV_WRITE, true}};
+  FakeCli cli;
+  ConfigHost host{runCb, allowCb, &cli, nullptr, 0, &CABLE};
+  Dispatcher d{POSTURE, 1, authAll, nullptr, &host};
+  ResultCache cache;
+  int n = 0;
+  auto call = [&](const char* want) {
+    std::string m = "{\"v\":1,\"id\":\"p" + std::to_string(++n) + "\",\"op\":\"posture.set\",\"args\":{\"posture\":\"" + want + "\"}}";
+    std::vector<char> out(1024);
+    int len = d.handle(m.data(), m.size(), out.data(), out.size(), &cache);
+    return std::string(out.data(), len < 0 ? 0 : len);
+  };
+  const Cli::Resolved plain;
+  cli.posture_reply = Cli::refusalText(Cli::R_NO_UNLOCK_SECRET, plain);
+  std::string r = call("hardened");
+  EXPECT_NE(std::string::npos, r.find("\"status\":\"refused\"")) << r;
+  EXPECT_NE(std::string::npos, r.find("\"error\":\"no-unlock-secret\"")) << r;
+  cli.posture_reply = Cli::refusalText(Cli::R_LOCKED, plain);
+  r = call("normal");
+  EXPECT_NE(std::string::npos, r.find("\"error\":\"locked\"")) << r;
+  cli.posture_reply = "ERR: not permitted";   // the posture handler's own refusal
+  r = call("hardened");
+  EXPECT_NE(std::string::npos, r.find("\"error\":\"not-permitted\"")) << r;
+  cli.posture_reply = "ERR: lowering the posture needs: set posture normal confirm";   // not a gate refusal
+  r = call("normal");
+  EXPECT_NE(std::string::npos, r.find("\"error\":\"not-permitted\"")) << r;
+  cli.posture_reply = "OK - posture hardened";
+  r = call("hardened");
+  EXPECT_NE(std::string::npos, r.find("\"status\":\"ok\"")) << r;
 }
