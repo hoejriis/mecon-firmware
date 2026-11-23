@@ -24,9 +24,9 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | First provisioning | ✓ 2026-11-08 a32 | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
 | Signed request accepted | ✓ 2026-11-06 a46 | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
 | Unsigned request refused, enrolled | ✓ 2026-11-12 a55 | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
-| Replay refused, stored result returned | fam | ✓ 2026-10-28 b20 | — | — |
+| Replay refused, stored result returned | fam | ✓ 2026-10-28 b20 | fam | ✓ 2026-11-23 d24 |
 | Signed `deployment.reset` | fam | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
-| Signed `identity.rotate` | ✓ 2026-11-06 a46 | ✓ 2026-11-06 b28 | — | — |
+| Signed `identity.rotate` | ✓ 2026-11-06 a46 | ✓ 2026-11-06 b28 | fam | ✓ 2026-11-23 d25 |
 | Management-channel slot bind, rotate, unbind | fam | ✓ 2026-11-23 b52 | fam | ✓ 2026-11-06 d1 |
 | Hardened posture, locked reads | ✓ 2026-10-23 a10 | ✓ 2026-11-07 b39 | — | — |
 | Corrupt Deployment record refused | fam | ✓ 2026-10-28 b21 | fam | ✓ 2026-10-31 d5 |
@@ -54,7 +54,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | Broker push, signed | ✓ 2026-11-06 a39 | fam | n/a | n/a |
 | HTTPS download, signed | fam | ✓ 2026-11-05 m10 | n/a | n/a |
 | **Native messaging operations** | | | | |
-| `message.send` | ✓ 2026-11-04 a25 | fam | — | — |
+| `message.send` | ✓ 2026-11-04 a25 | fam | fam | ✓ 2026-11-23 d23 |
 | `inbox.list`, `inbox.ack` | ✓ 2026-11-05 a26 | fam | — | — |
 | `message.deliver` | ✓ 2026-11-05 m2 | ✓ 2026-11-14 m20 | — | — |
 | Contacts: capacity and storage | ✓ 2026-10-22 a2 | fam | ✓ 2026-10-21 c1 | ✓ 2026-10-31 d2 |
@@ -65,7 +65,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | Neighbour, `packet.transmit`, `room.post`, server actions | n/a | n/a | n/a | n/a |
 | **Continuity package, recovery, measurements** | | | | |
 | `deployment.continuity.export` | fam | ✓ 2026-11-23 b53 | fam | ✓ 2026-11-18 d17 |
-| `device.reset` scopes | fam | ✓ 2026-11-23 b54 | — | — |
+| `device.reset` scopes | fam | ✓ 2026-11-23 b54 | fam | ✓ 2026-11-23 d22 |
 | `ble.bonds`, `ble.pin.get`, key export, `device.reset` bonds | sim | sim | sim | sim |
 | Signed `posture.set` over a broker or LoRa | sim | sim | sim | sim |
 | Factory reset by rescue-console `erase` | ✓ 2026-10-24 a13 | fam | — | — |
@@ -206,17 +206,17 @@ Every `—` above is a gap; a `fam` cell is not. A `—` in a family whose other
 - **Channel-mode replies on the nRF52 server roles.** A `standing.put` or channel-mode request lost a frame on the air. So did the first frame of 2 of 6 channel replies; a resend returned the stored result.
 - **Standing instructions that actually run (scheduled report, reboot) on anything but a Heltec V4 Repeater and a Wio Tracker L1 Companion.** The Wio run had no reboot.
 - **Compact report cadence and airtime.** Cadence is measured on a Wio Tracker L1 Companion only (902.9 s, then 931.2 s, for every 900 s). Airtime per report has no hardware row.
-- **BLE bonds, BLE PIN reads and key export on a board, and the `network` and `radio` reset scopes.** Simulator only. The `contacts`, `channels` and `factory` scopes, and the redirect of `deployment` and `identity`, ran on a Heltec V4 Companion; no nRF52 board and no server role has a reset-scope row.
+- **BLE bonds, BLE PIN reads and key export on a board, and the `network` and `radio` reset scopes.** Simulator only. The `contacts`, `channels` and `factory` scopes, and the redirect of `deployment` and `identity`, ran on a Heltec V4 and a T1000-E Companion; no server role has a reset-scope row.
 - **Deployment continuity package on the server roles.** The Companion has a hardware row in each chip family (Heltec V4 and T1000-E): storage, export and destruction by a signed reset. Destruction under Hardened ran in the simulator only.
 - **Server-role actions and settings v0.3.3 added** beyond the flood limits and `stats.clear`, run for real on an enrolled board. Needs a signed request a reference Backend cannot send yet.
 - **`packet.transmit` on the Heltec V3 Repeater.**
 - **Signed updates on the server roles** by USB console (all but the V4 Repeater), broker push and HTTPS download.
 - **Signed updates on the Heltec V3 by HTTPS download**, and on the Heltec V4 Companion by broker push.
-- **Messaging operations beyond the V3 Companion:** `message.send` and `inbox.*` on the V4, Wio and T1000-E Companions; `message.deliver` on the Wio and T1000-E.
+- **Messaging on the nRF52 Companions:** `inbox.*` with a received message, and `message.deliver`. `message.send` ran on the T1000-E.
 - **T1000-E Companion over BLE:** the Reader connecting directly, and resource use under BLE and RF load together.
 - **Wio Tracker L1 Companion over BLE:** no device-interface row.
 - **Screen stream on the Wio Tracker L1**, and the stream over BLE or a broker on any board.
-- **Factory reset over the interface** on every board but the Heltec V4 Companion. The rescue-console `erase` is recorded on the Heltec V3 only.
+- **Factory reset over the interface** on the server roles; the Companion has it in both chip families. The rescue-console `erase` is recorded on the Heltec V3 only.
 - **Software-only boards.** Other board environments get software checks only; they are not in this matrix.
 
 ## Evidence key
@@ -303,6 +303,10 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `d19` SenseCAP T1000-E: `clock back` over USB (USB Companion, v0.3.17)
 - `d20` SenseCAP T1000-E: Paged inventory stream over USB (USB Companion, v0.3.17)
 - `d21` SenseCAP T1000-E: Large requests over the USB cable (USB Companion, v0.3.17)
+- `d22` SenseCAP T1000-E: `device.reset` scopes over the cable (USB Companion, v0.3.17)
+- `d23` SenseCAP T1000-E: `message.send` on a private channel (USB Companion, v0.3.17)
+- `d24` SenseCAP T1000-E: Replay and the reserved mark (USB Companion, v0.3.17)
+- `d25` SenseCAP T1000-E: Signed `identity.rotate` (USB Companion, v0.3.17)
 - `m1` More than one board: `get dutycycle` per band (Heltec V3 standalone Companion)
 - `m2` More than one board: `message.deliver` (Heltec V3 standalone Companion, USB)
 - `m3` More than one board: Clock unset until a real source sets it (Heltec V3)
