@@ -5,7 +5,7 @@ import struct
 import sys
 import time
 
-from sim.harness import CompanionClient, audit_entries
+from sim.harness import CMD_RUN_CLI_COMMAND, RESP_CLI_REPLY, CompanionClient, audit_entries
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 import mecon_iface  # noqa: E402
@@ -32,6 +32,19 @@ def now(c):
     raise AssertionError("no time reply")
 
 
+def cli(c, text):
+    """A CLI line on a link the interface's events share: only the CLI reply will do. A message outcome event can arrive
+    after the request that caused it and before this reply (it waits for room on a full queue), and the client's own
+    request() would return that event frame instead."""
+    c._send(bytes([CMD_RUN_CLI_COMMAND]) + text.encode())
+    end = time.time() + 5
+    while time.time() < end:
+        f = c._read_frame(1.0)
+        if f and f[0] == RESP_CLI_REPLY:
+            return f[1:].decode(errors="replace")
+    raise AssertionError("no CLI reply to %r" % text)
+
+
 def ahead(c, by):
     assert c.request(bytes([CMD_SET_DEVICE_TIME]) + struct.pack("<I", now(c) + by))[0] == 0
 
@@ -42,12 +55,13 @@ def test_the_clock_and_a_new_message_go_back_and_it_is_audited(nodes):
     ahead(c, DAY)
     high = i.request("message.send", {"channel": 0, "text": "ahead"}, rid="a1")["result"]["ts"]
     assert high >= RTC + DAY
-    r = c.cli("clock back %d" % (RTC + 10))
+    r = cli(c, "clock back %d" % (RTC + 10))
     assert r.startswith("OK - clock back") and str(DAY - 10)[:3] in r and "adverts" in r, r
     assert now(c) < RTC + 100
     low = i.request("message.send", {"channel": 0, "text": "right"}, rid="a2")["result"]["ts"]
     assert low < RTC + 100, "a new message takes the right time at once, not the highest ever handed out"
-    assert any("clock-back" in e for e in audit_entries(c.cli)), audit_entries(c.cli)
+    read = lambda t: cli(c, t)
+    assert any("clock-back" in e for e in audit_entries(read)), audit_entries(read)
 
 
 def test_it_never_goes_forward_or_below_the_floor(nodes):
