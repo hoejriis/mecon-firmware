@@ -47,12 +47,20 @@ The gateway reuses `rf.request` (OPERATIONS) for signed requests, and adds one r
 "confirm": {"within_s"}}`, signed by a member, with a `job_id`, point to point only.
 
 - `block`: bulk frames per block, 1 to 8. The target answers once per block (section 6).
-- `window_end`: the time after which the target takes no more bulk frames for this job, and pauses (section 7). It puts
-  the project owner's night window into the signed request, so a manager that stops or loses its clock cannot keep a transfer
-  running into the day. At most 12 hours after the offer's `issued_at`.
+- `window_end` (**required**): the time after which the target takes no more bulk frames for this job, and pauses
+  (section 7). It puts the project owner's night window into the signed request, so a manager that stops or loses its
+  clock cannot keep a transfer running into the day. Missing, already past, or more than 12 hours after the offer's
+  `issued_at` is `invalid`, `bad-args`. The target also bounds it by its own monotonic clock: the window ends at the
+  earlier of `window_end` and the offer's receipt plus (`window_end` − `issued_at`). A wrong device clock can therefore
+  only shorten a window, never lengthen it.
 - `preset`: only if section 9 allows it.
-- The answer, `{"job", "state": "accepted", "transfer_token", "size", "next": 0, "frame_bytes", "frames_total"}`, travels
-  only point to point, in a result that is itself signed when the target is enrolled.
+- The answer, `{"job", "state": "accepted", "transfer_token", "size", "transfer_size", "encoding", "next": 0,
+  "frame_bytes", "frames_total"}`, travels only point to point, in a result that is itself signed when the target is
+  enrolled. `size` is the image as it will run; `transfer_size` the bytes that travel (equal to `size` unless
+  `encoding` is `deflate`); `frames_total` is `transfer_size` divided by `frame_bytes`, rounded up. Frames index the
+  transferred bytes, never the inflated image.
+- **The token is the manager's to keep.** A Backend keeps it with the job, encrypted at rest, and deletes it when the
+  job ends. A manager that lost it resumes with a same-job re-offer (section 7), which answers the same token.
 
 An offer over LoRa is refused `unsupported-source` on a board that does not offer this path, with
 `invalid`, `bad-args` for a malformed `source.lora`, and as any update offer otherwise (UPDATES sections 4 to 6). The
@@ -85,11 +93,15 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
   cost the target nothing it can be made to multiply (LORA_MANAGEMENT section 7). Integrity of the whole is still the
   manifest's digest; the tag only keeps strangers' frames out of the slot.
 - **Blocks.** The manager sends up to `block` frames, then waits. The target answers with a signed result:
-  `{"job", "next", "have": <bitmask of the block's frames>}`. Missing frames are sent again; held frames are never
-  written twice. A block's answer is the only traffic the target originates during a transfer.
+  `{"job", "base", "next", "have": <bitmask>}`. `base` is the frame index the block starts at, and bit i of `have`
+  is frame `base` + i, so an answer that arrives late is never read against a later block. Missing frames are sent
+  again; held frames are never written twice. A block's answer is the only traffic the target originates during a
+  transfer.
 - **The gateway.** `rf.bulk {"to", "frames": [<base64 of one frame>, ...]}` on the Companion: queues the frames for the
-  target, sends them through the duty window, and returns at once. It never reads or keeps them. On the USB link to the
-  manager the frames are base64; on the air they are not.
+  target, sends them through the duty window, and returns at once with `{"queued", "bulk_budget_ms"}`: the frames now
+  waiting, and the airtime bulk may still spend in the current hour before the reserve (section 9). `rf.status` reads
+  the same two figures without queuing anything, so a manager paces itself instead of filling the queue. The gateway
+  never reads or keeps the frames. On the USB link to the manager they are base64; on the air they are not.
 - **Writing.** On ESP32 the target writes into the inactive slot as frames arrive in order, and keeps out-of-order frames
   of the current block in RAM until the gap is filled (at most `block` × `frame_bytes`). On nRF52 see section 8.
 - **Deflate.** A manifest may name a deflate-compressed transfer (`image.encoding: "deflate"`, with `transfer_size`). The
@@ -98,8 +110,10 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
 
 ## 7. Pause, resume, deadlines
 
-- **Pauses are a state, not a failure.** The job reads `paused` with a `reason`: `window` (`window_end` passed), `duty`
-  (the target's duty window had no room for a block answer for 10 minutes), `manager` (no bulk frame for 30 minutes).
+- **Pauses are a state, not a failure.** `paused` is a non-final job state with a `reason`: `window` (the window
+  ended), `duty` (the target's duty window had no room for a block answer for 10 minutes), `manager` (no bulk frame
+  for 30 minutes). `job.get` on an open or paused LoRa transfer reports `next`, `frames_total`, `window_end` and, when
+  paused, `reason`.
 - **What a pause keeps.** On ESP32 the slot as written so far and `next`, in the job's entry, so a pause survives a
   reboot of the target. This is a change from the private 0.9x line, which kept a partial download in RAM only.
 - **Resume.** A new signed `update.offer` naming the same manifest, with a later `window_end`, while the job is paused,
@@ -145,7 +159,8 @@ rebooted in between; and the gateway and the target both back on their own radio
 So that the firmware can be built and proven without either Backend:
 - `tools/lora_ota_manager.py`: a standalone manager that stages, offers, sends blocks through a USB-attached Companion,
   resumes and confirms, with the public test keys;
-- signed fixtures for the offer, the manifest parts and the bulk tag (`test/fixtures/lora_updates_v1.json`);
+- signed fixtures for the offer, the manifest parts, the bulk tag, a block answer that arrives after the next block
+  has started (a stale `base`), and a pause followed by a resume (`test/fixtures/lora_updates_v1.json`);
 - simulator tests for loss, reordering, a stranger's frames, a reboot mid-transfer, a pause and a resume, cancellation,
   and the duty reserve.
 
@@ -157,10 +172,12 @@ A Backend implements the manager side of sections 3 to 7 against the same fixtur
 1. Which boards are offered this path (section 8 proposes Heltec V3, V4 and Wio Tracker L1; not the T1000-E).
 2. Whether a transfer may use a faster preset (section 9), and which.
 
-**For the reference Backend's coder:**
-3. The offer's `source.lora` fields, the block answer, and `paused` as a job state the Backend tracks.
-4. Whether `window_end` should be required, or optional with a default of 8 hours.
-5. Who keeps the transfer token across a manager restart (the Backend, as for a bridged push, UPDATES section 6).
+**Settled with the reference Backend's coder (review of 2026-11-23):**
+3. The offer's fields as section 4 gives them, `size`, `transfer_size` and `frames_total` explicit; `base` in the block
+   answer; `paused` a non-final state, its progress in `job.get`.
+4. `window_end` required, and bounded by the target's monotonic clock (section 4).
+5. The Backend keeps the transfer token with the job, encrypted, deleted at the end; a resume re-offer is the fallback.
+   Pacing figures on `rf.bulk` and `rf.status` (section 6).
 
 **Engineering, to settle before building:**
 6. `frame_bytes` and the bulk header on the real frame layout; whether a block answer fits one reply frame.
