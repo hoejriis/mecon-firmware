@@ -8,6 +8,7 @@ This page lays [hardware evidence](HARDWARE_VERIFIED.md) out by board and role, 
 |---|---|
 | `✓ 2026-11-08 a32` | Run on this board, in this role, on real hardware. The date is the row's date in HARDWARE_VERIFIED. The code points to the row in the evidence key at the end. A `*` after the code means the row's build was a test build, not a release. |
 | `sim` | Passes in the simulated-board suite only, as HARDWARE_VERIFIED's "Not yet verified on hardware" list says. Not hardware evidence. A cell is `sim` only where that list names the capability. Any other capability with no hardware row is `—`. |
+| `fam` | Covered by the chip family, not a pass on this board: the other board of the same family (ESP32: Heltec V3 and V4; nRF52: Wio Tracker L1 and T1000-E) has a `✓` in this role, and the two run the same code path. Conformance counts a capability once per chip family and role. Rows for board-specific hardware (BLE, the screen, the battery, serial DFU) never take this mark: each board that has the hardware needs its own row. |
 | `n/a` | The board or role does not have it. The reason is under the tables. |
 | `—` | Nothing recorded on this board and role. This is not a pass. |
 
@@ -23,12 +24,12 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | First provisioning | ✓ 2026-11-08 a32 | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
 | Signed request accepted | ✓ 2026-11-06 a46 | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
 | Unsigned request refused, enrolled | ✓ 2026-11-12 a55 | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
-| Replay refused, stored result returned | — | ✓ 2026-10-28 b20 | — | — |
-| Signed `deployment.reset` | — | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
+| Replay refused, stored result returned | fam | ✓ 2026-10-28 b20 | — | — |
+| Signed `deployment.reset` | fam | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
 | Signed `identity.rotate` | ✓ 2026-11-06 a46 | ✓ 2026-11-06 b28 | — | — |
-| Management-channel slot bind, rotate, unbind | — | — | — | ✓ 2026-11-06 d1 |
+| Management-channel slot bind, rotate, unbind | — | — | fam | ✓ 2026-11-06 d1 |
 | Hardened posture, locked reads | ✓ 2026-10-23 a10 | ✓ 2026-11-07 b39 | — | — |
-| Corrupt Deployment record refused | — | ✓ 2026-10-28 b21 | — | ✓ 2026-10-31 d5 |
+| Corrupt Deployment record refused | fam | ✓ 2026-10-28 b21 | fam | ✓ 2026-10-31 d5 |
 | **Device interface by transport** | | | | |
 | USB cable, request fixtures | ✓ 2026-10-24 a23 | ✓ 2026-10-24 b17 | ✓ 2026-11-06 c5 | ✓ 2026-11-06 d6 |
 | BLE, request fixtures | ✓ 2026-10-24 a23 | ✓ 2026-10-24 b17 | — | ✓ 2026-11-08 d4 |
@@ -39,49 +40,49 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | Wi-Fi join, profile priority, failover | ✓ 2026-10-24 a19 | ✓ 2026-10-23 b9 | n/a | n/a |
 | Connectivity mode (BLE or Wi-Fi) | ✓ 2026-10-24 a11 | ✓ 2026-10-21 b7 | n/a | n/a |
 | **Telemetry streams** | | | | |
-| Paged inventory stream over USB | ✓ 2026-10-28 a38 | — | — | — |
-| Signed `logs` stream over MQTT | ✓ 2026-11-04 a24 | — | n/a | n/a |
+| Paged inventory stream over USB | ✓ 2026-10-28 a38 | fam | fam | ✓ 2026-11-23 d20 |
+| Signed `logs` stream over MQTT | ✓ 2026-11-04 a24 | fam | n/a | n/a |
 | Screen stream (frames, PIN withheld) | ✓ 2026-11-06 a41 | ✓ 2026-11-12 a42 | — | n/a |
 | Battery, LoRa counters in `status.get` | — | — | — | ✓ 2026-11-08 d4 |
 | **Compact reports and standing instructions over LoRa** | | | | |
-| Compact report over LoRa, Companion as target | — | — | ✓ 2026-11-15 m25 | — |
-| Standing instruction over LoRa, Companion as target | — | — | ✓ 2026-11-15 m25 | — |
+| Compact report over LoRa, Companion as target | — | — | ✓ 2026-11-15 m25 | fam |
+| Standing instruction over LoRa, Companion as target | — | — | ✓ 2026-11-15 m25 | fam |
 | **Signed updates, by transport** | | | | |
 | USB serial or DFU, signed | ✓ 2026-11-11 a53 | ✓ 2026-11-08 b37 | ✓ 2026-11-08 c8 | ✓ 2026-11-11 d13 |
-| Bad key and bad signature refused | ✓ 2026-11-11 a53 | ✓ 2026-11-08 b37 | — | ✓ 2026-11-11 d13 |
+| Bad key and bad signature refused | ✓ 2026-11-11 a53 | ✓ 2026-11-08 b37 | fam | ✓ 2026-11-11 d13 |
 | BLE, signed | ✓ 2026-11-08 a32 | ✓ 2026-11-06 b30 | n/a | n/a |
-| Broker push, signed | ✓ 2026-11-06 a39 | — | n/a | n/a |
-| HTTPS download, signed | — | ✓ 2026-11-05 m10 | n/a | n/a |
+| Broker push, signed | ✓ 2026-11-06 a39 | fam | n/a | n/a |
+| HTTPS download, signed | fam | ✓ 2026-11-05 m10 | n/a | n/a |
 | **Native messaging operations** | | | | |
-| `message.send` | ✓ 2026-11-04 a25 | — | — | — |
-| `inbox.list`, `inbox.ack` | ✓ 2026-11-05 a26 | — | — | — |
+| `message.send` | ✓ 2026-11-04 a25 | fam | — | — |
+| `inbox.list`, `inbox.ack` | ✓ 2026-11-05 a26 | fam | — | — |
 | `message.deliver` | ✓ 2026-11-05 m2 | ✓ 2026-11-14 m20 | — | — |
-| Contacts: capacity and storage | ✓ 2026-10-22 a2 | — | ✓ 2026-10-21 c1 | ✓ 2026-10-31 d2 |
-| Contact reads: `contact.capacity`, `audit.list` | ✓ 2026-11-12 a55 | — | ✓ 2026-11-12 c10 | ✓ 2026-11-12 d14 |
-| DM over LoRa, ACK confirmed | ✓ 2026-10-23 a14 | ✓ 2026-11-14 m19 | — | ✓ 2026-11-14 m19 |
-| `rf.request` | — | — | ✓ 2026-11-09 c9 | — |
+| Contacts: capacity and storage | ✓ 2026-10-22 a2 | fam | ✓ 2026-10-21 c1 | ✓ 2026-10-31 d2 |
+| Contact reads: `contact.capacity`, `audit.list` | ✓ 2026-11-12 a55 | fam | ✓ 2026-11-12 c10 | ✓ 2026-11-12 d14 |
+| DM over LoRa, ACK confirmed | ✓ 2026-10-23 a14 | ✓ 2026-11-14 m19 | fam | ✓ 2026-11-14 m19 |
+| `rf.request` | — | — | ✓ 2026-11-09 c9 | fam |
 | **Server-role settings and actions, `packet.transmit`** | | | | |
 | Neighbour, `packet.transmit`, `room.post`, server actions | n/a | n/a | n/a | n/a |
 | **Continuity package, recovery, measurements** | | | | |
-| `deployment.continuity.export` | — | — | — | ✓ 2026-11-18 d17 |
+| `deployment.continuity.export` | — | — | fam | ✓ 2026-11-18 d17 |
 | `device.reset` scopes | — | — | — | — |
 | `ble.bonds`, `ble.pin.get`, key export, `device.reset` bonds | sim | sim | sim | sim |
 | Signed `posture.set` over a broker or LoRa | sim | sim | sim | sim |
-| Factory reset by rescue-console `erase` | ✓ 2026-10-24 a13 | — | — | — |
+| Factory reset by rescue-console `erase` | ✓ 2026-10-24 a13 | fam | — | — |
 | Upgrade keeps identity and contacts | ✓ 2026-10-24 a15 | ✓ 2026-10-24 b10 | ✓ 2026-11-06 c6 | ✓ 2026-11-06 m14 |
-| Clock unset until a real source sets it | ✓ 2026-11-05 m3 | — | ✓ 2026-11-05 m4 | — |
-| `clock.back` (cable) | ✓ 2026-11-05 a27 | — | — | — |
+| Clock unset until a real source sets it | ✓ 2026-11-05 m3 | fam | ✓ 2026-11-05 m4 | fam |
+| `clock.back` (cable) | ✓ 2026-11-05 a27 | fam | fam | ✓ 2026-11-23 d19 |
 | Heap and loop stack measured | ✓ 2026-10-24 a22 | ✓ 2026-10-24 b16 | ✓ 2026-11-09 c9 | ✓ 2026-11-01 d3 |
-| Cable host that stops reading | — | ✓ 2026-11-14 m21 | ✓ 2026-11-14 c14 | ✓ 2026-11-14 d15 |
-| Large requests over the cable | ✓ 2026-11-13 a59 | — | — | — |
-| Duty-cycle floor by band | ✓ 2026-11-05 m1 | — | — | — |
+| Cable host that stops reading | fam | ✓ 2026-11-14 m21 | ✓ 2026-11-14 c14 | ✓ 2026-11-14 d15 |
+| Large requests over the cable | ✓ 2026-11-13 a59 | fam | fam | ✓ 2026-11-23 d21 |
+| Duty-cycle floor by band | ✓ 2026-11-05 m1 | fam | fam | ✓ 2026-11-23 d18 |
 
 ## Repeater
 
 | Capability | Heltec V3 | Heltec V4 | Wio L1 | T1000-E |
 |---|---|---|---|---|
 | **Identity and enrolment** | | | | |
-| First provisioning | — | ✓ 2026-11-08 m16 | ✓ 2026-11-14 c15 | ✓ 2026-11-06 d10 |
+| First provisioning | fam | ✓ 2026-11-08 m16 | ✓ 2026-11-14 c15 | ✓ 2026-11-06 d10 |
 | Signed request accepted | ✓ 2026-11-05 m11 | ✓ 2026-11-05 m11 | ✓ 2026-11-14 c15 | ✓ 2026-11-14 d16 |
 | Unsigned request refused | ✓ 2026-11-05 m12 | ✓ 2026-11-12 b44 | ✓ 2026-11-14 c15 | ✓ 2026-11-14 d16 |
 | Signed `deployment.reset` | — | — | ✓ 2026-10-29 c2* | ✓ 2026-11-06 d10 |
@@ -90,42 +91,42 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | USB console, request fixtures | ✓ 2026-10-25 a29 | ✓ 2026-10-25 b18 | ✓ 2026-11-06 c5 | ✓ 2026-11-06 d6 |
 | BLE | n/a | n/a | n/a | n/a |
 | MQTT over TLS broker | ✓ 2026-11-05 m12 | ✓ 2026-11-05 m12 | n/a | n/a |
-| LoRa point to point | — | ✓ 2026-11-08 m16 | ✓ 2026-11-14 c15 | ✓ 2026-11-14 d16 |
-| LoRa management channel | — | ✓ 2026-11-08 m16 | — | — |
-| Stock remote-admin CLI over LoRa | ✓ 2026-10-22 a7 | — | — | — |
-| Long console lines (to 1,600 B) | — | ✓ 2026-11-04 b27 | — | — |
+| LoRa point to point | fam | ✓ 2026-11-08 m16 | ✓ 2026-11-14 c15 | ✓ 2026-11-14 d16 |
+| LoRa management channel | fam | ✓ 2026-11-08 m16 | — | — |
+| Stock remote-admin CLI over LoRa | ✓ 2026-10-22 a7 | fam | — | — |
+| Long console lines (to 1,600 B) | fam | ✓ 2026-11-04 b27 | — | — |
 | **Telemetry streams** | | | | |
 | Signed `logs` stream over broker | ✓ 2026-11-05 m12 | ✓ 2026-11-05 m12 | n/a | n/a |
-| `runtime` stream, heap floor flag | — | ✓ 2026-11-11 b42 | — | — |
-| `radio` stream counters over MQTT | — | ✓ 2026-11-12 b47 | n/a | n/a |
+| `runtime` stream, heap floor flag | fam | ✓ 2026-11-11 b42 | — | — |
+| `radio` stream counters over MQTT | fam | ✓ 2026-11-12 b47 | n/a | n/a |
 | Screen stream | ✓ 2026-11-06 a41 | — | — | n/a |
 | **Compact reports and standing instructions over LoRa** | | | | |
-| Signed compact report over LoRa | — | ✓ 2026-11-08 m16 | ✓ 2026-11-14 c15 | ✓ 2026-11-14 d16 |
-| `standing.put`, `standing.remove` over LoRa | — | ✓ 2026-11-08 m16 | — | ✓ 2026-11-14 d16 |
-| Scheduled report runs, survives reboot | — | ✓ 2026-11-08 m15 | — | — |
+| Signed compact report over LoRa | fam | ✓ 2026-11-08 m16 | ✓ 2026-11-14 c15 | ✓ 2026-11-14 d16 |
+| `standing.put`, `standing.remove` over LoRa | fam | ✓ 2026-11-08 m16 | fam | ✓ 2026-11-14 d16 |
+| Scheduled report runs, survives reboot | fam | ✓ 2026-11-08 m15 | — | — |
 | **Signed updates, by transport** | | | | |
-| USB console, signed | — | ✓ 2026-11-11 b41 | — | — |
+| USB console, signed | fam | ✓ 2026-11-11 b41 | — | — |
 | BLE | n/a | n/a | n/a | n/a |
 | Broker push, signed | — | — | n/a | n/a |
-| HTTPS download, signed (offer over broker) | — | ✓ 2026-11-12 b45 | n/a | n/a |
+| HTTPS download, signed (offer over broker) | fam | ✓ 2026-11-12 b45 | n/a | n/a |
 | Serial DFU by the bootloader, signed | n/a | n/a | — | — |
 | **Native messaging operations** | | | | |
 | `message.send`, inbox, `message.deliver`, contacts | n/a | n/a | n/a | n/a |
 | **Server-role settings and actions, `packet.transmit`** | | | | |
-| `packet.transmit` | — | ✓ 2026-11-14 b48 | ✓ 2026-11-14 m18 | ✓ 2026-11-14 m18 |
-| Repeating beside a manager packet | — | — | ✓ 2026-11-14 m19 | — |
-| `neighbour.list`, `discover.neighbors` | — | ✓ 2026-11-12 b43 | ✓ 2026-11-06 c6 | — |
-| Server reads: `board.get`, `sensor.list`, `gps.get`, `audit.list` | — | ✓ 2026-11-12 b43 | — | — |
-| Signed `config.apply` of flood limits | — | ✓ 2026-11-12 b46 | — | — |
-| Signed `stats.clear` over MQTT | — | ✓ 2026-11-12 b47 | n/a | n/a |
+| `packet.transmit` | fam | ✓ 2026-11-14 b48 | ✓ 2026-11-14 m18 | ✓ 2026-11-14 m18 |
+| Repeating beside a manager packet | — | — | ✓ 2026-11-14 m19 | fam |
+| `neighbour.list`, `discover.neighbors` | fam | ✓ 2026-11-12 b43 | ✓ 2026-11-06 c6 | fam |
+| Server reads: `board.get`, `sensor.list`, `gps.get`, `audit.list` | fam | ✓ 2026-11-12 b43 | — | — |
+| Signed `config.apply` of flood limits | fam | ✓ 2026-11-12 b46 | — | — |
+| Signed `stats.clear` over MQTT | fam | ✓ 2026-11-12 b47 | n/a | n/a |
 | Other v0.3.3 server settings and actions, signed | sim | sim | sim | sim |
-| Unsigned server writes refused (`log.*`, `clock.reset`, ...) | — | ✓ 2026-11-12 b44 | — | — |
-| Stale remote-admin login refused, audited | — | ✓ 2026-11-08 m6 | — | — |
-| Duty-cycle floor | ✓ 2026-10-17 a8 | — | — | — |
+| Unsigned server writes refused (`log.*`, `clock.reset`, ...) | fam | ✓ 2026-11-12 b44 | — | — |
+| Stale remote-admin login refused, audited | fam | ✓ 2026-11-08 m6 | — | — |
+| Duty-cycle floor | ✓ 2026-10-17 a8 | fam | — | — |
 | **Continuity package, recovery, measurements** | | | | |
 | `deployment.continuity.export` | — | — | — | — |
 | `device.reset` scopes, factory reset | — | — | — | — |
-| Heap and loop stack with a verified session | ✓ 2026-11-05 m13 | ✓ 2026-11-05 m13 | — | ✓ 2026-11-06 d10 |
+| Heap and loop stack with a verified session | ✓ 2026-11-05 m13 | ✓ 2026-11-05 m13 | fam | ✓ 2026-11-06 d10 |
 | Role installed by serial DFU over a Companion's store | n/a | n/a | — | ✓ 2026-11-07 d7 |
 
 ## Room server
@@ -133,24 +134,24 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | Capability | Heltec V3 | Heltec V4 | Wio L1 | T1000-E |
 |---|---|---|---|---|
 | **Identity and enrolment** | | | | |
-| First provisioning | — | ✓ 2026-11-08 m16 | — | ✓ 2026-11-06 d8 |
+| First provisioning | fam | ✓ 2026-11-08 m16 | fam | ✓ 2026-11-06 d8 |
 | Signed request accepted | ✓ 2026-11-05 m11 | ✓ 2026-11-05 m11 | ✓ 2026-11-15 m22 | ✓ 2026-11-06 d8 |
-| Unsigned request refused | ✓ 2026-11-05 m12 | ✓ 2026-11-12 b44 | — | ✓ 2026-11-15 m23 |
-| Signed `deployment.reset` | — | — | — | ✓ 2026-11-06 d8 |
+| Unsigned request refused | ✓ 2026-11-05 m12 | ✓ 2026-11-12 b44 | fam | ✓ 2026-11-15 m23 |
+| Signed `deployment.reset` | — | — | fam | ✓ 2026-11-06 d8 |
 | Management-channel slot, `identity.rotate` | ✓ 2026-11-05 m11 | ✓ 2026-11-05 m11 | — | — |
 | **Device interface by transport** | | | | |
-| USB console, request fixtures | — | ✓ 2026-10-25 b19 | ✓ 2026-11-06 c5 | ✓ 2026-11-06 d8 |
+| USB console, request fixtures | fam | ✓ 2026-10-25 b19 | ✓ 2026-11-06 c5 | ✓ 2026-11-06 d8 |
 | BLE | n/a | n/a | n/a | n/a |
 | MQTT over TLS broker | ✓ 2026-11-05 m12 | ✓ 2026-11-05 m12 | n/a | n/a |
-| LoRa point to point | — | ✓ 2026-11-08 m16 | — | — |
-| LoRa management channel | — | ✓ 2026-11-08 m16 | — | — |
+| LoRa point to point | fam | ✓ 2026-11-08 m16 | — | — |
+| LoRa management channel | fam | ✓ 2026-11-08 m16 | — | — |
 | Stock remote-admin CLI over LoRa | — | — | — | — |
 | **Telemetry streams** | | | | |
 | Signed `logs` stream over broker | ✓ 2026-11-05 m12 | ✓ 2026-11-05 m12 | n/a | n/a |
 | Screen stream | — | — | — | n/a |
 | **Compact reports and standing instructions over LoRa** | | | | |
-| Signed compact report over LoRa | — | ✓ 2026-11-08 m16 | — | — |
-| `standing.put`, `standing.remove` over LoRa | — | ✓ 2026-11-08 m16 | — | — |
+| Signed compact report over LoRa | fam | ✓ 2026-11-08 m16 | — | — |
+| `standing.put`, `standing.remove` over LoRa | fam | ✓ 2026-11-08 m16 | — | — |
 | **Signed updates, by transport** | | | | |
 | USB console, signed | — | — | — | — |
 | BLE | n/a | n/a | n/a | n/a |
@@ -161,15 +162,15 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | `message.send`, inbox, `message.deliver`, contacts | n/a | n/a | n/a | n/a |
 | **Server-role settings and actions, `packet.transmit`** | | | | |
 | `packet.transmit` | n/a | n/a | n/a | n/a |
-| Server reads (`neighbour.list` answers not-on-this-device) | — | ✓ 2026-11-12 b43 | — | — |
-| Unsigned server writes refused (`room.post`, `log.*`, ...) | — | ✓ 2026-11-12 b44 | — | — |
+| Server reads (`neighbour.list` answers not-on-this-device) | fam | ✓ 2026-11-12 b43 | — | — |
+| Unsigned server writes refused (`room.post`, `log.*`, ...) | fam | ✓ 2026-11-12 b44 | — | — |
 | `room.post`, signed | — | — | ✓ 2026-11-15 m22 | ✓ 2026-11-15 m22 |
 | Other v0.3.3 server settings and actions, signed | sim | sim | sim | sim |
-| Stale remote-admin login refused, audited | — | ✓ 2026-11-08 m6 | — | — |
+| Stale remote-admin login refused, audited | fam | ✓ 2026-11-08 m6 | — | — |
 | **Continuity package, recovery, measurements** | | | | |
 | `deployment.continuity.export` | — | — | — | — |
 | `device.reset` scopes, factory reset | — | — | — | — |
-| Heap and loop stack with a verified session | ✓ 2026-11-05 m13 | ✓ 2026-11-05 m13 | — | ✓ 2026-11-06 d8 |
+| Heap and loop stack with a verified session | ✓ 2026-11-05 m13 | ✓ 2026-11-05 m13 | fam | ✓ 2026-11-06 d8 |
 | Role installed by serial DFU over a Companion's store | n/a | n/a | — | ✓ 2026-11-07 d7 |
 
 ## Why a cell says n/a
@@ -195,7 +196,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 
 ## Known gaps
 
-Every `—` above is a gap. These are the ones that matter for acceptance of conformance.
+Every `—` above is a gap; a `fam` cell is not. A `—` in a family whose other board also has none, or in a board-specific hardware row, is what conformance still needs. These are the larger ones.
 
 - **LoRa management with a Companion as the target.** Not recorded as a row on any board. HARDWARE_VERIFIED's "not yet verified" list records a run on a Wio Tracker L1 and a T1000-E Companion through the reference Backend's relay, with no build or date row. Multi-frame replies still lose a frame.
 - **LoRa management of a Heltec V3 Repeater or Room server.** Only the V4 was the target.
@@ -294,6 +295,10 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `d15` SenseCAP T1000-E: A cable host that stops reading (USB Companion; main 13fcd703, then the build with the fix, the fix)
 - `d16` SenseCAP T1000-E: Repeater management over LoRa (Repeater package, enrolled with the public test keys; Heltec V4 standalone C...
 - `d17` SenseCAP T1000-E: Continuity package storage (SenseCAP T1000-E USB Companion, v0.3.8, enrolled with the public test authority, over its cable)
+- `d18` SenseCAP T1000-E: `get dutycycle` (USB Companion, v0.3.17)
+- `d19` SenseCAP T1000-E: `clock back` over USB (USB Companion, v0.3.17)
+- `d20` SenseCAP T1000-E: Paged inventory stream over USB (USB Companion, v0.3.17)
+- `d21` SenseCAP T1000-E: Large requests over the USB cable (USB Companion, v0.3.17)
 - `m1` More than one board: `get dutycycle` per band (Heltec V3 standalone Companion)
 - `m2` More than one board: `message.deliver` (Heltec V3 standalone Companion, USB)
 - `m3` More than one board: Clock unset until a real source sets it (Heltec V3)
