@@ -226,3 +226,40 @@ A small binary subset of the producers above, for the radio, with the same meani
 
 **On the air.** A 99-byte report (`health` and `radio`) travels as a 149-byte anonymous datagram. At the EU Narrow preset (SF8, BW 62.5 kHz, CR 4/8, 32-symbol preamble) that is about 1.43 s, and a full 113-byte report (a 165-byte packet) about 1.56 s, and one with `counters` too (129 bytes, a 181-byte packet) about 1.7 s (computed from the same figures, not measured). One report every 900 s takes about 1.6% of a 10% band's hourly budget. Measured on a Wio Tracker L1 and a SenseCAP T1000-E, 2026-11-15.
 
+
+### Reports kept for later (draft for review, not built)
+
+> **Status: draft, version 0 (2026-11-23).** Nothing in this subsection is built. It is written to be agreed with the
+> reference Backend's coder before either side builds it. The questions still open are at its end.
+
+A report sent while no receiver listens is lost today. A standing instruction may ask the device to keep what it sends,
+so a manager can collect it later over any link.
+
+- **Opt in, per instruction.** `standing.put` takes `"keep": true`. Only reports from such an instruction are kept; a
+  `report.now` is never kept, since a manager asking for it is there to hear it. A device cannot know whether a
+  datagram was heard (it carries no acknowledgement), so every report of a keeping instruction is kept, heard or not.
+- **What is kept.** The report's exact bytes, signature included, as they were sent. Nothing is re-signed or rebuilt,
+  so a kept report reads exactly like the live one: its boot, seq and time date it, and a receiver drops one it already
+  has by (node key, boot, seq). A report from an earlier boot carries that boot's number, and its time is 0 if the
+  device did not know the time then.
+- **Where, and how many.** A ring in flash of the last 64 reports (at most 129 bytes each, about 8.5 KB), kept across a
+  reboot. The oldest goes first. One write per report: at one report every 900 s, 96 writes a day. A board whose flash
+  cannot hold the ring answers `keep` with `unsupported`.
+- **Collecting.** `report.list {"after": <cursor>, "limit": n}` answers
+  `{"reports": [{"cursor", "boot", "seq", "report": <base64>}], "more", "dropped", "withheld"}`, oldest first, paged
+  like `inbox.list` (a page stops where the answer would not fit its link). `report.ack {"upto": <cursor>}` releases
+  everything up to that cursor; one caller owns the acknowledgement, any number may read. Nothing is ever re-sent
+  unasked: a device spends no airtime on kept reports unless a manager asks for a page.
+- **Gaps.** `dropped` counts reports pushed out of a full ring since the last `report.ack`, so a manager sees how many it
+  missed. Cursors only grow, so a gap also shows in them.
+- **Authority.** `report.list` is a read. A kept report carrying `location` is listed only to a caller allowed to read
+  the location (`location`, section 3). It is never cut out of a report, because the signature covers it:
+  it is left out of the page and counted in `withheld`. `report.ack` is a write.
+- **Links.** USB, BLE, a broker, and LoRa point to point. Not on a LoRa channel, where every member would read it. Over
+  LoRa a page holds what fits one 1,024-byte message: about four kept reports.
+
+**Open for review:**
+1. The ring's size (64), and whether it should be a setting.
+2. Whether `keep` should also be allowed on `report.now`, for a manager that sends and leaves.
+3. Whether a receiver needs a marker that a report was collected later rather than heard live. The proposal says no: the
+   report's own time dates it, and the receiver knows how it got it.
