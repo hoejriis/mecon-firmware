@@ -226,3 +226,45 @@ A small binary subset of the producers above, for the radio, with the same meani
 
 **On the air.** A 99-byte report (`health` and `radio`) travels as a 149-byte anonymous datagram. At the EU Narrow preset (SF8, BW 62.5 kHz, CR 4/8, 32-symbol preamble) that is about 1.43 s, and a full 113-byte report (a 165-byte packet) about 1.56 s, and one with `counters` too (129 bytes, a 181-byte packet) about 1.7 s (computed from the same figures, not measured). One report every 900 s takes about 1.6% of a 10% band's hourly budget. Measured on a Wio Tracker L1 and a SenseCAP T1000-E, 2026-11-15.
 
+
+### Reports kept for later (draft for review, not built)
+
+> **Status: draft, version 0 (2026-11-23), agreed with the reference Backend's coder.** Nothing in this subsection is
+> built.
+
+A report sent while no receiver listens is lost today. A standing instruction may ask the device to keep what it sends,
+so a manager can collect it later over any link.
+
+- **Opt in, per instruction.** `standing.put` takes `"keep": true`. Only reports from such an instruction are kept; a
+  `report.now` is never kept, since a manager asking for it is there to hear it. A device cannot know whether a
+  datagram was heard (it carries no acknowledgement), so every report of a keeping instruction is kept, heard or not.
+- **What is kept.** The report's exact bytes, signature included, as they were sent. Nothing is re-signed or rebuilt,
+  so a kept report reads exactly like the live one: its boot, seq and time date it. A report from an earlier boot
+  carries that boot's number, and its time is 0 if the device did not know the time then.
+- **What a receiver does with one.** It drops a report only when it already holds one with the exact same (node key,
+  boot, seq). It never refuses a report for being older than one it holds: a kept report is older than the live ones by
+  design, so a high-water-mark check would refuse every one of them.
+- **Where, and how many.** A ring in flash of the last 64 reports (at most 129 bytes each, about 8.5 KB), kept across a
+  reboot together with its cursor counter, so a cursor is never reused after a reboot. The oldest goes first. One write
+  per report: at one report every 900 s, 96 writes a day. A board whose flash cannot hold the ring answers `keep` with
+  `unsupported`. The size is fixed in this version.
+- **Collecting.** `report.list {"after": <cursor>, "limit": n}` answers
+  `{"reports": [{"cursor", "boot", "seq", "report": <base64>}], "more", "dropped", "withheld"}`, oldest first, paged
+  like `inbox.list` (a page stops where the answer would not fit its link). `report.ack {"upto": <cursor>}` releases
+  everything up to that cursor. Any number of callers may read; the acknowledgement belongs to the manager that set the
+  keeping instruction (the member that signed it on an enrolled device, the cable on one without a record), as
+  `inbox.ack` belongs to one reader. Nothing is ever re-sent
+  unasked: a device spends no airtime on kept reports unless a manager asks for a page.
+- **Gaps.** `dropped` counts reports pushed out of a full ring since the last `report.ack`, so a manager sees how many it
+  missed. Cursors only grow, so a gap also shows in them.
+- **Authority.** `report.list` is a read. A kept report carrying `location` is listed only to a caller allowed to read
+  the location (`location`, section 3). It is never cut out of a report, because the signature covers it:
+  it is left out of the page and counted in `withheld`. `report.ack` is a write, and it never releases a report its
+  caller could not list: an ack whose range holds a withheld report is refused `forbidden`, `location-withheld`, and
+  releases nothing.
+- **Links.** USB, BLE, a broker, and LoRa point to point. Not on a LoRa channel, where every member would read it. Over
+  LoRa a page holds what fits one 1,024-byte message: about four kept reports.
+
+**Settled with the reference Backend's coder (review of 2026-11-23):** the ring is 64 reports, fixed in this version;
+`keep` is not offered on `report.now`; a report collected later carries no marker, since the receiver records how it
+got each report.
