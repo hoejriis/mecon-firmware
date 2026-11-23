@@ -1,7 +1,6 @@
 #include "IfaceConfig.h"
 #include <helpers/PrefsBatch.h>
 #include <helpers/BatteryGuardCfg.h>
-#include <helpers/cli/CliEngine.h>
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -622,17 +621,29 @@ Status opConfigGet(OpContext& c) {
 
 // The posture runs as the caller's own CLI line, so the table and the rules on it (raising needs an unlock secret once
 // enrolled, lowering a cable or a signature) are the ones `set posture` has. The role reboots once it has changed.
-// The reason the CLI gate gave for a refused line, read back from the gate's own refusal text (cli/CliEngine.h), so that
-// the answer names it in the CLI's words (DEVICE_INTERFACE.md, "every operation and every key"): for instance
-// `no-unlock-secret` for Hardened on an enrolled device whose record holds no local unlock secret. Any other refusal,
-// the posture handler's own "ERR: not permitted" among them, stays `not-permitted`.
-static const char* refusalReason(const char* reply) {
-  static const uint8_t NAMED[] = {Cli::R_REMOTE_LIMITED, Cli::R_HARDENED, Cli::R_CLI_OFF, Cli::R_DEFAULT_PW,
-                                  Cli::R_MQTT_UNVERIFIED, Cli::R_MQTT_READONLY, Cli::R_NETCON_OFF, Cli::R_ENROLLED,
-                                  Cli::R_LOCKED, Cli::R_NO_UNLOCK_SECRET};
-  const Cli::Resolved plain;
-  for (uint8_t r : NAMED)
-    if (strcmp(reply, Cli::refusalText(r, plain)) == 0) return Cli::reasonName(r);
+// The reason the CLI gate gave for a refused line, read back from the gate's refusal text, so that the answer names it in
+// the CLI's words (DEVICE_INTERFACE.md, "every operation and every key"): for instance `no-unlock-secret` for Hardened on
+// an enrolled device whose record holds no local unlock secret. Any other refusal, the posture handler's own
+// "ERR: not permitted" among them, stays `not-permitted`. The texts are cli/CliEngine.h's refusalText() and the names its
+// reasonName(); that header is not included here (on ESP32 it brings FreeRTOS's LINE_MAX), so test_iface_config checks
+// every row against both.
+const RefusalName REFUSAL_NAMES[] = {
+  {"ERR: not permitted remotely", "remote-limited"},
+  {"ERR: not permitted in hardened posture", "hardened"},
+  {"ERR: remote CLI is off in hardened posture", "remote-cli-off"},
+  {"ERR: remote admin is off until the admin password is set on the local console", "default-password"},
+  {"ERR: management needs a TLS-verified broker", "broker-not-verified"},
+  {"ERR: management is off for this broker profile", "broker-read-only"},
+  {"ERR: the Ethernet console is off in hardened posture", "ethernet-console-off"},
+  {"ERR: this device belongs to a Deployment; the change must be signed", "enrolled-unsigned"},
+  {"ERR: locked: this device needs its local unlock first", "locked"},
+  {"ERR: set a local unlock secret before Hardened (the device belongs to a Deployment)", "no-unlock-secret"},
+};
+const size_t REFUSAL_NAMES_COUNT = sizeof(REFUSAL_NAMES) / sizeof(REFUSAL_NAMES[0]);
+
+const char* refusalReason(const char* reply) {
+  for (const RefusalName& r : REFUSAL_NAMES)
+    if (strcmp(reply, r.text) == 0) return r.name;
   return "not-permitted";
 }
 

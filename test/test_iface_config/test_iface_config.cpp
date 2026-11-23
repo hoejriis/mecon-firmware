@@ -635,6 +635,20 @@ TEST(ConfigSnapImage, ADamagedOrForeignImageReadsAsNone) {
   EXPECT_FALSE(t.parse(img.data(), img.size() - 1));
 }
 
+// IfaceConfig keeps its own copy of the gate's refusal texts (it cannot include cli/CliEngine.h on ESP32): every row must
+// be the engine's text for a reason and that reason's name, and every reason the gate can name for posture must be there.
+TEST(IfaceConfig, TheRefusalTableIsTheEnginesOwn) {
+  const Cli::Resolved plain;
+  const uint8_t reasons[] = {Cli::R_REMOTE_LIMITED, Cli::R_HARDENED, Cli::R_CLI_OFF, Cli::R_DEFAULT_PW,
+                             Cli::R_MQTT_UNVERIFIED, Cli::R_MQTT_READONLY, Cli::R_NETCON_OFF, Cli::R_ENROLLED,
+                             Cli::R_LOCKED, Cli::R_NO_UNLOCK_SECRET};
+  ASSERT_EQ(sizeof(reasons), REFUSAL_NAMES_COUNT);
+  for (uint8_t r : reasons) {
+    EXPECT_STREQ(Cli::reasonName(r), refusalReason(Cli::refusalText(r, plain))) << (int)r;
+  }
+  EXPECT_STREQ("not-permitted", refusalReason(Cli::refusalText(Cli::R_NOT_PERMITTED, plain)));
+}
+
 // DEVICE_INTERFACE.md: a refusal names its reason in the CLI's words. posture.set runs the caller's own `set posture`
 // line, so the gate's reason comes back in its refusal text and must not be flattened to not-permitted.
 TEST(IfaceConfig, PostureSetNamesTheGatesReason) {
