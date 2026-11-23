@@ -13,8 +13,9 @@
 - **Does not add:** a new authority, a new signing key, any automatic rollout, any relaying of images by repeaters to
   each other, or any change to who may offer an update (UPDATES section 5: a member's signature). A device never starts
   an update by itself.
-- **Not decided here:** which boards are offered this path, and whether a transfer may use a faster radio preset than the
-  device's own (section 9). Both are the project owner's decisions; the contract is written so that either answer fits.
+- **Decided by the project owner (2026-11-23):** the path is enabled on every board that can hold an image, like other
+  capabilities, and claimed as hardware-verified only where the bench has shown it (section 8). A transfer may use one
+  fixed fast preset, named in the signed offer, with an automatic revert (section 9).
 
 ## 2. Parties
 
@@ -123,11 +124,16 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
 
 ## 8. Platforms
 
-| Target | Where the image goes | Apply | Revert |
-|---|---|---|---|
-| Heltec V3, V4 (ESP32-S3) | the inactive app slot | UPDATES section 7, unchanged | UPDATES section 7, unchanged |
-| Wio Tracker L1 (nRF52840 with QSPI flash) | staged in external QSPI flash, then copied into the application by a step to be designed | to be designed (section 12) | none: the bootloader keeps one image |
-| SenseCAP T1000-E | not offered: no external flash large enough to stage an image | — | — |
+**Where it is enabled.** On every board whose build can hold a whole second image while the first runs: an ESP32 with
+two application slots, or an nRF52840 with external flash large enough to stage one. A board without either answers
+`unsupported-source`, and `hello` leaves the LoRa source out of its update capabilities. Hardware verification is
+claimed board by board, in [hardware evidence](../HARDWARE_VERIFIED.md), only where the bench has run section 10.
+
+| Kind of board | Where the image goes | Apply | Revert | Bench boards |
+|---|---|---|---|---|
+| ESP32 with two app slots | the inactive app slot | UPDATES section 7, unchanged | UPDATES section 7, unchanged | Heltec V3, V4 |
+| nRF52840 with external QSPI flash | staged in QSPI, then copied into the application by a step to be designed | to be designed (section 12) | none: the bootloader keeps one image | Wio Tracker L1 |
+| nRF52840 without enough external flash | not enabled | — | — | SenseCAP T1000-E |
 
 A staged nRF52 image is verified against the manifest's digest in QSPI before anything is copied. Writes to QSPI keep
 page alignment, including the image's ragged end.
@@ -141,11 +147,13 @@ page alignment, including the image's ragged end.
 - **What it costs.** At EU Narrow (SF8, 62.5 kHz) a full frame is about 1.2 s of airtime. A 1.1 MB deflated ESP32 image is
   about 10,000 frames: about 3.3 hours of airtime, so about 33 hours of wall time at a 10% duty limit, spread over several
   nights. The private 0.9x line measured about 40 hours on its normal preset. To be measured on the bench (section 10).
-- **A faster preset (project owner decision).** The private 0.9x line moved its image in 6.6 hours on a temporary fast preset, set by a
-  Deployment-signed request and reverted after silence. If the project owner allows it, `source.lora.preset` names the preset;
-  the target and the gateway switch to it for the transfer only, and both return to their own setting after 5 minutes
-  without a bulk frame, at `window_end`, and at any reboot. A target never stays on a preset it cannot hear its manager
-  on. If the project owner does not allow it, `preset` is refused `invalid`, `preset-not-allowed`.
+- **The fast preset (project owner's decision, 2026-11-23).** The private 0.9x line moved its image in 6.6 hours on a
+  temporary fast preset. Here one preset, named `fast`, is fixed in the firmware: it is never a setting and cannot be
+  changed over the air. `source.lora.preset: "fast"` in the signed offer moves the target and the gateway to it for the
+  transfer only. Both return to their own setting after 5 minutes without a bulk frame, at the window's end, and at any
+  reboot, so a target never stays on a preset it cannot hear its manager on. Any other name is `invalid`, `bad-args`.
+  `fast` stays inside the band and duty limit of the device's own setting (869.4–869.65 MHz at 10% in the EU); its
+  exact parameters are an engineering point of section 12.
 
 ## 10. Conformance
 
@@ -168,9 +176,9 @@ A Backend implements the manager side of sections 3 to 7 against the same fixtur
 
 ## 12. Open for review
 
-**For the project owner:**
-1. Which boards are offered this path (section 8 proposes Heltec V3, V4 and Wio Tracker L1; not the T1000-E).
-2. Whether a transfer may use a faster preset (section 9), and which.
+**Decided by the project owner (2026-11-23):**
+1. Enabled on every board that can hold an image, hardware-verified only where the bench has shown it (section 8).
+2. One fixed fast preset, named in the signed offer, with an automatic revert (section 9).
 
 **Settled with the reference Backend's coder (review of 2026-11-23):**
 3. The offer's fields as section 4 gives them, `size`, `transfer_size` and `frames_total` explicit; `base` in the block
@@ -185,3 +193,5 @@ A Backend implements the manager side of sections 3 to 7 against the same fixtur
 8. Page-level deltas against the full deflated image: benchmark on real release pairs before choosing. Deltas tie a
    transfer to one exact base version.
 9. The 80% bulk ceiling of the duty window.
+10. The `fast` preset's frequency, bandwidth, spreading factor and coding rate, inside the band of section 9, and that it
+    is never a public channel's setting.
