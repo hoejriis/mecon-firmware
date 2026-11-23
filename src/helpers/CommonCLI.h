@@ -301,6 +301,9 @@ public:
   virtual void removeNeighbor(const uint8_t* pubkey, int key_len) {
     // no op by default
   };
+  // Called before the CLI reboots or powers the board off: save what is still waiting for a lazy write (a server's ACL),
+  // so a change made a moment before the reboot is not lost. No op by default.
+  virtual void beforeGoingDown() { }
   virtual void formatStatsReply(char *reply) = 0;
   virtual void formatRadioStatsReply(char *reply) = 0;
   virtual void formatPacketStatsReply(char *reply) = 0;

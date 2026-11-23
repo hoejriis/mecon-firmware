@@ -33,3 +33,5 @@ mutate contact_list_is_a_read examples/companion_radio/MeconIface.cpp 'Status op
 mutate hello_streams_not_on_the_first_page examples/companion_radio/MeconIface.cpp '  add(CAPABILITIES[0]);
   const size_t hello_first = 1;' '  for (size_t i = 0; i < sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]); i++) add(CAPABILITIES[i]);
   const size_t hello_first = sizeof(CAPABILITIES) / sizeof(CAPABILITIES[0]);' sim/tests/test_contact_ops.py::test_hello_with_a_nonce_on_an_enrolled_device_pages_its_capabilities_instead_of_failing
+mutate cli_reboot_drops_the_pending_contact_save examples/companion_radio/MyMesh.cpp '  if (strcmp(command, "reboot") == 0) {
+    if (dirty_contacts_expiry) saveContacts();' '  if (strcmp(command, "reboot") == 0) {' sim/tests/test_contact_ops.py::test_a_cli_reboot_right_after_a_change_keeps_it

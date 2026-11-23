@@ -202,12 +202,15 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     }
 
     if (memcmp(command, "poweroff", 8) == 0 || memcmp(command, "shutdown", 8) == 0) {
+      _callbacks->beforeGoingDown();
       _board->powerOff();  // doesn't return
     } else if (memcmp(command, "reboot", 6) == 0) {
+      _callbacks->beforeGoingDown();
       _board->reboot();  // doesn't return
     } else if (memcmp(command, "clkreboot", 9) == 0) {
       // Reset clock
       getRTCClock()->setGuess(1715770351);  // 15 May 2024, 8:50pm
+      _callbacks->beforeGoingDown();
       _board->reboot();  // doesn't return
      } else if (memcmp(command, "advert.zerohop", 14) == 0 && (command[14] == 0 || command[14] == ' ')) {
       // send zerohop advert

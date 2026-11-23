@@ -261,6 +261,10 @@ public:
     return _prefs.advert_interval == 0 && _prefs.flood_advert_interval == 0;
   }
 
+  // An ACL change still waiting for its lazy save (dirty_contacts_expiry) is saved before a CLI reboot or power-off.
+  void beforeGoingDown() override {
+    if (dirty_contacts_expiry) { acl.save(_fs); dirty_contacts_expiry = 0; }
+  }
   static void savePrefsNow(void* self) { static_cast<MyMesh*>(self)->savePrefs(); }
   void savePrefs() override {
     if (PrefsBatch::defer(savePrefsNow, this)) return;   // config.apply: once, at its end

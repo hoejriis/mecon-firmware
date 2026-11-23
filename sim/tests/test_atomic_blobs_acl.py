@@ -129,6 +129,18 @@ def test_acl_is_never_written_in_place(ether, nodes):
         assert _size(rep, leftover) is None, leftover
 
 
+@pytest.mark.parametrize("kind", ["repeater", "room_server"])
+def test_a_cli_reboot_right_after_an_acl_change_keeps_it(nodes, kind):
+    # The CLI `reboot` saves an ACL change still waiting for its 5 s lazy save first (beforeGoingDown).
+    rep = nodes(kind, "rb", seed=43, rtc=RTC).start()
+    cli = CliClient(rep)
+    assert cli.command("setperm " + "ab" * 32 + " 3") == "OK"
+    cli.sock.sendall(b"reboot\r")                       # at once: before the lazy save
+    assert _exit_code(rep, 15) == 75
+    with open(_p(rep, "/s_contacts"), "rb") as f:
+        assert b"\xab" * 32 in f.read(), "the admin set just before the CLI reboot"
+
+
 # ------------------------------------------------------------------ companion blob
 def _advert(node, rtc_now):
     """A signed advert of this Companion at the given time, as the export command returns it."""
