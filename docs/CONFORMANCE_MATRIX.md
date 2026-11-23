@@ -27,7 +27,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | Replay refused, stored result returned | fam | ✓ 2026-10-28 b20 | — | — |
 | Signed `deployment.reset` | fam | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
 | Signed `identity.rotate` | ✓ 2026-11-06 a46 | ✓ 2026-11-06 b28 | — | — |
-| Management-channel slot bind, rotate, unbind | — | — | fam | ✓ 2026-11-06 d1 |
+| Management-channel slot bind, rotate, unbind | fam | ✓ 2026-11-23 b52 | fam | ✓ 2026-11-06 d1 |
 | Hardened posture, locked reads | ✓ 2026-10-23 a10 | ✓ 2026-11-07 b39 | — | — |
 | Corrupt Deployment record refused | fam | ✓ 2026-10-28 b21 | fam | ✓ 2026-10-31 d5 |
 | **Device interface by transport** | | | | |
@@ -43,7 +43,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | Paged inventory stream over USB | ✓ 2026-10-28 a38 | fam | fam | ✓ 2026-11-23 d20 |
 | Signed `logs` stream over MQTT | ✓ 2026-11-04 a24 | fam | n/a | n/a |
 | Screen stream (frames, PIN withheld) | ✓ 2026-11-06 a41 | ✓ 2026-11-12 a42 | — | n/a |
-| Battery, LoRa counters in `status.get` | — | — | — | ✓ 2026-11-08 d4 |
+| Battery, LoRa counters in `status.get` | — | ✓ 2026-11-23 b51 | — | ✓ 2026-11-08 d4 |
 | **Compact reports and standing instructions over LoRa** | | | | |
 | Compact report over LoRa, Companion as target | — | — | ✓ 2026-11-15 m25 | fam |
 | Standing instruction over LoRa, Companion as target | — | — | ✓ 2026-11-15 m25 | fam |
@@ -64,8 +64,8 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | **Server-role settings and actions, `packet.transmit`** | | | | |
 | Neighbour, `packet.transmit`, `room.post`, server actions | n/a | n/a | n/a | n/a |
 | **Continuity package, recovery, measurements** | | | | |
-| `deployment.continuity.export` | — | — | fam | ✓ 2026-11-18 d17 |
-| `device.reset` scopes | — | — | — | — |
+| `deployment.continuity.export` | fam | ✓ 2026-11-23 b53 | fam | ✓ 2026-11-18 d17 |
+| `device.reset` scopes | fam | ✓ 2026-11-23 b54 | — | — |
 | `ble.bonds`, `ble.pin.get`, key export, `device.reset` bonds | sim | sim | sim | sim |
 | Signed `posture.set` over a broker or LoRa | sim | sim | sim | sim |
 | Factory reset by rescue-console `erase` | ✓ 2026-10-24 a13 | fam | — | — |
@@ -206,8 +206,8 @@ Every `—` above is a gap; a `fam` cell is not. A `—` in a family whose other
 - **Channel-mode replies on the nRF52 server roles.** A `standing.put` or channel-mode request lost a frame on the air. So did the first frame of 2 of 6 channel replies; a resend returned the stored result.
 - **Standing instructions that actually run (scheduled report, reboot) on anything but a Heltec V4 Repeater and a Wio Tracker L1 Companion.** The Wio run had no reboot.
 - **Compact report cadence and airtime.** Cadence is measured on a Wio Tracker L1 Companion only (902.9 s, then 931.2 s, for every 900 s). Airtime per report has no hardware row.
-- **`device.reset` scopes, BLE bonds, BLE PIN reads and key export on a board.** Passes in the simulator only; no hardware row for any scope.
-- **Deployment continuity package on every board but the T1000-E Companion.** Only the T1000-E Companion has a hardware row, for storage, export and destruction by a signed reset. Destruction under Hardened ran in the simulator only.
+- **BLE bonds, BLE PIN reads and key export on a board, and the `network` and `radio` reset scopes.** Simulator only. The `contacts`, `channels` and `factory` scopes, and the redirect of `deployment` and `identity`, ran on a Heltec V4 Companion; no nRF52 board and no server role has a reset-scope row.
+- **Deployment continuity package on the server roles.** The Companion has a hardware row in each chip family (Heltec V4 and T1000-E): storage, export and destruction by a signed reset. Destruction under Hardened ran in the simulator only.
 - **Server-role actions and settings v0.3.3 added** beyond the flood limits and `stats.clear`, run for real on an enrolled board. Needs a signed request a reference Backend cannot send yet.
 - **`packet.transmit` on the Heltec V3 Repeater.**
 - **Signed updates on the server roles** by USB console (all but the V4 Repeater), broker push and HTTPS download.
@@ -216,7 +216,7 @@ Every `—` above is a gap; a `fam` cell is not. A `—` in a family whose other
 - **T1000-E Companion over BLE:** the Reader connecting directly, and resource use under BLE and RF load together.
 - **Wio Tracker L1 Companion over BLE:** no device-interface row.
 - **Screen stream on the Wio Tracker L1**, and the stream over BLE or a broker on any board.
-- **Factory reset and `device.reset` over the interface** on every board. The rescue-console `erase` is recorded on the Heltec V3 only.
+- **Factory reset over the interface** on every board but the Heltec V4 Companion. The rescue-console `erase` is recorded on the Heltec V3 only.
 - **Software-only boards.** Other board environments get software checks only; they are not in this matrix.
 
 ## Evidence key
@@ -271,6 +271,10 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `b45` Heltec V4: v0.3.3 by a signed update from a reference Backend (Repeater, enrolled, Backend row 694, from v0.3.2)
 - `b46` Heltec V4: Flood limits by a signed `config.apply` from a reference Backend (v0.3.3 Repeater, enrolled, Backend row 694)
 - `b47` Heltec V4: `stats.clear` signed by a reference Backend over MQTT (v0.3.3 Repeater, enrolled, Backend row 694)
+- `b51` Heltec V4: `status.get` battery and LoRa counters (standalone Companion, v0.3.17)
+- `b52` Heltec V4: Management-channel slot over the cable (standalone Companion, v0.3.17)
+- `b53` Heltec V4: Continuity package storage (standalone Companion, v0.3.17)
+- `b54` Heltec V4: `device.reset` scopes over the cable (standalone Companion, v0.3.17)
 - `b48` Heltec V4: `packet.transmit` on a Repeater (`heltec_v4_repeater`, main 13fcd703, enrolled with the public test authori...
 - `c1` Wio Tracker L1: Adaptive contacts capacity
 - `c2` Wio Tracker L1: nRF52 interface worker
