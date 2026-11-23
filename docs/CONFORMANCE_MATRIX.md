@@ -44,8 +44,8 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | Screen stream (frames, PIN withheld) | ✓ 2026-11-06 a41 | ✓ 2026-11-12 a42 | — | n/a |
 | Battery, LoRa counters in `status.get` | — | — | — | ✓ 2026-11-08 d4 |
 | **Compact reports and standing instructions over LoRa** | | | | |
-| Compact report over LoRa, Companion as target | — | — | — | — |
-| Standing instruction over LoRa, Companion as target | — | — | — | — |
+| Compact report over LoRa, Companion as target | — | — | ✓ 2026-11-15 m25 | — |
+| Standing instruction over LoRa, Companion as target | — | — | ✓ 2026-11-15 m25 | — |
 | **Signed updates, by transport** | | | | |
 | USB serial or DFU, signed | ✓ 2026-11-11 a53 | ✓ 2026-11-08 b37 | ✓ 2026-11-08 c8 | ✓ 2026-11-11 d13 |
 | Bad key and bad signature refused | ✓ 2026-11-11 a53 | ✓ 2026-11-08 b37 | — | ✓ 2026-11-11 d13 |
@@ -134,8 +134,8 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 |---|---|---|---|---|
 | **Identity and enrolment** | | | | |
 | First provisioning | — | ✓ 2026-11-08 m16 | — | ✓ 2026-11-06 d8 |
-| Signed request accepted | ✓ 2026-11-05 m11 | ✓ 2026-11-05 m11 | ✓ 2026-11-15 n1 | ✓ 2026-11-06 d8 |
-| Unsigned request refused | ✓ 2026-11-05 m12 | ✓ 2026-11-12 b44 | — | ✓ 2026-11-15 n2 |
+| Signed request accepted | ✓ 2026-11-05 m11 | ✓ 2026-11-05 m11 | ✓ 2026-11-15 m22 | ✓ 2026-11-06 d8 |
+| Unsigned request refused | ✓ 2026-11-05 m12 | ✓ 2026-11-12 b44 | — | ✓ 2026-11-15 m23 |
 | Signed `deployment.reset` | — | — | — | ✓ 2026-11-06 d8 |
 | Management-channel slot, `identity.rotate` | ✓ 2026-11-05 m11 | ✓ 2026-11-05 m11 | — | — |
 | **Device interface by transport** | | | | |
@@ -162,8 +162,8 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | **Server-role settings and actions, `packet.transmit`** | | | | |
 | `packet.transmit` | n/a | n/a | n/a | n/a |
 | Server reads (`neighbour.list` answers not-on-this-device) | — | ✓ 2026-11-12 b43 | — | — |
-| Unsigned server writes refused (`room.post`, `log.*`, ...) | — | ✓ 2026-11-12 b44 | — | ✓ 2026-11-15 n2 |
-| `room.post`, signed | — | — | ✓ 2026-11-15 n1 | ✓ 2026-11-15 n1 |
+| Unsigned server writes refused (`room.post`, `log.*`, ...) | — | ✓ 2026-11-12 b44 | — | — |
+| `room.post`, signed | — | — | ✓ 2026-11-15 m22 | ✓ 2026-11-15 m22 |
 | Other v0.3.3 server settings and actions, signed | sim | sim | sim | sim |
 | Stale remote-admin login refused, audited | — | ✓ 2026-11-08 m6 | — | — |
 | **Continuity package, recovery, measurements** | | | | |
@@ -190,7 +190,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 - A BLE `✓` on the T1000-E Companion is 33 of 34 fixtures: the one failure is a fixture that sets a Wi-Fi key, which a board without Wi-Fi refuses by design.
 - On the Heltec V4 Repeater, the console update (`b41`) was run with 1,024-byte chunks. Chunks of 2,304 bytes moved nothing because the console line limit is 1,600 bytes.
 - A Wio Tracker L1 row marked `c8` was reported by the reference Backend's tooling through the Reader, not run by this repository's own tools.
-- The rows `n1` and `n2` sit after the "Not yet verified on hardware" list in HARDWARE_VERIFIED, not in a board table. The same place holds a third row, a LoRa management run on the Wio Tracker L1 and T1000-E pair. That row does not say which board held the Room server and which the Repeater, so no cell takes a mark from it.
+- The row `m24`, LoRa management on the Wio Tracker L1 and T1000-E pair, does not say which board held the Room server and which the Repeater, so no cell takes a mark from it.
 - The Heltec V4 screen cell (`a42`) is filed under the Heltec V3 heading in HARDWARE_VERIFIED, but the row itself names a Heltec V4 Companion.
 
 ## Known gaps
@@ -200,11 +200,11 @@ Every `—` above is a gap. These are the ones that matter for acceptance of con
 - **LoRa management with a Companion as the target.** Not recorded as a row on any board. HARDWARE_VERIFIED's "not yet verified" list records a run on a Wio Tracker L1 and a T1000-E Companion through the reference Backend's relay, with no build or date row. Multi-frame replies still lose a frame.
 - **LoRa management of a Heltec V3 Repeater or Room server.** Only the V4 was the target.
 - **Room server on the Wio Tracker L1.** The fixtures (24 of 24), a stock GETTING_STARTED run and a signed `room.post` are recorded. First provisioning, an unsigned refusal, LoRa and updates are not.
-- **Room server on the T1000-E.** Console fixtures, enrolment, a signed `room.post` and unsigned refusals are recorded. No LoRa mark and no update. One LoRa management run on the Wio Tracker L1 and T1000-E pair names a Room server, but not which board held it.
+- **Room server on the T1000-E.** Console fixtures, enrolment, a signed `room.post` and an unsigned request refused are recorded. No LoRa mark and no update. One LoRa management run on the Wio Tracker L1 and T1000-E pair names a Room server, but not which board held it.
 - **Room server on the Heltec V3.** No fixture row for the Room server build. Rotation, broker interface and heap are recorded.
 - **Channel-mode replies on the nRF52 server roles.** A `standing.put` or channel-mode request lost a frame on the air. So did the first frame of 2 of 6 channel replies; a resend returned the stored result.
-- **Standing instructions that actually run (scheduled report, reboot) on anything but a Heltec V4 Repeater.**
-- **Compact report cadence and airtime.** Not measured on any board.
+- **Standing instructions that actually run (scheduled report, reboot) on anything but a Heltec V4 Repeater and a Wio Tracker L1 Companion.** The Wio run had no reboot.
+- **Compact report cadence and airtime.** Cadence is measured on a Wio Tracker L1 Companion only (902.9 s, then 931.2 s, for every 900 s). Airtime per report has no hardware row.
 - **`device.reset` scopes, BLE bonds, BLE PIN reads and key export on a board.** Passes in the simulator only; no hardware row for any scope.
 - **Deployment continuity package on every board but the T1000-E Companion.** Only the T1000-E Companion has a hardware row, for storage, export and destruction by a signed reset. Destruction under Hardened ran in the simulator only.
 - **Server-role actions and settings v0.3.3 added** beyond the flood limits and `stats.clear`, run for real on an enrolled board. Needs a signed request a reference Backend cannot send yet.
@@ -220,7 +220,7 @@ Every `—` above is a gap. These are the ones that matter for acceptance of con
 
 ## Evidence key
 
-Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named heading, counted from the top of that table. The text is the row's feature column. The codes `n1` and `n2` count the table rows that follow the "Not yet verified on hardware" list, from the first.
+Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named heading, counted from the top of that table. The text is the row's feature column.
 
 - `a2` Heltec V3: Adaptive contacts
 - `a7` Heltec V3: CLI over LoRa (Repeater build)
@@ -312,5 +312,7 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `m19` More than one board: Repeating beside a manager packet, and two Companions through a Repeater with no Backend (Heltec V4 and Sen...
 - `m20` More than one board: `message.deliver` bounds (Heltec V4 standalone Companion, USB)
 - `m21` More than one board: A cable host that stops reading, control (Heltec V4 standalone Companion, main 13fcd703, no fix)
-- `n1` Not yet verified on hardware, rows filed after its list: Room server console with the public test keys (Wio Tracker L1 and SenseCAP T1000-E, v0.3.7)
-- `n2` Not yet verified on hardware, rows filed after its list: `log.read` on a Room server console (SenseCAP T1000-E, v0.3.7, test keys)
+- `m22` More than one board: Room server console with the public test keys (Wio Tracker L1 and SenseCAP T1000-E, v0.3.7)
+- `m23` More than one board: `log.read` on a Room server console (SenseCAP T1000-E, v0.3.7, test keys)
+- `m24` More than one board: LoRa management to a Room server and a Repeater (Wio Tracker L1 and SenseCAP T1000-E, each as the other's USB Companion manager, v0.3.7)
+- `m25` More than one board: A standing report with the manager's Backend away (Seeed Wio Tracker L1 USB Companion as the target, v0.3.6)
