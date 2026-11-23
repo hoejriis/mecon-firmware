@@ -2945,12 +2945,15 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     return true;
   }
 
+  // Every way down saves a contact change still waiting for its lazy save first, as CMD_REBOOT and device.reboot do.
   if (strcmp(command, "reboot") == 0) {
+    if (dirty_contacts_expiry) saveContacts();
     board.reboot(); // doesn't return
     return true;
   }
 
   if (strcmp(command, "poweroff") == 0 || strcmp(command, "shutdown") == 0) {
+    if (dirty_contacts_expiry) saveContacts();
     board.powerOff(); // doesn't return
     return true;
   }
@@ -3334,6 +3337,7 @@ void MyMesh::checkCLIRescueCmd() {
       }
 
     } else if (strcmp(cli_command, "reboot") == 0) {
+      if (dirty_contacts_expiry) saveContacts();   // as every other reboot path
       board.reboot();  // doesn't return
     } else {
       Serial.println("  Error: unknown command");

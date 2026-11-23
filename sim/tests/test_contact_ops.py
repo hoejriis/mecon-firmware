@@ -98,6 +98,20 @@ def test_a_contact_put_through_the_interface_is_the_contact_an_app_frame_reads_a
     assert key(1) not in native(c) and key(2) in native(c)
 
 
+def test_a_cli_reboot_right_after_a_change_keeps_it(nodes):
+    # The CLI `reboot` saves a contact change still waiting for its 5 s lazy save, as CMD_REBOOT and device.reboot do.
+    # Seen on a Heltec V4: a contact added and a CLI reboot within a second, and the contact was gone after the boot.
+    n = nodes("companion_standalone", "ct9", seed=27, rtc=RTC).start()
+    c, i = client(n)
+    assert c.add_contact_full(key(7), "Quick", lastmod=RTC)[0] == RESP_OK
+    c._send(bytes([66]) + b"reboot")   # CMD_RUN_CLI_COMMAND: the CLI line, at once, before the lazy save
+    assert n.wait_exit(15) == 75
+    c.close()
+    n.start()
+    c, i = client(n)
+    assert key(7) in native(c), "the contact added just before the CLI reboot"
+
+
 def test_a_put_keeps_the_grants_and_the_path_of_a_contact_and_cannot_grant(nodes):
     n = nodes("companion_standalone", "ct2", seed=22, rtc=RTC).start()
     c, i = client(n)

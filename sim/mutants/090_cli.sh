@@ -251,3 +251,5 @@ mutate posture_signature_not_passed_companion examples/companion_radio/MyMesh.cp
                                false)) {' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
 mutate posture_signature_not_passed_server src/helpers/Posture.h 'changed, Cli::serverCaller().signed_line)) return true;' 'changed, false)) return true;' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
 mutate posture_lora_reboots_before_its_answer examples/companion_radio/MeconIface.h '(_on_lora ? Iface::LORA_REBOOT_MS : 1500)' '1500' sim/tests/test_lora_management.py::test_a_signature_changes_the_posture_over_lora
+mutate cli_reboot_skips_the_server_acl_save src/helpers/CommonCLI.cpp '    } else if (memcmp(command, "reboot", 6) == 0) {
+      _callbacks->beforeGoingDown();' '    } else if (memcmp(command, "reboot", 6) == 0) {' sim/tests/test_atomic_blobs_acl.py::test_a_cli_reboot_right_after_an_acl_change_keeps_it
