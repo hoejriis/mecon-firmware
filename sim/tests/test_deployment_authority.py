@@ -1238,6 +1238,15 @@ def test_an_unlocked_cable_may_enter_hardened_because_the_record_holds_the_secre
     assert nosecret.c.cli("get posture") == "> normal", "no secret in the record: never Hardened by an unsigned caller"
 
 
+def test_a_signed_posture_change_to_hardened_with_no_unlock_secret_is_refused_by_name(nodes):
+    # DEVICE_INTERFACE.md: a refusal names its reason in the CLI's words. Seen on a T1000-E as not-permitted.
+    d = boot(nodes, "us1r")
+    d.provision()
+    r = d.send(wrap(d.node_key, "posture.set", {"posture": "hardened"}, job=1))
+    assert r["status"] == "refused" and r["error"] == "no-unlock-secret", r
+    assert d.c.cli("get posture") == "> normal"
+
+
 def test_the_unlock_secret_is_accepted_only_over_the_usb_cable_even_in_a_signed_request(nodes):
     n = nodes("companion_standalone", "us4", seed=37, rtc=RTC).start()
     u = CompanionClient(n)

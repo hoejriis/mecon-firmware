@@ -1,6 +1,7 @@
 #include "IfaceConfig.h"
 #include <helpers/PrefsBatch.h>
 #include <helpers/BatteryGuardCfg.h>
+#include <helpers/cli/CliEngine.h>
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -621,6 +622,20 @@ Status opConfigGet(OpContext& c) {
 
 // The posture runs as the caller's own CLI line, so the table and the rules on it (raising needs an unlock secret once
 // enrolled, lowering a cable or a signature) are the ones `set posture` has. The role reboots once it has changed.
+// The reason the CLI gate gave for a refused line, read back from the gate's own refusal text (cli/CliEngine.h), so that
+// the answer names it in the CLI's words (DEVICE_INTERFACE.md, "every operation and every key"): for instance
+// `no-unlock-secret` for Hardened on an enrolled device whose record holds no local unlock secret. Any other refusal,
+// the posture handler's own "ERR: not permitted" among them, stays `not-permitted`.
+static const char* refusalReason(const char* reply) {
+  static const uint8_t NAMED[] = {Cli::R_REMOTE_LIMITED, Cli::R_HARDENED, Cli::R_CLI_OFF, Cli::R_DEFAULT_PW,
+                                  Cli::R_MQTT_UNVERIFIED, Cli::R_MQTT_READONLY, Cli::R_NETCON_OFF, Cli::R_ENROLLED,
+                                  Cli::R_LOCKED, Cli::R_NO_UNLOCK_SECRET};
+  const Cli::Resolved plain;
+  for (uint8_t r : NAMED)
+    if (strcmp(reply, Cli::refusalText(r, plain)) == 0) return Cli::reasonName(r);
+  return "not-permitted";
+}
+
 Status opPostureSet(OpContext& c) {
   ConfigHost* h = hostOf(c);
   const JsonDoc& d = *c.doc;
@@ -631,7 +646,7 @@ Status opPostureSet(OpContext& c) {
   char reply[120];
   reply[0] = 0;
   const bool known = h->run(h->user, hardened ? "set posture hardened" : "set posture normal confirm", reply, sizeof(reply));
-  if (!known || !cliOk(reply)) { c.error = "not-permitted"; return ST_REFUSED; }
+  if (!known || !cliOk(reply)) { c.error = known ? refusalReason(reply) : "not-permitted"; return ST_REFUSED; }
   JsonWriter& w = *c.out;
   w.key("posture"); w.str(want);
   return ST_OK;
