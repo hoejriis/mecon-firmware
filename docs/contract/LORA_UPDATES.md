@@ -84,20 +84,30 @@ A signed stage of the longest manifest is about 1,480 bytes, more than the 1,024
 
 The image travels as raw bytes, never as base64 or JSON, because on LoRa every byte is airtime.
 
-- **The frame.** A bulk frame is a LoRa management frame (LORA_MANAGEMENT section 4) of its own kind, point to point
-  only, carrying: the job number (4 bytes), the frame's index in the whole image (4 bytes), up to `frame_bytes` of image,
-  and an 8-byte tag. `frame_bytes` is what fits one point-to-point frame after that header and tag: 128 − 16 = 112 on a
-  request frame (to be confirmed, section 12).
-- **The tag.** HMAC-SHA-256 under a key derived from the transfer token
-  (`HMAC-SHA-256(token, "mecon lora bulk v1")`), over the job number, the index and the bytes, cut to 8 bytes. The token
-  itself never goes on the air. A frame with a wrong tag is dropped and counted, never answered, so a stranger's frames
+- **The frame.** A bulk frame travels in the same native anonymous datagram as a request frame (LORA_MANAGEMENT
+  section 4), point to point only. After the datagram's 4-byte tag, its 132 bytes hold: a marker byte of its own
+  (`0x1E`, so neither a request frame nor a native request is ever read as one), the job number (4 bytes, little
+  endian), the frame's index in the transfer (4 bytes), the image bytes, and an 8-byte tag. So `frame_bytes` is
+  **115**: 132 − 1 − 4 − 4 − 8. Every frame but the last carries exactly 115 bytes, and the last exactly
+  `transfer_size` − index × 115. A frame of any other length is dropped and counted, never written.
+- **The tag.** HMAC-SHA-256 under a key derived from the transfer token for this direction only
+  (`K_bulk = HMAC-SHA-256(token, "mecon lora bulk v1")`), over the marker, the job number, the index and the bytes, cut
+  to 8 bytes. The token itself never goes on the air. A frame with a wrong tag is dropped and counted, never answered, so a stranger's frames
   cost the target nothing it can be made to multiply (LORA_MANAGEMENT section 7). Integrity of the whole is still the
   manifest's digest; the tag only keeps strangers' frames out of the slot.
-- **Blocks.** The manager sends up to `block` frames, then waits. The target answers with a signed result:
-  `{"job", "base", "next", "have": <bitmask>}`. `base` is the frame index the block starts at, and bit i of `have`
-  is frame `base` + i, so an answer that arrives late is never read against a later block. Missing frames are sent
+- **Blocks.** The manager sends up to `block` frames, then waits. The target answers in one reply frame, binary as
+  the bulk frames are: marker `0x1F`, the job (4 bytes), `base` (4), `next` (4), `have` (1 byte, a bitmask) and an
+  8-byte tag over the marker and those fields under a key of its own
+  (`K_answer = HMAC-SHA-256(token, "mecon lora answer v1")`): 22 bytes, where a signed JSON result would take two or three reply frames. `base` is
+  the frame index the block starts at, and bit i of `have` is frame `base` + i, so an answer that arrives late is
+  never read against a later block. The answer needs no Deployment signature: a forged one can only make the manager
+  send frames again or skip ahead, and the manifest's digest still decides what is activated. Missing frames are sent
   again; held frames are never written twice. A block's answer is the only traffic the target originates during a
-  transfer.
+  transfer. The progress a manager reports to people comes from a signed `job.get` (section 7).
+- **Neither direction can stand in for the other.** The two kinds have different markers, the marker is inside each
+  tag, and each kind has its own key. So a captured block answer sent back at the target is not a bulk frame, and a
+  short last frame is not an answer. (A shared key and marker would have let anyone who heard one answer write its 13
+  bytes into the image at `base`, spoiling the transfer for its digest to catch only at the end.)
 - **The gateway.** `rf.bulk {"to", "frames": [<base64 of one frame>, ...]}` on the Companion: queues the frames for the
   target, sends them through the duty window, and returns at once with `{"queued", "bulk_budget_ms"}`: the frames now
   waiting, and the airtime bulk may still spend in the current hour before the reserve (section 9). `rf.status` reads
@@ -144,16 +154,23 @@ page alignment, including the image's ragged end.
   (LORA_MANAGEMENT section 7). The firmware never exceeds the band's limit, whatever the manager asks.
 - **Control is not starved by bulk.** A node keeps a reserve of its duty window that bulk frames may not use, so a block
   answer, a `parts-missing`, a `job.get` or a revert can always be sent. Proposed: bulk stops at 80% of the window.
-- **What it costs.** At EU Narrow (SF8, 62.5 kHz) a full frame is about 1.2 s of airtime. A 1.1 MB deflated ESP32 image is
-  about 10,000 frames: about 3.3 hours of airtime, so about 33 hours of wall time at a 10% duty limit, spread over several
+- **What it costs.** A full bulk frame is a packet of about 152 bytes. At EU Narrow (869.618 MHz, SF8, 62.5 kHz,
+  CR 4/8, 32-symbol preamble) that is about 1.46 s of airtime (computed, not measured). A 1.1 MB deflated ESP32 image is
+  about 9,600 frames: about 3.9 hours of airtime, so about 39 hours of wall time at a 10% duty limit, over several
   nights. The private 0.9x line measured about 40 hours on its normal preset. To be measured on the bench (section 10).
 - **The fast preset (project owner's decision, 2026-11-23).** The private 0.9x line moved its image in 6.6 hours on a
   temporary fast preset. Here one preset, named `fast`, is fixed in the firmware: it is never a setting and cannot be
   changed over the air. `source.lora.preset: "fast"` in the signed offer moves the target and the gateway to it for the
   transfer only. Both return to their own setting after 5 minutes without a bulk frame, at the window's end, and at any
   reboot, so a target never stays on a preset it cannot hear its manager on. Any other name is `invalid`, `bad-args`.
-  `fast` stays inside the band and duty limit of the device's own setting (869.4–869.65 MHz at 10% in the EU); its
-  exact parameters are an engineering point of section 12.
+  `fast` stays inside the band and duty limit of the device's own setting (869.4–869.65 MHz at 10% in the EU).
+  Candidates, computed for the same 152-byte packet:
+  - SF7 at 250 kHz, centred at 869.525 MHz (the only 250 kHz placement in the band): about 0.13 s a frame, so about 3.4
+    hours for the image at 10%;
+  - SF7 at 125 kHz: about 0.25 s a frame, so about 6.7 hours.
+  Any placement in this band shares the spectrum of the public MeshCore preset (869.525 MHz, 250 kHz, SF11). SF7 is not
+  that setting, and SF11 receivers do not decode it, but it shares the air. The choice waits for a bench measurement
+  (section 12).
 
 ## 10. Conformance
 
@@ -168,7 +185,9 @@ So that the firmware can be built and proven without either Backend:
 - `tools/lora_ota_manager.py`: a standalone manager that stages, offers, sends blocks through a USB-attached Companion,
   resumes and confirms, with the public test keys;
 - signed fixtures for the offer, the manifest parts, the bulk tag, a block answer that arrives after the next block
-  has started (a stale `base`), and a pause followed by a resume (`test/fixtures/lora_updates_v1.json`);
+  has started (a stale `base`), a pause followed by a resume, a captured block answer replayed at the target as a bulk
+  frame (dropped), a bulk frame offered to the manager as an answer (dropped), and frames of a wrong length, short and
+  long, before the last (dropped) (`test/fixtures/lora_updates_v1.json`);
 - simulator tests for loss, reordering, a stranger's frames, a reboot mid-transfer, a pause and a resume, cancellation,
   and the duty reserve.
 
@@ -188,10 +207,11 @@ A Backend implements the manager side of sections 3 to 7 against the same fixtur
    Pacing figures on `rf.bulk` and `rf.status` (section 6).
 
 **Engineering, to settle before building:**
-6. `frame_bytes` and the bulk header on the real frame layout; whether a block answer fits one reply frame.
+6. ~~`frame_bytes` and the bulk header; whether a block answer fits one reply frame.~~ Settled 2026-11-24 (section 6):
+   115 bytes of image per frame in the request datagram's 132; a 22-byte binary block answer in one reply frame.
 7. Durable progress on ESP32 (the slot plus `next`) against its flash wear; and the nRF52 apply step.
 8. Page-level deltas against the full deflated image: benchmark on real release pairs before choosing. Deltas tie a
    transfer to one exact base version.
 9. The 80% bulk ceiling of the duty window.
-10. The `fast` preset's frequency, bandwidth, spreading factor and coding rate, inside the band of section 9, and that it
-    is never a public channel's setting.
+10. The `fast` preset's parameters: SF7 at 250 kHz or at 125 kHz (section 9), chosen on a bench measurement of
+    airtime and loss beside the public preset's traffic.
