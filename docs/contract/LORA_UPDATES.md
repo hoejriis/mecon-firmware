@@ -88,20 +88,26 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
   section 4), point to point only. After the datagram's 4-byte tag, its 132 bytes hold: a marker byte of its own
   (`0x1E`, so neither a request frame nor a native request is ever read as one), the job number (4 bytes, little
   endian), the frame's index in the transfer (4 bytes), the image bytes, and an 8-byte tag. So `frame_bytes` is
-  **115**: 132 − 1 − 4 − 4 − 8. The last frame of a transfer is shorter.
-- **The tag.** HMAC-SHA-256 under a key derived from the transfer token
-  (`HMAC-SHA-256(token, "mecon lora bulk v1")`), over the job number, the index and the bytes, cut to 8 bytes. The token
-  itself never goes on the air. A frame with a wrong tag is dropped and counted, never answered, so a stranger's frames
+  **115**: 132 − 1 − 4 − 4 − 8. Every frame but the last carries exactly 115 bytes, and the last exactly
+  `transfer_size` − index × 115. A frame of any other length is dropped and counted, never written.
+- **The tag.** HMAC-SHA-256 under a key derived from the transfer token for this direction only
+  (`K_bulk = HMAC-SHA-256(token, "mecon lora bulk v1")`), over the marker, the job number, the index and the bytes, cut
+  to 8 bytes. The token itself never goes on the air. A frame with a wrong tag is dropped and counted, never answered, so a stranger's frames
   cost the target nothing it can be made to multiply (LORA_MANAGEMENT section 7). Integrity of the whole is still the
   manifest's digest; the tag only keeps strangers' frames out of the slot.
 - **Blocks.** The manager sends up to `block` frames, then waits. The target answers in one reply frame, binary as
-  the bulk frames are: marker `0x1E`, the job (4 bytes), `base` (4), `next` (4), `have` (1 byte, a bitmask) and an
-  8-byte tag under the same key: 22 bytes, where a signed JSON result would take two or three reply frames. `base` is
+  the bulk frames are: marker `0x1F`, the job (4 bytes), `base` (4), `next` (4), `have` (1 byte, a bitmask) and an
+  8-byte tag over the marker and those fields under a key of its own
+  (`K_answer = HMAC-SHA-256(token, "mecon lora answer v1")`): 22 bytes, where a signed JSON result would take two or three reply frames. `base` is
   the frame index the block starts at, and bit i of `have` is frame `base` + i, so an answer that arrives late is
   never read against a later block. The answer needs no Deployment signature: a forged one can only make the manager
   send frames again or skip ahead, and the manifest's digest still decides what is activated. Missing frames are sent
   again; held frames are never written twice. A block's answer is the only traffic the target originates during a
   transfer. The progress a manager reports to people comes from a signed `job.get` (section 7).
+- **Neither direction can stand in for the other.** The two kinds have different markers, the marker is inside each
+  tag, and each kind has its own key. So a captured block answer sent back at the target is not a bulk frame, and a
+  short last frame is not an answer. (A shared key and marker would have let anyone who heard one answer write its 13
+  bytes into the image at `base`, spoiling the transfer for its digest to catch only at the end.)
 - **The gateway.** `rf.bulk {"to", "frames": [<base64 of one frame>, ...]}` on the Companion: queues the frames for the
   target, sends them through the duty window, and returns at once with `{"queued", "bulk_budget_ms"}`: the frames now
   waiting, and the airtime bulk may still spend in the current hour before the reserve (section 9). `rf.status` reads
@@ -179,7 +185,9 @@ So that the firmware can be built and proven without either Backend:
 - `tools/lora_ota_manager.py`: a standalone manager that stages, offers, sends blocks through a USB-attached Companion,
   resumes and confirms, with the public test keys;
 - signed fixtures for the offer, the manifest parts, the bulk tag, a block answer that arrives after the next block
-  has started (a stale `base`), and a pause followed by a resume (`test/fixtures/lora_updates_v1.json`);
+  has started (a stale `base`), a pause followed by a resume, a captured block answer replayed at the target as a bulk
+  frame (dropped), a bulk frame offered to the manager as an answer (dropped), and frames of a wrong length, short and
+  long, before the last (dropped) (`test/fixtures/lora_updates_v1.json`);
 - simulator tests for loss, reordering, a stranger's frames, a reboot mid-transfer, a pause and a resume, cancellation,
   and the duty reserve.
 
