@@ -28,14 +28,14 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | Signed `deployment.reset` | fam | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
 | Signed `identity.rotate` | ✓ 2026-11-06 a46 | ✓ 2026-11-06 b28 | fam | ✓ 2026-11-23 d25 |
 | Management-channel slot bind, rotate, unbind | fam | ✓ 2026-11-23 b52 | fam | ✓ 2026-11-06 d1 |
-| Hardened posture, locked reads | ✓ 2026-10-23 a10 | ✓ 2026-11-07 b39 | — | — |
+| Hardened posture, locked reads | ✓ 2026-10-23 a10 | ✓ 2026-11-07 b39 | fam | ✓ 2026-11-24 d29 |
 | Corrupt Deployment record refused | fam | ✓ 2026-10-28 b21 | fam | ✓ 2026-10-31 d5 |
 | **Device interface by transport** | | | | |
 | USB cable, request fixtures | ✓ 2026-10-24 a23 | ✓ 2026-10-24 b17 | ✓ 2026-11-06 c5 | ✓ 2026-11-06 d6 |
 | BLE, request fixtures | ✓ 2026-10-24 a23 | ✓ 2026-10-24 b17 | — | ✓ 2026-11-08 d4 |
 | MQTT over TLS broker | ✓ 2026-11-05 m8 | ✓ 2026-10-24 b17 | n/a | n/a |
-| LoRa point to point, Companion as target | — | — | — | — |
-| LoRa management channel, Companion as target | — | — | — | — |
+| LoRa point to point, Companion as target | — | — | fam | ✓ 2026-11-24 d27 |
+| LoRa management channel, Companion as target | — | — | fam | ✓ 2026-11-24 d28 |
 | BLE PIN pairing, default-PIN refusals | ✓ 2026-10-24 a18 | ✓ 2026-10-21 b6 | — | ✓ 2026-11-08 d4 |
 | Wi-Fi join, profile priority, failover | ✓ 2026-10-24 a19 | ✓ 2026-10-23 b9 | n/a | n/a |
 | Connectivity mode (BLE or Wi-Fi) | ✓ 2026-10-24 a11 | ✓ 2026-10-21 b7 | n/a | n/a |
@@ -55,7 +55,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | HTTPS download, signed | fam | ✓ 2026-11-05 m10 | n/a | n/a |
 | **Native messaging operations** | | | | |
 | `message.send` | ✓ 2026-11-04 a25 | fam | fam | ✓ 2026-11-23 d23 |
-| `inbox.list`, `inbox.ack` | ✓ 2026-11-05 a26 | fam | — | — |
+| `inbox.list`, `inbox.ack` | ✓ 2026-11-05 a26 | fam | fam | ✓ 2026-11-24 d26 |
 | `message.deliver` | ✓ 2026-11-05 m2 | ✓ 2026-11-14 m20 | — | — |
 | Contacts: capacity and storage | ✓ 2026-10-22 a2 | fam | ✓ 2026-10-21 c1 | ✓ 2026-10-31 d2 |
 | Contact reads: `contact.capacity`, `audit.list` | ✓ 2026-11-12 a55 | fam | ✓ 2026-11-12 c10 | ✓ 2026-11-12 d14 |
@@ -198,7 +198,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 
 Every `—` above is a gap; a `fam` cell is not. A `—` in a family whose other board also has none, or in a board-specific hardware row, is what conformance still needs. These are the larger ones.
 
-- **LoRa management with a Companion as the target.** Not recorded as a row on any board. HARDWARE_VERIFIED's "not yet verified" list records a run on a Wio Tracker L1 and a T1000-E Companion through the reference Backend's relay, with no build or date row. Multi-frame replies still lose a frame.
+- **LoRa management with a Companion as the target, on a Heltec board.** The T1000-E Companion answered on both paths, one hop (the Wio cells take `fam` from it). A resend under the same `xid` that completes, and a flood across a hop, have no row. Multi-frame replies still lose a frame now and then.
 - **LoRa management of a Heltec V3 Repeater or Room server.** Only the V4 was the target.
 - **Room server on the Wio Tracker L1.** The fixtures (24 of 24), a stock GETTING_STARTED run and a signed `room.post` are recorded. First provisioning, an unsigned refusal, LoRa and updates are not.
 - **Room server on the T1000-E.** Console fixtures, enrolment, a signed `room.post` and an unsigned request refused are recorded. No LoRa mark and no update. One LoRa management run on the Wio Tracker L1 and T1000-E pair names a Room server, but not which board held it.
@@ -212,7 +212,7 @@ Every `—` above is a gap; a `fam` cell is not. A `—` in a family whose other
 - **`packet.transmit` on the Heltec V3 Repeater.**
 - **Signed updates on the server roles** by USB console on the nRF52 boards, by broker push, and by HTTPS download on the Room server.
 - **Signed updates on the Heltec V3 by HTTPS download**, and on the Heltec V4 Companion by broker push.
-- **Messaging on the nRF52 Companions:** `inbox.*` with a received message, and `message.deliver`. `message.send` ran on the T1000-E.
+- **Messaging on the nRF52 Companions:** `message.deliver`. `message.send` and `inbox.*` with a received message ran on the T1000-E.
 - **T1000-E Companion over BLE:** the Reader connecting directly, and resource use under BLE and RF load together.
 - **Wio Tracker L1 Companion over BLE:** no device-interface row.
 - **Screen stream on the Wio Tracker L1**, and the stream over BLE or a broker on any board.
@@ -312,6 +312,10 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `d23` SenseCAP T1000-E: `message.send` on a private channel (USB Companion, v0.3.17)
 - `d24` SenseCAP T1000-E: Replay and the reserved mark (USB Companion, v0.3.17)
 - `d25` SenseCAP T1000-E: Signed `identity.rotate` (USB Companion, v0.3.17)
+- `d26` SenseCAP T1000-E: `inbox.list`, `inbox.ack` with a received message (USB Companion, v0.3.19)
+- `d27` SenseCAP T1000-E: Device interface over LoRa point to point, Companion as target (USB Companion, v0.3.19)
+- `d28` SenseCAP T1000-E: Device interface on the LoRa management channel, Companion as target (USB Companion, v0.3.19)
+- `d29` SenseCAP T1000-E: Hardened posture and locked reads over the cable (USB Companion, v0.3.19)
 - `m1` More than one board: `get dutycycle` per band (Heltec V3 standalone Companion)
 - `m2` More than one board: `message.deliver` (Heltec V3 standalone Companion, USB)
 - `m3` More than one board: Clock unset until a real source sets it (Heltec V3)
