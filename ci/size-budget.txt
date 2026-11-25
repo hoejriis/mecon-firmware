@@ -7,27 +7,30 @@
 # Slice 3b of the LoRa update path (rf.bulk, rf.status and the block-answer relay on every Companion; the target's radio side where
 # UPD_LORA is carried) raised the rows it measurably crossed (V3 and the nRF52 T1000-E Companion), to the measured use rounded up to a
 # whole KB. The V4 and the other nRF52 rows were raised from CI's own measured figures on the same rule.
+# Reports kept for later (Issue #610), 2026-11-25: every env with the device interface (the 14 rows that carry the standing
+# instructions) got 7 KB more flash on top of the rows above. Measured on t1000e_repeater: 544,248 to 550,432 B (+6,184, RAM
+# +104 B), and on Heltec_v3_repeater: 1,581,544 to 1,587,712 B (+6,168, RAM +88 B). The other 12 were raised by the same 7 KB.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1459200     122880
-Heltec_v3_companion_radio_standalone     1833984     141312
+Heltec_v3_companion_radio_standalone     1841152     141312
 Heltec_v3_companion_radio_usb            717824      41984
 Heltec_v3_companion_radio_wifi          1443840     118784
-Heltec_v3_repeater                      1592320      82944
-Heltec_v3_room_server                   1581056      87040
+Heltec_v3_repeater                       1599488     82944
+Heltec_v3_room_server                    1588224     87040
 heltec_v4_companion_radio_ble           1449984     122880
-heltec_v4_companion_radio_standalone    1820672     140288
+heltec_v4_companion_radio_standalone     1827840     140288
 heltec_v4_companion_radio_usb            703488      41984
 heltec_v4_companion_radio_wifi          1432576     118784
-heltec_v4_repeater                        1579008      82944
-heltec_v4_room_server                   1567744      87040
-t1000e_companion_radio_ble               602112     168960
-t1000e_companion_radio_usb               594944     164864
-t1000e_repeater                           547840      43008
-t1000e_room_server                        532480      49152
-WioTrackerL1_companion_radio_ble           697344      95232
-WioTrackerL1_companion_radio_usb           688128      90112
-WioTrackerL1_repeater                      630784      46080
-WioTrackerL1_room_server                  614400      51200
+heltec_v4_repeater                       1586176     82944
+heltec_v4_room_server                    1574912     87040
+t1000e_companion_radio_ble               609280      168960
+t1000e_companion_radio_usb               602112      164864
+t1000e_repeater                          555008      43008
+t1000e_room_server                       539648      49152
+WioTrackerL1_companion_radio_ble         704512      95232
+WioTrackerL1_companion_radio_usb         695296      90112
+WioTrackerL1_repeater                    637952      46080
+WioTrackerL1_room_server                 621568      51200
 # NimBLE twins (Issue #68, docs/NIMBLE_EVALUATION.md) and the LilyGo T-LoRa Bluedroid build they are compared with.
 LilyGo_TLora_V2_1_1_6_companion_radio_ble           1522688      82944
 # The STM32WLE5 Companion: 229376 B is the board's whole app area (board_upload.maximum_size), so its budget is the

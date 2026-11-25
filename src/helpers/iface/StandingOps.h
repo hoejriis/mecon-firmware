@@ -6,13 +6,15 @@
 #include <stdint.h>
 #include "ConfigSnap.h"
 #include "CompactReport.h"
+#include "KeptReports.h"
 #include "IfaceDispatch.h"
 
 namespace Iface {
 
 struct ReportHost {
-  // Builds, signs and sends the report; the seq it used, or false when it could not go.
-  bool (*send)(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq);
+  // Builds, signs and sends the report; the seq it used, or false when it could not go. With `built` (a REPORT_MAX buffer), the
+  // report's exact signed bytes are put there and their length in `built_len` as soon as it is signed, whether or not it then went.
+  bool (*send)(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq, uint8_t* built, size_t* built_len);
   uint8_t (*produced)(void* user);                 // the report fields this board has
   bool (*may_read_private)(void* user);            // the caller of the request being handled
   const char* (*issuer)(void* user);               // the signing member of that request, "" for an unsigned one
@@ -21,6 +23,11 @@ struct ReportHost {
   bool (*airtime_ok)(void* user);                  // the duty window has room for a report now
   SnapStore* store;
   void* user;
+  // Both may be left out of an initializer, which makes them null (the firmware builds are C++11, where a default member
+  // initializer would make this no longer an aggregate).
+  KeptStore* kept;                                           // where kept reports go; null: this board keeps none
+  size_t (*page_budget)(void* user);                         // what a report.list result may fill on this link; null: 1,100 bytes
+  int kept_batch;                                            // reports to a write; 0: the platform's (keptBatchFor)
 };
 
 struct Standing {
@@ -30,6 +37,7 @@ struct Standing {
   uint8_t fields = 0;
   uint32_t every_s = 0;
   uint16_t runs_left = 0;   // 0: until removed
+  bool keep = false;        // keep what it sends, for report.list (TELEMETRY.md, "Reports kept for later")
   bool has_to = false;
   uint8_t to[32] = {0};
   int16_t slot = -1;
@@ -58,10 +66,15 @@ public:
   Status opPut(OpContext& c, uint32_t now);
   Status opList(OpContext& c);
   Status opRemove(OpContext& c);
+  Status opReportList(OpContext& c);
+  Status opReportAck(OpContext& c);
+  bool keeps() const { return _kept.available(); }
+  uint32_t keptAppends() { return _kept.appends(); }
 
 private:
   ReportHost _h = {};
   Standing _s[CAPACITY];
+  KeptReports _kept;
   bool _begun = false, _now_sent = false;
   uint32_t _now_ms = 0;
   bool parseTarget(OpContext& c, uint8_t* fields, uint8_t to[32], bool* has_to, int* slot);

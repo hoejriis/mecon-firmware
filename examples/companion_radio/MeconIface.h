@@ -362,8 +362,10 @@ private:
   void rfLost(const char* from, uint32_t xid, size_t size, uint32_t seq, const char* why);
   Iface::StandingService _standing;
   Iface::SnapStore* standingStore();
+  Iface::KeptStore* keptStore();
   bool _standing_begun = false;
-  static bool reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq);
+  static bool reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq, uint8_t* built, size_t* built_len);
+  static size_t reportPageBudget(void* user);
   static uint8_t reportProduced(void* user);
   static bool reportMayRead(void* user);
   static const char* reportIssuer(void* user);

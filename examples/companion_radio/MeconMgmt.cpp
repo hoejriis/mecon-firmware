@@ -6,6 +6,7 @@
 #include <Utils.h>
 #include <helpers/cli/CliPolicy.h>
 #include <helpers/iface/MgmtFsStore.h>
+#include <helpers/iface/KeptFsStore.h>
 #include <helpers/iface/Wipe.h>
 #include <string.h>
 
@@ -13,6 +14,7 @@ namespace {
 Iface::PathFsStore g_mgmt_record("/mgmt_channel");
 Iface::PathFsStore g_mgmt_snap("/mgmt_snap");
 Iface::PathFsStore g_standing("/standing");
+Iface::KeptFsStore g_kept;   // reports kept for later (TELEMETRY.md)
 Iface::PathFsStore g_scope_snap("/scope_snap");   // a pending default-scope change's previous scope
 
 void fpOf(const uint8_t* key, size_t len, uint8_t out[Iface::MGMT_FP_BYTES]) {
@@ -29,11 +31,13 @@ void MeconIface::mgmtLoad() {
   g_mgmt_record.setFs(_mesh->_store->getPrimaryFS());
   g_mgmt_snap.setFs(_mesh->_store->getPrimaryFS());
   g_standing.setFs(_mesh->_store->getPrimaryFS());
+  g_kept.setFs(_mesh->_store->getPrimaryFS());
   g_scope_snap.setFs(_mesh->_store->getPrimaryFS());
   fpOf(Iface::MGMT_PUBLIC_KEY, sizeof(Iface::MGMT_PUBLIC_KEY), _public_fp);
 }
 
 Iface::SnapStore* MeconIface::standingStore() { return &g_standing; }
+Iface::KeptStore* MeconIface::keptStore() { return &g_kept; }
 
 // The default flood scope in the native prefs, as frames 63 and 64 keep it (OPERATIONS.md, "Region scopes").
 bool MeconIface::scopeGet(void* user, char name[Iface::SCOPE_NAME_MAX + 1], uint8_t key[Iface::SCOPE_KEY_BYTES]) {

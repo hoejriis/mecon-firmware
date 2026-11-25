@@ -227,10 +227,9 @@ A small binary subset of the producers above, for the radio, with the same meani
 **On the air.** A 99-byte report (`health` and `radio`) travels as a 149-byte anonymous datagram. At the EU Narrow preset (SF8, BW 62.5 kHz, CR 4/8, 32-symbol preamble) that is about 1.43 s, and a full 113-byte report (a 165-byte packet) about 1.56 s, and one with `counters` too (129 bytes, a 181-byte packet) about 1.7 s (computed from the same figures, not measured). One report every 900 s takes about 1.6% of a 10% band's hourly budget. Measured on a Wio Tracker L1 and a SenseCAP T1000-E, 2026-11-15.
 
 
-### Reports kept for later (draft for review, not built)
+### Reports kept for later
 
-> **Status: draft, version 0 (2026-11-23), agreed with the reference Backend's coder.** Nothing in this subsection is
-> built.
+> **Status: built, on main and in no release yet.** Version 0 (2026-11-23), agreed with the reference Backend's coder.
 
 A report sent while no receiver listens is lost today. A standing instruction may ask the device to keep what it sends,
 so a manager can collect it later over any link.
@@ -248,21 +247,40 @@ so a manager can collect it later over any link.
   reboot together with its cursor counter, so a cursor is never reused after a reboot. The oldest goes first. One write
   per report: at one report every 900 s, 96 writes a day. A board whose flash cannot hold the ring answers `keep` with
   `unsupported`. The size is fixed in this version.
-- **Collecting.** `report.list {"after": <cursor>, "limit": n}` answers
+  *How it is built.* The cursors are cut into segments of 16, each its own file that is only ever appended to, five at most
+  (about 11 KB). A report is one append. When a sixth segment starts, the oldest file, wholly outside the last 64, is removed:
+  nothing is copied to make room and no file is rewritten for a report. Each record carries its CRC; a record a power cut left
+  half written is not a report, and the file is rewritten without it. A new segment is not started with less than 6 KB of the
+  file system free, so the reports cannot starve the settings and contacts of room; a report that cannot be written is counted
+  in `dropped`. A small meta file, replaced atomically only at a `report.ack`, holds the next cursor and the acknowledged mark.
+  *Flash cost.* On ESP32 and every other board, a kept report is one append: 96 appends a day at one report every 900 s. On the
+  nRF52 the InternalFS costs about 5 page erases per save, mostly on one directory page that Nordic rates at 10,000 erases at the
+  least. One append per report would be about 480 erases a day on that page (the rated minimum in about three weeks). So on
+  nRF52 only, reports wait in RAM, up to 8, and go in one write when 8 wait, when an hour has passed since the oldest waiting,
+  before any `report.list` or `report.ack` answers (a list always shows them) and before a reboot or power-off. At a 900 s period
+  the hour comes first, so a write holds 4 reports: about 24 writes a day, about 120 erases a day (the rated minimum in about
+  three months); at a period of 450 s or less a write holds 8. These are estimates from the measured 5 erases a save, not
+  measured on a board. **On nRF52, up to 8 kept reports or 1 hour of them may be lost on a power cut** (the cursors they took are
+  then given out again, and nothing counts them in `dropped`, since nothing on the device can tell).
+  On nRF52 a kept instruction wears one flash page. At a 900 s period that page reaches the chip's rated minimum (10,000 erases, an estimate from the measured 5 erases per save) in about three months. At 3,600 s, about a year. Use the longest period the purpose allows, and prefer an ESP32 board for long-running kept instructions. The rating is a minimum, not a failure point.
+- **Collecting.** `report.list {"after": <cursor>, "limit": n}` (`limit` 1 to 8, 8 by default) answers
   `{"reports": [{"cursor", "boot", "seq", "report": <base64>}], "more", "dropped", "withheld"}`, oldest first, paged
-  like `inbox.list` (a page stops where the answer would not fit its link). `report.ack {"upto": <cursor>}` releases
-  everything up to that cursor. Any number of callers may read; the acknowledgement belongs to the manager that set the
+  like `inbox.list` (a page stops where the answer would not fit its link: 1,100 bytes of result, 760 over LoRa; the next
+  page starts after the last `cursor` listed). `report.ack {"upto": <cursor>}` releases everything up to that cursor and
+  answers `{"acked", "released", "remaining"}`; a cursor the device has not given is `failed`, `unknown-cursor`, and an ack of a
+  cursor already released changes nothing. Any number of callers may read; the acknowledgement belongs to the manager that set the
   keeping instruction (the member that signed it on an enrolled device, the cable on one without a record), as
   `inbox.ack` belongs to one reader. Nothing is ever re-sent
   unasked: a device spends no airtime on kept reports unless a manager asks for a page.
 - **Gaps.** `dropped` counts reports pushed out of a full ring since the last `report.ack`, so a manager sees how many it
-  missed. Cursors only grow, so a gap also shows in them.
+  missed, and the reports that could not be written. Cursors only grow, so a gap also shows in them.
 - **Authority.** `report.list` is a read. A kept report carrying `location` is listed only to a caller allowed to read
   the location (`location`, section 3). It is never cut out of a report, because the signature covers it:
-  it is left out of the page and counted in `withheld`. `report.ack` is a write, and it never releases a report its
-  caller could not list: an ack whose range holds a withheld report is refused `forbidden`, `location-withheld`, and
-  releases nothing.
-- **Links.** USB, BLE, a broker, and LoRa point to point. Not on a LoRa channel, where every member would read it. Over
+  it is left out of the page and counted in `withheld` (every such report above `after`, not only those on the page).
+  `report.ack` is a write, and it never releases a report its caller could not list: an ack whose range holds a withheld
+  report is `refused` with the error `location-withheld`, and releases nothing. An ack whose range holds a report made by
+  another member's instruction is `refused` with `not-owner`, and releases nothing.
+- **Links.** USB, BLE, a broker, and LoRa point to point. Not on a LoRa channel, where every member would read it: there both operations answer `unknown-op`. Over
   LoRa a page holds what fits one 1,024-byte message: about four kept reports.
 
 **Settled with the reference Backend's coder (review of 2026-11-23):** the ring is 64 reports, fixed in this version;

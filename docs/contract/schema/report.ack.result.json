@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/report.ack.result.json",
+  "title": "Result of report.ack: what was released",
+  "description": "Request args: {\"upto\"}. Releases every kept report up to that cursor. Refused with location-withheld when the range holds a report the caller could not list, and with not-owner when it holds one made by another member's instruction; either releases nothing. Failed with unknown-cursor above the newest cursor. An older upto changes nothing, so a retry of a lost reply is harmless.",
+  "type": "object",
+  "required": [
+    "acked",
+    "released",
+    "remaining"
+  ],
+  "properties": {
+    "acked": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The mark released up to."
+    },
+    "released": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Reports this ack released."
+    },
+    "remaining": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 64,
+      "description": "Reports still held."
+    }
+  },
+  "additionalProperties": false
+}

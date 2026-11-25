@@ -61,6 +61,11 @@
           "durable": {
             "type": "boolean"
           },
+          "keep": {
+            "type": "boolean",
+            "const": true,
+            "description": "Present on an instruction that keeps what it sends for report.list."
+          },
           "slot": {
             "type": "integer",
             "minimum": 0,

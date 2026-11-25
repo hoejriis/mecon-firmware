@@ -130,6 +130,8 @@ A manager can ask the device for a [compact report](contract/TELEMETRY.md) over 
 - **Airtime.** A report goes through the duty window. With no room, it looks again once a minute for 5 minutes. Then it counts as `skipped`, which does not use up a run, and waits for the next period.
 - **Counters and removal.** `standing.list` counts `runs`, `failed` and `skipped` since the last boot. `standing.remove` ends an instruction. One set by a member who leaves the authority set is removed the next time it comes due.
 
+- **Keeping reports for later** *(on main, in no release yet)*. An instruction put with `keep: true` also keeps every report it sends, as the exact signed bytes, in the device's flash: the last 64, whether or not anyone heard them. `report.list` hands them back page by page and `report.ack` releases them. A report with `location` is listed only to a caller who may read the location. See [Reports kept for later](contract/TELEMETRY.md#reports-kept-for-later).
+
 **In v0.2.0 and v0.2.1,** a new instruction sends its first report at once, and a count set with `runs` starts again at each boot. Both are fixed from v0.3.0.
 
 The full rules are in the [operations contract](contract/OPERATIONS.md#standing-instructions).

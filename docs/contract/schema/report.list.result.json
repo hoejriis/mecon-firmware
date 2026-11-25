@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/report.list.result.json",
+  "title": "Result of report.list: the compact reports a keeping standing instruction kept",
+  "description": "Request args: {\"after\"?, \"limit\"? (1 to 8, default 8)}. The reports the device holds above `after` (default 0), oldest first, as the exact signed bytes they were sent with. A page stops where the result would not fit the link, and continues after its last cursor. A report with `location` goes only to a caller allowed to read it; for any other it is left out whole and counted in `withheld`. A read takes nothing.",
+  "type": "object",
+  "required": [
+    "reports",
+    "more",
+    "dropped",
+    "withheld"
+  ],
+  "properties": {
+    "reports": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cursor",
+          "boot",
+          "seq",
+          "report"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "A counter that only grows, never reused, also across a reboot."
+          },
+          "boot": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The boot number inside the signed report."
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The sequence number inside the signed report."
+          },
+          "report": {
+            "type": "string",
+            "minLength": 108,
+            "maxLength": 176,
+            "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+            "description": "The report as it was sent, signature included, in base64."
+          }
+        }
+      }
+    },
+    "more": {
+      "type": "boolean",
+      "description": "Another report the caller may read is held above the last one listed."
+    },
+    "dropped": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Reports pushed out of the full ring, or that could not be written, since the last report.ack."
+    },
+    "withheld": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Reports above `after` left out because they carry location and the caller may not read it."
+    }
+  },
+  "additionalProperties": false
+}
