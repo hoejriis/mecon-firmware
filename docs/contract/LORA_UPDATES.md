@@ -1,6 +1,6 @@
 # Signed firmware updates over LoRa (contract draft)
 
-> **Status: draft for review, version 0 (2026-11-23).** Nothing here is built. It extends the [signed update](UPDATES.md)
+> **Status: draft for review, version 0 (2026-11-23).** Built so far: the bulk frame and answer codec (`LoraBulk`) and the target's transfer state (`LoraTransfer`: blocks, answers, durable `next`, pauses), both built, not yet wired to `update.offer`; nothing else here is built. It extends the [signed update](UPDATES.md)
 > lifecycle to a LoRa delivery path and [management over LoRa](LORA_MANAGEMENT.md) to carry image bytes. It is written to
 > be agreed between this firmware and a public manager (the reference Backend), before either implements it. Section 12
 > lists what is still open. Until this draft is accepted, `update.*` stays off LoRa as LORA_MANAGEMENT says.
@@ -209,7 +209,7 @@ A Backend implements the manager side of sections 3 to 7 against the same fixtur
 **Engineering, to settle before building:**
 6. ~~`frame_bytes` and the bulk header; whether a block answer fits one reply frame.~~ Settled 2026-11-24 (section 6):
    115 bytes of image per frame in the request datagram's 132; a 22-byte binary block answer in one reply frame.
-7. Durable progress on ESP32 (the slot plus `next`) against its flash wear; and the nRF52 apply step.
+7. ~~Durable progress on ESP32 (the slot plus `next`) against its flash wear~~ Settled: `next` is kept every 64 frames and at a pause, and a resume rewrites identical bytes. The nRF52 apply step stays open.
 8. Page-level deltas against the full deflated image: benchmark on real release pairs before choosing. Deltas tie a
    transfer to one exact base version.
 9. The 80% bulk ceiling of the duty window.
