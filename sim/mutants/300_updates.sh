@@ -25,7 +25,7 @@ mutate upd_chunk_overlong_written $U '  if ((uint32_t)n > _size - _received) { f
 mutate upd_chunk_offset_ignored $U '  if ((uint32_t)offset != _received) { w.key("next"); w.unum(_received); return ST_OK; }   // resume where it stands' '' "$UI::test_a_pushed_image_installs_attests_and_is_confirmed"
 mutate upd_digest_unchecked $U '  if (!Dep::constTimeEqual(got, _image_sha, 32)) { failJob("digest-mismatch"); return; }' '' "$UI::test_a_wrong_digest_fails_and_activates_nothing"
 mutate upd_image_format_unchecked $U '  if (!slotFinish()) { failJob("bad-image"); return; }   // the platform'"'"'s own check of the image format' '  slotFinish();' "$UI::test_an_image_the_platform_does_not_accept_fails"
-mutate upd_offer_rate_unlimited $U '  if (_offered_once && (uint32_t)(now_ms - _last_offer_ms) < OFFER_GAP_MS) { c.error = "rate"; return ST_BUSY; }   // 2' '' "$UI::test_offers_that_preflight_refuses"
+mutate upd_offer_rate_unlimited $U '  if (!paused && _offered_once && (uint32_t)(now_ms - _last_offer_ms) < OFFER_GAP_MS) { c.error = "rate"; return ST_BUSY; }   // 2' '' "$UI::test_offers_that_preflight_refuses"
 mutate upd_stall_ignored $U '    if ((uint32_t)(now_ms - _last_chunk_ms) >= STALL_MS) failJob("stalled");' '' "$UI::test_a_transfer_with_no_chunk_for_ten_minutes_fails"
 mutate upd_any_reboot_reverts $U '  t->awaitConfirm(j, _within_s, false, BOOT_ABNORMAL);' '  t->awaitConfirm(j, _within_s, false, BOOT_SECOND);' "$UI::test_a_normal_reboot_does_not_revert"
 mutate upd_never_marked_valid $U '    if (runningState() == RS_PENDING) markProven();
@@ -88,3 +88,12 @@ mutate upd_push_budget_too_high src/helpers/updates/UpdService.h '  static const
 mutate upd_http_budget_too_low src/helpers/updates/UpdService.h '  static const uint32_t HEAP_NEEDED_HTTP = 64 * 1024;' '  static const uint32_t HEAP_NEEDED_HTTP = 48 * 1024;' sim/tests/test_update_download.py::test_an_https_download_needs_more_heap_than_http
 mutate upd_download_no_timeout src/helpers/updates/UpdService.cpp 'literal ? nullptr : _url.host, HEAD_TIMEOUT_MS};' 'literal ? nullptr : _url.host, 0};' sim/tests/test_update_download.py::test_a_download_gives_a_slow_server_its_time
 mutate dfu_reset_ignores_a_cancel src/helpers/updates/UpdService.cpp 'if (t && t->find(_dfu_job, &j) == JobTable::FOUND && !jobTerminal(j->state)) slotEnterDfu();' 'slotEnterDfu();' sim/tests/test_update_dfu.py::test_a_cancel_before_the_reset_keeps_the_device_in_its_image
+# slice 3a of LoRa updates: the target side (docs/contract/LORA_UPDATES.md sections 4, 5 and 7)
+UL=sim/tests/test_update_lora.py
+mutate upd_lora_window_over_12h_accepted src/helpers/iface/LoraTransfer.cpp '  return window_end > issued_at && window_end - issued_at <= TRANSFER_WINDOW_MAX_S;' '  return window_end > issued_at;' unit:test_updates
+mutate upd_lora_resume_issues_a_new_token $U '  memcpy(tok_bytes, kept.token, sizeof(tok_bytes));' '  CryptoRNG rng_;
+  rng_.random(tok_bytes, sizeof(tok_bytes));' "$UL::test_a_transfer_pauses_at_its_window_and_a_reboot_keeps_it_until_the_same_manifest_resumes_it"
+mutate upd_lora_resume_erases_the_sector_holding_the_offset src/helpers/updates/UpdSlot.cpp '  if (!long_enough || truncate(path.c_str(), (off_t)offset) != 0) return false;' '  if (!long_enough || truncate(path.c_str(), (off_t)(offset / 4096 * 4096)) != 0) return false;' "$UL::test_a_transfer_pauses_at_its_window_and_a_reboot_keeps_it_until_the_same_manifest_resumes_it"
+mutate upd_lora_resume_erase_starts_at_the_offsets_sector src/helpers/updates/UpdSlot.h 'inline uint32_t slotFirstErase(uint32_t offset, uint32_t sector) { return (offset + sector - 1) / sector * sector; }' 'inline uint32_t slotFirstErase(uint32_t offset, uint32_t sector) { return offset / sector * sector; }' unit:test_updates
+mutate upd_lora_paused_job_releases_the_lock src/helpers/iface/Jobs.h 'inline bool jobTerminal(uint8_t s) { return s == JOB_APPLIED || (s >= JOB_CONFIRMED && s <= JOB_CANCELLED); }' 'inline bool jobTerminal(uint8_t s) { return s == JOB_APPLIED || s == JOB_PAUSED || (s >= JOB_CONFIRMED && s <= JOB_CANCELLED); }' unit:test_jobs
+mutate upd_lora_part_for_another_hash_kept src/helpers/updates/UpdManifestParts.h '    if (_data && (memcmp(_sha, sha256, 32) != 0 || _parts != parts)) discard();' '    if (_data && _parts != parts) discard();' unit:test_updates

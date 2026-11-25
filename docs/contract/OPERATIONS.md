@@ -45,6 +45,7 @@ A request that finishes at once answers its result as in v1.0. A request that ca
 | `reverted` | not confirmed in time, or cancelled after it was applied; the previous state is back | yes |
 | `failed` | it ran and failed; `error` says why, and `reverted` says whether the previous state was restored | yes |
 | `cancelled` | stopped by `job.cancel` before anything was applied | yes |
+| `paused` | a firmware transfer over LoRa that waits for its manager ([LoRa updates](LORA_UPDATES.md) section 7). Open, so it holds the one-job lock; `job.get` adds its `reason`, `next`, `frames_total` and `window_end`. It ends by a resume, a superseding offer, `job.cancel`, or `failed` (`stalled`) after 7 days | no |
 
 `refused`, `invalid`, `unknown-op`, `unsupported-version` and `busy` stay synchronous statuses: a refused request never becomes a job.
 
@@ -188,6 +189,7 @@ Legend: **C** Companion, **R** Repeater, **S** Room server. Transports: **USB** 
 | `config.apply` | writes, all-or-none checked | CLI `set` per key | write; per key | yes | C R S | as above |
 | `sub.start`, `sub.stop` | telemetry streams | | read | no | C R S | as above |
 | `job.get`, `job.list` | job state, owed results | | read | no | C R S | all |
+| `update.manifest.part` | one part of a release manifest staged over a link that holds little (LoRa): at most 4 parts, then what `update.manifest` does ([LoRa updates](LORA_UPDATES.md) section 5). `update.manifest`, `update.offer`, `update.chunk` and `update.status` are in [DEVICE_INTERFACE](DEVICE_INTERFACE.md) | | read | no | C R S | all |
 | `job.ack` | release an owed result | | read; not a plain read once enrolled | yes | C R S | all |
 | `job.confirm` | confirm a tentative change | | the job's classes | yes | C R S | all |
 | `region.list` | the region tree, paged; the first page adds the wildcard's flood, `home` and `default` | `RegionMap` | read | no | R S | Con, MQTT where built |

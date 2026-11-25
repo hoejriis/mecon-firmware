@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/update.manifest.part.result.json",
+  "title": "Result of update.manifest.part: a part kept, or the manifest staged",
+  "description": "LORA_UPDATES.md section 5: while parts are missing, the manifest's hash, this part, the parts there are and how many are held; with the last part, what update.manifest answers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sha256"
+  ],
+  "properties": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "part": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "parts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "held": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "preflight": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

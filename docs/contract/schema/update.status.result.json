@@ -39,7 +39,8 @@
                 "confirmed",
                 "reverted",
                 "failed",
-                "cancelled"
+                "cancelled",
+                "paused"
               ]
             },
             "received": {

@@ -15,6 +15,13 @@
 #include <stdint.h>
 #include <string.h>
 
+// Called from many places, so kept out of line: one copy of each costs less than a copy at every call.
+#if defined(__GNUC__)
+#define JOBS_NOINLINE __attribute__((noinline))
+#else
+#define JOBS_NOINLINE
+#endif
+
 namespace Iface {
 
 enum JobState : uint8_t {
@@ -25,10 +32,12 @@ enum JobState : uint8_t {
   JOB_CONFIRMED,      // terminal
   JOB_REVERTED,       // terminal
   JOB_FAILED,         // terminal
-  JOB_CANCELLED       // terminal
+  JOB_CANCELLED,      // terminal
+  JOB_PAUSED          // not terminal: a transfer that waits for a manager (a firmware update over LoRa, LORA_UPDATES.md
+                      // section 7). It keeps the one-job lock and has a deadline of its own, in confirm_left_s
 };
 
-inline bool jobTerminal(uint8_t s) { return s == JOB_APPLIED || s >= JOB_CONFIRMED; }
+inline bool jobTerminal(uint8_t s) { return s == JOB_APPLIED || (s >= JOB_CONFIRMED && s <= JOB_CANCELLED); }
 
 inline const char* jobStateName(uint8_t s) {
   switch (s) {
@@ -40,6 +49,7 @@ inline const char* jobStateName(uint8_t s) {
     case JOB_REVERTED: return "reverted";
     case JOB_FAILED: return "failed";
     case JOB_CANCELLED: return "cancelled";
+    case JOB_PAUSED: return "paused";
   }
   return "?";
 }
@@ -64,6 +74,14 @@ struct Job {
   uint16_t result_len;
   char result[RESULT_CAP];     // the latest result or state data, as one JSON object (the role's choice); never a value
                                // read back from the device, which a CLI reply can echo
+
+  // The last PRIV_CAP bytes of `result` are the owning operation's private, binary state while the job is open (JobLora.h:
+  // a LoRa transfer's token and progress). A result is never read past result_len, so nothing there is shown, and an
+  // operation that uses it keeps its non-terminal results to RESULT_CAP - PRIV_CAP bytes. The table zeroes everything
+  // past result_len when a job ends, so a token never outlives its job, and the layout and size of the table are unchanged.
+  static constexpr size_t PRIV_CAP = 64;
+  uint8_t* priv() { return reinterpret_cast<uint8_t*>(result) + RESULT_CAP - PRIV_CAP; }
+  const uint8_t* priv() const { return reinterpret_cast<const uint8_t*>(result) + RESULT_CAP - PRIV_CAP; }
 };
 
 enum BootRule : uint8_t { BOOT_SECOND = 0, BOOT_ABNORMAL = 1 };
@@ -101,7 +119,7 @@ public:
 
   // A new job in state accepted. Null when a job is open (the caller answers busy, job-open:<open id>), when the id is
   // already known (the caller answers the job, or result-expired), or when the id or op does not fit.
-  Job* open(const char* id, const char* op) {
+  JOBS_NOINLINE Job* open(const char* id, const char* op) {
     if (!id || !op || !*id || strlen(id) > Job::ID_CAP || strlen(op) > Job::OP_CAP) return nullptr;
     if (openJob()) return nullptr;
     Job* known;
@@ -116,9 +134,15 @@ public:
     return slot;
   }
 
+  // Zeroes everything past a job's result (Job::priv). Out of line: setState is inlined at every call, and this is not small.
+#if defined(__GNUC__)
+  __attribute__((noinline))
+#endif
+  static void wipeTail(Job* j) { memset(j->result + j->result_len, 0, Job::RESULT_CAP - j->result_len); }
+
   // A state change. A terminal job never moves again. awaiting-confirm is entered with awaitConfirm(), never here.
-  bool setState(Job* j, uint8_t state, const char* result = nullptr, size_t len = 0) {
-    if (!j || !j->state || jobTerminal(j->state) || state < JOB_ACCEPTED || state > JOB_CANCELLED || state == JOB_AWAITING)
+  JOBS_NOINLINE bool setState(Job* j, uint8_t state, const char* result = nullptr, size_t len = 0) {
+    if (!j || !j->state || jobTerminal(j->state) || state < JOB_ACCEPTED || state > JOB_PAUSED || state == JOB_AWAITING)
       return false;
     if (result) {
       if (len > Job::RESULT_CAP) return false;
@@ -126,6 +150,7 @@ public:
       j->result_len = (uint16_t)len;
     }
     j->state = state;
+    if (jobTerminal(state)) wipeTail(j);   // see Job::priv
     return true;
   }
 
@@ -170,9 +195,10 @@ public:
 
   // Running time passed (call at least once a second). An awaiting-confirm job whose deadline runs out is handed to
   // expired(); the role reverts and sets its terminal state.
+  // A paused job counts its own deadline the same way (confirm_left_s): its operation ends it when it runs out.
   template <class F> void tick(uint32_t seconds, F expired) {
     Job* j = openJob();
-    if (!j || j->state != JOB_AWAITING) return;
+    if (!j || (j->state != JOB_AWAITING && j->state != JOB_PAUSED)) return;
     j->confirm_left_s = seconds >= j->confirm_left_s ? 0 : j->confirm_left_s - seconds;
     if (!j->confirm_left_s) expired(j);
   }
@@ -243,7 +269,7 @@ public:
     for (Job& j : _j) {   // a damaged entry is dropped, never half trusted
       j.id[Job::ID_CAP] = 0;
       j.op[Job::OP_CAP] = 0;
-      if (j.state > JOB_CANCELLED || j.boot_rule > BOOT_ABNORMAL || j.result_len > Job::RESULT_CAP)
+      if (j.state > JOB_PAUSED || j.boot_rule > BOOT_ABNORMAL || j.result_len > Job::RESULT_CAP)
         memset(&j, 0, sizeof(j));
     }
     return true;

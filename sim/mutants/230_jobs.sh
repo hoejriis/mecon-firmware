@@ -3,7 +3,7 @@
 mutate jobs_second_open_allowed src/helpers/iface/Jobs.h '    if (openJob()) return nullptr;' '' unit:test_jobs
 mutate jobs_unacked_evicted_first src/helpers/iface/Jobs.h '        if (!jobTerminal(j.state) || (pass == 0 && !j.acked)) continue;' '        if (!jobTerminal(j.state) || (pass == 0 && j.acked)) continue;' unit:test_jobs
 mutate jobs_evicted_id_forgotten src/helpers/iface/Jobs.h '      _h[_hnext] = hash(pick->id);' '' unit:test_jobs
-mutate jobs_terminal_moves src/helpers/iface/Jobs.h '    if (!j || !j->state || jobTerminal(j->state) || state < JOB_ACCEPTED || state > JOB_CANCELLED || state == JOB_AWAITING)' '    if (!j || !j->state || state < JOB_ACCEPTED || state > JOB_CANCELLED || state == JOB_AWAITING)' unit:test_jobs
+mutate jobs_terminal_moves src/helpers/iface/Jobs.h '    if (!j || !j->state || jobTerminal(j->state) || state < JOB_ACCEPTED || state > JOB_PAUSED || state == JOB_AWAITING)' '    if (!j || !j->state || state < JOB_ACCEPTED || state > JOB_PAUSED || state == JOB_AWAITING)' unit:test_jobs
 mutate jobs_deadline_never_fires src/helpers/iface/Jobs.h '    if (!j->confirm_left_s) expired(j);' '' unit:test_jobs
 mutate jobs_window_not_restarted_at_activation src/helpers/iface/Jobs.h '      j->confirm_left_s = j->within_s;' '' unit:test_jobs
 mutate jobs_cut_job_left_open src/helpers/iface/Jobs.h '    if (j->state == JOB_ACCEPTED || j->state == JOB_PROGRESS) {' '    if (false) {' unit:test_jobs

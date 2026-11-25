@@ -9,13 +9,20 @@
 //
 // update.offer runs preflight and opens the update job. This build delivers by push only (source {"push": true}): the
 // offer's result carries the job's transfer token, and update.chunk writes the bytes, in order, into the inactive slot.
+// source {"lora": {...}} is the same job over LoRa (docs/contract/LORA_UPDATES.md): the bytes arrive as bulk frames, which
+// loraFrame() takes (the LoRa link is a later slice), and a transfer that pauses keeps its token and progress in the job.
 // The last chunk starts the read-back: the slot's SHA-256, one piece per loop pass, against the manifest. A match
 // activates the image (the job awaits confirmation across the reboot); the image that boots attests, and job.confirm or
 // the deadline decides. The role passes the job service and its hooks (Host) and calls loop(), and its job hooks hand
 // an update job to jobRevert() and jobConfirm().
 #include <stddef.h>
 #include <stdint.h>
+#include "UpdFeatures.h"
 #include "UpdPreflight.h"
+#ifdef UPD_LORA
+#include "UpdLoraOffer.h"
+#include "UpdManifestParts.h"
+#endif
 #include "UpdUrl.h"
 
 // A download over IP (source.url) needs a network: the builds with the MQTT controller's, on ESP32 and the simulated board.
@@ -25,6 +32,10 @@
 #include "helpers/deployment/DepHmac.h"
 #include "helpers/iface/IfaceDispatch.h"
 #include "helpers/iface/JobService.h"
+#ifdef UPD_LORA
+#include "helpers/iface/LoraBulk.h"
+#include "helpers/iface/LoraTransfer.h"
+#endif
 
 #ifndef MECON_LAYOUT
 #define MECON_LAYOUT 1           // the partition or flash-layout version this build is made for
@@ -84,6 +95,8 @@ public:
     void (*record_caller)(void* user, Iface::Job& j);
     bool (*signed_now)(void* user);
     void (*reboot)(void* user);
+    // The device's wall clock in unix seconds, or false while it is not set. A LoRa offer's window is bounded by it.
+    bool (*clock)(void* user, uint32_t* unix_s);
   };
 
   // hardware and role as hello reports them; both outlive the service. Runs the simulated bootloader's slot switch and
@@ -112,6 +125,16 @@ public:
   Iface::Status opOffer(Iface::OpContext& c, uint32_t now_ms);
   // { "job", "token", "offset", "data" } -> { "next" }
   Iface::Status opChunk(Iface::OpContext& c, uint32_t now_ms);
+#ifdef UPD_LORA
+  // { "sha256", "part", "parts", "data" } -> { "sha256", "part", "parts", "held" } until the last part arrives, then what
+  // update.manifest answers (LORA_UPDATES.md section 5)
+  Iface::Status opManifestPart(Iface::OpContext& c, uint32_t now_ms);
+
+  // The LoRa transfer's intake, until the LoRa link is wired (a later slice): one bulk frame as the target heard it. A
+  // block's answer, when one is due, waits for loraAnswer(); until it is taken no other can be sent (a busy duty window).
+  void loraFrame(const uint8_t* frame, size_t n, uint32_t now_ms);
+  bool loraAnswer(uint8_t out[Iface::ANSWER_LEN]);
+#endif
 
   // One piece of work: the stall deadline, a piece of the read-back, a sector of erase, the end of the rollback window.
   void loop(uint32_t now_ms);
@@ -137,12 +160,19 @@ public:
   Device device() const;
 
 private:
-  enum Phase : uint8_t { IDLE, RECEIVING, DOWNLOADING, VERIFYING };
+  enum Phase : uint8_t { IDLE, RECEIVING, DOWNLOADING, VERIFYING
+#ifdef UPD_LORA
+    , LORA
+#endif
+  };
   // Putting the previous image back: it already runs (and the next boot runs it too), the next boot runs it, which slot
   // holds it cannot be told, or the slots could not be changed.
   enum Back : uint8_t { BACK_RUNS, BACK_REBOOT, BACK_UNKNOWN, BACK_FAILED };
 
   Slot _s[2] = {};
+#ifdef UPD_LORA
+  ManifestParts _mp;   // a manifest arriving in parts (update.manifest.part)
+#endif
   uint32_t _last_stage_ms = 0;
   bool _staged_once = false;
   uint32_t _last_offer_ms = 0;
@@ -173,6 +203,32 @@ private:
   uint32_t _size = 0, _received = 0, _readback_at = 0, _last_chunk_ms = 0, _within_s = 0;
   Dep::Sha256Ctx* _readback = nullptr;
   bool _erasing = false;
+
+#ifdef UPD_LORA
+  // A LoRa transfer (phase LORA): its state machine, the keys its token gives, and the answer waiting to be taken. What
+  // survives a reboot (token, manifest, next) is in the job (Iface::JobLora).
+  Iface::LoraTransfer* _xfer = nullptr;
+  Iface::BulkKeys _keys = {};
+  uint8_t _ans[Iface::ANSWER_LEN] = {};
+  bool _ans_ready = false;
+  uint32_t _lora_no = 0;                 // the number bulk frames name the transfer by
+  char _orphan[33] = {};                 // a paused LoRa job found at boot: its slot is erased if the job is cancelled
+  static bool sinkWrite(void* ctx, uint32_t offset, const uint8_t* data, size_t len);
+  static bool sinkAnswer(void* ctx, const uint8_t* bytes, size_t len);
+  static void sinkSave(void* ctx, uint32_t next);
+  static void sinkErase(void* ctx);
+  static uint32_t loraNumber(const char* job_id);
+  bool loraBegin(const char* job_id, const uint8_t token[16], unsigned block, uint32_t deadline_ms, uint32_t now_ms,
+                 uint32_t next);
+  Iface::Status loraResume(Iface::OpContext& c, Iface::Job& j, const LoraSource& ls, uint32_t within, const Manifest& m,
+                           uint32_t now_ms);
+  void loraAfter(uint32_t now_ms);
+  void loraComplete(Iface::Job& j);
+  uint32_t loraDeadline(const LoraSource& ls, uint32_t now_ms) const;
+  bool deviceClock(uint32_t* unix_s) const { return _host.clock && _host.clock(_host.user, unix_s) && *unix_s; }
+  bool stageRateLimited(uint32_t now_ms) const { return _staged_once && (uint32_t)(now_ms - _last_stage_ms) < STAGE_GAP_MS; }
+#endif
+  Iface::Status stage(Iface::OpContext& c, char* text, size_t len, const uint8_t sig[SIG_LEN], uint32_t now_ms);
 
 #ifdef UPD_DOWNLOAD
   // The download (source.url). The connect and the response head run on the network's worker, which writes _dl_err

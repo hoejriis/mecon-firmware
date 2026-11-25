@@ -1,5 +1,10 @@
 #include "JobService.h"
 #include "IfaceEnvelope.h"
+#include "helpers/updates/UpdFeatures.h"
+#ifdef UPD_LORA
+#include "JobLora.h"
+#include "LoraTransfer.h"
+#endif
 #include <new>
 #include <stdlib.h>
 #include <string.h>
@@ -99,6 +104,15 @@ Status JobService::opGet(OpContext& c) {
   JsonWriter& w = *c.out;
   writeSummary(w, *j);
   if (j->state == JOB_AWAITING) { w.key("confirm_left_s"); w.unum(j->confirm_left_s); }
+#ifdef UPD_LORA
+  JobLora lora;
+  if (jobLoraGet(*j, &lora)) {   // an open or paused firmware transfer over LoRa (LORA_UPDATES.md section 7)
+    w.key("next"); w.unum(lora.next);
+    w.key("frames_total"); w.unum(lora.frames_total);
+    w.key("window_end"); w.unum(lora.window_end);
+    if (j->state == JOB_PAUSED) { w.key("reason"); w.str(transferReasonName((TransferReason)lora.reason)); }
+  }
+#endif
   w.key("result");
   if (j->result_len) w.raw(j->result, j->result_len); else w.null();
   return ST_OK;
@@ -185,7 +199,9 @@ void JobService::tick(uint32_t now_ms) {
   if (!secs) return;
   _tick_ms += secs * 1000;
   if (!_t) return;
+  // A paused job counts a deadline of its own (Jobs.h tick), but it lasts days, so it is saved far less often.
   const bool awaiting = _t->openJob() && _t->openJob()->state == JOB_AWAITING;
+  const bool paused = _t->openJob() && _t->openJob()->state == JOB_PAUSED;
   bool changed = false;
   _t->tick(secs, [&](Job* j) {
     changed = true;
@@ -194,6 +210,7 @@ void JobService::tick(uint32_t now_ms) {
   // The time left is saved every SAVE_EVERY_S running seconds, so a reboot does not start the deadline over.
   _unsaved_s += secs;
   if (awaiting && _unsaved_s >= SAVE_EVERY_S) changed = true;
+  if (paused && _unsaved_s >= SAVE_PAUSED_EVERY_S) changed = true;
   if (changed) { persist(); _unsaved_s = 0; }
 }
 

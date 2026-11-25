@@ -121,7 +121,7 @@ The class's column is in docs/CLI.md's privilege table, and AUTHORITY.md section
 
 ## 6. Delivery and what each target verifies
 
-**The offer.** `update.offer {"manifest_sha256", "source", "confirm": {"within_s"}}`: the staged manifest by its hash, the source (`{"push": true}`, or `{"url": "https://..."}` for IP), and the confirmation window of section 7 (30 to 3,600 s; 900 when `confirm` is left out). A push offer that passes preflight answers `{"job", "state": "accepted", "transfer_token", "next": 0}`.
+**The offer.** `update.offer {"manifest_sha256", "source", "confirm": {"within_s"}}`: the staged manifest by its hash, the source (`{"push": true}`, or `{"url": "https://..."}` for IP, or `{"lora": {...}}` for bulk frames over LoRa, which [LORA_UPDATES](LORA_UPDATES.md) section 4 describes: it runs this same preflight and job, and ends in the verify, activate and confirm of section 7), and the confirmation window of section 7 (30 to 3,600 s; 900 when `confirm` is left out). A push offer that passes preflight answers `{"job", "state": "accepted", "transfer_token", "next": 0}`.
 
 **Bounds:**
 - an `update.offer` or an `update.manifest` is at most **1,536 bytes over MQTT** and at most 4,096 over USB and BLE. The device's MQTT client buffer is 1,600 bytes for the whole PUBLISH: with at most 7 bytes of header and the 42-byte topic `mecon/<device_id>/req`, a request of up to 1,551 bytes fits. A signed stage of the longest manifest is about 1,480 bytes, and a Backend that stages through a broker which is not TLS-verified has to sign it (an unverified broker session may not read);
@@ -180,6 +180,7 @@ Measured worst cases:
    - one whose image attested but was not confirmed becomes `confirmed`, with `confirmed_by:"superseded"`;
    - one that never activated becomes `cancelled`, `reason:"superseded"`, and its slot is erased.
    An offer that fails preflight changes nothing.
+   A transfer over LoRa that is `paused` (LORA_UPDATES section 7) is never activated, so it is superseded the same way, and its slot is written again from the start. The one offer that does not supersede it is the same manifest offered again with a later window, which resumes it.
 8. **What is running.** Every terminal update result carries `running: {"version", "sha256"}`, the image actually running when the result was written. A result never says only "failed" while a new version runs. The manager still reads attestation (step 3) for evidence.
 
 ## 8. Other operations
@@ -189,6 +190,7 @@ Measured worst cases:
 | `update.manifest` | stages one manifest `{"manifest", "manifest_sig"}` in RAM, unsigned, for any caller with `read`. It changes nothing persistent. It verifies the release signature and the target at once, refusing as preflight steps 5 to 7 would. It answers the manifest's `sha256` and what preflight would say. Two slots, keyed by the manifest's hash and not bound to the link that staged it: a Reader may stage over USB and a Backend offer over MQTT. A third stage evicts the older slot. At most one stage a second (`busy`, `rate`), refused stages included, because each costs a signature check on unsigned input. An offer copies its manifest into the job, so staging never touches an open job, and a superseding offer (section 7) can be staged while one is open. An offer naming a hash in neither slot gets `manifest-not-staged`, so a stage from someone else costs at most a retry, never a wrong install. The slots are RAM, so a reboot empties them |
 | `update.offer` | opens the update job after preflight (sections 4 to 6), for a push (`{"push": true}`, answering a transfer token) or a download (`{"url"}`); of the `update` class, and its result is kept, so a retry gets the same job and transfer token back |
 | `update.chunk` | one piece of the image, at the offset expected next (section 6); authorised by the job's transfer token |
+| `update.manifest.part` | stages a manifest sent in at most 4 parts, for a link that cannot carry it whole: the parts are the text and its signature, keyed by the text's hash, in a RAM slot beside the two above. The last part runs exactly what `update.manifest` runs. [LORA_UPDATES](LORA_UPDATES.md) section 5 |
 | `update.status` | the open update job, or `null`: `job` and `state`, and during the transfer `received`, `next`, `size` and the manifest's `version` and image `sha256`, or once its image runs, the running `version` and `sha256`. Then `running`, the `version` and `sha256` of the image running now (`sha256` is `null` where the platform cannot hash it), the security floor, and the staged manifests (`sha256`, `version`) |
 | `job.cancel` | before activation: stops the transfer and erases the partial slot. After activation it is the revert rule |
 | `job.confirm`, `job.get`, `job.list`, `job.ack` | as in OPERATIONS.md, with the `update` class for update jobs |
@@ -206,7 +208,7 @@ A revert therefore always finds data the previous image can read. A forced rever
 ## 10. Resource rules
 
 - The transfer never holds the main loop: one chunk or one download piece per loop pass.
-- One update job at a time. Every non-terminal state has a deadline: the stall deadline, the download timeout, or the confirmation deadline.
+- One update job at a time. Every non-terminal state has a deadline: the stall deadline, the download timeout, the confirmation deadline, or the 7 days a paused transfer over LoRa waits.
 - Measured and published with the first implementation, per target and per path:
   - free heap at the transfer's peak;
   - the largest chunk buffer;

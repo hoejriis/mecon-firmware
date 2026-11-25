@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/update.offer.result.json",
   "title": "Result of update.offer: the job it opened",
-  "description": "A pushed image answers next (0) and, only here, its transfer_token; a download answers next without a token; an nRF52 serial DFU answers dfu (UPDATES.md).",
+  "description": "A pushed image answers next (0) and, only here, its transfer_token; a download answers next without a token; a LoRa transfer answers its token and the shape of the transfer (LORA_UPDATES.md section 4); an nRF52 serial DFU answers dfu (UPDATES.md).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -24,7 +24,8 @@
         "confirmed",
         "reverted",
         "failed",
-        "cancelled"
+        "cancelled",
+        "paused"
       ]
     },
     "transfer_token": {
@@ -33,7 +34,33 @@
     },
     "next": {
       "type": "integer",
-      "const": 0
+      "minimum": 0,
+      "description": "0 for a new job; a resumed LoRa transfer answers the frame it goes on from."
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "LoRa source only: the image as it will run."
+    },
+    "transfer_size": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "LoRa source only: the bytes that travel (equal to size until a compressed transfer exists)."
+    },
+    "encoding": {
+      "enum": [
+        "raw"
+      ],
+      "description": "LoRa source only."
+    },
+    "frame_bytes": {
+      "const": 115,
+      "description": "LoRa source only: image bytes in every bulk frame but the last."
+    },
+    "frames_total": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "LoRa source only."
     },
     "dfu": {
       "const": "serial"

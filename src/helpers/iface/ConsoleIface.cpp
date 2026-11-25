@@ -57,7 +57,11 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
                                     "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
-                                    "update.offer", "update.chunk"};
+                                    "update.offer", "update.chunk"
+#ifdef UPD_LORA
+                                    , "update.manifest.part"
+#endif
+                                    };
 // Listed only on a role with a region tree.
 // The network-profile operations, on a build with Wi-Fi or MQTT (NetProfileOps.h).
 const char* const NET_CAPABILITIES[] = {"net.profile.clear"
@@ -760,6 +764,9 @@ Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, mil
 Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
 Status opUpdOffer(OpContext& c) { return self(c)->updates().opOffer(c, millis()); }
 Status opUpdChunk(OpContext& c) { return self(c)->updates().opChunk(c, millis()); }
+#ifdef UPD_LORA
+Status opUpdManifestPart(OpContext& c) { return self(c)->updates().opManifestPart(c, millis()); }
+#endif
 
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
@@ -854,6 +861,9 @@ const OpEntry OPS[] = {
   {"job.confirm", opJobConfirm, PRIV_WRITE, true},
   // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
   {"update.manifest", opUpdManifest, PRIV_READ, false},
+#ifdef UPD_LORA
+  {"update.manifest.part", opUpdManifestPart, PRIV_READ, false},
+#endif
   {"update.status", opUpdStatus, PRIV_READ, false},
   // The offer is of the update class and keeps its result: a retry gets the same job and transfer token back. A chunk
   // is authorised by that token (DeployAuth::preAuthorize lets it through to the handler) and is not kept: its answer
@@ -895,7 +905,7 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   mesh::Utils::sha256(_public_fp, MGMT_FP_BYTES, MGMT_PUBLIC_KEY, sizeof(MGMT_PUBLIC_KEY));
   _jobs.setClassCheck(jobClasses, this);
   _jobs.setOnChange(jobChanged, this);
-  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot});
+  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot, updClock});
   _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);
   _updates.bootReconcile();   // an installed image attests, or the bootloader rolled it back
   configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
@@ -1201,6 +1211,12 @@ bool ConsoleIface::jobConfirm(void* user, Job& j) {
 }
 
 bool ConsoleIface::updSigned(void* user) { return static_cast<ConsoleIface*>(user)->_auth.isSigned(); }
+
+bool ConsoleIface::updClock(void* user, uint32_t* unix_s) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  *unix_s = s->_host.clock_s ? s->_host.clock_s(s->_host.user) : 0;
+  return *unix_s != 0;
+}
 
 // After the answer has gone out: an activated image boots, or a reverted one goes back to the previous image.
 void ConsoleIface::updReboot(void* user) { static_cast<ConsoleIface*>(user)->_reboot_at = millis() + 1500; }

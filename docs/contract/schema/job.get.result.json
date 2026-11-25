@@ -31,7 +31,8 @@
         "confirmed",
         "reverted",
         "failed",
-        "cancelled"
+        "cancelled",
+        "paused"
       ]
     },
     "owed": {
@@ -42,6 +43,29 @@
       "type": "integer",
       "minimum": 0,
       "description": "Present while awaiting-confirm: running seconds before the change reverts."
+    },
+    "next": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Present while a firmware transfer over LoRa is open or paused: the first frame not yet written (LORA_UPDATES.md section 7)."
+    },
+    "frames_total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "As next: the frames in the transfer."
+    },
+    "window_end": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "As next: the unix time after which the target takes no more bulk frames for the job."
+    },
+    "reason": {
+      "enum": [
+        "window",
+        "duty",
+        "manager"
+      ],
+      "description": "Present while the job is paused: why."
     },
     "result": {
       "type": [
