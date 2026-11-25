@@ -448,7 +448,8 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   // awaiting confirmation, since it spans the bootloader step, and the device resets into the bootloader's serial DFU
   // once this answer has gone out. The Reader then sends the package.
   if (m->kind == KIND_BOOTLOADER_DFU) {
-    if (by_url || by_lora) { free(m); c.error = "unsupported-source"; return ST_REFUSED; }   // the bootloader takes it over USB only
+    if (by_url) { free(m); c.error = "unsupported-source"; return ST_REFUSED; }   // the bootloader takes it over USB only
+    if (by_lora) { free(m); c.error = "unsupported-source"; return ST_REFUSED; }   // and a LoRa source needs a slot
     if (open) {   // no supersede here: a DFU replaces the whole image, and one job at a time
       snprintf(g_open_error, sizeof(g_open_error), "job-open:%s", open->id);
       free(m);
@@ -575,15 +576,13 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   w.key("job"); w.str(j->id);
   w.key("state"); w.str(jobStateName(j->state));
   if (!by_url) { w.key("transfer_token"); w.str(tok); }   // only here: never in the job, its events, update.status or a log
+  w.key("next"); w.unum(0);
   if (by_lora) {   // the shape of the transfer (LORA_UPDATES.md section 4); nothing is compressed in this slice
     w.key("size"); w.unum(_size);
     w.key("transfer_size"); w.unum(_size);
     w.key("encoding"); w.str("raw");
-    w.key("next"); w.unum(0);
     w.key("frame_bytes"); w.unum((uint32_t)BULK_DATA);
     w.key("frames_total"); w.unum(bulkFramesTotal(_size));
-  } else {
-    w.key("next"); w.unum(0);
   }
   memset(tok, 0, sizeof(tok));
   return ST_OK;

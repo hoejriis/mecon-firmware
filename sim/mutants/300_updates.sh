@@ -25,7 +25,7 @@ mutate upd_chunk_overlong_written $U '  if ((uint32_t)n > _size - _received) { f
 mutate upd_chunk_offset_ignored $U '  if ((uint32_t)offset != _received) { w.key("next"); w.unum(_received); return ST_OK; }   // resume where it stands' '' "$UI::test_a_pushed_image_installs_attests_and_is_confirmed"
 mutate upd_digest_unchecked $U '  if (!Dep::constTimeEqual(got, _image_sha, 32)) { failJob("digest-mismatch"); return; }' '' "$UI::test_a_wrong_digest_fails_and_activates_nothing"
 mutate upd_image_format_unchecked $U '  if (!slotFinish()) { failJob("bad-image"); return; }   // the platform'"'"'s own check of the image format' '  slotFinish();' "$UI::test_an_image_the_platform_does_not_accept_fails"
-mutate upd_offer_rate_unlimited $U '  if (_offered_once && (uint32_t)(now_ms - _last_offer_ms) < OFFER_GAP_MS) { c.error = "rate"; return ST_BUSY; }   // 2' '' "$UI::test_offers_that_preflight_refuses"
+mutate upd_offer_rate_unlimited $U '  if (!paused && _offered_once && (uint32_t)(now_ms - _last_offer_ms) < OFFER_GAP_MS) { c.error = "rate"; return ST_BUSY; }   // 2' '' "$UI::test_offers_that_preflight_refuses"
 mutate upd_stall_ignored $U '    if ((uint32_t)(now_ms - _last_chunk_ms) >= STALL_MS) failJob("stalled");' '' "$UI::test_a_transfer_with_no_chunk_for_ten_minutes_fails"
 mutate upd_any_reboot_reverts $U '  t->awaitConfirm(j, _within_s, false, BOOT_ABNORMAL);' '  t->awaitConfirm(j, _within_s, false, BOOT_SECOND);' "$UI::test_a_normal_reboot_does_not_revert"
 mutate upd_never_marked_valid $U '    if (runningState() == RS_PENDING) markProven();
