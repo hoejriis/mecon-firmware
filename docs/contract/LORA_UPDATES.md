@@ -1,6 +1,6 @@
 # Signed firmware updates over LoRa (contract draft)
 
-> **Status: draft for review, version 0 (2026-11-23).** Nothing here is built. It extends the [signed update](UPDATES.md)
+> **Status: draft for review, version 0 (2026-11-23).** Built so far: the bulk frame and answer codec (`LoraBulk`) and the target's transfer state (`LoraTransfer`: blocks, answers, durable `next`, pauses), both built, not yet wired to `update.offer`; nothing else here is built. It extends the [signed update](UPDATES.md)
 > lifecycle to a LoRa delivery path and [management over LoRa](LORA_MANAGEMENT.md) to carry image bytes. It is written to
 > be agreed between this firmware and a public manager (the reference Backend), before either implements it. Section 12
 > lists what is still open. Until this draft is accepted, `update.*` stays off LoRa as LORA_MANAGEMENT says.
@@ -102,7 +102,7 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
   the frame index the block starts at, and bit i of `have` is frame `base` + i, so an answer that arrives late is
   never read against a later block. The answer needs no Deployment signature: a forged one can only make the manager
   send frames again or skip ahead, and the manifest's digest still decides what is activated. Missing frames are sent
-  again; held frames are never written twice. A block's answer is the only traffic the target originates during a
+  again; held frames are never written twice. A resend of the block just answered gets that block's answer again (its `base`), so a lost answer costs one block of airtime, not the transfer. A block's answer is the only traffic the target originates during a
   transfer. The progress a manager reports to people comes from a signed `job.get` (section 7).
 - **Neither direction can stand in for the other.** The two kinds have different markers, the marker is inside each
   tag, and each kind has its own key. So a captured block answer sent back at the target is not a bulk frame, and a
@@ -209,7 +209,7 @@ A Backend implements the manager side of sections 3 to 7 against the same fixtur
 **Engineering, to settle before building:**
 6. ~~`frame_bytes` and the bulk header; whether a block answer fits one reply frame.~~ Settled 2026-11-24 (section 6):
    115 bytes of image per frame in the request datagram's 132; a 22-byte binary block answer in one reply frame.
-7. Durable progress on ESP32 (the slot plus `next`) against its flash wear; and the nRF52 apply step.
+7. ~~Durable progress on ESP32 (the slot plus `next`) against its flash wear~~ Settled: `next` is kept every 64 frames and at a pause, and a resume rewrites identical bytes. The nRF52 apply step stays open.
 8. Page-level deltas against the full deflated image: benchmark on real release pairs before choosing. Deltas tie a
    transfer to one exact base version.
 9. The 80% bulk ceiling of the duty window.
