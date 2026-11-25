@@ -11,6 +11,7 @@ import hashlib
 import time
 
 import pytest
+from test_deployment_authority import RTC as DEP_RTC, boot as dep_boot, wrap
 from test_jobs import tx_of
 from test_update_install import NEW, declare, image, job_get, start
 from test_update_dfu import dfu_board, stage_dfu
@@ -234,6 +235,11 @@ def test_a_transfer_cut_by_a_reboot_comes_back_paused_and_goes_on_from_the_kept_
     assert (again["job"], again["transfer_token"], again["next"]) == ("lc-1", res["transfer_token"], kept), again
     assert d.i.request("update.status")["result"]["job"]["job"] == "lc-1"
     t = Transfer(d, img, again, "lc-1")
+    # The frames keep the paused job's number: those of the new request's number are another transfer's, and are dropped.
+    assert bulk.job_number("lc-2") != bulk.job_number("lc-1")
+    stranger = bulk.frame(t.k, bulk.job_number("lc-2"), len(img), kept, img[kept * DATA:(kept + 1) * DATA])
+    r = d.i.request("update.lora.frame", {"frame": stranger.hex()})
+    assert r["status"] == "ok" and r["result"]["answer"] is None and job_get(d, "lc-1")["next"] == kept, r
     t.run(kept)
     install_and_confirm(n, img, "lc-1")
 
@@ -393,3 +399,43 @@ def test_a_manifest_in_parts(nodes):
         assert d.i.request("update.manifest.part", a)["status"] == "ok"
     r = d.i.request("update.manifest.part", forged[3])
     assert r["status"] == "refused" and r["error"] == "bad-release-signature", r
+
+
+@pytest.mark.timescale(10)
+def test_a_signed_offer_and_a_signed_resume_under_a_newer_job_id(nodes):
+    """On an enrolled device the offer is signed: issued_at is read from the signed body, and a resume is a new signed request
+    (a new job id, since the replay mark only rises) that names the same manifest and answers the paused job."""
+    d = dep_boot(nodes, "lg")
+    declare(d.n, "v1.18.0-mecon.0.50.0")
+    d.reboot()
+    assert d.provision()["status"] == "ok"
+    u = Dev.__new__(Dev)
+    u.c, u.i = d.c, d.i
+    u.hello = d.i.request("hello")["result"]
+    img = image(9000)
+    msha = stage_parts(u, manifest_for(u, img))
+    now = DEP_RTC
+    args = lambda we, **more: dict({"manifest_sha256": msha, "source": {"lora": {"block": 8, "window_end": we}},
+                                    "confirm": {"within_s": 300}}, **more)
+    r = d.send(wrap(d.node_key, "update.offer", args(now + 20, issued_at=now + 5), job=7, issued_at=now))
+    assert (r["status"], r["error"]) == ("invalid", "bad-args"), "args that disagree with the signed body: %s" % r
+    r = d.send(wrap(d.node_key, "update.offer", args(now + 20), job=8, issued_at=now))
+    assert r["status"] == "ok", r
+    res = r["result"]
+    job = res["job"]
+    assert job.startswith("#") and job.endswith(":8"), job
+    t = Transfer(d, img, res, job)
+    assert t.no == 8, "a signed job's own number frames it"
+    assert t.block(0) == (0, 8, 0xFF)
+    wait_for(lambda: job_get(d, job)["state"] == "paused", "pause at the window")
+    kept = job_get(d, job)["next"]
+    assert kept == 8
+    r = d.send(wrap(d.node_key, "update.offer", args(now + 7200), job=9, issued_at=now))
+    assert r["status"] == "ok", r
+    again = r["result"]
+    assert (again["job"], again["transfer_token"], again["next"], again["state"]) == (job, res["transfer_token"], 8, "progress"), again
+    other = bulk.frame(t.k, 9, len(img), 8, img[8 * DATA:9 * DATA])
+    r = d.i.request("update.lora.frame", {"frame": other.hex()})
+    assert r["result"]["answer"] is None and job_get(d, job)["next"] == 8, "the new request's own number is another transfer's"
+    assert t.run(8) == (72, 79, 0b1111111)
+    assert d.n.wait_exit(15) == 75, "the resumed transfer verified and activated"

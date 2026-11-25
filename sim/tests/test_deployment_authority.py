@@ -47,12 +47,12 @@ def bare(r):
     return {k: v for k, v in r.items() if not k.startswith("usig") and k not in ("op", "job_id")}
 
 
-def wrap(node_key, op, args=None, job=1, issuer=INST_A, rev=1, rid=None, nonce=None, target=None, deployment=DEP):
+def wrap(node_key, op, args=None, job=1, issuer=INST_A, rev=1, rid=None, nonce=None, target=None, deployment=DEP, issued_at=1790001100):
     """A signed request (contract 3.3): the body is signed as bytes, and travels as the wrapper's `body` string."""
     body = {"v": 1, "id": rid or "s-%s-%s" % (job, op), "op": op}
     if args is not None:
         body["args"] = args
-    body.update({"issuer": issuer, "deployment_id": deployment, "authority_revision": rev, "issued_at": 1790001100,
+    body.update({"issuer": issuer, "deployment_id": deployment, "authority_revision": rev, "issued_at": issued_at,
                  "target_public_key": target or node_key})
     if job is not None:
         body["job_id"] = job

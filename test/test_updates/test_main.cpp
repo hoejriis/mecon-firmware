@@ -409,16 +409,21 @@ namespace {
 
 const uint32_t ISSUED = 1792800000;
 
-// The offer's args with source.lora spelt as given, and issued_at as given ("" for none).
-Upd::LoraSourceVerdict lora(const std::string& lora_obj, const std::string& issued, bool clock_known = false,
-                            uint32_t clock = 0, Upd::LoraSource* out = nullptr) {
-  const std::string args = "{\"manifest_sha256\":\"00\"," + (issued.empty() ? "" : "\"issued_at\":" + issued + ",") +
-                           "\"source\":{\"lora\":" + lora_obj + "}}";
+// The offer as a request object: issued_at at its top level (`top`, "" for none) beside `op` and `args`, and in the args
+// (`in_args`, "" for none), with source.lora spelt as given. `is_signed` as the request's authority says.
+Upd::LoraSourceVerdict lora(const std::string& lora_obj, const std::string& top, bool clock_known = false, uint32_t clock = 0,
+                            Upd::LoraSource* out = nullptr, const std::string& in_args = "", bool is_signed = false) {
+  const std::string req = "{\"v\":1,\"id\":\"o\",\"op\":\"update.offer\"," + (top.empty() ? "" : "\"issued_at\":" + top + ",") +
+                          "\"args\":{\"manifest_sha256\":\"00\"," + (in_args.empty() ? "" : "\"issued_at\":" + in_args + ",") +
+                          "\"source\":{\"lora\":" + lora_obj + "}}}";
   Iface::JsonBuf<Iface::MAX_TOKENS> doc;
-  EXPECT_EQ(Iface::J_OK, Iface::jsonParse(doc, args.c_str(), args.size())) << args;
-  const int src = Iface::jsonFind(doc, 0, "source");
+  EXPECT_EQ(Iface::J_OK, Iface::jsonParse(doc, req.c_str(), req.size())) << req;
+  const int args = Iface::jsonFind(doc, 0, "args");
+  uint32_t issued;
+  if (!Upd::readIssuedAt(doc, args, is_signed, &issued)) return Upd::LS_BAD_ARGS;
+  const int src = Iface::jsonFind(doc, args, "source");
   Upd::LoraSource tmp;
-  return Upd::readLoraSource(doc, 0, Iface::jsonFind(doc, src, "lora"), clock_known, clock, out ? out : &tmp);
+  return Upd::readLoraSource(doc, issued, Iface::jsonFind(doc, src, "lora"), clock_known, clock, out ? out : &tmp);
 }
 
 std::string at(uint32_t t) { return std::to_string(t); }
@@ -432,6 +437,25 @@ TEST(UpdLoraOffer, AWellFormedSourceIsRead) {
   EXPECT_EQ(ISSUED + 3600, s.window_end);
   EXPECT_EQ(ISSUED, s.issued_at);
   EXPECT_EQ(Upd::LS_OK, lora("{\"window_end\":" + at(ISSUED + 60) + ",\"block\":1}", at(ISSUED)));
+}
+
+TEST(UpdLoraOffer, IssuedAtComesFromTheSignedBodyAndTheArgsOnlyServeAnUnsignedRequest) {
+  const std::string src = "{\"block\":8,\"window_end\":" + at(ISSUED + 600) + "}";
+  Upd::LoraSource s = {};
+  EXPECT_EQ(Upd::LS_OK, lora(src, at(ISSUED), false, 0, &s, "", true));
+  EXPECT_EQ(ISSUED, s.issued_at) << "a signed request's own, at the top level";
+  EXPECT_EQ(Upd::LS_BAD_ARGS, lora(src, "", false, 0, nullptr, at(ISSUED), true)) << "a signed request has one at the top";
+  EXPECT_EQ(Upd::LS_BAD_ARGS, lora(src, at(ISSUED), false, 0, nullptr, at(ISSUED + 1), true)) << "args that differ from the body";
+  EXPECT_EQ(Upd::LS_BAD_ARGS, lora(src, at(ISSUED), false, 0, nullptr, at(ISSUED + 1), false)) << "unsigned too, when both are given";
+  EXPECT_EQ(Upd::LS_OK, lora(src, at(ISSUED), false, 0, &s, at(ISSUED), true)) << "the same in both is fine";
+  EXPECT_EQ(Upd::LS_OK, lora(src, "", false, 0, &s, at(ISSUED), false)) << "unsigned, args only";
+  EXPECT_EQ(ISSUED, s.issued_at);
+  EXPECT_EQ(Upd::LS_BAD_ARGS, lora(src, "", false, 0, nullptr, "", false)) << "none at all";
+  EXPECT_EQ(Upd::LS_BAD_ARGS, lora(src, "\"x\"", false, 0, nullptr, "", true));
+  // The window is measured from the top-level one: here the args' would have made it 12 hours and a minute.
+  const std::string long_window = "{\"block\":8,\"window_end\":" + at(ISSUED + 12 * 3600 + 60) + "}";
+  EXPECT_EQ(Upd::LS_BAD_ARGS, lora(long_window, at(ISSUED), false, 0, nullptr, "", true));
+  EXPECT_EQ(Upd::LS_OK, lora(long_window, at(ISSUED + 60), false, 0, nullptr, "", true));
 }
 
 TEST(UpdLoraOffer, TheBlockIsOneToEight) {

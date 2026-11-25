@@ -25,6 +25,10 @@ struct JobLora {
 // magic, block, reason and a spare byte; next, window_end and frames_total; the token; the manifest hash
 static_assert(4 + 12 + 16 + 32 == Job::PRIV_CAP, "a LoRa transfer's state fills the job's private bytes exactly");
 
+// A LoRa transfer's non-terminal results stay within RESULT_MAX bytes, so that they and the private bytes share Job::result.
+static constexpr size_t LORA_RESULT_MAX = 320;
+static_assert(LORA_RESULT_MAX + Job::PRIV_CAP == Job::RESULT_CAP, "the 320-byte result limit and the 64 private bytes fill Job::result");
+
 inline void jobLoraPut(Job& j, const JobLora& l) {
   uint8_t* p = j.priv();
   p[0] = JobLora::MAGIC;

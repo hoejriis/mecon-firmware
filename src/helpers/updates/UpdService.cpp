@@ -377,7 +377,9 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     uint32_t now_unix = 0;
     const bool clock_known = deviceClock(&now_unix);
     if (d.tok[src].size != 1) { c.error = "bad-args"; return ST_INVALID; }
-    const LoraSourceVerdict lv = readLoraSource(d, a, tl, clock_known, now_unix, &ls);
+    uint32_t issued = 0;
+    if (!readIssuedAt(d, a, _host.signed_now && _host.signed_now(_host.user), &issued)) { c.error = "bad-args"; return ST_INVALID; }
+    const LoraSourceVerdict lv = readLoraSource(d, issued, tl, clock_known, now_unix, &ls);
     if (lv == LS_BAD_ARGS) { c.error = "bad-args"; return ST_INVALID; }
     if (lv == LS_UNSUPPORTED) { c.error = "unsupported"; return ST_REFUSED; }   // the fast preset is a later slice
     if (slotCapacity() == 0 || slotIsDfuBoard()) { c.error = "unsupported-source"; return ST_REFUSED; }   // no inactive slot

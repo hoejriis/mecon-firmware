@@ -44,9 +44,12 @@ The gateway reuses `rf.request` (OPERATIONS) for signed requests, and adds one r
 
 ## 4. The offer
 
-`update.offer {"manifest_sha256", "issued_at": <unix s>, "source": {"lora": {"block": 8, "window_end": <unix s>, "preset": <optional>}},
-"confirm": {"within_s"}}`, signed by a member, with a `job_id`, point to point only. `issued_at` is the manager's clock when it
-signed the offer; it is inside the signed body, and the window is measured from it. It is required with `source.lora`.
+`update.offer {"manifest_sha256", "source": {"lora": {"block": 8, "window_end": <unix s>, "preset": <optional>}},
+"confirm": {"within_s"}}`, signed by a member, with a `job_id`, point to point only. The offer carries the request's own signed
+`issued_at` (AUTHORITY section 3.3: one of the six bound fields, at the request object's top level beside `op` and `args`), and the
+window is measured from it. An unsigned offer (the cable of a device with no Deployment record) may give `issued_at` in `args`
+instead; a signed offer whose `args` carry an `issued_at` that differs from the body's is `invalid`, `bad-args`. One is required
+with `source.lora`. *(Built on main, in no release yet.)*
 
 - `block` (**required**): bulk frames per block, 1 to 8; any other value, or no value, is `invalid`, `bad-args`. The target answers once per block (section 6). A `source.lora` with any key beside `block`, `window_end` and `preset` is `invalid`, `bad-args` too, and so is a `source` that names another source as well.
 - `window_end` (**required**): the time after which the target takes no more bulk frames for this job, and pauses
@@ -57,7 +60,7 @@ signed the offer; it is inside the signed body, and the window is measured from 
   only shorten a window, never lengthen it.
 - `preset`: only if section 9 allows it. The fast preset is a later slice: until it is built any `preset` is `refused`, `unsupported`. It is read after the rest of `source.lora`, so a malformed one is `invalid` first.
 - The answer, `{"job", "state": "accepted", "transfer_token", "size", "transfer_size", "encoding": "raw", "next": 0,
-  "frame_bytes", "frames_total"}`, travels only point to point, in a result that is itself signed when the target is
+  "frame_bytes", "frames_total"}` (`encoding` is `"raw"`: deflate is not yet a manifest field), travels only point to point, in a result that is itself signed when the target is
   enrolled. `size` is the image as it will run; `transfer_size` the bytes that travel (equal to `size` unless
   `encoding` is `deflate`); `frames_total` is `transfer_size` divided by `frame_bytes`, rounded up. Frames index the
   transferred bytes, never the inflated image.
@@ -79,7 +82,8 @@ A signed stage of the longest manifest is about 1,480 bytes, more than the 1,024
 - `update.manifest.part {"sha256", "part", "parts", "data"}`: `sha256` of the manifest text as UPDATES section 8 keys it,
   at most 4 parts, `part` counted from 1 to `parts`, `data` canonical base64 of at most 176 bytes. The parts, joined in order of
   `part`, are the manifest text followed by its 64-byte signature (raw), so the longest is 640 + 64 = 704 bytes in four parts
-  of 176. A joined text whose SHA-256 is not `sha256` is `invalid`, `bad-args`, and the parts are spent. It is a **signed** request like every request over LoRa (LORA_MANAGEMENT
+  of 176. A joined text whose SHA-256 is not `sha256` is `invalid`, `bad-args`, and the parts are spent. *(Built on main, in no
+  release yet.)* It is a **signed** request like every request over LoRa (LORA_MANAGEMENT
   section 2), with no `job_id` (a read-class staging, as `update.manifest` is).
 - The target reassembles in a RAM slot keyed by `sha256`, then runs exactly what `update.manifest` runs. A part for
   another hash, or a part count that changes, discards the slot (the new part starts a new one); a part held already is
@@ -142,16 +146,17 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
   frames and at a pause; frames after it are sent again, and writing them again rewrites the same bytes. The slot is reopened
   where the kept `next` ends without erasing what is there: a sector is erased only when a write first reaches its start.
 - **Resume.** A new signed `update.offer` naming the same manifest, with a later `window_end`, while the job is paused,
-  resumes it: same job, same token, `next` as kept; the answer is the offer's answer, with `next` as it stands. The offer may
-  repeat the job's `job_id` or, since a signed request cannot reuse a job number (AUTHORITY section 8), carry a new one: it is
-  matched by the manifest, and the answer names the job it resumes. The manifest has to be staged again after a reboot. A
+  resumes it: same job, same token, `next` as kept; the answer is the offer's answer, with `next` as it stands. A signed request
+  cannot reuse a job number (AUTHORITY section 8), so a resume is matched by the manifest's hash under any newer `job_id`, and
+  the answer names the original job and carries its original token. The bulk frames keep the original job's number: frames numbered
+  for the resuming request are another transfer's and are dropped. (*Built on main, in no release yet.*) The manifest has to be staged again after a reboot. A
   window that is not later is `invalid`, `bad-args`, and changes nothing. Any other offer supersedes it (UPDATES section 7).
   The resume skips the 60 s limit on offers, which protects the slot from being erased, since it erases nothing.
 - **The job.** `job.get` on an open or paused transfer adds `next`, `frames_total`, `window_end` and, paused, `reason`. A paused
   job is open, so it keeps the one-job lock, and `job.cancel` ends it `cancelled` and erases the slot.
 - **Deadlines.** A paused job ends `failed`, `stalled`, after 7 days without a resume, and the slot is erased. The days are
-  counted as running time in the job's entry, saved hourly, so a reboot does not start them again (and loses at most an hour of
-  them). Every other LoRa state keeps LORA_MANAGEMENT section 8's deadlines.
+  counted as running time in the job's entry, saved hourly (not every half minute, which would wear the flash), so a reboot does
+  not start them again and loses at most an hour of them. Every other LoRa state keeps LORA_MANAGEMENT section 8's deadlines.
 
 ## 8. Platforms
 
