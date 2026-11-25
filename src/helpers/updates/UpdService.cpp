@@ -704,6 +704,10 @@ bool UpdateService::sinkWrite(void*, uint32_t offset, const uint8_t* data, size_
 bool UpdateService::sinkAnswer(void* ctx, const uint8_t* bytes, size_t len) {
   UpdateService* s = static_cast<UpdateService*>(ctx);
   if (s->_ans_ready || len != ANSWER_LEN) return false;
+  if (s->_host.lora_answer) {
+    const int r = s->_host.lora_answer(s->_host.user, bytes, len);
+    if (r >= 0) return r > 0;
+  }
   memcpy(s->_ans, bytes, len);
   s->_ans_ready = true;
   return true;
@@ -871,10 +875,11 @@ void UpdateService::loraComplete(Job& j) {
   persist();
 }
 
-void UpdateService::loraFrame(const uint8_t* frame, size_t n, uint32_t now_ms) {
-  if (_phase != LORA || !_xfer) return;
-  _xfer->onFrame(frame, n, now_ms);
+bool UpdateService::loraFrame(const uint8_t* frame, size_t n, uint32_t now_ms) {
+  if (_phase != LORA || !_xfer) return false;
+  const bool ok = _xfer->onFrame(frame, n, now_ms);
   loraAfter(now_ms);
+  return ok;
 }
 
 bool UpdateService::loraAnswer(uint8_t out[ANSWER_LEN]) {

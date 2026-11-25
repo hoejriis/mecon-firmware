@@ -1,6 +1,6 @@
 # Signed firmware updates over LoRa (contract draft)
 
-> **Status: draft for review, version 0 (2026-11-23).** Built so far, on main and in no release yet: the bulk frame and answer codec (`LoraBulk`), the target's transfer state (`LoraTransfer`), and the target side of the transfer: `update.manifest.part`, an `update.offer` with `source.lora`, the `paused` job state and its resume, the writing of the slot (with durable `next`) and the verify, activate and confirm a push has. Target side built; not yet reachable over the air: the LoRa link and the gateway's `rf.bulk` are the next slice, so until then the frames reach the target only through a simulator test hook, and nothing here is bench-verified. Deflate and the fast preset are not built (an offer naming a preset is `unsupported`). It extends the [signed update](UPDATES.md)
+> **Status: draft for review, version 0 (2026-11-23).** Built end to end in the simulator, on main and in no release yet; not run on real radios, so nothing here is bench-verified. Built: the bulk frame and answer codec (`LoraBulk`), the target's transfer state (`LoraTransfer`), the target side of the transfer (`update.manifest.part`, an `update.offer` with `source.lora`, the `paused` state and its resume, the writing of the slot with durable `next`, and the verify, activate and confirm a push has), the target's radio side (a point-to-point bulk frame goes to the transfer, a bulk frame on the management channel is dropped and counted, block answers go back to the peer the frames came from through the duty window), and the gateway's `rf.bulk` and `rf.status` with the 80% bulk ceiling. Not built: deflate and the fast preset (an offer naming a preset is `unsupported`), the reference manager, and nRF52. It extends the [signed update](UPDATES.md)
 > lifecycle to a LoRa delivery path and [management over LoRa](LORA_MANAGEMENT.md) to carry image bytes. It is written to
 > be agreed between this firmware and a public manager (the reference Backend), before either implements it. Section 12
 > lists what is still open. Until this draft is accepted, `update.*` stays off LoRa as LORA_MANAGEMENT says.
@@ -100,7 +100,7 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
 
 - **The frame.** A bulk frame travels in the same native anonymous datagram as a request frame (LORA_MANAGEMENT
   section 4), point to point only. After the datagram's 4-byte tag, its 132 bytes hold: a marker byte of its own
-  (`0x1E`, so neither a request frame nor a native request is ever read as one), the job number (4 bytes, little
+  (`0x1C`, so neither a request frame (`0x1D`), a compact report (`0x1E`) nor a native request is ever read as one), the job number (4 bytes, little
   endian), the frame's index in the transfer (4 bytes), the image bytes, and an 8-byte tag. So `frame_bytes` is
   **115**: 132 − 1 − 4 − 4 − 8. Every frame but the last carries exactly 115 bytes, and the last exactly
   `transfer_size` − index × 115. A frame of any other length is dropped and counted, never written.
@@ -126,7 +126,21 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
   target, sends them through the duty window, and returns at once with `{"queued", "bulk_budget_ms"}`: the frames now
   waiting, and the airtime bulk may still spend in the current hour before the reserve (section 9). `rf.status` reads
   the same two figures without queuing anything, so a manager paces itself instead of filling the queue. The gateway
-  never reads or keeps the frames. On the USB link to the manager they are base64; on the air they are not.
+  never reads or keeps the frames. On the USB link to the manager they are base64; on the air they are not. *(Built on main,
+  in no release yet.)* Each frame is at most 132 bytes and starts with the bulk marker, at most 8 to a call, else `invalid`,
+  `bad-args`; the queue holds 16 frames for one node at a time; frames that would exceed `bulk_budget_ms` (or the queue) are
+  all refused, `busy`, with nothing queued; frames that wait ten minutes are dropped. `bulk_budget_ms` is the 80% ceiling of
+  the duty window (section 9) less the airtime already used in the hour and less that of the frames queued, so a node that
+  has just booted, whose window starts full, has none for the first 12 minutes. A block answer from the node comes back on the
+  `rf` stream as `{"from", "answer"}`: the 22 bytes in base64, as they came, never decoded or changed.
+- **At the target.** A point-to-point datagram whose payload starts with `0x1C` goes to the transfer, never into the request
+  reassembly; any other marker keeps its path. A bulk frame on the management channel (a group datagram) is dropped and counted
+  (`dropped_group_bulk` in `status.get`'s `lora`): image bytes travel point to point only. The datagram's encryption pads the
+  frame with zeros to whole 16-byte blocks, so a frame is heard up to 15 bytes longer than it is; the target takes off exactly
+  that padding, when it is zeros, before it checks the length. The peer, its key and its path are taken from each frame whose
+  tag is good, and block answers go to that peer as one reply packet, through the duty window; with no room the answer stays
+  pending and the transfer pauses `duty` after 10 minutes (section 7). A reply with no known way back may flood, since the tag
+  has shown the frames are the manager's.
 - **Writing.** On ESP32 the target writes into the inactive slot as frames arrive in order, and keeps out-of-order frames
   of the current block in RAM until the gap is filled (at most `block` × `frame_bytes`). On nRF52 see section 8.
 - **Deflate.** A manifest may name a deflate-compressed transfer (`image.encoding: "deflate"`, with `transfer_size`). The
@@ -183,7 +197,7 @@ page alignment, including the image's ragged end.
 - **Through the duty window.** Every bulk frame and every block answer goes through the sending node's duty window
   (LORA_MANAGEMENT section 7). The firmware never exceeds the band's limit, whatever the manager asks.
 - **Control is not starved by bulk.** A node keeps a reserve of its duty window that bulk frames may not use, so a block
-  answer, a `parts-missing`, a `job.get` or a revert can always be sent. Proposed: bulk stops at 80% of the window.
+  answer, a `parts-missing`, a `job.get` or a revert can always be sent. Bulk stops at 80% of the window (built in the gateway's `rf.bulk`, section 6; the 20% is not tuned yet).
 - **What it costs.** A full bulk frame is a packet of about 152 bytes. At EU Narrow (869.618 MHz, SF8, 62.5 kHz,
   CR 4/8, 32-symbol preamble) that is about 1.46 s of airtime (computed, not measured). A 1.1 MB deflated ESP32 image is
   about 9,600 frames: about 3.9 hours of airtime, so about 39 hours of wall time at a 10% duty limit, over several
@@ -219,7 +233,7 @@ So that the firmware can be built and proven without either Backend:
   frame (dropped), a bulk frame offered to the manager as an answer (dropped), and frames of a wrong length, short and
   long, before the last (dropped) (`test/fixtures/lora_updates_v1.json`);
 - simulator tests for loss, reordering, a stranger's frames, a reboot mid-transfer, a pause and a resume, cancellation,
-  and the duty reserve. Until the LoRa link is built the simulator's standalone Companion has a test-only operation,
+  and the duty reserve. The simulator's standalone Companion also has a test-only operation, for tests that need no radio,
   `update.lora.frame {"frame": <hex>}`, that hands the target one bulk frame and returns the block answer it gave, if any;
   firmware builds do not have it.
 
@@ -244,6 +258,6 @@ A Backend implements the manager side of sections 3 to 7 against the same fixtur
 7. ~~Durable progress on ESP32 (the slot plus `next`) against its flash wear~~ Settled: `next` is kept every 64 frames and at a pause, and a resume rewrites identical bytes. The nRF52 apply step stays open.
 8. Page-level deltas against the full deflated image: benchmark on real release pairs before choosing. Deltas tie a
    transfer to one exact base version.
-9. The 80% bulk ceiling of the duty window.
+9. ~~The 80% bulk ceiling of the duty window.~~ Built at 80%, in the gateway; whether it is the right figure waits for the bench.
 10. The `fast` preset's parameters: SF7 at 250 kHz or at 125 kHz (section 9), chosen on a bench measurement of
     airtime and loss beside the public preset's traffic.

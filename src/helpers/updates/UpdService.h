@@ -10,7 +10,7 @@
 // update.offer runs preflight and opens the update job. This build delivers by push only (source {"push": true}): the
 // offer's result carries the job's transfer token, and update.chunk writes the bytes, in order, into the inactive slot.
 // source {"lora": {...}} is the same job over LoRa (docs/contract/LORA_UPDATES.md): the bytes arrive as bulk frames, which
-// loraFrame() takes (the LoRa link is a later slice), and a transfer that pauses keeps its token and progress in the job.
+// loraFrame() takes, and a transfer that pauses keeps its token and progress in the job.
 // The last chunk starts the read-back: the slot's SHA-256, one piece per loop pass, against the manifest. A match
 // activates the image (the job awaits confirmation across the reboot); the image that boots attests, and job.confirm or
 // the deadline decides. The role passes the job service and its hooks (Host) and calls loop(), and its job hooks hand
@@ -97,6 +97,10 @@ public:
     void (*reboot)(void* user);
     // The device's wall clock in unix seconds, or false while it is not set. A LoRa offer's window is bounded by it.
     bool (*clock)(void* user, uint32_t* unix_s);
+    // A LoRa transfer's block answer, to be sent at once to the peer its frames came from, through the duty window: 1 sent, 0 no
+    // room now (the transfer asks again and pauses `duty` after 10 minutes), -1 no peer is known (the answer then waits for
+    // loraAnswer(), as the simulator's test hook reads it). Null: always the latter.
+    int (*lora_answer)(void* user, const uint8_t* answer, size_t n);
   };
 
   // hardware and role as hello reports them; both outlive the service. Runs the simulated bootloader's slot switch and
@@ -130,9 +134,10 @@ public:
   // update.manifest answers (LORA_UPDATES.md section 5)
   Iface::Status opManifestPart(Iface::OpContext& c, uint32_t now_ms);
 
-  // The LoRa transfer's intake, until the LoRa link is wired (a later slice): one bulk frame as the target heard it. A
-  // block's answer, when one is due, waits for loraAnswer(); until it is taken no other can be sent (a busy duty window).
-  void loraFrame(const uint8_t* frame, size_t n, uint32_t now_ms);
+  // The LoRa transfer's intake: one bulk frame as the target heard it (padding and all). True when it was a bulk frame of the
+  // open transfer with a good tag, so its sender may be taken as the manager's address. A block's answer goes out through
+  // Host::lora_answer; with no peer to send to it waits for loraAnswer(), and until it is taken no other can be queued.
+  bool loraFrame(const uint8_t* frame, size_t n, uint32_t now_ms);
   bool loraAnswer(uint8_t out[Iface::ANSWER_LEN]);
 #endif
 

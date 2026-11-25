@@ -44,7 +44,11 @@ void MeconIface::jobsLoad() {
                                 confirmRecordCaller, confirmRunAs, confirmJobId};
   _jobs.setClassCheck(jobClasses, this);
   _jobs.setOnChange(jobChanged, this);
-  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot, updClock});
+  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot, updClock
+#ifdef UPD_LORA
+                                                , updLoraAnswer
+#endif
+                                                });
   _jobs_booting = true;   // a revert at boot needs no reboot: the links start after this, with the restored prefs
   _jobs.begin(&g_job_file, abnormalReset(board) == 1, jobRevert, jobConfirm, this);
   _jobs_booting = false;

@@ -23,6 +23,7 @@
 #include <helpers/iface/DeployAuth.h>
 #include <helpers/iface/CableLine.h>
 #include <helpers/iface/LoraLink.h>
+#include <helpers/iface/LoraDispatch.h>
 #include <helpers/iface/FmcPing.h>
 #include <helpers/iface/Provenance.h>
 #include <helpers/iface/ScreenFeed.h>
@@ -80,6 +81,8 @@ public:
                                            (1u << Iface::SID_LOGS) | (1u << Iface::SID_RF);
 public:
   Iface::Status rfRequest(Iface::OpContext& c);
+  Iface::Status rfBulk(Iface::OpContext& c);     // rf.bulk and rf.status: LORA_UPDATES.md section 6
+  Iface::Status rfStatus(Iface::OpContext& c);
   uint32_t eventsDropped() const;
   void onRfReply(const uint8_t* key, const uint8_t* frame, size_t n);
   void writeRfCounts(Iface::JsonWriter& w) const;
@@ -311,6 +314,36 @@ private:
   void fmcTick(uint32_t now);
   bool fmcMay(int slot) const;   // enrolled, and slot is the bound management channel
   void rfTick(uint32_t now);
+  // The target of a LoRa update transfer (LORA_UPDATES.md section 6): its bulk frames, and the answers back to their sender.
+#ifdef UPD_LORA
+  void onBulkFrame(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n);
+  static int updLoraAnswer(void* user, const uint8_t* answer, size_t n);
+  Iface::BulkPeer _bulk_peer = {}, _bulk_cand = {};
+  bool _bulk_in = false;
+#endif
+  // The gateway (rf.bulk, rf.status): frames queued for one node, sent point to point through the duty window as its 80%
+  // bulk ceiling allows. The queue is heap, held only while frames wait.
+  struct BulkQueue {
+    uint8_t to[32];
+    uint8_t len[Iface::BULK_QUEUE_MAX];
+    uint8_t data[Iface::BULK_QUEUE_MAX][Iface::BULK_ROOM];
+    uint8_t head, n;
+    uint32_t last_ms;   // when a frame last went out, or the first was queued
+  };
+  BulkQueue* _bq = nullptr;
+  uint32_t _bulk_next = 0, _bulk_sent = 0, _bulk_dropped = 0, _bulk_answers = 0;
+  uint8_t _bulk_to[32] = {0};   // the node frames were last sent to: the one whose block answers are relayed
+  bool _bulk_to_valid = false;
+  void bulkTick(uint32_t now);
+  uint32_t bulkFrameMs() const;
+  void bulkFigures(uint32_t* budget_ms, unsigned* queued) const;
+  void writeBulkFigures(Iface::JsonWriter& w) const;
+  void bulkClear();
+ public:
+  // A reply datagram that is a block answer from the node frames were sent to: out on the rf stream as it came (base64),
+  // never decoded or changed. False for anything else, so the native reply path goes on.
+  bool onBulkAnswer(const uint8_t* key, const uint8_t* data, size_t n);
+ private:
   // An rf reply whose event no subscribed link's queue could take yet: held, as inventory pages are, rather than dropped
   // behind periodic events (#531). One at a time, for at most RF_PEND_MS; then a short queue-full event says it was lost.
   static const uint32_t RF_PEND_MS = 10000;

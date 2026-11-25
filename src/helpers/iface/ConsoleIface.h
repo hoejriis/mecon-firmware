@@ -21,6 +21,7 @@
 #include "helpers/updates/UpdService.h"
 #include "CableLine.h"
 #include "LoraLink.h"
+#include "LoraDispatch.h"
 #include "Provenance.h"
 #include "ScreenFeed.h"
 #include "StandingOps.h"
@@ -258,6 +259,14 @@ private:
   static void onLoraFrame(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len,
                           const uint8_t* frame, size_t n);
   void loraTick(uint32_t now);
+  // A bulk frame (LORA_UPDATES.md section 6): to the update transfer; the peer it came from is kept once the frame is accepted,
+  // and is where the block answers go. `_bulk_cand` is the sender while its frame is in the transfer's hands.
+#ifdef UPD_LORA
+  void onBulkFrame(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame, size_t n);
+  static int updLoraAnswer(void* user, const uint8_t* answer, size_t n);
+  BulkPeer _bulk_peer = {}, _bulk_cand = {};
+  bool _bulk_in = false;
+#endif
   LoraLink _lora;
   LoraLink::SendFn _lora_send = nullptr;
   void* _lora_send_user = nullptr;

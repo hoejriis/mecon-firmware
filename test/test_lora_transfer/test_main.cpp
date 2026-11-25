@@ -4,6 +4,7 @@
 #include <string.h>
 #include <vector>
 #include "helpers/iface/LoraTransfer.h"
+#include "helpers/iface/LoraDispatch.h"
 
 using namespace Iface;
 
@@ -513,6 +514,52 @@ TEST(LoraTransfer, BeginRefusesBadArgumentsAndAWholeTransferBeginsComplete) {
   EXPECT_TRUE(t.begin(JOB, SIZE, 4, r.fake.keys, 1, 0, 11));
   EXPECT_EQ(TS_COMPLETE, t.state());
   EXPECT_EQ(11u, t.status().frames_total);
+}
+
+// A frame with a wrong tag is dropped, never answered and never reported as accepted: a stranger's frames cost the target nothing
+// it can be made to multiply (LORA_UPDATES.md section 6). The frame is the block's last, the one an answer would follow.
+TEST(LoraTransfer, AFrameWithABadTagIsNeitherAnsweredNorAccepted) {
+  Rig r(SIZE);
+  auto& t = r.open(4);
+  for (uint32_t i = 0; i < 3; i++) r.send(i);
+  auto f = r.frame(3);
+  f.back() ^= 1;   // the tag
+  r.now += 10;
+  EXPECT_FALSE(t.onFrame(f.data(), f.size(), r.now));
+  EXPECT_EQ(0u, r.fake.sent.size()) << "no answer to a frame that is not the manager's";
+  EXPECT_EQ(3u, t.next());
+  EXPECT_EQ(1u, t.status().bad[BULK_BAD_TAG]);
+  auto g = r.frame(3);
+  r.now += 10;
+  EXPECT_TRUE(t.onFrame(g.data(), g.size(), r.now)) << "the same frame with its tag is taken";
+  EXPECT_EQ(1u, r.fake.sent.size());
+}
+
+// A datagram's encryption pads a frame with zeros to whole 16-byte blocks: the length check sees the frame, not the padding.
+TEST(LoraTransfer, ADatagramsZeroPaddingIsTakenOffBeforeTheLengthCheck) {
+  Rig r(SIZE);
+  auto& t = r.open(4);
+  for (uint32_t i = 0; i < 4; i++) {
+    auto f = r.frame(i);
+    const size_t heard = (LORA_ANON_TAG + f.size() + 15) / 16 * 16 - LORA_ANON_TAG;
+    EXPECT_GT(heard, f.size());
+    f.resize(heard, 0);
+    r.now += 10;
+    EXPECT_TRUE(t.onFrame(f.data(), f.size(), r.now));
+  }
+  EXPECT_EQ(4u, t.next());
+  EXPECT_EQ(1u, r.fake.sent.size());
+  // Padding that is not zero, or of the wrong size, is not padding: the frame is a wrong length and is dropped.
+  auto f = r.frame(4);
+  auto bad = f;
+  bad.resize((LORA_ANON_TAG + f.size() + 15) / 16 * 16 - LORA_ANON_TAG, 0);
+  bad.back() = 1;
+  r.now += 10;
+  EXPECT_FALSE(t.onFrame(bad.data(), bad.size(), r.now));
+  auto longer = f;
+  longer.resize(f.size() + 20, 0);
+  EXPECT_FALSE(t.onFrame(longer.data(), longer.size(), r.now));
+  EXPECT_EQ(4u, t.next());
 }
 
 int main(int argc, char** argv) {

@@ -2,6 +2,7 @@
 #include "helpers/updates/UpdFeatures.h"
 
 #if defined(UPD_LORA)   // only where a firmware update over LoRa is carried (UpdFeatures.h)
+#include "LoraDispatch.h"
 #include <string.h>
 
 namespace Iface {
@@ -125,16 +126,17 @@ bool LoraTransfer::writeAt(uint32_t index, const uint8_t* d, size_t n) {
   return false;
 }
 
-void LoraTransfer::onFrame(const uint8_t* f, size_t n, uint32_t now_ms) {
-  if (state_ == TS_PAUSED) { st_.dropped_paused++; return; }
-  if (state_ != TS_OPEN && state_ != TS_COMPLETE) { st_.dropped_closed++; return; }
+bool LoraTransfer::onFrame(const uint8_t* f, size_t n, uint32_t now_ms) {
+  if (state_ == TS_PAUSED) { st_.dropped_paused++; return false; }
+  if (state_ != TS_OPEN && state_ != TS_COMPLETE) { st_.dropped_closed++; return false; }
+  n = bulkTrimPadding(size_, f, n);
   uint32_t index;
   const uint8_t* data;
   size_t len;
   const BulkCheck c = bulkFrameDecode(keys_, job_, size_, f, n, &index, &data, &len);
   if (c != BULK_OK) {
     if ((unsigned)c < 6) st_.bad[c]++;
-    return;   // never answered
+    return false;   // never answered
   }
   if (has_prev_ && index >= prev_base_ && index < base_) {
     // A resend of the block just answered: its answer was lost. Never written; answered again, once per batch.
@@ -144,28 +146,28 @@ void LoraTransfer::onFrame(const uint8_t* f, size_t n, uint32_t now_ms) {
     re_fresh_ = true;
     if (index == base_ - 1) re_pending_ = true;
     if (re_pending_) trySendPrev(now_ms);
-    return;
+    return true;
   }
-  if (state_ == TS_COMPLETE) { st_.dropped_closed++; return; }
+  if (state_ == TS_COMPLETE) { st_.dropped_closed++; return false; }
   last_any_ = now_ms;
   if (index < next_) {   // already written; never written twice
     st_.dup++;
     if (index >= base_) { last_rx_ = now_ms; fresh_ = true; if (index == base_ + block_ - 1) pending_ = true; }
     if (pending_) trySend(now_ms);
-    return;
+    return true;
   }
-  if (index >= base_ + block_) { st_.out_of_block++; return; }
+  if (index >= base_ + block_) { st_.out_of_block++; return true; }
   const unsigned slot = index - base_;
   last_rx_ = now_ms;
   fresh_ = true;
   if (index == next_) {
-    if (!writeAt(index, data, len)) return;
+    if (!writeAt(index, data, len)) return true;
     const uint32_t before = next_;
     next_++;
     while (next_ < total_ && next_ < base_ + block_ && (buffered_ & (1u << (next_ - base_)))) {
       const unsigned s = next_ - base_;
       buffered_ &= (uint8_t)~(1u << s);
-      if (!writeAt(next_, buf_[s], bulkFrameDataLen(size_, next_))) return;
+      if (!writeAt(next_, buf_[s], bulkFrameDataLen(size_, next_))) return true;
       next_++;
     }
     if (next_ / TRANSFER_PERSIST_EVERY > before / TRANSFER_PERSIST_EVERY) persist(next_);
@@ -178,6 +180,7 @@ void LoraTransfer::onFrame(const uint8_t* f, size_t n, uint32_t now_ms) {
   // The block's last frame has just arrived (or the transfer's): answer.
   if (index == base_ + block_ - 1 || index == total_ - 1) pending_ = true;
   if (pending_) trySend(now_ms);
+  return true;
 }
 
 bool LoraTransfer::trySend(uint32_t now_ms) {

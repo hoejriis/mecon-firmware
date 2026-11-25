@@ -71,7 +71,7 @@ public:
     uint32_t tx_deadline;
   };
   struct Counts {
-    uint32_t frames, incomplete, dropped_bad, dropped_budget, dropped_deadline, dropped_memory, evicted, binding_reads;
+    uint32_t frames, incomplete, dropped_bad, dropped_budget, dropped_deadline, dropped_memory, evicted, binding_reads, dropped_group_bulk;
   };
   enum Feed { F_IGNORED, F_PARTIAL, F_COMPLETE, F_NOMEM };
   typedef bool (*SendFn)(void* user, const Peer& p, const uint8_t* frame, size_t n, bool flood_ok);
@@ -82,6 +82,7 @@ public:
   LoraLink& operator=(const LoraLink&) = delete;
 
   const Counts& counts() const { return _c; }
+  void noteGroupBulk() { _c.dropped_group_bulk++; }   // a bulk frame on the management channel: point to point only
   void noteBindingRead() { _c.binding_reads++; }   // each costs about 0.9 s on an ESP32, so a request that changes nothing must not cause one
   // status.get's "lora" (LORA_MANAGEMENT.md section 7): what was dropped, so a manager can see why nothing came back.
   template <class W> void writeCounts(W& w) const {
@@ -99,6 +100,7 @@ public:
     w.key("dropped_memory"); w.unum(_c.dropped_memory);
     w.key("evicted"); w.unum(_c.evicted);
     w.key("binding_reads"); w.unum(_c.binding_reads);
+    if (_c.dropped_group_bulk) { w.key("dropped_group_bulk"); w.unum(_c.dropped_group_bulk); }   // bulk frames on the channel (LORA_UPDATES.md section 6)
   }
 
   // One frame from this peer, without any tag: marker, xid, index, count, bytes. payload is the size every frame but the last
