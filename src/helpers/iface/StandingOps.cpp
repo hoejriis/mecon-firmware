@@ -32,6 +32,24 @@ bool hexKey(const char* hex, uint8_t out[32]) {
   return true;
 }
 
+// Standard base64 with padding, as the rf stream's reports carry it.
+void b64(char* out, const uint8_t* in, size_t n) {
+  static const char A[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  size_t o = 0;
+  for (size_t i = 0; i < n; i += 3) {
+    const uint32_t v = ((uint32_t)in[i] << 16) | ((i + 1 < n ? (uint32_t)in[i + 1] : 0) << 8) | (i + 2 < n ? in[i + 2] : 0);
+    out[o++] = A[v >> 18];
+    out[o++] = A[(v >> 12) & 63];
+    out[o++] = i + 1 < n ? A[(v >> 6) & 63] : '=';
+    out[o++] = i + 2 < n ? A[v & 63] : '=';
+  }
+  out[o] = 0;
+}
+
+uint32_t rd32(const uint8_t* p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
+
+const uint8_t KEEP_BIT = 0x80;   // in the stored fields byte: the instruction keeps its reports
+
 void writeFields(JsonWriter& w, uint8_t m) {
   w.beginArray();
   for (int k = 0; k < 4; k++) if (m & (1u << k)) w.str(NAMES[k]);
@@ -71,7 +89,7 @@ Status StandingService::opNow(OpContext& c, uint32_t now) {
   if ((fields & RF_PRIVATE) && (slot >= 0 || !_h.may_read_private(_h.user))) { c.error = "private"; return ST_REFUSED; }
   if (_now_sent && (uint32_t)(now - _now_ms) < NOW_GAP_MS) { c.error = "rate-limited"; return ST_BUSY; }
   uint32_t seq = 0;
-  if (!_h.send(_h.user, fields, has_to ? to : nullptr, slot, &seq)) { c.error = "not-sent"; return ST_BUSY; }
+  if (!_h.send(_h.user, fields, has_to ? to : nullptr, slot, &seq, nullptr, nullptr)) { c.error = "not-sent"; return ST_BUSY; }
   _now_sent = true;
   _now_ms = now;
   JsonWriter& w = *c.out;
@@ -104,8 +122,11 @@ Status StandingService::opPut(OpContext& c, uint32_t now) {
     if (!jsonGetBool(d, dur, &v)) return ST_INVALID;
     n.durable = v;
   }
+  const int kp = jsonFind(d, c.req->args, "keep");
+  if (kp >= 0 && !jsonGetBool(d, kp, &n.keep)) return ST_INVALID;
   if ((n.fields & _h.produced(_h.user)) != n.fields) { c.error = "unsupported-field"; return ST_FAILED; }
   if ((n.fields & RF_PRIVATE) && (slot >= 0 || !_h.may_read_private(_h.user))) { c.error = "private"; return ST_REFUSED; }
+  if (n.keep && !_kept.available()) { c.error = "unsupported"; return ST_FAILED; }   // a board whose flash cannot hold the ring
   snprintf(n.issuer, sizeof(n.issuer), "%s", _h.issuer(_h.user));
   Standing* place = nullptr;
   for (Standing& s : _s) if (s.used && strcmp(s.id, n.id) == 0) place = &s;
@@ -135,6 +156,7 @@ Status StandingService::opList(OpContext& c) {
     w.key("every_s"); w.unum(s.every_s);
     if (s.runs_left) { w.key("runs_left"); w.unum(s.runs_left); }
     w.key("durable"); w.boolean(s.durable);
+    if (s.keep) { w.key("keep"); w.boolean(true); }
     if (s.slot >= 0) { w.key("slot"); w.num(s.slot); }
     w.key("runs"); w.unum(s.runs);
     w.key("failed"); w.unum(s.failed);
@@ -164,6 +186,90 @@ Status StandingService::opRemove(OpContext& c) {
   return ST_FAILED;
 }
 
+namespace {
+
+struct ListState {
+  JsonWriter* w;
+  uint32_t limit, listed, withheld;
+  size_t budget;
+  bool priv, more;
+};
+
+bool isPrivate(const KeptEntry& e) { return e.len > 2 && (e.bytes[2] & RF_PRIVATE) != 0; }
+
+bool listVisit(void* user, const KeptEntry& e) {
+  ListState& st = *static_cast<ListState*>(user);
+  if (isPrivate(e) && !st.priv) { st.withheld++; return true; }   // never cut out of a report: the signature covers it
+  if (st.more) return true;   // the page is full; the rest is only counted
+  const size_t est = 90 + 4 * ((e.len + 2) / 3);
+  if (st.listed >= st.limit || (st.listed > 0 && st.w->size() + est > st.budget)) { st.more = true; return true; }
+  char text[4 * ((REPORT_MAX + 2) / 3) + 4];
+  b64(text, e.bytes, e.len);
+  st.w->beginObject();
+  st.w->key("cursor"); st.w->unum(e.cursor);
+  st.w->key("boot"); st.w->unum(rd32(e.bytes + 3));
+  st.w->key("seq"); st.w->unum(rd32(e.bytes + 7));
+  st.w->key("report"); st.w->str(text);
+  st.w->endObject();
+  st.listed++;
+  return true;
+}
+
+struct AckState {
+  uint32_t upto, owner;
+  bool priv, withheld, foreign;
+};
+
+bool ackVisit(void* user, const KeptEntry& e) {
+  AckState& st = *static_cast<AckState*>(user);
+  if (e.cursor > st.upto) return false;
+  if (isPrivate(e) && !st.priv) st.withheld = true;   // it was not listed to this caller, so this caller cannot release it
+  if (e.owner != st.owner) st.foreign = true;
+  return true;
+}
+
+}  // namespace
+
+Status StandingService::opReportList(OpContext& c) {
+  if (!_kept.available()) { c.error = "unsupported"; return ST_FAILED; }
+  const JsonDoc& d = *c.doc;
+  int64_t after = 0, limit = 8;
+  const int af = c.req->args >= 0 ? jsonFind(d, c.req->args, "after") : -1;
+  const int li = c.req->args >= 0 ? jsonFind(d, c.req->args, "limit") : -1;
+  if (af >= 0 && !jsonGetInt(d, af, 0, 0xFFFFFFFFLL, &after)) return ST_INVALID;
+  if (li >= 0 && !jsonGetInt(d, li, 1, 8, &limit)) return ST_INVALID;
+  JsonWriter& w = *c.out;
+  ListState st = {&w, (uint32_t)limit, 0, 0, _h.page_budget ? _h.page_budget(_h.user) : 1100, _h.may_read_private(_h.user), false};
+  w.key("reports"); w.beginArray();
+  _kept.each((uint32_t)after, listVisit, &st);
+  w.endArray();
+  w.key("more"); w.boolean(st.more);
+  w.key("dropped"); w.unum(_kept.dropped());
+  w.key("withheld"); w.unum(st.withheld);
+  return ST_OK;
+}
+
+// Releases what the caller could list, and only what is the caller's: the acknowledgement belongs to the manager that set the
+// keeping instruction (the member that signed it, or an unsigned caller where nothing is enrolled).
+Status StandingService::opReportAck(OpContext& c) {
+  if (!_kept.available()) { c.error = "unsupported"; return ST_FAILED; }
+  const JsonDoc& d = *c.doc;
+  int64_t upto = 0;
+  if (c.req->args < 0 || !jsonGetInt(d, jsonFind(d, c.req->args, "upto"), 1, 0xFFFFFFFFLL, &upto)) return ST_INVALID;
+  if ((uint32_t)upto > _kept.last()) { c.error = "unknown-cursor"; return ST_FAILED; }
+  AckState st = {(uint32_t)upto, KeptReports::ownerOf(_h.issuer(_h.user)), _h.may_read_private(_h.user), false, false};
+  _kept.each(0, ackVisit, &st);
+  if (st.withheld) { c.error = "location-withheld"; return ST_REFUSED; }
+  if (st.foreign) { c.error = "not-owner"; return ST_REFUSED; }
+  uint32_t released = 0;
+  if (!_kept.release((uint32_t)upto, &released)) { c.error = "storage"; return ST_BUSY; }
+  JsonWriter& w = *c.out;
+  w.key("acked"); w.unum(_kept.mark());
+  w.key("released"); w.unum(released);
+  w.key("remaining"); w.unum(_kept.held());
+  return ST_OK;
+}
+
 // A jitter of up to a tenth of the period, at most 5 minutes, so two devices do not stay in step. After a boot the first run is
 // anywhere within that jitter of a period's end: a missed tick is gone, never made up.
 void StandingService::schedule(Standing& s, uint32_t now, bool first) {
@@ -176,6 +282,7 @@ void StandingService::schedule(Standing& s, uint32_t now, bool first) {
 
 void StandingService::tick(uint32_t now) {
   if (!_begun) return;
+  _kept.tick(now);
   bool changed = false;
   for (Standing& s : _s) {
     if (!s.used) continue;
@@ -202,8 +309,13 @@ void StandingService::tick(uint32_t now) {
     }
     s.held = 0;
     uint32_t seq;
-    if (_h.send(_h.user, s.fields, s.has_to ? s.to : nullptr, s.slot, &seq)) s.runs++;
+    uint8_t built[REPORT_MAX];
+    size_t built_len = 0;
+    const bool sent = _h.send(_h.user, s.fields, s.has_to ? s.to : nullptr, s.slot, &seq, s.keep ? built : nullptr, &built_len);
+    if (sent) s.runs++;
     else s.failed++;
+    // Kept whether or not it went: a datagram has no acknowledgement, so the device cannot know it was heard. One append.
+    if (s.keep && built_len) _kept.add(built, built_len, KeptReports::ownerOf(s.issuer), now);
     schedule(s, now, false);
     if (s.runs_left) {
       if (--s.runs_left == 0) s = Standing();
@@ -216,6 +328,7 @@ void StandingService::tick(uint32_t now) {
 
 void StandingService::clear() {
   for (Standing& s : _s) s = Standing();
+  _kept.clear();
   if (_begun) persist();
 }
 
@@ -230,7 +343,7 @@ bool StandingService::persist() {
     uint8_t* p = buf + n;
     memcpy(p, s.id, 17); p += 17;
     memcpy(p, s.issuer, 17); p += 17;
-    *p++ = s.fields;
+    *p++ = (uint8_t)(s.fields | (s.keep ? KEEP_BIT : 0));
     p = put32(p, s.every_s);
     p = put16(p, s.runs_left);
     *p++ = s.has_to ? 1 : 0;
@@ -256,7 +369,8 @@ void StandingService::load(uint32_t now) {
     s.used = true;
     memcpy(s.id, p, 17); s.id[16] = 0; p += 17;
     memcpy(s.issuer, p, 17); s.issuer[16] = 0; p += 17;
-    s.fields = *p++;
+    s.keep = (*p & KEEP_BIT) != 0 && _kept.available();
+    s.fields = *p++ & RF_ALL;
     s.every_s = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); p += 4;
     s.runs_left = (uint16_t)(p[0] | (p[1] << 8)); p += 2;
     s.has_to = *p++ != 0;
@@ -270,6 +384,12 @@ void StandingService::load(uint32_t now) {
 void StandingService::begin(const ReportHost& h, uint32_t now) {
   _h = h;
   _begun = true;
+  #if defined(NRF52_PLATFORM)
+  const bool nrf52 = true;   // its file system wears fast: eight reports to a write (KeptReports.h)
+#else
+  const bool nrf52 = false;
+#endif
+  _kept.begin(h.kept, h.kept_batch ? h.kept_batch : keptBatchFor(nrf52));
   load(now);
 }
 

@@ -308,7 +308,7 @@ inline bool loraOpAllowed(const char* op) {
   static const char* const OPS[] = {"hello", "status.get", "config.schema", "config.get", "config.apply", "deployment.get",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm", "posture.set", "report.now",
                                     "standing.put", "standing.list", "standing.remove", "region.list", "region.put",
-                                    "region.remove", "region.flood", "region.home", "region.default"};
+                                    "region.remove", "region.flood", "region.home", "region.default", "report.list", "report.ack"};
   for (const char* o : OPS) if (strcmp(o, op) == 0) return true;
   return false;
 }

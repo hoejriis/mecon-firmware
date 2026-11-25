@@ -133,7 +133,7 @@ public:
   LoraLink::Counts loraCounts() const { return _lora.counts(); }
   // The role's way to put a report on the air: to a node, or on the bound channel.
   typedef bool (*ReportSendFn)(void* user, const uint8_t* to, int slot, const uint8_t* bytes, size_t n);
-  void setReportSend(ReportSendFn fn, void* user, SnapStore* store);
+  void setReportSend(ReportSendFn fn, void* user, SnapStore* store, KeptStore* kept = nullptr);
   StandingService& standing() { return _standing; }
   // packet.transmit (OPERATIONS.md, "Packet transmission"): the Repeater's way to put a manager's native packet on the air.
   // seen: the packet's hash is in the mesh's seen table (heard over RF, or sent). send: a pool packet, marked seen and
@@ -280,7 +280,8 @@ private:
   StandingService _standing;
   ReportSendFn _report_send = nullptr;
   void* _report_user = nullptr;
-  static bool reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq);
+  static bool reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq, uint8_t* built, size_t* built_len);
+  static size_t reportPageBudget(void* user);
   static uint8_t reportProduced(void* user);
   static bool reportAirtimeOk(void* user);
   static bool reportMayRead(void* user);

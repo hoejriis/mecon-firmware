@@ -51,6 +51,7 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   // The device interface on the console (docs/contract/DEVICE_INTERFACE.md section 7): "mecon> " lines.
   #include <helpers/iface/ConsoleIface.h>
   #include <helpers/iface/MgmtFsStore.h>
+  #include <helpers/iface/KeptFsStore.h>
   #include <helpers/iface/DeviceMeta.h>
   #include <helpers/CryptoRNG.h>
   #include <helpers/deployment/DepFsStore.h>
@@ -65,6 +66,7 @@ static bool command_dropping = false;   // inside an over-long console line (#16
   static Iface::PathFsStore mgmt_snap_store("/mgmt_snap");
   static Iface::PathFsStore region_snap_store("/region_snap");   // a pending region change's copy of the map
   static Iface::PathFsStore standing_store("/standing");
+  static Iface::KeptFsStore kept_store;   // reports kept for later (TELEMETRY.md)
   static Iface::PathFsStore cont_blob_store("/mecon_cont");   // the Deployment continuity package (AUTHORITY 10a)
   static Iface::PathFsStore cont_key_store("/mecon_contk");   // and its wrapping key, kept apart   // the standing instructions (OPERATIONS.md)
   static bool ifaceRegionsSave(void*) { return the_mesh.saveRegions(); }
@@ -261,11 +263,12 @@ void setup() {
     cont_blob_store.setFs(fs);
     cont_key_store.setFs(fs);
     standing_store.setFs(fs);
+    kept_store.setFs(fs);
     the_iface.begin(host, device_id, epoch, epoch_saved);
     heapFloor().begin(HEAP_FLOOR_BYTES);   // the enforced heap floor (helpers/HeapFloor.h), as on the Companion: ESP32 only
     the_iface.setReportSend([](void* u, const uint8_t* to, int slot, const uint8_t* b, size_t n) {
       return static_cast<MyMesh*>(u)->reportSend(to, slot, b, n);
-    }, &the_mesh, &standing_store);
+    }, &the_mesh, &standing_store, &kept_store);
     the_iface.setRawTx(Iface::ConsoleIface::RawTxHost{
         [](void* u, const mesh::Packet& p) { return static_cast<MyMesh*>(u)->rawSeen(p); },
         [](void* u, size_t n) { return static_cast<MyMesh*>(u)->rawAirtimeMs(n); },

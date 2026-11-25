@@ -49,7 +49,7 @@ const size_t HELLO_PLAIN_BUDGET = 1500;
 const size_t HELLO_LORA_BUDGET = 700;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "posture.set", "rf.request", "rf.bulk", "rf.status", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "posture.set", "rf.request", "rf.bulk", "rf.status", "report.now", "standing.put", "standing.list", "standing.remove", "report.list", "report.ack", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock", "deployment.continuity.put", "deployment.continuity.export",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "clock.back", "advert.send", "device.reboot", "device.reset", "identity.key.export",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
@@ -112,6 +112,8 @@ Status opReportNow(OpContext& c);
 Status opStandingPut(OpContext& c);
 Status opStandingList(OpContext& c);
 Status opStandingRemove(OpContext& c);
+Status opReportList(OpContext& c);
+Status opReportAck(OpContext& c);
 Status opPostureW(OpContext& c);
 Status opSubStart(OpContext& c);
 Status opSubStop(OpContext& c);
@@ -183,6 +185,8 @@ const OpEntry OPS[] = {
   {"standing.put", opStandingPut, PRIV_WRITE, true},
   {"standing.list", opStandingList, PRIV_READ, false},
   {"standing.remove", opStandingRemove, PRIV_WRITE, true},
+  {"report.list", opReportList, PRIV_READ, false},
+  {"report.ack", opReportAck, PRIV_WRITE, false},
   // The default flood scope (frames 63 and 64); a change confirm-or-revert for anyone but the cable.
   {"scope.default.get", opScopeGetW, PRIV_READ, false},
   {"scope.default.set", opScopeSetW, PRIV_WRITE, true},
@@ -605,6 +609,8 @@ Status opReportNow(OpContext& c) { return self(c)->standing().opNow(c, millis())
 Status opStandingPut(OpContext& c) { return self(c)->standing().opPut(c, millis()); }
 Status opStandingList(OpContext& c) { return self(c)->standing().opList(c); }
 Status opStandingRemove(OpContext& c) { return self(c)->standing().opRemove(c); }
+Status opReportList(OpContext& c) { return self(c)->standing().opReportList(c); }
+Status opReportAck(OpContext& c) { return self(c)->standing().opReportAck(c); }
 Status opPostureW(OpContext& c) {
   MeconIface* m = self(c);
   const uint8_t before = m->postureNow();
@@ -2067,7 +2073,10 @@ bool MeconIface::reportAirtimeOk(void* user) {
   return static_cast<MeconIface*>(user)->_mesh->getRemainingTxBudget() >= radio_driver.getEstAirtimeFor((int)REPORT_MAX + 40);
 }
 
-bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq) {
+// What a report.list result may fill: over LoRa a whole reply is LORA_MSG_MAX with its signed envelope, about 230 bytes, in it.
+size_t MeconIface::reportPageBudget(void* user) { return static_cast<MeconIface*>(user)->onLora() ? 760 : 1100; }
+
+bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq, uint8_t* built, size_t* built_len) {
   MeconIface* m = static_cast<MeconIface*>(user);
   if (slot >= 0 && slot != m->_lora_bound_slot) return false;   // as a Repeater: a report goes on the management channel, never a public one
   ReportData d;
@@ -2087,6 +2096,7 @@ bool MeconIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int s
   uint8_t b[REPORT_MAX];
   const size_t n = m->_prov.makeReport(b, sizeof(b), fields, d, m->_mesh->getRTCClock()->knownTime(), seq);
   if (!n) return false;
+  if (built) { memcpy(built, b, n); *built_len = n; }
   static const uint8_t ALL[32] = {0};
   if (slot >= 0) return m->_mesh->loraChannelSend(slot, to ? to : ALL, b, n);
   return to && m->_mesh->rfSend(to, b, n);
@@ -2182,7 +2192,7 @@ void MeconIface::loop(uint32_t now) {
 #endif
   if (!_standing_begun) {
     _standing_begun = true;
-    _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, reportAirtimeOk, standingStore(), this}, now);
+    _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, reportAirtimeOk, standingStore(), this, keptStore(), reportPageBudget}, now);
   }
   _gap.tick(now);
   tickBatteryLevel(now, &board);
@@ -2191,6 +2201,7 @@ void MeconIface::loop(uint32_t now) {
   _auth.delegateReconcile(Posture::isHardened(_mesh->postureValue()));     // and no delegated identity (Issue #552)
   _updates.loop(now);
   if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) {
+    KeptReports::flushAll();   // kept reports still waiting for their write
     _mesh->saveDirtyContacts();   // as the native CMD_REBOOT does: a contact change still waiting for its lazy save
     board.reboot();
   }

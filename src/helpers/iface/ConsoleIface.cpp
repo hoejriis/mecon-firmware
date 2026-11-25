@@ -51,7 +51,7 @@ const size_t HELLO_PLAIN_BUDGET = 1500;
 const size_t HELLO_LORA_BUDGET = 700;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "posture.set", "report.now", "standing.put", "standing.list", "standing.remove", "report.list", "report.ack", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set", "audit.list", "board.get", "board.adc.set", "power.saving.set", "sensor.list", "sensor.get", "sensor.set", "clock.reset", "stats.clear", "log.start", "log.stop", "log.erase", "log.read", "radio.temp",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
@@ -216,6 +216,8 @@ Status opReportNow(OpContext& c) { return self(c)->standing().opNow(c, millis())
 Status opStandingPut(OpContext& c) { return self(c)->standing().opPut(c, millis()); }
 Status opStandingList(OpContext& c) { return self(c)->standing().opList(c); }
 Status opStandingRemove(OpContext& c) { return self(c)->standing().opRemove(c); }
+Status opReportList(OpContext& c) { return self(c)->standing().opReportList(c); }
+Status opReportAck(OpContext& c) { return self(c)->standing().opReportAck(c); }
 Status opPostureW(OpContext& c) {
   ConsoleIface* s = self(c);
   const uint8_t before = s->postureNow();
@@ -778,6 +780,8 @@ const OpEntry OPS[] = {
   {"standing.put", opStandingPut, PRIV_WRITE, true},
   {"standing.list", opStandingList, PRIV_READ, false},
   {"standing.remove", opStandingRemove, PRIV_WRITE, true},
+  {"report.list", opReportList, PRIV_READ, false},
+  {"report.ack", opReportAck, PRIV_WRITE, false},
   {"posture.set", opPostureW, PRIV_WRITE, true},
   {"sub.start", opSubStart, PRIV_READ, false},
   {"sub.stop", opSubStop, PRIV_READ, false},
@@ -1552,12 +1556,16 @@ int ConsoleIface::updLoraAnswer(void* user, const uint8_t* answer, size_t n) {
 }
 #endif
 
-void ConsoleIface::setReportSend(ReportSendFn fn, void* user, SnapStore* store) {
+void ConsoleIface::setReportSend(ReportSendFn fn, void* user, SnapStore* store, KeptStore* kept) {
   _report_send = fn;
   _report_user = user;
-  _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, reportAirtimeOk, store, this},
+  _standing.begin(ReportHost{reportSend, reportProduced, reportMayRead, reportIssuer, reportIssuerValid, reportRandom, reportAirtimeOk, store, this,
+                             kept, reportPageBudget},
                   millis());
 }
+
+// What a report.list result may fill: over LoRa a whole reply is LORA_MSG_MAX with its signed envelope, about 230 bytes, in it.
+size_t ConsoleIface::reportPageBudget(void* user) { return static_cast<ConsoleIface*>(user)->onLora() ? 760 : 1100; }
 
 uint8_t ConsoleIface::reportProduced(void* user) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
@@ -1584,7 +1592,7 @@ uint32_t ConsoleIface::reportRandom(void*) {
   return v;
 }
 
-bool ConsoleIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq) {
+bool ConsoleIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int slot, uint32_t* seq, uint8_t* built, size_t* built_len) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
   if (!s->_report_send) return false;
   ReportData d;
@@ -1603,6 +1611,7 @@ bool ConsoleIface::reportSend(void* user, uint8_t fields, const uint8_t* to, int
   const uint32_t ts = s->knownSeconds(&known);
   uint8_t b[REPORT_MAX];
   const size_t n = s->_prov.makeReport(b, sizeof(b), fields, d, known ? ts : 0, seq);
+  if (n && built) { memcpy(built, b, n); *built_len = n; }
   return n && s->_report_send(s->_report_user, to, slot, b, n);
 }
 
@@ -1686,7 +1695,7 @@ void ConsoleIface::loop(uint32_t now, Print& out) {
   rawTick(now);   // a held packet.transmit, when the duty window has room (#537)
   _auth.continuityReconcile(Posture::isHardened(_host.posture(_host.user)));   // Hardened holds no package (#118)
   _updates.loop(now);
-  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0 && _host.board) _host.board->reboot();
+  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0 && _host.board) { KeptReports::flushAll(); _host.board->reboot(); }
   refreshEnvironment(now);
   if (_ev_up && !_ev_up()) {
     _mqtt_subs.clear();   // a subscription made over the broker lapses with the session

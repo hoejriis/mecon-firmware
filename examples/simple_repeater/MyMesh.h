@@ -1,5 +1,8 @@
 #pragma once
 
+#ifdef ENABLE_MECON_IFACE
+#include <helpers/iface/KeptReports.h>
+#endif
 #include <Arduino.h>
 #include <Mesh.h>
 #include <helpers/PrefsBatch.h>
@@ -263,6 +266,9 @@ public:
 
   // An ACL change still waiting for its lazy save (dirty_contacts_expiry) is saved before a CLI reboot or power-off.
   void beforeGoingDown() override {
+#ifdef ENABLE_MECON_IFACE
+    Iface::KeptReports::flushAll();   // reports still waiting for their write (nRF52)
+#endif
     if (dirty_contacts_expiry) { acl.save(_fs); dirty_contacts_expiry = 0; }
   }
   static void savePrefsNow(void* self) { static_cast<MyMesh*>(self)->savePrefs(); }
