@@ -13,7 +13,7 @@ The other pages describe the finished product. This page says what you can get t
 
 ## Where each capability stands
 
-"Released" means the capability is in a release, with the first tag that has it. "Hardware-verified" names the board and path of a recorded check. A capability with no hardware row is not claimed on hardware. Boards other than the four test boards get compile and simulator checks only.
+"Released" means the capability is in a release, with the first tag that has it. "Hardware-verified" names the board and path of a recorded check. A capability with no hardware row is not claimed on hardware. Boards other than these four (Heltec V3, Heltec V4, Wio Tracker L1, SenseCAP T1000-E) get compile and simulator checks only.
 
 | Capability | Released | Hardware-verified | Not yet confirmed |
 |---|---|---|---|
