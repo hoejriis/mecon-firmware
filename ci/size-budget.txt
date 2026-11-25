@@ -4,20 +4,23 @@
 # to a whole KB. The Heltec V3 and V4 rows were set 2026-10-31 for the rebuilt IDF libraries (docs/PLATFORM.md), same rule.
 # The ESP32 Heltec rows that carry the LoRa update path (docs/contract/LORA_UPDATES.md, src/helpers/updates/UpdFeatures.h) were raised
 # to the measured use rounded up to a whole KB. The nRF52 builds do not carry it, and their rows are unchanged.
+# Slice 3b of the LoRa update path (rf.bulk, rf.status and the block-answer relay on every Companion; the target's radio side where
+# UPD_LORA is carried) raised the rows it measurably crossed (V3 and the nRF52 T1000-E Companion), to the measured use rounded up to a
+# whole KB. The V4 rows are not measured here and stay until CI says.
 # environment                             flash        ram
-Heltec_v3_companion_radio_ble           1458176     122880
-Heltec_v3_companion_radio_standalone     1828864     141312
+Heltec_v3_companion_radio_ble           1459200     122880
+Heltec_v3_companion_radio_standalone     1833984     141312
 Heltec_v3_companion_radio_usb            717824      41984
 Heltec_v3_companion_radio_wifi          1443840     118784
-Heltec_v3_repeater                      1589248      82944
-Heltec_v3_room_server                   1579008      87040
+Heltec_v3_repeater                      1592320      82944
+Heltec_v3_room_server                   1581056      87040
 heltec_v4_companion_radio_ble           1449984     122880
 heltec_v4_companion_radio_standalone    1816576     140288
 heltec_v4_companion_radio_usb            703488      41984
 heltec_v4_companion_radio_wifi          1432576     118784
 heltec_v4_repeater                        1576960      82944
 heltec_v4_room_server                   1566720      87040
-t1000e_companion_radio_ble               601088     168960
+t1000e_companion_radio_ble               602112     168960
 t1000e_companion_radio_usb               593920     164864
 t1000e_repeater                           547840      43008
 t1000e_room_server                        532480      49152
