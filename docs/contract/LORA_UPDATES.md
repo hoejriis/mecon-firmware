@@ -102,7 +102,7 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
   the frame index the block starts at, and bit i of `have` is frame `base` + i, so an answer that arrives late is
   never read against a later block. The answer needs no Deployment signature: a forged one can only make the manager
   send frames again or skip ahead, and the manifest's digest still decides what is activated. Missing frames are sent
-  again; held frames are never written twice. A block's answer is the only traffic the target originates during a
+  again; held frames are never written twice. A resend of the block just answered gets that block's answer again (its `base`), so a lost answer costs one block of airtime, not the transfer. A block's answer is the only traffic the target originates during a
   transfer. The progress a manager reports to people comes from a signed `job.get` (section 7).
 - **Neither direction can stand in for the other.** The two kinds have different markers, the marker is inside each
   tag, and each kind has its own key. So a captured block answer sent back at the target is not a bulk frame, and a

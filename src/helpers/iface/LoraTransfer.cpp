@@ -53,6 +53,7 @@ bool LoraTransfer::begin(uint32_t job, uint32_t transfer_size, unsigned block, c
   base_ = next_ = saved_next_ = next;
   buffered_ = 0;
   fresh_ = pending_ = blocked_ = false;
+  has_prev_ = re_fresh_ = re_pending_ = false;
   last_rx_ = last_any_ = now_ms;
   reason_ = TR_NONE;
   memset(&st_, 0, sizeof(st_));
@@ -78,6 +79,7 @@ void LoraTransfer::pause(TransferReason r, uint32_t now_ms) {
   persist(next_);
   buffered_ = 0;   // RAM-held frames are re-sent by the manager after the resume
   pending_ = fresh_ = blocked_ = false;
+  has_prev_ = re_fresh_ = re_pending_ = false;
   state_ = TS_PAUSED;
   reason_ = r;
   paused_at_ = now_ms;
@@ -89,6 +91,7 @@ bool LoraTransfer::resume(uint32_t deadline_ms, uint32_t now_ms) {
   base_ = next_;
   buffered_ = 0;
   fresh_ = pending_ = blocked_ = false;
+  has_prev_ = re_fresh_ = re_pending_ = false;
   last_rx_ = last_any_ = now_ms;
   reason_ = TR_NONE;
   state_ = TS_OPEN;
@@ -121,7 +124,7 @@ bool LoraTransfer::writeAt(uint32_t index, const uint8_t* d, size_t n) {
 
 void LoraTransfer::onFrame(const uint8_t* f, size_t n, uint32_t now_ms) {
   if (state_ == TS_PAUSED) { st_.dropped_paused++; return; }
-  if (state_ != TS_OPEN) { st_.dropped_closed++; return; }
+  if (state_ != TS_OPEN && state_ != TS_COMPLETE) { st_.dropped_closed++; return; }
   uint32_t index;
   const uint8_t* data;
   size_t len;
@@ -130,6 +133,17 @@ void LoraTransfer::onFrame(const uint8_t* f, size_t n, uint32_t now_ms) {
     if ((unsigned)c < 6) st_.bad[c]++;
     return;   // never answered
   }
+  if (has_prev_ && index >= prev_base_ && index < base_) {
+    // A resend of the block just answered: its answer was lost. Never written; answered again, once per batch.
+    st_.dup++;
+    last_any_ = now_ms;
+    re_rx_ = now_ms;
+    re_fresh_ = true;
+    if (index == base_ - 1) re_pending_ = true;
+    if (re_pending_) trySendPrev(now_ms);
+    return;
+  }
+  if (state_ == TS_COMPLETE) { st_.dropped_closed++; return; }
   last_any_ = now_ms;
   if (index < next_) {   // already written; never written twice
     st_.dup++;
@@ -174,17 +188,34 @@ bool LoraTransfer::trySend(uint32_t now_ms) {
   blocked_ = pending_ = fresh_ = false;
   const uint32_t end = base_ + block_ < total_ ? base_ + block_ : total_;
   if (next_ >= end) {   // the block is whole: the next one starts where this one ended
+    prev_base_ = base_;
+    has_prev_ = true;
+    re_fresh_ = re_pending_ = false;
+    base_ = next_;
     if (next_ >= total_) {
       persist(next_);
       state_ = TS_COMPLETE;   // the caller verifies the digest
-    } else {
-      base_ = next_;
     }
   }
   return true;
 }
 
+bool LoraTransfer::trySendPrev(uint32_t now_ms) {
+  (void)now_ms;
+  const unsigned len = base_ - prev_base_;   // the completed block: every frame held
+  uint8_t out[ANSWER_LEN];
+  answerEncode(keys_, job_, prev_base_, next_, (uint8_t)((1u << len) - 1), out);
+  if (!sink_.sendAnswer(sink_.ctx, out, ANSWER_LEN)) return false;   // retried on a later tick; no pause for it
+  st_.answers++;
+  re_fresh_ = re_pending_ = false;
+  return true;
+}
+
 void LoraTransfer::tick(uint32_t now_ms) {
+  if ((state_ == TS_OPEN || state_ == TS_COMPLETE) && has_prev_) {
+    if (!re_pending_ && re_fresh_ && elapsed(now_ms, re_rx_, quiet_ms_)) re_pending_ = true;
+    if (re_pending_) trySendPrev(now_ms);
+  }
   if (state_ == TS_PAUSED) {
     if (elapsed(now_ms, paused_at_, TRANSFER_STALL_MS)) fail(TR_STALLED, true);
     return;

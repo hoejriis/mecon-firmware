@@ -19,6 +19,7 @@ struct Fake {
   std::vector<uint32_t> saves;
   std::vector<std::vector<uint8_t>> sent;
   bool duty_full = false;
+  int lose = 0;   // answers the next sends silently lose on the air
   bool write_fail = false;
   int erased = 0;
   BulkKeys keys;
@@ -34,6 +35,7 @@ struct Fake {
   static bool snd(void* c, const uint8_t* b, size_t n) {
     Fake* f = (Fake*)c;
     if (f->duty_full) return false;
+    if (f->lose > 0) { f->lose--; return true; }
     f->sent.emplace_back(b, b + n);
     return true;
   }
@@ -433,6 +435,73 @@ TEST(LoraTransfer, AMillisecondWrapMidTransferChangesNothing) {
   r.tick(20000);
   EXPECT_EQ(TS_PAUSED, t.state());   // the deadline lay across the wrap
   EXPECT_EQ(TR_WINDOW, t.status().reason);
+}
+
+TEST(LoraTransfer, ALostAnswerIsAnsweredAgainWhenTheBlockIsResent) {
+  Rig r(SIZE);
+  auto& t = r.open(4);
+  r.fake.lose = 1;
+  for (uint32_t i = 0; i < 4; i++) r.send(i);   // block 0 completes; its answer never arrives
+  EXPECT_TRUE(r.fake.sent.empty());
+  EXPECT_EQ(4u, t.next());
+  r.send(0); r.send(1); r.send(2);
+  EXPECT_TRUE(r.fake.sent.empty());   // nothing yet: the block's last frame is what asks
+  r.send(3);
+  ASSERT_EQ(1u, r.fake.sent.size());
+  Answer a = r.fake.answer(0);
+  EXPECT_EQ(0u, a.base); EXPECT_EQ(4u, a.next); EXPECT_EQ(0x0F, a.have);
+  EXPECT_EQ(4u, r.fake.writes.size());   // nothing written twice
+  EXPECT_EQ(4u, t.status().dup);
+  r.tick(30000);
+  EXPECT_EQ(1u, r.fake.sent.size());   // once per batch
+  for (uint32_t i = 4; i < 8; i++) r.send(i);   // the next block proceeds
+  ASSERT_EQ(2u, r.fake.sent.size());
+  EXPECT_EQ(4u, r.fake.answer(1).base);
+  EXPECT_EQ(8u, t.next());
+  EXPECT_EQ(8u, r.fake.writes.size());
+}
+
+TEST(LoraTransfer, AResentBlockWhoseLastFrameIsLostIsAnsweredOnTheQuietTimeout) {
+  Rig r(SIZE);
+  auto& t = r.open(4);
+  r.fake.lose = 1;
+  for (uint32_t i = 0; i < 4; i++) r.send(i);
+  r.send(1); r.send(2);
+  r.tick(7000);
+  EXPECT_TRUE(r.fake.sent.empty());
+  r.tick(1100);
+  ASSERT_EQ(1u, r.fake.sent.size());
+  EXPECT_EQ(0u, r.fake.answer(0).base);
+  r.tick(30000);
+  EXPECT_EQ(1u, r.fake.sent.size());
+  EXPECT_EQ(TS_OPEN, t.state());
+}
+
+TEST(LoraTransfer, ALostFinalAnswerIsAnsweredAgainAfterCompletion) {
+  Rig r(SIZE);
+  auto& t = r.open(4);
+  for (uint32_t i = 0; i < 8; i++) r.send(i);
+  r.fake.lose = 1;
+  for (uint32_t i = 8; i < 11; i++) r.send(i);
+  EXPECT_EQ(TS_COMPLETE, t.state());
+  EXPECT_EQ(2u, r.fake.sent.size());
+  r.send(10);   // the resent last frame of the final block
+  ASSERT_EQ(3u, r.fake.sent.size());
+  Answer a = r.fake.answer(2);
+  EXPECT_EQ(8u, a.base); EXPECT_EQ(11u, a.next); EXPECT_EQ(0x07, a.have);
+  EXPECT_EQ(11u, r.fake.writes.size());
+}
+
+TEST(LoraTransfer, FramesBelowThePreviousBlockGetNoAnswer) {
+  Rig r(SIZE);
+  auto& t = r.open(4);
+  for (uint32_t i = 0; i < 8; i++) r.send(i);   // blocks 0 and 1 answered; prev block is 4..7
+  ASSERT_EQ(2u, r.fake.sent.size());
+  r.send(0); r.send(1); r.send(2); r.send(3);
+  r.tick(30000);
+  EXPECT_EQ(2u, r.fake.sent.size());
+  EXPECT_EQ(4u, t.status().dup);
+  EXPECT_EQ(8u, r.fake.writes.size());
 }
 
 TEST(LoraTransfer, BeginRefusesBadArgumentsAndAWholeTransferBeginsComplete) {

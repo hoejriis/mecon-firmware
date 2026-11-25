@@ -83,6 +83,7 @@ class LoraTransfer {
   void pause(TransferReason r, uint32_t now_ms);
   void persist(uint32_t upto);
   bool trySend(uint32_t now_ms);
+  bool trySendPrev(uint32_t now_ms);
   uint8_t haveMask() const;
   bool writeAt(uint32_t index, const uint8_t* d, size_t n);
 
@@ -98,6 +99,10 @@ class LoraTransfer {
   bool fresh_ = false;     // a frame of this block arrived since the last answer
   bool pending_ = false;   // an answer is due and not yet sent
   bool blocked_ = false;   // an answer was refused by the duty window
+  // The block just completed and answered: a resend of it means its answer was lost, so it is answered again.
+  uint32_t prev_base_ = 0;
+  bool has_prev_ = false, re_fresh_ = false, re_pending_ = false;
+  uint32_t re_rx_ = 0;
   uint32_t last_rx_ = 0, last_any_ = 0, blocked_since_ = 0, paused_at_ = 0;
   TransferState state_ = TS_FAILED;
   TransferReason reason_ = TR_NONE;
