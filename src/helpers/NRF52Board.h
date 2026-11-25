@@ -57,6 +57,9 @@ public:
   virtual bool getBootloaderVersion(char* version, size_t max_len) override;
   virtual bool startOTAUpdate(const char *id, char reply[]) override;
   virtual void sleep(uint32_t secs) override;
+  // Feeds the hardware watchdog, and arms it on the first call (Issue #641). Every example main calls board.loop() once
+  // a pass. A board that overrides loop() must call NRF52Board::loop() from it, or the watchdog resets it.
+  virtual void loop() override;
   bool isExternalPowered() override;
 
   void attachDynamicPrefs(KeyValueStore* prefs) { }  // no-op

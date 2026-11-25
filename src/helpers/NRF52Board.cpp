@@ -34,6 +34,34 @@ void NRF52Board::begin() {
 
 #include "nrf.h"
 
+// The hardware watchdog (Issue #641). Without it, a wedged nRF52 never recovered: a Companion held over USB stopped
+// answering even USB control requests and stayed that way until someone reset it by hand. Armed on the first
+// board.loop(), so only a build whose main loop feeds it ever runs it, and fed on every pass. It keeps counting while the
+// CPU sleeps (the loop wakes on every interrupt, so a sleeping pass still feeds it) and pauses under a debugger. The
+// timeout is longer than the worker's bounded wait (Dispatcher, 30 s) and any flash erase. A watchdog reset is reported
+// as "Watchdog" in the reset reason. Once started it cannot be stopped short of a reset, and it keeps running through a
+// soft reset into the bootloader, so the bootloader on these boards must feed it during a serial DFU (checked on the
+// bench before release). NRF52_WATCHDOG_SECS=0 builds without it.
+#ifndef NRF52_WATCHDOG_SECS
+#define NRF52_WATCHDOG_SECS 120
+#endif
+
+void NRF52Board::loop() {
+#if NRF52_WATCHDOG_SECS > 0
+  static bool started = false;
+  if (!started) {
+    started = true;
+    if (!NRF_WDT->RUNSTATUS) {   // left running by a soft reset: CONFIG and CRV are locked, so only feed it
+      NRF_WDT->CONFIG = (WDT_CONFIG_SLEEP_Run << WDT_CONFIG_SLEEP_Pos) | (WDT_CONFIG_HALT_Pause << WDT_CONFIG_HALT_Pos);
+      NRF_WDT->CRV = (uint32_t)NRF52_WATCHDOG_SECS * 32768UL;
+      NRF_WDT->RREN = WDT_RREN_RR0_Enabled << WDT_RREN_RR0_Pos;
+      NRF_WDT->TASKS_START = 1;
+    }
+  }
+  NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+#endif
+}
+
 // This boot's RESETREAS, on every nRF52 board: the reset cause is reported whether or not the board uses power
 // management. Read by an early constructor: priority 101 runs before SystemInit (102) and before any C++ static
 // constructor (default 65535), while the SoftDevice is not yet running.
