@@ -53,6 +53,12 @@ inline bool answerHeard(const uint8_t* d, size_t n) {
   return true;
 }
 
+// Whether a reply datagram is a block answer to relay: whole, and from the node bulk frames were last sent to. An answer from any
+// other node, or while none was sent, is not the gateway's to relay.
+inline bool bulkAnswerRelayable(bool sent_to_valid, const uint8_t* sent_to, const uint8_t* from, const uint8_t* d, size_t n) {
+  return sent_to_valid && memcmp(sent_to, from, 32) == 0 && answerHeard(d, n);
+}
+
 // Where the transfer's frames come from, and so where its answers go: the point-to-point path a LoRa management reply takes.
 struct BulkPeer {
   uint8_t key[32];

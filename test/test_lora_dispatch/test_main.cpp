@@ -76,6 +76,17 @@ TEST(LoraDispatch, ABlockAnswerIsTheTwentyTwoBytesWithOnlyZerosAfter) {
   EXPECT_FALSE(answerHeard(a, 22));
 }
 
+TEST(LoraDispatch, AnAnswerIsRelayedOnlyFromTheNodeBulkFramesWentTo) {
+  uint8_t to[32], other[32], a[32] = {ANSWER_MARKER, 1, 2};
+  memset(to, 5, 32);
+  memset(other, 6, 32);
+  EXPECT_TRUE(bulkAnswerRelayable(true, to, to, a, 32));
+  EXPECT_FALSE(bulkAnswerRelayable(true, to, other, a, 32)) << "a node frames were not sent to";
+  EXPECT_FALSE(bulkAnswerRelayable(false, to, to, a, 32)) << "nothing was sent at all";
+  a[0] = LORA_MARKER;
+  EXPECT_FALSE(bulkAnswerRelayable(true, to, to, a, 32)) << "not an answer";
+}
+
 TEST(LoraDispatch, TheBulkCeilingIsEightyPercentOfTheWindowLessEverythingSpentAndQueued) {
   EXPECT_EQ(28800u, bulkCeilingMs(36000)) << "1%";
   EXPECT_EQ(288000u, bulkCeilingMs(360000)) << "10%";

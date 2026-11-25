@@ -1818,7 +1818,7 @@ void MeconIface::bulkTick(uint32_t now) {
 // A reply datagram of exactly a block answer, from the node bulk frames went to: on the rf stream as it came, base64. The
 // gateway never decodes it; the manager holds the keys.
 bool MeconIface::onBulkAnswer(const uint8_t* key, const uint8_t* data, size_t n) {
-  if (!_bulk_to_valid || memcmp(_bulk_to, key, 32) != 0 || !Iface::answerHeard(data, n)) return false;
+  if (!Iface::bulkAnswerRelayable(_bulk_to_valid, _bulk_to, key, data, n)) return false;
   _bulk_answers++;
   char* body = static_cast<char*>(malloc(400));
   char* ev = static_cast<char*>(malloc(700));

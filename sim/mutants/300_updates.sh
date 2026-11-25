@@ -109,3 +109,4 @@ mutate upd_lora_padding_not_taken_off $LD '  for (size_t i = want; i < n; i++) i
   return want;' '  return n;' unit:test_lora_dispatch "$UR::test_an_image_crosses_the_radio_through_the_gateway_is_resent_where_a_frame_was_lost_and_installs"
 mutate upd_lora_rf_bulk_nine_frames examples/companion_radio/MeconIface.cpp 'd.tok[arr].size > (int)Iface::BULK_BLOCK_MAX' 'd.tok[arr].size > 16' "$UR::test_the_gateway_refuses_what_it_cannot_send_and_queues_nothing"
 mutate upd_lora_rf_bulk_takes_a_request_frame $LD '  return n >= BULK_HDR + 1 + BULK_TAG && n <= BULK_ROOM && f[0] == BULK_MARKER;' '  return n >= BULK_HDR + 1 + BULK_TAG && n <= BULK_ROOM;' unit:test_lora_dispatch "$UR::test_the_gateway_refuses_what_it_cannot_send_and_queues_nothing"
+mutate upd_lora_answer_relayed_from_any_node $LD '  return sent_to_valid && memcmp(sent_to, from, 32) == 0 && answerHeard(d, n);' '  return sent_to_valid && answerHeard(d, n);' unit:test_lora_dispatch
