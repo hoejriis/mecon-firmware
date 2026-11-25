@@ -948,12 +948,19 @@ uint8_t MyMesh::onContactRequest(const ContactInfo &contact, uint32_t sender_tim
     return _listener->onUnhandledRequest(contact, sender_timestamp, data, len, reply);
   }
   return 0; // unknown
+
+// A bulk frame (LORA_UPDATES.md section 6) is the update target's: only builds that carry it take its marker.
+#if defined(UPD_LORA) && defined(ENABLE_MECON_IFACE)
+  #define BULK_ANON(m) ((m) == Iface::BULK_MARKER)
+#else
+  #define BULK_ANON(m) false
+#endif
 }
 
 // A device-interface frame over LoRa (LORA_MANAGEMENT.md). Native anonymous requests keep what they do: only the marker comes here.
 void MyMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) {
 #ifdef ENABLE_MECON_IFACE
-  if (len > Iface::LORA_ANON_TAG + Iface::LORA_HDR && data[Iface::LORA_ANON_TAG] == Iface::LORA_MARKER && Iface::loraSink().fn) {
+  if (len > Iface::LORA_ANON_TAG + Iface::LORA_HDR && (data[Iface::LORA_ANON_TAG] == Iface::LORA_MARKER || BULK_ANON(data[Iface::LORA_ANON_TAG])) && Iface::loraSink().fn) {
     uint8_t back[64];
     const uint8_t back_len = Iface::loraReplyPath(packet->isRouteFlood(), packet->getPathHashSize(), packet->getPathHashCount(),
                                                   packet->path, back, sizeof(back));
@@ -1048,6 +1055,10 @@ void MyMesh::traceQueued(mesh::Packet* pkt, uint8_t idx) {
 
 void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, uint8_t len) {
 #ifdef ENABLE_MECON_IFACE
+  if (_iface.onBulkAnswer(contact.id.pub_key, data, len)) {   // a block answer from the node bulk frames went to (LORA_UPDATES.md section 6)
+    _rf_route.heard(contact.id.pub_key, millis());
+    return;
+  }
   if (len > Iface::LORA_REPLY_HDR && memcmp(data, Iface::LORA_REPLY_MAGIC, 4) == 0) {
     _rf_route.heard(contact.id.pub_key, millis());   // the route of the attempt this answers is the one to keep (#542)
     _iface.onRfReply(contact.id.pub_key, data, len);

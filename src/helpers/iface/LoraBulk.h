@@ -8,7 +8,7 @@
 
 namespace Iface {
 
-const uint8_t BULK_MARKER = 0x1E;     // a bulk frame
+const uint8_t BULK_MARKER = 0x1C;     // a bulk frame (0x1E is the compact report's: both arrive as anonymous datagrams on a Companion)
 const uint8_t ANSWER_MARKER = 0x1F;   // a block answer: a different marker, inside a tag under a different key
 const size_t BULK_ROOM = 132;         // the request datagram after its 4-byte tag (LoraLink: LORA_REQ_PAYLOAD + LORA_HDR)
 const size_t BULK_HDR = 9;            // marker, job (4), index (4)

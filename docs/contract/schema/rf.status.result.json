@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/rf.status.result.json",
+  "title": "Result of rf.status: the gateway's bulk figures",
+  "description": "LORA_UPDATES.md section 6: the same two figures rf.bulk answers with, queuing nothing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "queued",
+    "bulk_budget_ms"
+  ],
+  "properties": {
+    "queued": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16,
+      "description": "Frames now waiting at this gateway to go out."
+    },
+    "bulk_budget_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Airtime bulk may still spend in the current hour before the reserve: 80% of the duty window less the trailing airtime and less the airtime of the frames queued."
+    }
+  }
+}

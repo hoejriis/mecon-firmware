@@ -97,3 +97,16 @@ mutate upd_lora_resume_erases_the_sector_holding_the_offset src/helpers/updates/
 mutate upd_lora_resume_erase_starts_at_the_offsets_sector src/helpers/updates/UpdSlot.h 'inline uint32_t slotFirstErase(uint32_t offset, uint32_t sector) { return (offset + sector - 1) / sector * sector; }' 'inline uint32_t slotFirstErase(uint32_t offset, uint32_t sector) { return offset / sector * sector; }' unit:test_updates
 mutate upd_lora_paused_job_releases_the_lock src/helpers/iface/Jobs.h 'inline bool jobTerminal(uint8_t s) { return s == JOB_APPLIED || (s >= JOB_CONFIRMED && s <= JOB_CANCELLED); }' 'inline bool jobTerminal(uint8_t s) { return s == JOB_APPLIED || s == JOB_PAUSED || (s >= JOB_CONFIRMED && s <= JOB_CANCELLED); }' unit:test_jobs
 mutate upd_lora_part_for_another_hash_kept src/helpers/updates/UpdManifestParts.h '    if (_data && (memcmp(_sha, sha256, 32) != 0 || _parts != parts)) discard();' '    if (_data && _parts != parts) discard();' unit:test_updates
+# slice 3b of LoRa updates: the bulk frames over the radio, and the gateway's rf.bulk (docs/contract/LORA_UPDATES.md sections 6 and 9)
+UR=sim/tests/test_update_lora_radio.py
+LD=src/helpers/iface/LoraDispatch.h
+mutate upd_lora_group_bulk_accepted $LD '  if (f[0] == BULK_MARKER) return channel ? ROUTE_DROP_GROUP_BULK : ROUTE_BULK;' '  if (f[0] == BULK_MARKER) return ROUTE_BULK;' unit:test_lora_dispatch
+mutate upd_lora_bulk_ceiling_not_80_percent $LD 'const uint32_t BULK_CEILING_PCT = 80; ' 'const uint32_t BULK_CEILING_PCT = 100;' unit:test_lora_dispatch "$UR::test_the_gateway_refuses_what_it_cannot_send_and_queues_nothing"
+mutate upd_lora_rf_bulk_ignores_the_budget examples/companion_radio/MeconIface.cpp '    if (!Iface::bulkFits(budget, count, bulkFrameMs())) { c.error = "bulk-budget"; st = ST_BUSY; }' '    if (false) { c.error = "bulk-budget"; st = ST_BUSY; }' "$UR::test_the_gateway_refuses_what_it_cannot_send_and_queues_nothing"
+mutate upd_lora_bad_tag_is_answered src/helpers/iface/LoraTransfer.cpp '    return false;   // never answered' '    if (c == BULK_BAD_TAG) trySend(now_ms);
+    return false;   // never answered' unit:test_lora_transfer "$UR::test_a_strangers_frames_through_the_gateway_cost_the_target_nothing"
+mutate upd_lora_padding_not_taken_off $LD '  for (size_t i = want; i < n; i++) if (f[i]) return n;
+  return want;' '  return n;' unit:test_lora_dispatch "$UR::test_an_image_crosses_the_radio_through_the_gateway_is_resent_where_a_frame_was_lost_and_installs"
+mutate upd_lora_rf_bulk_nine_frames examples/companion_radio/MeconIface.cpp 'd.tok[arr].size > (int)Iface::BULK_BLOCK_MAX' 'd.tok[arr].size > 16' "$UR::test_the_gateway_refuses_what_it_cannot_send_and_queues_nothing"
+mutate upd_lora_rf_bulk_takes_a_request_frame $LD '  return n >= BULK_HDR + 1 + BULK_TAG && n <= BULK_ROOM && f[0] == BULK_MARKER;' '  return n >= BULK_HDR + 1 + BULK_TAG && n <= BULK_ROOM;' unit:test_lora_dispatch "$UR::test_the_gateway_refuses_what_it_cannot_send_and_queues_nothing"
+mutate upd_lora_answer_relayed_from_any_node $LD '  return sent_to_valid && memcmp(sent_to, from, 32) == 0 && answerHeard(d, n);' '  return sent_to_valid && answerHeard(d, n);' unit:test_lora_dispatch

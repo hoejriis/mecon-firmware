@@ -905,7 +905,11 @@ void ConsoleIface::begin(const Host& host, const uint8_t device_id[16], uint32_t
   mesh::Utils::sha256(_public_fp, MGMT_FP_BYTES, MGMT_PUBLIC_KEY, sizeof(MGMT_PUBLIC_KEY));
   _jobs.setClassCheck(jobClasses, this);
   _jobs.setOnChange(jobChanged, this);
-  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot, updClock});
+  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot, updClock
+#ifdef UPD_LORA
+                                                , updLoraAnswer
+#endif
+                                                });
   _jobs.begin(_host.job_store, _host.board && abnormalReset(*_host.board) == 1, jobRevert, jobConfirm, this);
   _updates.bootReconcile();   // an installed image attests, or the bootloader rolled it back
   configSnapBoot(configHost());   // a snapshot no awaiting job owns goes
@@ -1511,8 +1515,42 @@ bool ConsoleIface::writeStream(int s, JsonWriter& w) {
 
 void ConsoleIface::onLoraFrame(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len,
                                const uint8_t* frame, size_t n) {
-  static_cast<ConsoleIface*>(user)->_lora.feed(key, secret, path, path_len, frame, n, LORA_REQ_PAYLOAD, millis());
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+#ifdef UPD_LORA
+  if (loraRoute(frame, n, false) == ROUTE_BULK) { s->onBulkFrame(key, secret, path, path_len, frame, n); return; }
+#endif
+  s->_lora.feed(key, secret, path, path_len, frame, n, LORA_REQ_PAYLOAD, millis());
 }
+
+#ifdef UPD_LORA
+void ConsoleIface::onBulkFrame(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame,
+                               size_t n) {
+  _bulk_cand.set(key, secret, path, path_len);
+  _bulk_in = true;
+  const bool ok = _updates.loraFrame(frame, n, millis());
+  _bulk_in = false;
+  if (ok) _bulk_peer = _bulk_cand;   // a good tag: this is where the manager is now
+  _bulk_cand.clear();
+}
+
+// A block answer, as one packet to the peer the frames came from, if the duty window has room for it.
+int ConsoleIface::updLoraAnswer(void* user, const uint8_t* answer, size_t n) {
+  ConsoleIface* s = static_cast<ConsoleIface*>(user);
+  const BulkPeer& b = s->_bulk_in ? s->_bulk_cand : s->_bulk_peer;
+  if (!b.valid || !s->_lora_send) return -1;
+  if (s->_host.dispatcher && s->_host.radio &&
+      s->_host.dispatcher->getRemainingTxBudget() < s->_host.radio->getEstAirtimeFor((int)n + 40)) return 0;
+  LoraLink::Peer p;
+  memset(&p, 0, sizeof(p));
+  memcpy(p.key, b.key, 32);
+  memcpy(p.secret, b.secret, 32);
+  memcpy(p.path, b.path, sizeof(p.path));
+  p.path_len = b.path_len;
+  p.used = true;
+  // A good tag authenticates the manager to this transfer, so an answer may flood when no way back is known, as a verified result may.
+  return s->_lora_send(s->_lora_send_user, p, answer, n, true) ? 1 : 0;
+}
+#endif
 
 void ConsoleIface::setReportSend(ReportSendFn fn, void* user, SnapStore* store) {
   _report_send = fn;
@@ -1598,6 +1636,9 @@ bool ConsoleIface::loraPingOk(void* user) {
 bool ConsoleIface::onLoraChannelFrame(void* user, const uint8_t* data, size_t n) {
   ConsoleIface* s = static_cast<ConsoleIface*>(user);
   if (n <= LORA_CH_ADDR + LORA_HDR || !s->_host.node_key || memcmp(data, s->_host.node_key, LORA_CH_PREFIX) != 0) return false;
+#ifdef UPD_LORA
+  if (loraRoute(data + LORA_CH_ADDR, n - LORA_CH_ADDR, true) == ROUTE_DROP_GROUP_BULK) { s->_lora.noteGroupBulk(); return true; }   // point to point only
+#endif
   s->_lora.feedChannel(data + LORA_CH_PREFIX, data + LORA_CH_ADDR, n - LORA_CH_ADDR, millis());
   return true;
 }

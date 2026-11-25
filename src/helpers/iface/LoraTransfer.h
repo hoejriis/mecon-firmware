@@ -68,7 +68,9 @@ class LoraTransfer {
   // for a block outside 1..8 or a `next` past the end. A transfer already whole at `next` begins `complete`.
   bool begin(uint32_t job, uint32_t transfer_size, unsigned block, const BulkKeys& keys, uint32_t deadline_ms,
              uint32_t now_ms, uint32_t next);
-  void onFrame(const uint8_t* f, size_t n, uint32_t now_ms);
+  // True when the frame was a bulk frame of this transfer with a good tag (written, held, or a repeat), so a caller may take
+  // where it came from as the manager's address; false for anything dropped. A datagram's zero padding is taken off first.
+  bool onFrame(const uint8_t* f, size_t n, uint32_t now_ms);
   void tick(uint32_t now_ms);
   // Reopens a paused transfer at base = next. False unless paused.
   bool resume(uint32_t deadline_ms, uint32_t now_ms);

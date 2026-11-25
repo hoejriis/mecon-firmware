@@ -1,6 +1,7 @@
 #include "MyMesh.h"
 #ifdef ENABLE_MECON_IFACE
   #include <helpers/iface/LoraLink.h>
+  #include <helpers/iface/LoraBulk.h>
   #include <helpers/iface/CompactReport.h>
 #endif
 #include <helpers/net/NetCommands.h>
@@ -751,13 +752,20 @@ bool MyMesh::loraReply(const uint8_t* key, const uint8_t* secret, const uint8_t*
   else sendFlood(reply, SERVER_RESPONSE_DELAY);
   return true;
 }
+
+// A bulk frame (LORA_UPDATES.md section 6) is the update target's: only builds that carry it take its marker.
+#if defined(UPD_LORA) && defined(ENABLE_MECON_IFACE)
+  #define BULK_ANON(m) ((m) == Iface::BULK_MARKER)
+#else
+  #define BULK_ANON(m) false
+#endif
 #endif
 
 void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const mesh::Identity &sender,
                             uint8_t *data, size_t len) {
 #ifdef ENABLE_MECON_IFACE
   // A device-interface frame over LoRa (LORA_MANAGEMENT.md). Its marker is no password and no native request type.
-  if (len > Iface::LORA_ANON_TAG + Iface::LORA_HDR && data[Iface::LORA_ANON_TAG] == Iface::LORA_MARKER && Iface::loraSink().fn) {
+  if (len > Iface::LORA_ANON_TAG + Iface::LORA_HDR && (data[Iface::LORA_ANON_TAG] == Iface::LORA_MARKER || BULK_ANON(data[Iface::LORA_ANON_TAG])) && Iface::loraSink().fn) {
     uint8_t back[64];
     const uint8_t back_len = Iface::loraReplyPath(packet->isRouteFlood(), packet->getPathHashSize(), packet->getPathHashCount(),
                                                   packet->path, back, sizeof(back));

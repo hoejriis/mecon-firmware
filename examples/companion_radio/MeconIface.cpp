@@ -22,6 +22,7 @@
 #include <helpers/iface/AuditOps.h>
 #include <helpers/iface/Streams.h>
 #include <helpers/iface/Observe.h>
+#include <helpers/updates/UpdB64.h>
 #include <new>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,7 +49,7 @@ const size_t HELLO_PLAIN_BUDGET = 1500;
 const size_t HELLO_LORA_BUDGET = 700;
 
 const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "config.get", "config.apply",
-                                    "sub.start", "sub.stop", "posture.set", "rf.request", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
+                                    "sub.start", "sub.stop", "posture.set", "rf.request", "rf.bulk", "rf.status", "report.now", "standing.put", "standing.list", "standing.remove", "deployment.get", "deployment.provision",
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock", "deployment.continuity.put", "deployment.continuity.export",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "clock.back", "advert.send", "device.reboot", "device.reset", "identity.key.export",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
@@ -105,6 +106,8 @@ Status opSchema(OpContext& c);
 Status opGet(OpContext& c);
 Status opApply(OpContext& c);
 Status opRfRequest(OpContext& c);
+Status opRfBulk(OpContext& c);
+Status opRfStatus(OpContext& c);
 Status opReportNow(OpContext& c);
 Status opStandingPut(OpContext& c);
 Status opStandingList(OpContext& c);
@@ -174,6 +177,8 @@ const OpEntry OPS[] = {
   {"config.get", opGet, PRIV_READ, false},
   {"config.apply", opApply, PRIV_WRITE, true},
   {"rf.request", opRfRequest, PRIV_WRITE, false},
+  {"rf.bulk", opRfBulk, PRIV_WRITE, false},
+  {"rf.status", opRfStatus, PRIV_READ, false},
   {"report.now", opReportNow, PRIV_WRITE, false},
   {"standing.put", opStandingPut, PRIV_WRITE, true},
   {"standing.list", opStandingList, PRIV_READ, false},
@@ -594,6 +599,8 @@ Status opSchema(OpContext& c) { return withConfig(c, opConfigSchema); }
 Status opGet(OpContext& c) { return withConfig(c, opConfigGet); }
 Status opApply(OpContext& c) { return withConfig(c, opConfigApply); }
 Status opRfRequest(OpContext& c) { return self(c)->rfRequest(c); }
+Status opRfBulk(OpContext& c) { return self(c)->rfBulk(c); }
+Status opRfStatus(OpContext& c) { return self(c)->rfStatus(c); }
 Status opReportNow(OpContext& c) { return self(c)->standing().opNow(c, millis()); }
 Status opStandingPut(OpContext& c) { return self(c)->standing().opPut(c, millis()); }
 Status opStandingList(OpContext& c) { return self(c)->standing().opList(c); }
@@ -1507,8 +1514,37 @@ void MeconIface::inventoryTick(uint32_t now) {
 
 void MeconIface::onLoraFrame(void* user, const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len,
                              const uint8_t* frame, size_t n) {
-  static_cast<MeconIface*>(user)->_lora.feed(key, secret, path, path_len, frame, n, LORA_REQ_PAYLOAD, millis());
+  MeconIface* m = static_cast<MeconIface*>(user);
+#ifdef UPD_LORA
+  if (loraRoute(frame, n, false) == ROUTE_BULK) { m->onBulkFrame(key, secret, path, path_len, frame, n); return; }
+#endif
+  m->_lora.feed(key, secret, path, path_len, frame, n, LORA_REQ_PAYLOAD, millis());
 }
+
+#ifdef UPD_LORA
+// A bulk frame (LORA_UPDATES.md section 6) goes to the update transfer, never into the request reassembly. Where it came from is
+// kept once its tag is good, and is where the block answers go; until then it is only the candidate.
+void MeconIface::onBulkFrame(const uint8_t* key, const uint8_t* secret, const uint8_t* path, uint8_t path_len, const uint8_t* frame,
+                             size_t n) {
+  _bulk_cand.set(key, secret, path, path_len);
+  _bulk_in = true;
+  const bool ok = _updates.loraFrame(frame, n, millis());
+  _bulk_in = false;
+  if (ok) _bulk_peer = _bulk_cand;
+  _bulk_cand.clear();
+}
+
+// A block answer, as one packet to the peer the frames came from, if the duty window has room for it: 1 sent, 0 no room,
+// -1 no peer known (the simulator's test hook then reads it).
+int MeconIface::updLoraAnswer(void* user, const uint8_t* answer, size_t n) {
+  MeconIface* m = static_cast<MeconIface*>(user);
+  const Iface::BulkPeer& b = m->_bulk_in ? m->_bulk_cand : m->_bulk_peer;
+  if (!b.valid) return -1;
+  if (m->_mesh->getRemainingTxBudget() < radio_driver.getEstAirtimeFor((int)n + 40)) return 0;
+  // A good tag authenticates the manager to this transfer, so an answer may flood when no way back is known, as a verified result may.
+  return m->_mesh->loraReply(b.key, b.secret, b.path, b.path_len, answer, n, true) ? 1 : 0;
+}
+#endif
 
 bool MeconIface::loraSend(void* user, const LoraLink::Peer& p, const uint8_t* frame, size_t n, bool flood_ok) {
   MeconIface* m = static_cast<MeconIface*>(user);
@@ -1573,6 +1609,9 @@ bool MeconIface::onLoraChannel(int slot, const uint8_t* data, size_t n) {
     return true;
   }
   if (_lora_bound_slot != slot) return false;   // read on the main pass: a file read here would hold the radio's next packet
+#ifdef UPD_LORA
+  if (loraRoute(f, len, true) == ROUTE_DROP_GROUP_BULK) { _lora.noteGroupBulk(); return true; }   // image bytes travel point to point only
+#endif
   _lora_slot = slot;
   _lora.feedChannel(sender, f, len, millis());
   return true;
@@ -1670,6 +1709,139 @@ void MeconIface::rfTick(uint32_t now) {
     free(_rf_out);
     _rf_out = nullptr;
   }
+}
+
+// ---- the gateway's bulk frames (LORA_UPDATES.md section 6)
+
+uint32_t MeconIface::bulkFrameMs() const { return radio_driver.getEstAirtimeFor((int)Iface::bulkPacketBytes(Iface::BULK_ROOM)); }
+
+// What bulk may still spend this hour before the reserve, less the frames already waiting, and how many wait.
+void MeconIface::bulkFigures(uint32_t* budget_ms, unsigned* queued) const {
+  const unsigned q = _bq ? _bq->n : 0;
+  *queued = q;
+  *budget_ms = Iface::bulkBudgetMs(_mesh->getDutyLimitMs(), _mesh->getTrailingAirtimeMs(), q * bulkFrameMs());
+}
+
+void MeconIface::writeBulkFigures(JsonWriter& w) const {
+  uint32_t budget;
+  unsigned queued;
+  bulkFigures(&budget, &queued);
+  w.key("queued"); w.unum(queued);
+  w.key("bulk_budget_ms"); w.unum(budget);
+}
+
+void MeconIface::bulkClear() {
+  if (!_bq) return;
+  Iface::wipe(_bq, sizeof(*_bq));
+  delete _bq;
+  _bq = nullptr;
+}
+
+// rf.bulk {"to":"<node key hex>","frames":["<base64 of one bulk frame>", ...]}: queues bulk frames for that node, point to point,
+// and answers at once. It never reads a frame beyond its shape (a bulk marker, at most one datagram), and keeps it only until it
+// is sent. Nothing is queued unless every frame is.
+Status MeconIface::rfBulk(OpContext& c) {
+  const JsonDoc& d = *c.doc;
+  char hex[65];
+  if (c.req->args < 0 || !jsonGetString(d, jsonFind(d, c.req->args, "to"), hex, sizeof(hex), CS_NAME, 64)) { c.error = "bad-args"; return ST_INVALID; }
+  uint8_t to[32];
+  for (int i = 0; i < 32; i++) {
+    unsigned v;
+    if (sscanf(hex + 2 * i, "%2x", &v) != 1) { c.error = "bad-args"; return ST_INVALID; }
+    to[i] = (uint8_t)v;
+  }
+  const int arr = jsonFind(d, c.req->args, "frames");
+  if (!isArray(d, arr) || d.tok[arr].size < 1 || d.tok[arr].size > (int)Iface::BULK_BLOCK_MAX) { c.error = "bad-args"; return ST_INVALID; }
+  const unsigned count = (unsigned)d.tok[arr].size;
+  const bool fresh = !_bq;
+  if (!_bq) _bq = new (std::nothrow) BulkQueue();
+  if (!_bq) { c.error = "no-memory"; return ST_BUSY; }
+  if (fresh) { memset(_bq, 0, sizeof(*_bq)); }
+  BulkQueue& q = *_bq;
+  Status st = ST_OK;
+  // Decoded straight into the queue's free slots, so no frame sits on the stack; they count only once all are good.
+  unsigned i = 0;
+  for (; i < count && st == ST_OK; i++) {
+    char b64[4 * (Iface::BULK_ROOM + 2) / 3 + 8];
+    const unsigned slot = (q.head + q.n + i) % Iface::BULK_QUEUE_MAX;
+    long n = -1;
+    if (q.n + i < Iface::BULK_QUEUE_MAX && jsonGetString(d, jsonElem(d, arr, (int)i), b64, sizeof(b64), CS_ANY, 4))
+      n = Upd::base64Decode(b64, strlen(b64), q.data[slot], Iface::BULK_ROOM);
+    if (n < 0 || !Iface::bulkFrameShape(q.data[slot], (size_t)n)) { c.error = "bad-args"; st = ST_INVALID; break; }
+    q.len[slot] = (uint8_t)n;
+  }
+  if (st == ST_OK && q.n && memcmp(q.to, to, 32) != 0) { c.error = "rf-busy"; st = ST_BUSY; }   // one node at a time
+  if (st == ST_OK && q.n + count > Iface::BULK_QUEUE_MAX) { c.error = "queue-full"; st = ST_BUSY; }
+  if (st == ST_OK) {
+    uint32_t budget;
+    unsigned queued;
+    bulkFigures(&budget, &queued);
+    if (!Iface::bulkFits(budget, count, bulkFrameMs())) { c.error = "bulk-budget"; st = ST_BUSY; }   // the 80% ceiling: nothing queued
+  }
+  if (st != ST_OK) {
+    if (!q.n) bulkClear();
+    return st;
+  }
+  if (!q.n) { memcpy(q.to, to, 32); q.last_ms = millis(); }
+  q.n = (uint8_t)(q.n + count);
+  _bulk_next = millis();
+  writeBulkFigures(*c.out);
+  return ST_OK;
+}
+
+// rf.status: the same two figures as rf.bulk answers with, queuing nothing, so a manager paces itself instead of filling the queue.
+Status MeconIface::rfStatus(OpContext& c) {
+  writeBulkFigures(*c.out);
+  return ST_OK;
+}
+
+// One queued frame a pass, point to point, while the 80% ceiling and the radio's queue allow. Frames that wait ten minutes for
+// either are dropped and counted: a manager that stopped must not leave a queue that blocks the next call.
+void MeconIface::bulkTick(uint32_t now) {
+  if (!_bq) return;
+  if (!_bq->n) { bulkClear(); return; }
+  if ((int32_t)(now - _bq->last_ms) >= (int32_t)Iface::BULK_QUEUE_MS) { _bulk_dropped += _bq->n; bulkClear(); return; }
+  if ((int32_t)(now - _bulk_next) < 0 || _mesh->getOutboundDepth() > 0) return;   // one packet at a time: the budget below is then true
+  if (Iface::bulkBudgetMs(_mesh->getDutyLimitMs(), _mesh->getTrailingAirtimeMs(), 0) < bulkFrameMs()) return;
+  const unsigned h = _bq->head;
+  if (!_mesh->rfSend(_bq->to, _bq->data[h], _bq->len[h])) { _bulk_next = now + 200; return; }   // no packet free: the next pass tries
+  memcpy(_bulk_to, _bq->to, 32);
+  _bulk_to_valid = true;
+  Iface::wipe(_bq->data[h], _bq->len[h]);
+  _bq->head = (uint8_t)((h + 1) % Iface::BULK_QUEUE_MAX);
+  _bq->n--;
+  _bq->last_ms = now;
+  _bulk_sent++;
+  _bulk_next = now;
+}
+
+// A reply datagram of exactly a block answer, from the node bulk frames went to: on the rf stream as it came, base64. The
+// gateway never decodes it; the manager holds the keys.
+bool MeconIface::onBulkAnswer(const uint8_t* key, const uint8_t* data, size_t n) {
+  if (!Iface::bulkAnswerRelayable(_bulk_to_valid, _bulk_to, key, data, n)) return false;
+  _bulk_answers++;
+  char* body = static_cast<char*>(malloc(400));
+  char* ev = static_cast<char*>(malloc(700));
+  if (body && ev) {
+    char hex[65];
+    hexOf(hex, key, 32);
+    char b64[4 * (Iface::ANSWER_LEN + 2) / 3 + 4];
+    base64Encode(b64, data, Iface::ANSWER_LEN);   // the padding of the datagram is not the answer's
+    JsonWriter w(body, 400);
+    w.beginObject();
+    w.key("from"); w.str(hex);
+    w.key("answer"); w.str(b64);
+    w.endObject();
+    if (w.ok()) {
+      const uint32_t ts = _mesh->getRTCClock()->knownTime();
+      int m = writeEvent(ev, 700, STREAMS[SID_RF].name, ++_clock.seq[SID_RF], _epoch, ts != 0, ts, body);
+      if (m > 0) m = _prov.sign(STREAMS[SID_RF].name, ev, (size_t)m, 700);
+      if (m > 0) sendEvent(SID_RF, ev, (size_t)m);   // a lost answer costs the manager one block: it sends the block again
+    }
+  }
+  free(body);
+  free(ev);
+  return true;
 }
 
 // A reply frame for this Companion's rf.request: when it completes it goes out on the rf stream as it came.
@@ -2037,6 +2209,7 @@ void MeconIface::loop(uint32_t now) {
   loraTick(now);
   fmcTick(now);
   rfTick(now);
+  bulkTick(now);
   _rf.expireReplies(now);   // a reply still missing frames at its deadline is counted and freed (#539)
   _standing.tick(now);
   if (!receiving) screenTick(now);
