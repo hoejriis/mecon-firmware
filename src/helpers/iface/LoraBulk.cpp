@@ -1,4 +1,7 @@
 #include "LoraBulk.h"
+#include "helpers/updates/UpdFeatures.h"
+
+#if defined(UPD_LORA)   // only where a firmware update over LoRa is carried (UpdFeatures.h)
 #include <string.h>
 #include "../deployment/DepHmac.h"
 
@@ -114,3 +117,5 @@ bool answerDecode(const BulkKeys& k, uint32_t job, const uint8_t* f, size_t n, u
 }
 
 }  // namespace Iface
+
+#endif  // UPD_LORA

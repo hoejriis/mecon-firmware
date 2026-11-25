@@ -1,7 +1,10 @@
 #include "JobService.h"
 #include "IfaceEnvelope.h"
+#include "helpers/updates/UpdFeatures.h"
+#ifdef UPD_LORA
 #include "JobLora.h"
 #include "LoraTransfer.h"
+#endif
 #include <new>
 #include <stdlib.h>
 #include <string.h>
@@ -101,6 +104,7 @@ Status JobService::opGet(OpContext& c) {
   JsonWriter& w = *c.out;
   writeSummary(w, *j);
   if (j->state == JOB_AWAITING) { w.key("confirm_left_s"); w.unum(j->confirm_left_s); }
+#ifdef UPD_LORA
   JobLora lora;
   if (jobLoraGet(*j, &lora)) {   // an open or paused firmware transfer over LoRa (LORA_UPDATES.md section 7)
     w.key("next"); w.unum(lora.next);
@@ -108,6 +112,7 @@ Status JobService::opGet(OpContext& c) {
     w.key("window_end"); w.unum(lora.window_end);
     if (j->state == JOB_PAUSED) { w.key("reason"); w.str(transferReasonName((TransferReason)lora.reason)); }
   }
+#endif
   w.key("result");
   if (j->result_len) w.raw(j->result, j->result_len); else w.null();
   return ST_OK;

@@ -56,8 +56,12 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "advert.send", "device.reboot", "device.reset", "identity.key.export", "acl.list", "acl.put", "password.set", "audit.list", "board.get", "board.adc.set", "power.saving.set", "sensor.list", "sensor.get", "sensor.set", "clock.reset", "stats.clear", "log.start", "log.stop", "log.erase", "log.read", "radio.temp",
                                     "channel.list", "channel.get", "channel.put", "channel.remove", "mgmt.channel.get",
                                     "mgmt.channel.bind", "mgmt.channel.rotate", "mgmt.channel.unbind", "job.get", "job.list",
-                                    "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.manifest.part", "update.status",
-                                    "update.offer", "update.chunk"};
+                                    "job.ack", "job.cancel", "job.confirm", "update.manifest", "update.status",
+                                    "update.offer", "update.chunk"
+#ifdef UPD_LORA
+                                    , "update.manifest.part"
+#endif
+                                    };
 // Listed only on a role with a region tree.
 // The network-profile operations, on a build with Wi-Fi or MQTT (NetProfileOps.h).
 const char* const NET_CAPABILITIES[] = {"net.profile.clear"
@@ -760,7 +764,9 @@ Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, mil
 Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
 Status opUpdOffer(OpContext& c) { return self(c)->updates().opOffer(c, millis()); }
 Status opUpdChunk(OpContext& c) { return self(c)->updates().opChunk(c, millis()); }
+#ifdef UPD_LORA
 Status opUpdManifestPart(OpContext& c) { return self(c)->updates().opManifestPart(c, millis()); }
+#endif
 
 const OpEntry OPS[] = {
   {"hello", opHello, PRIV_READ, false},
@@ -855,7 +861,9 @@ const OpEntry OPS[] = {
   {"job.confirm", opJobConfirm, PRIV_WRITE, true},
   // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
   {"update.manifest", opUpdManifest, PRIV_READ, false},
+#ifdef UPD_LORA
   {"update.manifest.part", opUpdManifestPart, PRIV_READ, false},
+#endif
   {"update.status", opUpdStatus, PRIV_READ, false},
   // The offer is of the update class and keeps its result: a retry gets the same job and transfer token back. A chunk
   // is authorised by that token (DeployAuth::preAuthorize lets it through to the handler) and is not kept: its answer

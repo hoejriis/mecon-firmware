@@ -1,4 +1,7 @@
 #include "LoraTransfer.h"
+#include "helpers/updates/UpdFeatures.h"
+
+#if defined(UPD_LORA)   // only where a firmware update over LoRa is carried (UpdFeatures.h)
 #include <string.h>
 
 namespace Iface {
@@ -240,3 +243,5 @@ TransferStatus LoraTransfer::status() const {
 }
 
 }  // namespace Iface
+
+#endif  // UPD_LORA

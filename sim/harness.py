@@ -37,6 +37,7 @@ BIN = {
     "companion_stockcontacts": os.path.join(REPO, ".pio/build/sim_companion_stockcontacts/program"),
     # the standalone Companion with the stock contact array: the rescue rebuild formats the file system
     "companion_standalone_stockcontacts": os.path.join(REPO, ".pio/build/sim_companion_standalone_stockcontacts/program"),
+    "companion_standalone_nolora": os.path.join(REPO, ".pio/build/sim_companion_standalone_nolora/program"),
 }
 
 

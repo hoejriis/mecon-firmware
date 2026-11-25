@@ -14,7 +14,9 @@
 #include "helpers/cli/CliPolicy.h"
 #include "helpers/deployment/DepAuthority.h"
 #include "helpers/iface/IfaceJson.h"
+#ifdef UPD_LORA
 #include "helpers/iface/JobLora.h"
+#endif
 #ifdef UPD_DOWNLOAD
 #include "helpers/mqtt/MqttNet.h"
 #if defined(SIM_FREE_HEAP)
@@ -158,10 +160,12 @@ void UpdateService::endTransfer(bool erase) {
   }
   if (_readback) { memset(_readback, 0, sizeof(*_readback)); delete _readback; _readback = nullptr; }
   memset(_token, 0, sizeof(_token));   // the token dies with the transfer
+#ifdef UPD_LORA
   if (_xfer) { delete _xfer; _xfer = nullptr; }
   bulkKeysWipe(&_keys);
   _ans_ready = false;
   _orphan[0] = 0;
+#endif
 #ifdef UPD_DOWNLOAD
   if (_phase == DOWNLOADING || _dl_started) _dl_close_pending = true;   // closed once the worker is idle (loop)
   _dl_started = _dl_connected = false;
@@ -249,6 +253,7 @@ Status UpdateService::stage(OpContext& c, char* text, size_t len, const uint8_t 
   return ST_OK;
 }
 
+#ifdef UPD_LORA
 // update.manifest.part (LORA_UPDATES.md section 5): the manifest text and its signature in at most 4 parts. A part costs no
 // signature check, so only the last one, which runs the staging, counts against the one-stage-a-second limit.
 Status UpdateService::opManifestPart(OpContext& c, uint32_t now_ms) {
@@ -292,6 +297,7 @@ Status UpdateService::opManifestPart(OpContext& c, uint32_t now_ms) {
   if (memcmp(h, sha, 32) != 0) { free(text); c.error = "bad-args"; return ST_INVALID; }   // the key names the text it holds
   return stage(c, text, len, sig, now_ms);
 }
+#endif
 
 Status UpdateService::opStatus(OpContext& c) {
   JsonWriter& w = *c.out;
@@ -304,10 +310,15 @@ Status UpdateService::opStatus(OpContext& c) {
     w.key("job"); w.str(j->id);
     w.key("state"); w.str(jobStateName(j->state));
     if (_phase != IDLE && strcmp(_job, j->id) == 0) {
+#ifdef UPD_LORA
       const bool lora = _phase == LORA && _xfer;   // frames, not bytes, are what a LoRa transfer counts
       const uint32_t frames = lora ? _xfer->next() : 0;
       w.key("received"); w.unum(lora ? (frames * BULK_DATA < _size ? frames * (uint32_t)BULK_DATA : _size) : _received);
       w.key("next"); w.unum(lora ? frames : _received);
+#else
+      w.key("received"); w.unum(_received);
+      w.key("next"); w.unum(_received);
+#endif
       w.key("size"); w.unum(_size);
       w.key("version"); w.str(_version);
       w.key("sha256"); hex(w, _image_sha, 32);
@@ -350,7 +361,11 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   const JobTable::Lookup l = t->find(jid, &known);
   // A job never runs twice, but a paused LoRa transfer may be offered again to resume it (a manager that cannot reuse the
   // job id, as a signed request cannot, names the same manifest under a new one: see `paused` below).
+#ifdef UPD_LORA
   const bool known_paused = l == JobTable::FOUND && known->state == JOB_PAUSED && jobLoraGet(*known, nullptr);
+#else
+  const bool known_paused = false;
+#endif
   if (l == JobTable::FOUND && !known_paused) { JobService::writeSummary(*c.out, *known); return ST_OK; }
   if (l == JobTable::EXPIRED) { c.error = "result-expired"; return ST_FAILED; }
 
@@ -370,9 +385,10 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   const int tu = jsonFind(d, src, "url");
   const int tl = jsonFind(d, src, "lora");
   Url url = {};
-  LoraSource ls = {};
   const bool by_url = tu >= 0;
   const bool by_lora = tl >= 0 && tu < 0;
+#ifdef UPD_LORA
+  LoraSource ls = {};
   if (by_lora) {   // before preflight (LORA_UPDATES.md section 4)
     uint32_t now_unix = 0;
     const bool clock_known = deviceClock(&now_unix);
@@ -384,6 +400,10 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     if (lv == LS_UNSUPPORTED) { c.error = "unsupported"; return ST_REFUSED; }   // the fast preset is a later slice
     if (slotCapacity() == 0 || slotIsDfuBoard()) { c.error = "unsupported-source"; return ST_REFUSED; }   // no inactive slot
   } else if (by_url) {
+#else
+  if (by_lora) { c.error = "unsupported-source"; return ST_REFUSED; }   // this build carries no LoRa update path (UpdFeatures.h)
+  if (by_url) {
+#endif
 #ifdef UPD_DOWNLOAD
     char text[257];   // at most 256 bytes (section 6)
     if (d.tok[src].size != 1 || !jsonGetString(d, tu, text, sizeof(text), CS_ANY, 1) || !parseUrl(text, &url)) {
@@ -411,11 +431,15 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   Job* open = t->openJob();                                                                                         // 3
   // A paused LoRa transfer of this very manifest: the offer resumes it, which erases nothing, so the rate limit (which
   // protects the slot from being erased again) does not apply.
+#ifdef UPD_LORA
   JobLora kept = {};
   Job* paused = by_lora && open && owns(*open) && open->state == JOB_PAUSED && jobLoraGet(*open, &kept) &&
                         memcmp(kept.manifest, msha, 32) == 0 ? open : nullptr;
   if (known_paused && !paused) { JobService::writeSummary(*c.out, *known); return ST_OK; }
   if (paused && ls.window_end <= kept.window_end) { c.error = "bad-args"; return ST_INVALID; }   // a resume needs a later window
+#else
+  Job* const paused = nullptr;
+#endif
   if (!paused && _offered_once && (uint32_t)(now_ms - _last_offer_ms) < OFFER_GAP_MS) { c.error = "rate"; return ST_BUSY; }   // 2
   // An image on trial (installed, its start-up checks not yet passed): the slot an install writes holds the image the
   // bootloader would return to, so nothing is written until this one is proven (esp_ota_begin refuses then too).
@@ -451,7 +475,6 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   // once this answer has gone out. The Reader then sends the package.
   if (m->kind == KIND_BOOTLOADER_DFU) {
     if (by_url) { free(m); c.error = "unsupported-source"; return ST_REFUSED; }   // the bootloader takes it over USB only
-    if (by_lora) { free(m); c.error = "unsupported-source"; return ST_REFUSED; }   // and a LoRa source needs a slot
     if (open) {   // no supersede here: a DFU replaces the whole image, and one job at a time
       snprintf(g_open_error, sizeof(g_open_error), "job-open:%s", open->id);
       free(m);
@@ -480,11 +503,13 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     return ST_OK;
   }
 
+#ifdef UPD_LORA
   if (paused) {
     const Status r = loraResume(c, *paused, ls, (uint32_t)within, *m, now_ms);
     free(m);
     return r;
   }
+#endif
 
   CryptoRNG rng;
   uint8_t token[16];
@@ -536,7 +561,11 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   j->cls = (uint8_t)(1u << Cli::C_UPDATE);
   if (_host.record_caller) _host.record_caller(_host.user, *j);
 
+#ifdef UPD_LORA
   _phase = by_url ? DOWNLOADING : by_lora ? LORA : RECEIVING;
+#else
+  _phase = by_url ? DOWNLOADING : RECEIVING;
+#endif
   strncpy(_job, jid, sizeof(_job) - 1);
   _job[sizeof(_job) - 1] = 0;
   if (!by_url) memcpy(_token, token, sizeof(_token));   // a download has no chunks, so no token
@@ -553,6 +582,7 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   _last_chunk_ms = now_ms;
   _offered_once = true;
   _last_offer_ms = now_ms;
+#ifdef UPD_LORA
   if (by_lora) {
     if (!loraBegin(j->id, token, ls.block, loraDeadline(ls, now_ms), now_ms, 0)) {
       free(m);
@@ -568,6 +598,7 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     memcpy(l.manifest, msha, 32);
     jobLoraPut(*j, l);
   }
+#endif
   free(m);
   persist();
 
@@ -579,6 +610,7 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
   w.key("state"); w.str(jobStateName(j->state));
   if (!by_url) { w.key("transfer_token"); w.str(tok); }   // only here: never in the job, its events, update.status or a log
   w.key("next"); w.unum(0);
+#ifdef UPD_LORA
   if (by_lora) {   // the shape of the transfer (LORA_UPDATES.md section 4); nothing is compressed in this slice
     w.key("size"); w.unum(_size);
     w.key("transfer_size"); w.unum(_size);
@@ -586,6 +618,7 @@ Status UpdateService::opOffer(OpContext& c, uint32_t now_ms) {
     w.key("frame_bytes"); w.unum((uint32_t)BULK_DATA);
     w.key("frames_total"); w.unum(bulkFramesTotal(_size));
   }
+#endif
   memset(tok, 0, sizeof(tok));
   return ST_OK;
 }
@@ -646,6 +679,7 @@ Status UpdateService::opChunk(OpContext& c, uint32_t now_ms) {
   return ST_OK;
 }
 
+#ifdef UPD_LORA
 // ---- a transfer over LoRa (docs/contract/LORA_UPDATES.md)
 
 // The number bulk frames name a transfer by: a signed request's own job number ("#<issuer>:<number>"), else a hash of the id.
@@ -849,6 +883,7 @@ bool UpdateService::loraAnswer(uint8_t out[ANSWER_LEN]) {
   _ans_ready = false;
   return true;
 }
+#endif  // UPD_LORA
 
 // ---- the work between requests
 
@@ -909,6 +944,7 @@ void UpdateService::loop(uint32_t now_ms) {
   }
 #endif
   if (_erasing) { _erasing = slotEraseStep(); return; }
+#ifdef UPD_LORA
   if (_orphan[0] && _phase == IDLE) {   // a paused LoRa job found at boot: if it was cancelled, its partial image goes
     JobTable* t = table();
     Job* j = nullptr;
@@ -918,6 +954,7 @@ void UpdateService::loop(uint32_t now_ms) {
       _erasing = true;
     }
   }
+#endif
   if (_phase == IDLE) return;
 
   // A job.cancel ends the transfer: the job service cancelled it, and the slot is erased here.
@@ -933,6 +970,7 @@ void UpdateService::loop(uint32_t now_ms) {
     return;
   }
 
+#ifdef UPD_LORA
   if (_phase == LORA) {   // the window, the duty window, the manager's silence and the 7 days are the transfer's own timers
     if (_xfer) {
       _xfer->tick(now_ms);
@@ -940,6 +978,7 @@ void UpdateService::loop(uint32_t now_ms) {
     }
     return;
   }
+#endif
   if (_phase == RECEIVING) {
     if ((uint32_t)(now_ms - _last_chunk_ms) >= STALL_MS) failJob("stalled");
     return;
@@ -1180,8 +1219,10 @@ void UpdateService::confirmFromRecord(Job& j) {
 // confirmed, so an image the bootloader rolls back never does) or runs unconfirmed because the previous one kept failing.
 void UpdateService::bootReconcile() {
   reconcile();
+#ifdef UPD_LORA
   Job* o = openUpdateJob();
   if (o && o->state == JOB_PAUSED && jobLoraGet(*o, nullptr)) snprintf(_orphan, sizeof(_orphan), "%s", o->id);
+#endif
   if (runningState() != RS_PENDING && !_stranded) floorAtBoot();
 }
 
@@ -1300,6 +1341,7 @@ void UpdateService::reconcile() {
 }
 
 bool UpdateService::jobRevert(Job& j) {
+#ifdef UPD_LORA
   if (j.state == JOB_PAUSED) {   // a paused transfer waited 7 days for its manager (LORA_UPDATES.md section 7)
     if (_phase != IDLE && strcmp(_job, j.id) == 0) {
       endTransfer(true);
@@ -1323,6 +1365,7 @@ bool UpdateService::jobRevert(Job& j) {
     snprintf(_orphan, sizeof(_orphan), "%s", j.id);
     return true;
   }
+#endif
   if (j.state != JOB_AWAITING) {   // cut while the image was arriving (the boot rule): the transfer is lost
     if (_phase != IDLE && strcmp(_job, j.id) == 0) endTransfer(true);
     finish(j, JOB_FAILED, "\"error\":\"interrupted\"");

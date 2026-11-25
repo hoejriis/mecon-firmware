@@ -52,12 +52,15 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock", "deployment.continuity.put", "deployment.continuity.export",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "clock.back", "advert.send", "device.reboot", "device.reset", "identity.key.export",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
-                                    "update.manifest", "update.manifest.part", "update.status", "update.offer", "update.chunk",
+                                    "update.manifest", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect", "contact.capacity",
                                     "message.send", "message.get", "message.list", "message.ack",
                                     "inbox.list", "inbox.ack", "message.deliver", "lora.trace",
                                     "identity.delegate.put", "identity.delegate.delete", "identity.delegate.list",
                                     "scope.default.get", "scope.default.set", "scope.default.clear", "audit.list"
+#ifdef UPD_LORA
+                                    , "update.manifest.part"
+#endif
 #if defined(BLE_PIN_CODE)
                                     , "ble.bonds", "ble.pin.get", "ble.pin.set"
 #endif
@@ -118,8 +121,10 @@ Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, mil
 Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
 Status opUpdOffer(OpContext& c) { return self(c)->updates().opOffer(c, millis()); }
 Status opUpdChunk(OpContext& c) { return self(c)->updates().opChunk(c, millis()); }
+#ifdef UPD_LORA
 Status opUpdManifestPart(OpContext& c) { return self(c)->updates().opManifestPart(c, millis()); }
-#ifdef SIM_FREE_HEAP
+#endif
+#if defined(SIM_FREE_HEAP) && defined(UPD_LORA)
 // Only in the simulator, until a later slice wires the LoRa link: one bulk frame, as hex, as the target heard it at this
 // moment, and the answer the transfer gave to it (hex, or null). No frame: only the answer that is waiting.
 Status opUpdLoraFrame(OpContext& c) {
@@ -224,8 +229,10 @@ const OpEntry OPS[] = {
   {"job.confirm", opJobConfirm, PRIV_WRITE, true},
   // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
   {"update.manifest", opUpdManifest, PRIV_READ, false},
+#ifdef UPD_LORA
   {"update.manifest.part", opUpdManifestPart, PRIV_READ, false},
-#ifdef SIM_FREE_HEAP
+#endif
+#if defined(SIM_FREE_HEAP) && defined(UPD_LORA)
   {"update.lora.frame", opUpdLoraFrame, PRIV_READ, false},
 #endif
   {"update.status", opUpdStatus, PRIV_READ, false},

@@ -171,6 +171,10 @@ claimed board by board, in [hardware evidence](../HARDWARE_VERIFIED.md), only wh
 | nRF52840 with external QSPI flash | staged in QSPI, then copied into the application by a step to be designed | to be designed (section 12) | none: the bootloader keeps one image | Wio Tracker L1 |
 | nRF52840 without enough external flash | not enabled | — | — | SenseCAP T1000-E |
 
+A build compiles the path in only where it is enabled (`UPD_LORA`, `src/helpers/updates/UpdFeatures.h`): an ESP32 build and the
+simulator. Any other build, the nRF52 envs included, carries none of it: no `update.manifest.part` (it answers `unknown-op`, and
+`hello` does not list it), no bulk codec, no transfer, and an offer with `source.lora` answers `refused`, `unsupported-source`.
+
 A staged nRF52 image is verified against the manifest's digest in QSPI before anything is copied. Writes to QSPI keep
 page alignment, including the image's ragged end.
 

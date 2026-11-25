@@ -1,4 +1,5 @@
 #include "UpdSlot.h"
+#include "UpdFeatures.h"
 #include <string.h>
 #include "helpers/MeconVersion.h"
 #include "helpers/deployment/DepHmac.h"
@@ -227,8 +228,10 @@ const esp_partition_t* g_part = nullptr;
 uint32_t g_written = 0, g_erase_at = 0, g_erase_end = 0;
 // A resumed write (slotResume) has no esp_ota handle: it writes the partition itself. g_size is the image's; g_next_erase
 // is the start of the next sector no write has yet reached (every sector before it is erased or holds image bytes).
+#ifdef UPD_LORA
 bool g_resumed = false;
 uint32_t g_size = 0, g_next_erase = 0;
+#endif
 
 }  // namespace
 
@@ -241,7 +244,9 @@ uint32_t slotCapacity() {
 
 bool slotOpen(uint32_t size) {
   if (g_h) { esp_ota_abort(g_h); g_h = 0; }
+#ifdef UPD_LORA
   g_resumed = false;
+#endif
   g_part = esp_ota_get_next_update_partition(nullptr);
   if (!g_part || size == 0 || size > g_part->size) return false;
   g_written = 0;
@@ -251,6 +256,7 @@ bool slotOpen(uint32_t size) {
   return true;
 }
 
+#ifdef UPD_LORA
 // A cut write goes on (UpdSlot.h), on the partition itself: esp_ota_begin would erase what is already there. The first
 // sector a write reaches is the first one that starts at or after `offset`, so the one holding `offset` is never erased.
 bool slotResume(uint32_t size, uint32_t offset) {
@@ -266,7 +272,12 @@ bool slotResume(uint32_t size, uint32_t offset) {
   return true;
 }
 
+#else
+bool slotResume(uint32_t, uint32_t) { return false; }
+#endif
+
 bool slotWrite(uint32_t offset, const uint8_t* p, size_t n) {
+#ifdef UPD_LORA
   if (g_resumed) {
     if (!g_part || offset != g_written || n > g_size - g_written) return false;
     while (g_next_erase < offset + n) {   // a sector this write reaches for the first time
@@ -277,6 +288,7 @@ bool slotWrite(uint32_t offset, const uint8_t* p, size_t n) {
     g_written += (uint32_t)n;
     return true;
   }
+#endif
   if (!g_h || offset != g_written) return false;
   if (esp_ota_write(g_h, p, n) != ESP_OK) return false;
   g_written += (uint32_t)n;
@@ -288,6 +300,7 @@ bool slotRead(uint32_t offset, uint8_t* p, size_t n) {
 }
 
 bool slotFinish() {
+#ifdef UPD_LORA
   if (g_resumed) {   // no esp_ota handle to end: the image's own format and checksum are checked as esp_ota_end does
     g_resumed = false;
     if (!g_part || g_written != g_size) return false;
@@ -295,6 +308,7 @@ bool slotFinish() {
     esp_image_metadata_t md;
     return esp_image_verify(ESP_IMAGE_VERIFY, &pos, &md) == ESP_OK;
   }
+#endif
   if (!g_h) return false;
   const esp_err_t e = esp_ota_end(g_h);   // checks the image's own format and checksum
   g_h = 0;
@@ -303,7 +317,9 @@ bool slotFinish() {
 
 void slotAbandon() {
   if (g_h) { esp_ota_abort(g_h); g_h = 0; }
+#ifdef UPD_LORA
   g_resumed = false;
+#endif
   if (!g_part) return;
   esp_partition_erase_range(g_part, 0, SECTOR);   // the image header: the slot holds nothing bootable from here on
   g_erase_at = SECTOR;

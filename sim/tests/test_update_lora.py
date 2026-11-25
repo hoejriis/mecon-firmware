@@ -123,7 +123,6 @@ def install_and_confirm(n, img, job):
 def test_an_image_arrives_over_lora_installs_attests_and_is_confirmed(nodes):
     img = image(9000)   # 79 frames: ten blocks of eight, the last of seven
     n, d = start(nodes, "lo", 61)
-    assert "update.manifest.part" in d.hello["capabilities"]
     text = manifest_for(d, img)
     assert len(parts_of(text)) == 4, "a manifest of this length is four parts"
     msha = stage_parts(d, text, order=[2, 0, 3, 1])
@@ -439,3 +438,24 @@ def test_a_signed_offer_and_a_signed_resume_under_a_newer_job_id(nodes):
     assert r["result"]["answer"] is None and job_get(d, job)["next"] == 8, "the new request's own number is another transfer's"
     assert t.run(8) == (72, 79, 0b1111111)
     assert d.n.wait_exit(15) == 75, "the resumed transfer verified and activated"
+
+
+def test_a_build_without_the_lora_update_path_refuses_a_lora_offer_and_has_no_manifest_part(nodes):
+    """UPD_NO_LORA stands for a build that does not carry the path (an nRF52 build, src/helpers/updates/UpdFeatures.h)."""
+    n = nodes("companion_standalone_nolora", "ln", seed=71, rtc=RTC)
+    declare(n, "v1.18.0-mecon.0.50.0")
+    d = Dev(n.start())
+    assert "update.manifest.part" not in d.hello["capabilities"] and "update.offer" in d.hello["capabilities"]
+    img = image(3000)
+    text = manifest_for(d, img, variant="sim_companion_standalone_nolora")
+    r = d.i.request("update.manifest.part", parts_of(text)[0])
+    assert r["status"] == "unknown-op", r
+    r = d.stage(text)
+    assert r["status"] == "ok", r
+    msha = r["result"]["sha256"]
+    r = d.i.request("update.offer", {"manifest_sha256": msha, "issued_at": RTC,
+                                     "source": {"lora": {"block": 8, "window_end": RTC + 600}}}, rid="ln-1")
+    assert (r["status"], r["error"]) == ("refused", "unsupported-source"), r
+    assert d.i.request("update.status")["result"]["job"] is None
+    r = d.i.request("update.offer", {"manifest_sha256": msha, "source": {"push": True}}, rid="ln-2")
+    assert r["status"] == "ok", "a push offer is as before: %s" % r

@@ -15,6 +15,13 @@
 #include <stdint.h>
 #include <string.h>
 
+// Called from many places, so kept out of line: one copy of each costs less than a copy at every call.
+#if defined(__GNUC__)
+#define JOBS_NOINLINE __attribute__((noinline))
+#else
+#define JOBS_NOINLINE
+#endif
+
 namespace Iface {
 
 enum JobState : uint8_t {
@@ -112,7 +119,7 @@ public:
 
   // A new job in state accepted. Null when a job is open (the caller answers busy, job-open:<open id>), when the id is
   // already known (the caller answers the job, or result-expired), or when the id or op does not fit.
-  Job* open(const char* id, const char* op) {
+  JOBS_NOINLINE Job* open(const char* id, const char* op) {
     if (!id || !op || !*id || strlen(id) > Job::ID_CAP || strlen(op) > Job::OP_CAP) return nullptr;
     if (openJob()) return nullptr;
     Job* known;
@@ -127,8 +134,14 @@ public:
     return slot;
   }
 
+  // Zeroes everything past a job's result (Job::priv). Out of line: setState is inlined at every call, and this is not small.
+#if defined(__GNUC__)
+  __attribute__((noinline))
+#endif
+  static void wipeTail(Job* j) { memset(j->result + j->result_len, 0, Job::RESULT_CAP - j->result_len); }
+
   // A state change. A terminal job never moves again. awaiting-confirm is entered with awaitConfirm(), never here.
-  bool setState(Job* j, uint8_t state, const char* result = nullptr, size_t len = 0) {
+  JOBS_NOINLINE bool setState(Job* j, uint8_t state, const char* result = nullptr, size_t len = 0) {
     if (!j || !j->state || jobTerminal(j->state) || state < JOB_ACCEPTED || state > JOB_PAUSED || state == JOB_AWAITING)
       return false;
     if (result) {
@@ -137,7 +150,7 @@ public:
       j->result_len = (uint16_t)len;
     }
     j->state = state;
-    if (jobTerminal(state)) memset(j->result + j->result_len, 0, Job::RESULT_CAP - j->result_len);   // see Job::priv
+    if (jobTerminal(state)) wipeTail(j);   // see Job::priv
     return true;
   }
 
