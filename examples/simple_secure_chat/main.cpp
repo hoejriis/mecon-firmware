@@ -617,6 +617,7 @@ void setup() {
 void loop() {
   the_mesh.loop();
   rtc_clock.tick();
+  board.loop();   // let the board feed its watchdog (Issue #641), as every other example does
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
 #endif

@@ -381,8 +381,8 @@ DispatcherAction Dispatcher::recvOnWorker(Packet* pkt) {
   // The hand-off is synchronous: run() returns only once the job has finished, and the loop task waits meanwhile, so
   // mesh state (tables, queues, prefs, the file system) still has one runner at a time. A run() that returned with the
   // job unfinished would break that, and with it every assumption below: reset rather than carry on.
-  // The wait bounds a handler that never ends: an overrun resets the device (NrfWorker.h). There is no hardware
-  // watchdog on these builds; one added later needs a timeout longer than this wait.
+  // The wait bounds a handler that never ends: an overrun resets the device (NrfWorker.h). The hardware watchdog
+  // (NRF52Board.cpp, 120 s) has a longer timeout than this wait, so the wait's own reset comes first.
   RecvJob job = {this, pkt, ACTION_RELEASE, false};
   if (NrfWorker::run(recvJob, &job, 30000)) {
     if (!job.done) NVIC_SystemReset();
