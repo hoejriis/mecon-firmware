@@ -262,6 +262,7 @@ so a manager can collect it later over any link.
   three months); at a period of 450 s or less a write holds 8. These are estimates from the measured 5 erases a save, not
   measured on a board. **On nRF52, up to 8 kept reports or 1 hour of them may be lost on a power cut** (the cursors they took are
   then given out again, and nothing counts them in `dropped`, since nothing on the device can tell).
+  On nRF52 a kept instruction wears one flash page. At a 900 s period that page reaches the chip's rated minimum (10,000 erases, an estimate from the measured 5 erases per save) in about three months. At 3,600 s, about a year. Use the longest period the purpose allows, and prefer an ESP32 board for long-running kept instructions. The rating is a minimum, not a failure point.
 - **Collecting.** `report.list {"after": <cursor>, "limit": n}` (`limit` 1 to 8, 8 by default) answers
   `{"reports": [{"cursor", "boot", "seq", "report": <base64>}], "more", "dropped", "withheld"}`, oldest first, paged
   like `inbox.list` (a page stops where the answer would not fit its link: 1,100 bytes of result, 760 over LoRa; the next
