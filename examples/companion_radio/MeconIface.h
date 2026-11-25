@@ -232,6 +232,7 @@ private:
   static bool jobRevert(void* self, Iface::Job& j);
   static bool jobConfirm(void* self, Iface::Job& j);
   static bool updSigned(void* self);
+  static bool updClock(void* self, uint32_t* unix_s);
   static void updReboot(void* self);
   static bool jobClasses(void* self, uint8_t cls);
   static void jobChanged(void* self, const Iface::Job& j);

@@ -1,6 +1,6 @@
 # Signed firmware updates over LoRa (contract draft)
 
-> **Status: draft for review, version 0 (2026-11-23).** Built so far: the bulk frame and answer codec (`LoraBulk`) and the target's transfer state (`LoraTransfer`: blocks, answers, durable `next`, pauses), both built, not yet wired to `update.offer`; nothing else here is built. It extends the [signed update](UPDATES.md)
+> **Status: draft for review, version 0 (2026-11-23).** Built so far, on main and in no release yet: the bulk frame and answer codec (`LoraBulk`), the target's transfer state (`LoraTransfer`), and the target side of the transfer: `update.manifest.part`, an `update.offer` with `source.lora`, the `paused` job state and its resume, the writing of the slot (with durable `next`) and the verify, activate and confirm a push has. Target side built; not yet reachable over the air: the LoRa link and the gateway's `rf.bulk` are the next slice, so until then the frames reach the target only through a simulator test hook, and nothing here is bench-verified. Deflate and the fast preset are not built (an offer naming a preset is `unsupported`). It extends the [signed update](UPDATES.md)
 > lifecycle to a LoRa delivery path and [management over LoRa](LORA_MANAGEMENT.md) to carry image bytes. It is written to
 > be agreed between this firmware and a public manager (the reference Backend), before either implements it. Section 12
 > lists what is still open. Until this draft is accepted, `update.*` stays off LoRa as LORA_MANAGEMENT says.
@@ -44,28 +44,32 @@ The gateway reuses `rf.request` (OPERATIONS) for signed requests, and adds one r
 
 ## 4. The offer
 
-`update.offer {"manifest_sha256", "source": {"lora": {"block": 8, "window_end": <unix s>, "preset": <optional>}},
-"confirm": {"within_s"}}`, signed by a member, with a `job_id`, point to point only.
+`update.offer {"manifest_sha256", "issued_at": <unix s>, "source": {"lora": {"block": 8, "window_end": <unix s>, "preset": <optional>}},
+"confirm": {"within_s"}}`, signed by a member, with a `job_id`, point to point only. `issued_at` is the manager's clock when it
+signed the offer; it is inside the signed body, and the window is measured from it. It is required with `source.lora`.
 
-- `block`: bulk frames per block, 1 to 8. The target answers once per block (section 6).
+- `block` (**required**): bulk frames per block, 1 to 8; any other value, or no value, is `invalid`, `bad-args`. The target answers once per block (section 6). A `source.lora` with any key beside `block`, `window_end` and `preset` is `invalid`, `bad-args` too, and so is a `source` that names another source as well.
 - `window_end` (**required**): the time after which the target takes no more bulk frames for this job, and pauses
   (section 7). It puts the project owner's night window into the signed request, so a manager that stops or loses its
   clock cannot keep a transfer running into the day. Missing, already past, or more than 12 hours after the offer's
   `issued_at` is `invalid`, `bad-args`. The target also bounds it by its own monotonic clock: the window ends at the
   earlier of `window_end` and the offer's receipt plus (`window_end` − `issued_at`). A wrong device clock can therefore
   only shorten a window, never lengthen it.
-- `preset`: only if section 9 allows it.
-- The answer, `{"job", "state": "accepted", "transfer_token", "size", "transfer_size", "encoding", "next": 0,
+- `preset`: only if section 9 allows it. The fast preset is a later slice: until it is built any `preset` is `refused`, `unsupported`. It is read after the rest of `source.lora`, so a malformed one is `invalid` first.
+- The answer, `{"job", "state": "accepted", "transfer_token", "size", "transfer_size", "encoding": "raw", "next": 0,
   "frame_bytes", "frames_total"}`, travels only point to point, in a result that is itself signed when the target is
   enrolled. `size` is the image as it will run; `transfer_size` the bytes that travel (equal to `size` unless
   `encoding` is `deflate`); `frames_total` is `transfer_size` divided by `frame_bytes`, rounded up. Frames index the
   transferred bytes, never the inflated image.
 - **The token is the manager's to keep.** A Backend keeps it with the job, encrypted at rest, and deletes it when the
-  job ends. A manager that lost it resumes with a same-job re-offer (section 7), which answers the same token.
+  job ends. A manager that lost it resumes with a re-offer (section 7), which answers the same token.
 
-An offer over LoRa is refused `unsupported-source` on a board that does not offer this path, with
-`invalid`, `bad-args` for a malformed `source.lora`, and as any update offer otherwise (UPDATES sections 4 to 6). The
-one-job lock (OPERATIONS section 3.3) holds: while the transfer is open, no other state-changing job runs.
+An offer over LoRa is refused `unsupported-source` on a board that does not offer this path (one that installs through its
+bootloader, the nRF52, or has no second image slot), with `invalid`, `bad-args` for a malformed `source.lora`, and as any
+update offer otherwise (UPDATES sections 4 to 6). The checks of this section come before preflight, which then runs as for a
+push, rate limit and all. The one-job lock (OPERATIONS section 3.3) holds: while the transfer is open or paused, no other
+state-changing job runs. `image.encoding` (a deflate transfer, section 6) is not in the manifest format yet: a manifest that
+carries it is refused at staging, `bad-manifest`, so no offer can name one.
 
 ## 5. Staging the manifest
 
@@ -73,10 +77,16 @@ A signed stage of the longest manifest is about 1,480 bytes, more than the 1,024
 (LORA_MANAGEMENT section 4). The manifest carries its own release signature, so its parts need no Deployment signature:
 
 - `update.manifest.part {"sha256", "part", "parts", "data"}`: `sha256` of the manifest text as UPDATES section 8 keys it,
-  at most 4 parts, `data` canonical base64. It is a **signed** request like every request over LoRa (LORA_MANAGEMENT
+  at most 4 parts, `part` counted from 1 to `parts`, `data` canonical base64 of at most 176 bytes. The parts, joined in order of
+  `part`, are the manifest text followed by its 64-byte signature (raw), so the longest is 640 + 64 = 704 bytes in four parts
+  of 176. A joined text whose SHA-256 is not `sha256` is `invalid`, `bad-args`, and the parts are spent. It is a **signed** request like every request over LoRa (LORA_MANAGEMENT
   section 2), with no `job_id` (a read-class staging, as `update.manifest` is).
 - The target reassembles in a RAM slot keyed by `sha256`, then runs exactly what `update.manifest` runs. A part for
-  another hash, or a part count that changes, discards the slot.
+  another hash, or a part count that changes, discards the slot (the new part starts a new one); a part held already is
+  replaced; parts may arrive in any order. While parts are missing it answers `{"sha256", "part", "parts", "held"}`, the
+  parts held now; with the last it answers what `update.manifest` answers, `{"sha256", "version", "preflight"}`. A part costs no
+  signature check, so only the staging, which the last part runs, counts against the one-stage-a-second limit (`busy`, `rate`);
+  the parts stay for the same last part to be sent again. A refused staging (a wrong signature or target) spends the parts.
 - `update.manifest` itself (the whole manifest in one message) is also offered over LoRa for a manifest short enough to
   fit.
 
@@ -126,11 +136,22 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
   for 30 minutes). `job.get` on an open or paused LoRa transfer reports `next`, `frames_total`, `window_end` and, when
   paused, `reason`.
 - **What a pause keeps.** On ESP32 the slot as written so far and `next`, in the job's entry, so a pause survives a
-  reboot of the target. This is a change from the private 0.9x line, which kept a partial download in RAM only.
+  reboot of the target. This is a change from the private 0.9x line, which kept a partial download in RAM only. The job's entry
+  also keeps the token and the manifest's hash (in the private bytes of the job table's entry, never in a read). A transfer that
+  is open when the target reboots comes back `paused`, reason `manager`, with the `next` last kept, which is saved every 64
+  frames and at a pause; frames after it are sent again, and writing them again rewrites the same bytes. The slot is reopened
+  where the kept `next` ends without erasing what is there: a sector is erased only when a write first reaches its start.
 - **Resume.** A new signed `update.offer` naming the same manifest, with a later `window_end`, while the job is paused,
-  resumes it: same job, same token, `next` as kept. Any other offer supersedes it (UPDATES section 7).
-- **Deadlines.** A paused job ends `failed`, `stalled`, after 7 days without a resume, and the slot is erased. Every other
-  LoRa state keeps LORA_MANAGEMENT section 8's deadlines.
+  resumes it: same job, same token, `next` as kept; the answer is the offer's answer, with `next` as it stands. The offer may
+  repeat the job's `job_id` or, since a signed request cannot reuse a job number (AUTHORITY section 8), carry a new one: it is
+  matched by the manifest, and the answer names the job it resumes. The manifest has to be staged again after a reboot. A
+  window that is not later is `invalid`, `bad-args`, and changes nothing. Any other offer supersedes it (UPDATES section 7).
+  The resume skips the 60 s limit on offers, which protects the slot from being erased, since it erases nothing.
+- **The job.** `job.get` on an open or paused transfer adds `next`, `frames_total`, `window_end` and, paused, `reason`. A paused
+  job is open, so it keeps the one-job lock, and `job.cancel` ends it `cancelled` and erases the slot.
+- **Deadlines.** A paused job ends `failed`, `stalled`, after 7 days without a resume, and the slot is erased. The days are
+  counted as running time in the job's entry, saved hourly, so a reboot does not start them again (and loses at most an hour of
+  them). Every other LoRa state keeps LORA_MANAGEMENT section 8's deadlines.
 
 ## 8. Platforms
 
@@ -189,7 +210,9 @@ So that the firmware can be built and proven without either Backend:
   frame (dropped), a bulk frame offered to the manager as an answer (dropped), and frames of a wrong length, short and
   long, before the last (dropped) (`test/fixtures/lora_updates_v1.json`);
 - simulator tests for loss, reordering, a stranger's frames, a reboot mid-transfer, a pause and a resume, cancellation,
-  and the duty reserve.
+  and the duty reserve. Until the LoRa link is built the simulator's standalone Companion has a test-only operation,
+  `update.lora.frame {"frame": <hex>}`, that hands the target one bulk frame and returns the block answer it gave, if any;
+  firmware builds do not have it.
 
 A Backend implements the manager side of sections 3 to 7 against the same fixtures.
 

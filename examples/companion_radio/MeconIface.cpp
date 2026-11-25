@@ -52,7 +52,7 @@ const char* const CAPABILITIES[] = {"hello", "status.get", "config.schema", "con
                                     "deployment.authority_update", "deployment.reset", "deployment.set_unlock", "deployment.continuity.put", "deployment.continuity.export",
                                     "deployment.unlock_challenge", "deployment.unlock", "identity.rotate", "identity.rotation", "identity.get", "clock.get", "clock.set", "clock.back", "advert.send", "device.reboot", "device.reset", "identity.key.export",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm",
-                                    "update.manifest", "update.status", "update.offer", "update.chunk",
+                                    "update.manifest", "update.manifest.part", "update.status", "update.offer", "update.chunk",
                                     "contact.list", "contact.get", "contact.put", "contact.remove", "contact.protect", "contact.capacity",
                                     "message.send", "message.get", "message.list", "message.ack",
                                     "inbox.list", "inbox.ack", "message.deliver", "lora.trace",
@@ -118,6 +118,31 @@ Status opUpdManifest(OpContext& c) { return self(c)->updates().opManifest(c, mil
 Status opUpdStatus(OpContext& c) { return self(c)->updates().opStatus(c); }
 Status opUpdOffer(OpContext& c) { return self(c)->updates().opOffer(c, millis()); }
 Status opUpdChunk(OpContext& c) { return self(c)->updates().opChunk(c, millis()); }
+Status opUpdManifestPart(OpContext& c) { return self(c)->updates().opManifestPart(c, millis()); }
+#ifdef SIM_FREE_HEAP
+// Only in the simulator, until a later slice wires the LoRa link: one bulk frame, as hex, as the target heard it at this
+// moment, and the answer the transfer gave to it (hex, or null). No frame: only the answer that is waiting.
+Status opUpdLoraFrame(OpContext& c) {
+  uint8_t f[Iface::BULK_ROOM + 8];
+  size_t n = 0;
+  char text[2 * sizeof(f) + 1];
+  const int t = c.req->args >= 0 ? jsonFind(*c.doc, c.req->args, "frame") : -1;
+  if (t >= 0) {
+    if (!jsonGetString(*c.doc, t, text, sizeof(text), CS_ANY, 2) || strlen(text) % 2) return ST_INVALID;
+    for (n = 0; text[2 * n]; n++) {
+      unsigned v;
+      if (sscanf(text + 2 * n, "%2x", &v) != 1) return ST_INVALID;
+      f[n] = (uint8_t)v;
+    }
+    self(c)->updates().loraFrame(f, n, millis());
+  }
+  uint8_t a[Iface::ANSWER_LEN];
+  JsonWriter& w = *c.out;
+  w.key("answer");
+  if (self(c)->updates().loraAnswer(a)) { char h[2 * sizeof(a) + 1]; hexOf(h, a, sizeof(a)); w.str(h); } else w.null();
+  return ST_OK;
+}
+#endif
 Status opContList(OpContext& c);
 Status opContGet(OpContext& c);
 Status opContPut(OpContext& c);
@@ -199,6 +224,10 @@ const OpEntry OPS[] = {
   {"job.confirm", opJobConfirm, PRIV_WRITE, true},
   // Staging a manifest changes nothing persistent; it is for any caller with read (UPDATES.md section 8).
   {"update.manifest", opUpdManifest, PRIV_READ, false},
+  {"update.manifest.part", opUpdManifestPart, PRIV_READ, false},
+#ifdef SIM_FREE_HEAP
+  {"update.lora.frame", opUpdLoraFrame, PRIV_READ, false},
+#endif
   {"update.status", opUpdStatus, PRIV_READ, false},
   // The offer is of the update class and keeps its result: a retry gets the same job and transfer token back. A chunk
   // is authorised by that token (DeployAuth::preAuthorize lets it through to the handler) and is not kept: its answer

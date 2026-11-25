@@ -64,6 +64,7 @@ UTF-8 JSON objects. A string may write any character as `\uXXXX`, a character ou
 | `job.ack` | releases an owed terminal result, `{"acked":true}` | read; once a device holds a Deployment record, signed with a `job_id` |
 | `job.cancel`, `job.confirm` | cancel a job, or revert it if it has applied; confirm a change awaiting confirmation | every CLI class the job's change needed |
 | `update.manifest` | stage a signed release manifest in RAM, checked against the release keys and this device ([UPDATES](UPDATES.md) section 8) | read |
+| `update.manifest.part` | one part of a release manifest, at most 4 parts; the last stages it as `update.manifest` does ([LORA_UPDATES](LORA_UPDATES.md) section 5) | read |
 | `update.offer` | open an update job for a staged manifest, after preflight; a push offer answers the job's `transfer_token` ([UPDATES](UPDATES.md) sections 4 to 7) | update: signed, or the cable of a device with no Deployment record |
 | `update.chunk` | one piece of the image at the offset expected next; answers `{"next"}` ([UPDATES](UPDATES.md) section 6) | the job's transfer token, in place of a class |
 | `update.status` | the open update job, the security floor and the staged manifests | read |

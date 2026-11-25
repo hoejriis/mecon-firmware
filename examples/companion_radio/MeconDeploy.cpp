@@ -44,7 +44,7 @@ void MeconIface::jobsLoad() {
                                 confirmRecordCaller, confirmRunAs, confirmJobId};
   _jobs.setClassCheck(jobClasses, this);
   _jobs.setOnChange(jobChanged, this);
-  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot});
+  _updates.setHost(Upd::UpdateService::Host{&_jobs, this, confirmJobId, confirmRecordCaller, updSigned, updReboot, updClock});
   _jobs_booting = true;   // a revert at boot needs no reboot: the links start after this, with the restored prefs
   _jobs.begin(&g_job_file, abnormalReset(board) == 1, jobRevert, jobConfirm, this);
   _jobs_booting = false;
@@ -160,6 +160,11 @@ bool MeconIface::jobConfirm(void* user, Iface::Job& j) {
 }
 
 bool MeconIface::updSigned(void* user) { return static_cast<MeconIface*>(user)->_auth.isSigned(); }
+
+bool MeconIface::updClock(void* user, uint32_t* unix_s) {
+  *unix_s = static_cast<MeconIface*>(user)->_mesh->getRTCClock()->knownTime();
+  return *unix_s != 0;
+}
 
 // After the answer has gone out: an activated image boots, or a reverted one goes back to the previous image. At boot
 // too, unlike a configuration revert: the image to run is chosen only by a reboot.

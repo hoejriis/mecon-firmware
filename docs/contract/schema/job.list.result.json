@@ -41,7 +41,8 @@
               "confirmed",
               "reverted",
               "failed",
-              "cancelled"
+              "cancelled",
+              "paused"
             ]
           },
           "owed": {

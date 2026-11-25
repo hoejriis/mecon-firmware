@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
+#include "helpers/iface/JobLora.h"
 #include "helpers/iface/Jobs.h"
 
 using namespace Iface;
@@ -221,6 +222,107 @@ TEST(Jobs, IdsAndOpsThatDoNotFitAreRefused) {
   EXPECT_EQ(nullptr, t.open("ok", std::string(33, 'o').c_str()));
   EXPECT_EQ(nullptr, t.open("", "config.apply"));
   EXPECT_NE(nullptr, t.open(std::string(32, 'x').c_str(), std::string(32, 'o').c_str()));
+}
+
+// A paused job (a firmware transfer over LoRa waiting for its manager, LORA_UPDATES.md section 7) is not over.
+static Job* pausedLora(JobTable& t, const char* id, uint32_t next = 77) {
+  Job* j = t.open(id, "update.offer");
+  EXPECT_NE(nullptr, j);
+  if (!j) return nullptr;
+  JobLora l = {};
+  l.block = 8;
+  l.reason = 3;
+  l.next = next;
+  l.window_end = 1792900000;
+  l.frames_total = 9600;
+  for (int i = 0; i < 16; i++) l.token[i] = (uint8_t)(0xA0 + i);
+  for (int i = 0; i < 32; i++) l.manifest[i] = (uint8_t)i;
+  jobLoraPut(*j, l);
+  EXPECT_TRUE(t.setState(j, JOB_PROGRESS));
+  EXPECT_TRUE(t.setState(j, JOB_PAUSED));
+  j->confirm_left_s = JobLora::STALL_S;
+  return j;
+}
+
+TEST(Jobs, APausedJobIsOpenAndKeepsTheOneJobLock) {
+  JobTable t;
+  Job* a = pausedLora(t, "p1");
+  ASSERT_NE(nullptr, a);
+  EXPECT_FALSE(jobTerminal(JOB_PAUSED));
+  EXPECT_EQ(a, t.openJob()) << "paused is not terminal";
+  EXPECT_EQ(1, t.openCount());
+  EXPECT_EQ(nullptr, t.open("b", "config.apply")) << "a paused transfer still holds the lock";
+  EXPECT_EQ(0, t.owedCount());
+  EXPECT_FALSE(t.ack("p1")) << "nothing is owed until it ends";
+  EXPECT_TRUE(t.setState(a, JOB_PROGRESS)) << "a resume moves it on";
+  EXPECT_TRUE(t.setState(a, JOB_PAUSED));
+  EXPECT_TRUE(t.setState(a, JOB_CANCELLED));
+  EXPECT_EQ(nullptr, t.openJob());
+  EXPECT_STREQ("paused", jobStateName(JOB_PAUSED));
+}
+
+TEST(Jobs, APausedJobKeepsItsTokenAndNextAcrossAReboot) {
+  JobTable t;
+  pausedLora(t, "p1", 1234);
+  std::vector<uint8_t> img(JobTable::imageSize());
+  ASSERT_EQ(img.size(), t.serialize(img.data(), img.size()));
+  JobTable u;
+  ASSERT_TRUE(u.deserialize(img.data(), img.size()));
+  Job* j = nullptr;
+  ASSERT_EQ(JobTable::FOUND, u.find("p1", &j));
+  EXPECT_EQ(JOB_PAUSED, j->state);
+  EXPECT_EQ(JobLora::STALL_S, j->confirm_left_s);
+  JobLora l;
+  ASSERT_TRUE(jobLoraGet(*j, &l));
+  EXPECT_EQ(1234u, l.next);
+  EXPECT_EQ(9600u, l.frames_total);
+  EXPECT_EQ(1792900000u, l.window_end);
+  EXPECT_EQ(3, l.reason);
+  EXPECT_EQ(8, l.block);
+  for (int i = 0; i < 16; i++) EXPECT_EQ((uint8_t)(0xA0 + i), l.token[i]);
+  for (int i = 0; i < 32; i++) EXPECT_EQ((uint8_t)i, l.manifest[i]);
+  int reverted = 0;
+  u.booted(true, [&](Job*) { reverted++; });
+  EXPECT_EQ(0, reverted) << "a boot leaves a paused job to its role: it is not a cut change";
+  EXPECT_EQ(nullptr, u.open("b", "config.apply"));
+}
+
+TEST(Jobs, APausedJobCountsItsStallDeadline) {
+  JobTable t;
+  Job* a = pausedLora(t, "p1");
+  int expired = 0;
+  t.tick(JobLora::STALL_S - 1, [&](Job*) { expired++; });
+  EXPECT_EQ(0, expired);
+  EXPECT_EQ(1u, a->confirm_left_s);
+  t.tick(1, [&](Job*) { expired++; });
+  EXPECT_EQ(1, expired);
+}
+
+TEST(Jobs, ATokenNeverOutlivesItsJob) {
+  JobTable t;
+  Job* a = pausedLora(t, "p1");
+  ASSERT_TRUE(jobLoraGet(*a, nullptr));
+  const char r[] = "{\"error\":\"stalled\"}";
+  ASSERT_TRUE(t.setState(a, JOB_FAILED, r, sizeof(r) - 1));
+  EXPECT_FALSE(jobLoraGet(*a, nullptr)) << "an ended job holds no transfer";
+  for (size_t i = sizeof(r) - 1; i < Job::RESULT_CAP; i++) EXPECT_EQ(0, a->result[i]) << "everything past the result is zero, token included";
+  Job* c = pausedLora(t, "p2");   // the same for a cancel, which sets no result
+  ASSERT_NE(nullptr, c);
+  ASSERT_TRUE(t.setState(c, JOB_CANCELLED));
+  EXPECT_FALSE(jobLoraGet(*c, nullptr));
+  for (size_t i = 0; i < Job::RESULT_CAP; i++) EXPECT_EQ(0, c->result[i]) << i;
+}
+
+TEST(Jobs, ANonTerminalResultOfALoraTransferStaysOutOfThePrivateBytes) {
+  JobTable t;
+  Job* a = pausedLora(t, "p1");
+  EXPECT_TRUE(jobLoraGet(*a, nullptr));
+  const char r[] = "{\"step\":\"verified\"}";
+  ASSERT_TRUE(t.setResult(a, r, sizeof(r) - 1));
+  EXPECT_TRUE(jobLoraGet(*a, nullptr)) << "a short result leaves the private bytes alone";
+  JobLora l;
+  ASSERT_TRUE(jobLoraGet(*a, &l));
+  EXPECT_EQ(77u, l.next);
 }
 
 TEST(Jobs, StateNamesAreTheContractsSpelling) {

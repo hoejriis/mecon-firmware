@@ -24,7 +24,18 @@ uint32_t slotCapacity();   // bytes the inactive slot holds; 0 when there is non
 bool slotOpen(uint32_t size);
 bool slotWrite(uint32_t offset, const uint8_t* p, size_t n);
 bool slotRead(uint32_t offset, uint8_t* p, size_t n);
-// The write is complete: the platform checks the image's own format (esp_ota_end). False: it is not a bootable image.
+// Reopens the inactive slot for a write that was cut (a LoRa transfer that paused and a device that rebooted, LORA_UPDATES.md
+// section 7): `offset` bytes of an image of `size` bytes are already there and are kept, and write() goes on at `offset`.
+// Nothing is erased up front; each sector is erased only when a write first reaches its start, and the sector holding
+// `offset` (when it is not at the sector's start) never is, since its first bytes are the image's. False where the slot
+// cannot take it: no slot, a size or offset past the slot, or (the simulated board) fewer than `offset` bytes there.
+bool slotResume(uint32_t size, uint32_t offset);
+// The first sector a resumed write erases: the first that starts at or after `offset`. A sector that holds the image's
+// first `offset` bytes in part (an offset inside it) is never erased; a sector that starts exactly at `offset` holds none
+// of them, and may hold anything (the slot's old image), so it is erased when the write reaches it.
+inline uint32_t slotFirstErase(uint32_t offset, uint32_t sector) { return (offset + sector - 1) / sector * sector; }
+// The write is complete: the platform checks the image's own format (esp_ota_end, or esp_image_verify for a resumed write).
+// False: it is not a bootable image.
 bool slotFinish();
 // Abandons a write and erases the first sector, so the slot holds no bootable image; eraseStep() erases the rest one
 // sector per call and returns false once nothing is left. Erasing never runs in one go: it would hold the loop.

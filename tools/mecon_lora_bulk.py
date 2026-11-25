@@ -24,6 +24,19 @@ def keys(token):
             hmac.new(token, b"mecon lora answer v1", hashlib.sha256).digest())
 
 
+def job_number(job_id):
+    """The number bulk frames name a transfer by, as the target derives it from its job's identity: a signed request's own
+    job number ("#<issuer>:<number>"), else the FNV-1a hash of the id (src/helpers/updates/UpdService.cpp, loraNumber)."""
+    if job_id.startswith("#") and ":" in job_id:
+        tail = job_id.rsplit(":", 1)[1]
+        if tail.isdigit() and int(tail) <= 0xFFFFFFFF:
+            return int(tail)
+    h = 2166136261
+    for b in job_id.encode():
+        h = ((h ^ b) * 16777619) & 0xFFFFFFFF
+    return h
+
+
 def frames_total(transfer_size):
     return (transfer_size + BULK_DATA - 1) // BULK_DATA
 
@@ -78,6 +91,12 @@ def check_answer(k, job, f):
         return None
     base, nxt = struct.unpack_from("<II", f, 5)
     return base, nxt, f[13]
+
+
+def image_frames(k, job, image):
+    """Every bulk frame of `image` (raw: nothing is compressed yet), in order."""
+    return [frame(k, job, len(image), i, image[i * BULK_DATA:i * BULK_DATA + frame_data_len(len(image), i)])
+            for i in range(frames_total(len(image)))]
 
 
 def vectors():

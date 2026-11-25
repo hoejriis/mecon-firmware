@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "helpers/iface/IfaceDispatch.h"
+#include "helpers/iface/JobLora.h"
 #include "helpers/iface/JobService.h"
 
 using namespace Iface;
@@ -102,6 +103,108 @@ TEST(JobService, GetListAndAckFollowTheTable) {
   EXPECT_TRUE(has(call(s, "job.list"), R"("owed":0)"));
   EXPECT_GE(st.saves, 1) << "an acknowledgement is saved";
   EXPECT_TRUE(has(call(s, "job.get", "{}"), R"("error":"bad-args")"));
+}
+
+// An open or paused LoRa transfer reports its progress (LORA_UPDATES.md section 7); the token is never in a job read.
+static Job* loraJob(JobService& s, uint32_t next) {
+  Job* j = s.table()->open("lo-1", "update.offer");
+  JobLora l = {};
+  l.block = 8;
+  l.next = next;
+  l.window_end = 1792900000;
+  l.frames_total = 9600;
+  for (int i = 0; i < 16; i++) l.token[i] = 0xC7;
+  jobLoraPut(*j, l);
+  return j;
+}
+
+TEST(JobService, JobGetReportsAnOpenAndAPausedLoraTransfer) {
+  JobService s;
+  RamStore st;
+  s.begin(&st, false, nullptr, nullptr, nullptr);
+  Job* j = loraJob(s, 640);
+  ASSERT_TRUE(s.table()->setState(j, JOB_PROGRESS));
+  const std::string open = call(s, "job.get", R"({"job":"lo-1"})");
+  EXPECT_TRUE(has(open, R"("state":"progress","owed":false,"next":640,"frames_total":9600,"window_end":1792900000,"result":null)")) << open;
+  EXPECT_FALSE(has(open, "reason")) << "a reason is for a pause";
+  JobLora l;
+  ASSERT_TRUE(jobLoraGet(*j, &l));
+  l.reason = 1;
+  l.next = 700;
+  jobLoraPut(*j, l);
+  ASSERT_TRUE(s.table()->setState(j, JOB_PAUSED));
+  const std::string paused = call(s, "job.get", R"({"job":"lo-1"})");
+  EXPECT_TRUE(has(paused, R"("state":"paused","owed":false,"next":700,"frames_total":9600,"window_end":1792900000,"reason":"window","result":null)")) << paused;
+  EXPECT_FALSE(has(paused, "c7c7")) << "the token is in no read";
+  EXPECT_TRUE(has(call(s, "job.list"), R"("state":"paused","owed":false}],"open":1,"owed":0)"));
+  ASSERT_TRUE(s.table()->setState(j, JOB_FAILED, R"({"error":"stalled"})", 19));
+  const std::string over = call(s, "job.get", R"({"job":"lo-1"})");
+  EXPECT_FALSE(has(over, "frames_total")) << "an ended job reports no transfer: " << over;
+}
+
+TEST(JobService, EachReasonOfAPauseHasItsName) {
+  JobService s;
+  RamStore st;
+  s.begin(&st, false, nullptr, nullptr, nullptr);
+  Job* j = loraJob(s, 5);
+  ASSERT_TRUE(s.table()->setState(j, JOB_PAUSED));
+  JobLora l;
+  ASSERT_TRUE(jobLoraGet(*j, &l));
+  const char* names[] = {"", "window", "duty", "manager"};
+  for (int r = 1; r <= 3; r++) {
+    l.reason = (uint8_t)r;
+    jobLoraPut(*j, l);
+    EXPECT_TRUE(has(call(s, "job.get", R"({"job":"lo-1"})"), std::string(R"("reason":")") + names[r] + "\"")) << r;
+  }
+}
+
+TEST(JobService, APausedJobCanBeCancelledAndItsStallEndsItThroughTheRevertHook) {
+  RamStore st;
+  Hooks h;
+  JobService s;
+  h.svc = &s;
+  s.begin(&st, false, revertHook, confirmHook, &h);
+  Job* j = loraJob(s, 5);
+  ASSERT_TRUE(s.table()->setState(j, JOB_PAUSED));
+  j->confirm_left_s = 3;
+  s.tick(1000);
+  s.tick(3000);
+  EXPECT_EQ(0, h.reverts);
+  s.tick(5000);   // the third second
+  EXPECT_EQ(1, h.reverts) << "the deadline of a paused job is handed to the role, as an awaiting one's is";
+  EXPECT_EQ(JOB_REVERTED, j->state);
+}
+
+TEST(JobService, ASavedPausedJobComesBackPaused) {
+  RamStore st;
+  {
+    JobService a;
+    a.begin(&st, false, nullptr, nullptr, nullptr);
+    Job* j = loraJob(a, 4242);
+    a.table()->setState(j, JOB_PAUSED);
+    ASSERT_TRUE(a.persist());
+  }
+  Hooks h;
+  JobService b;
+  h.svc = &b;
+  b.begin(&st, true, revertHook, confirmHook, &h);
+  EXPECT_EQ(0, h.reverts) << "the role decides at boot; the table does not revert a pause";
+  EXPECT_TRUE(has(call(b, "job.get", R"({"job":"lo-1"})"), R"("state":"paused","owed":false,"next":4242,)"));
+}
+
+TEST(JobService, ASavedPausedJobCountsItsDeadlineThroughRestarts) {
+  RamStore st;
+  JobService a;
+  a.begin(&st, false, nullptr, nullptr, nullptr);
+  Job* j = loraJob(a, 1);
+  a.table()->setState(j, JOB_PAUSED);
+  j->confirm_left_s = 100000;
+  a.tick(0);
+  a.tick(3600u * 1000);
+  EXPECT_LT(a.table()->openJob()->confirm_left_s, 100000u);
+  const uint32_t saved_at = st.saves;
+  a.tick(3600u * 1000 + 30000);
+  EXPECT_EQ(saved_at, (uint32_t)st.saves) << "a pause that lasts days is not saved every half minute";
 }
 
 TEST(JobService, ASavedTableComesBackAfterARestart) {

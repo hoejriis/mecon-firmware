@@ -7,6 +7,7 @@
 #include "sim_config.h"
 #include <stdio.h>
 #include <string>
+#include <unistd.h>
 
 namespace Upd {
 
@@ -72,6 +73,22 @@ bool slotOpen(uint32_t size) {
   g_open = true;
   g_size = size;
   g_written = 0;
+  return true;
+}
+
+// A cut write goes on (UpdSlot.h). The file is the slot: what lies at or past `offset` is what an ESP32 would erase and
+// write again, so it is cut off here, and the write appends at `offset`.
+bool slotResume(uint32_t size, uint32_t offset) {
+  if (size > slotCapacity() || offset > size) return false;
+  const std::string path = slotPath(inactive());
+  FILE* f = fopen(path.c_str(), "rb");
+  if (!f) return false;
+  const bool long_enough = fseek(f, 0, SEEK_END) == 0 && ftell(f) >= (long)offset;
+  fclose(f);
+  if (!long_enough || truncate(path.c_str(), (off_t)offset) != 0) return false;
+  g_open = true;
+  g_size = size;
+  g_written = offset;
   return true;
 }
 
@@ -208,6 +225,10 @@ const uint32_t SECTOR = 4096;
 esp_ota_handle_t g_h = 0;
 const esp_partition_t* g_part = nullptr;
 uint32_t g_written = 0, g_erase_at = 0, g_erase_end = 0;
+// A resumed write (slotResume) has no esp_ota handle: it writes the partition itself. g_size is the image's; g_next_erase
+// is the start of the next sector no write has yet reached (every sector before it is erased or holds image bytes).
+bool g_resumed = false;
+uint32_t g_size = 0, g_next_erase = 0;
 
 }  // namespace
 
@@ -220,6 +241,7 @@ uint32_t slotCapacity() {
 
 bool slotOpen(uint32_t size) {
   if (g_h) { esp_ota_abort(g_h); g_h = 0; }
+  g_resumed = false;
   g_part = esp_ota_get_next_update_partition(nullptr);
   if (!g_part || size == 0 || size > g_part->size) return false;
   g_written = 0;
@@ -229,7 +251,32 @@ bool slotOpen(uint32_t size) {
   return true;
 }
 
+// A cut write goes on (UpdSlot.h), on the partition itself: esp_ota_begin would erase what is already there. The first
+// sector a write reaches is the first one that starts at or after `offset`, so the one holding `offset` is never erased.
+bool slotResume(uint32_t size, uint32_t offset) {
+  if (g_h) { esp_ota_abort(g_h); g_h = 0; }
+  g_resumed = false;
+  g_part = esp_ota_get_next_update_partition(nullptr);
+  if (!g_part || size == 0 || size > g_part->size || offset > size) return false;
+  g_written = offset;
+  g_size = size;
+  g_erase_at = g_erase_end = 0;
+  g_next_erase = slotFirstErase(offset, SECTOR);
+  g_resumed = true;
+  return true;
+}
+
 bool slotWrite(uint32_t offset, const uint8_t* p, size_t n) {
+  if (g_resumed) {
+    if (!g_part || offset != g_written || n > g_size - g_written) return false;
+    while (g_next_erase < offset + n) {   // a sector this write reaches for the first time
+      if (g_next_erase >= g_part->size || esp_partition_erase_range(g_part, g_next_erase, SECTOR) != ESP_OK) return false;
+      g_next_erase += SECTOR;
+    }
+    if (esp_partition_write(g_part, offset, p, n) != ESP_OK) return false;
+    g_written += (uint32_t)n;
+    return true;
+  }
   if (!g_h || offset != g_written) return false;
   if (esp_ota_write(g_h, p, n) != ESP_OK) return false;
   g_written += (uint32_t)n;
@@ -241,6 +288,13 @@ bool slotRead(uint32_t offset, uint8_t* p, size_t n) {
 }
 
 bool slotFinish() {
+  if (g_resumed) {   // no esp_ota handle to end: the image's own format and checksum are checked as esp_ota_end does
+    g_resumed = false;
+    if (!g_part || g_written != g_size) return false;
+    const esp_partition_pos_t pos = {g_part->address, g_part->size};
+    esp_image_metadata_t md;
+    return esp_image_verify(ESP_IMAGE_VERIFY, &pos, &md) == ESP_OK;
+  }
   if (!g_h) return false;
   const esp_err_t e = esp_ota_end(g_h);   // checks the image's own format and checksum
   g_h = 0;
@@ -249,6 +303,7 @@ bool slotFinish() {
 
 void slotAbandon() {
   if (g_h) { esp_ota_abort(g_h); g_h = 0; }
+  g_resumed = false;
   if (!g_part) return;
   esp_partition_erase_range(g_part, 0, SECTOR);   // the image header: the slot holds nothing bootable from here on
   g_erase_at = SECTOR;
@@ -336,6 +391,7 @@ namespace Upd {
 void slotBoot() {}
 uint32_t slotCapacity() { return 0; }
 bool slotOpen(uint32_t) { return false; }
+bool slotResume(uint32_t, uint32_t) { return false; }
 bool slotWrite(uint32_t, const uint8_t*, size_t) { return false; }
 bool slotRead(uint32_t, uint8_t*, size_t) { return false; }
 bool slotFinish() { return false; }

@@ -70,6 +70,7 @@ public:
   // SAVE_EVERY_S while a job awaits confirmation (at most 30 writes for the longest deadline).
   void tick(uint32_t now_ms);
   static constexpr uint32_t SAVE_EVERY_S = 30;
+  static constexpr uint32_t SAVE_PAUSED_EVERY_S = 3600;   // a paused job's deadline is 7 days: at most 168 writes
 
   // A job's identity (OPERATIONS.md 3.1): "#<issuer>:<job_id>" for a signed request with a job id (the issuer's
   // instance id, its first 6 bytes in hex), else the request id. False when the request has no usable id.
