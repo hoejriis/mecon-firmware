@@ -73,6 +73,8 @@ The screen and the buzzer announce a **direct message** always, and a **channel 
 
 Every slot starts off, the public channel included. Mark one with `set channel.favourite <slot> on` (`get channel.favourites` lists them) or `favourite` on the device interface's `channel.put`. The mark is saved with the channel table. Writing the same channel to its slot again (`channel.put` or the app's `CMD_SET_CHANNEL` with the same secret) keeps the mark, so an app that re-writes its channels does not clear favourites; a slot that gets a different channel, is removed, or is reset (`device.reset channels`) loses it, and `channel.put` with `favourite` set explicitly always wins. The management channel's slot follows the same rule, except that a key rotation (and its revert) keeps the mark, since it is the same channel with a new key; unbinding with removal clears it. The app's own frames have no field for it.
 
+The Wio-E5 mini Companion (a 256 KB STM32WL board with no screen or buzzer) leaves the mark, its CLI lines and the gate out to fit its flash; it behaves as before. Every other build has them.
+
 **Difference from stock MeshCore:** stock notifies for every channel message. Earlier MECON Companion firmware notified only for favourites, and this restores that.
 
 ### Stock pages, captured
