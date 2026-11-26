@@ -29,6 +29,64 @@ protected:
   }
 };
 
+// A TLS session's input record buffer sits in the biggest region while the session is open (16,384 + 512 B).
+TEST_F(HeapFloorTest, AConnectedBoardWithItsSessionBufferAccountedForIsNotLow) {
+  h.holdSession(HEAP_FLOOR_TLS_SESSION_BYTES);
+  EXPECT_FALSE(h.check(0, 100, mem(40740, 14836), audit));   // the figures of a healthy connected V3
+  EXPECT_FALSE(h.low());
+  EXPECT_EQ(audit.n, 0);
+}
+
+TEST_F(HeapFloorTest, TheSameFiguresWithNoSessionOpenAreLow) {
+  EXPECT_TRUE(h.check(0, 100, mem(40740, 14836), audit));
+  EXPECT_TRUE(h.low());
+}
+
+TEST_F(HeapFloorTest, AShortageWithASessionOpenIsStillLow) {
+  h.holdSession(HEAP_FLOOR_TLS_SESSION_BYTES);
+  EXPECT_TRUE(h.check(0, 100, mem(30000, 2000), audit));
+  EXPECT_TRUE(h.low());
+  EXPECT_EQ(episodes(), 1);
+}
+
+TEST_F(HeapFloorTest, TheAllowanceIsExactlyTheBuffer) {
+  h.holdSession(HEAP_FLOOR_TLS_SESSION_BYTES);
+  EXPECT_FALSE(h.check(0, 100, mem(40000, FLOOR - HEAP_FLOOR_TLS_SESSION_BYTES), audit));
+  EXPECT_TRUE(h.check(PERIOD, 101, mem(40000, FLOOR - HEAP_FLOOR_TLS_SESSION_BYTES - 1), audit));
+}
+
+TEST_F(HeapFloorTest, ClosingTheSessionEndsTheAllowance) {
+  h.holdSession(HEAP_FLOOR_TLS_SESSION_BYTES);
+  EXPECT_FALSE(h.check(0, 100, mem(40740, 14836), audit));
+  h.releaseSession(HEAP_FLOOR_TLS_SESSION_BYTES);
+  EXPECT_EQ(h.sessionHeld(), 0u);
+  EXPECT_TRUE(h.check(PERIOD, 101, mem(40740, 14836), audit));   // a block this small with nothing open is a real low
+}
+
+TEST_F(HeapFloorTest, TwoSessionsAddAndEachReleaseTakesOnlyItsOwn) {
+  h.holdSession(1000); h.holdSession(500);
+  EXPECT_EQ(h.sessionHeld(), 1500u);
+  h.releaseSession(1000);
+  EXPECT_EQ(h.sessionHeld(), 500u);
+  h.releaseSession(9999);   // never below zero
+  EXPECT_EQ(h.sessionHeld(), 0u);
+}
+
+TEST_F(HeapFloorTest, BeginClearsAnyAllowance) {
+  h.holdSession(HEAP_FLOOR_TLS_SESSION_BYTES);
+  h.begin(FLOOR, HYST, PERIOD);
+  EXPECT_EQ(h.sessionHeld(), 0u);
+}
+
+TEST_F(HeapFloorTest, TheEpisodeEndsWithTheAllowanceAddedToo) {
+  h.check(0, 100, mem(40000, 1000), audit);
+  h.holdSession(10000);
+  EXPECT_FALSE(h.check(PERIOD, 101, mem(40000, FLOOR + HYST - 10000 - 1), audit));
+  EXPECT_TRUE(h.low());
+  EXPECT_TRUE(h.check(2 * PERIOD, 102, mem(40000, FLOOR + HYST - 10000), audit));
+  EXPECT_FALSE(h.low());
+}
+
 TEST_F(HeapFloorTest, AtOrAboveTheFloorIsNotLow) {
   EXPECT_FALSE(h.check(0, 100, mem(100000, FLOOR), audit));       // exactly the floor is fine
   EXPECT_FALSE(h.low());

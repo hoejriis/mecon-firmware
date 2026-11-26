@@ -1,13 +1,13 @@
 # Mutants for sim/mutate.sh, sourced in file-name order into its shell (variables set here are seen by later files).
 # --- the enforced heap floor (docs/CONNECTIVITY_MODE.md): undo each rule and its tests must go red
-mutate heap_floor_total_free_not_largest src/helpers/HeapFloor.h "if (m.largest < _floor) {" "if (m.free < _floor) {" unit:test_heap_floor
-mutate heap_floor_total_free_not_largest_sim src/helpers/HeapFloor.h "if (m.largest < _floor) {" "if (m.free < _floor) {" sim/tests/test_heap_floor.py::test_the_figure_is_the_largest_block_not_the_total_free_heap
-mutate heap_floor_no_hysteresis src/helpers/HeapFloor.h "} else if (m.largest >= _floor + _hyst) {" "} else if (m.largest >= _floor) {" unit:test_heap_floor
-mutate heap_floor_no_hysteresis_sim src/helpers/HeapFloor.h "} else if (m.largest >= _floor + _hyst) {" "} else if (m.largest >= _floor) {" sim/tests/test_heap_floor.py::test_an_episode_starts_below_the_floor_holds_until_the_hysteresis_and_ends
+mutate heap_floor_total_free_not_largest src/helpers/HeapFloor.h "if (largest < _floor) {" "if (m.free < _floor) {" unit:test_heap_floor
+mutate heap_floor_total_free_not_largest_sim src/helpers/HeapFloor.h "if (largest < _floor) {" "if (m.free < _floor) {" sim/tests/test_heap_floor.py::test_the_figure_is_the_largest_block_not_the_total_free_heap
+mutate heap_floor_no_hysteresis src/helpers/HeapFloor.h "} else if (largest >= _floor + _hyst) {   //" "} else if (largest >= _floor) {   //" unit:test_heap_floor
+mutate heap_floor_no_hysteresis_sim src/helpers/HeapFloor.h "} else if (largest >= _floor + _hyst) {   //" "} else if (largest >= _floor) {   //" sim/tests/test_heap_floor.py::test_an_episode_starts_below_the_floor_holds_until_the_hysteresis_and_ends
 mutate heap_floor_no_audit_entry src/helpers/HeapFloor.h "audit.add(ts, Posture::EV_LOW_MEM, Posture::CALLER_SYSTEM, Posture::W_HEAP_FLOOR);" "(void)ts;" unit:test_heap_floor
 mutate heap_floor_no_audit_entry_sim src/helpers/HeapFloor.h "audit.add(ts, Posture::EV_LOW_MEM, Posture::CALLER_SYSTEM, Posture::W_HEAP_FLOOR);" "(void)ts;" sim/tests/test_heap_floor.py::test_one_audit_entry_per_episode_however_long_it_lasts
-mutate heap_floor_audit_on_every_look src/helpers/HeapFloor.h "} else if (m.largest >= _floor + _hyst) {" "} else if (audit.add(ts, Posture::EV_LOW_MEM, Posture::CALLER_SYSTEM, Posture::W_HEAP_FLOOR), m.largest >= _floor + _hyst) {" unit:test_heap_floor
-mutate heap_floor_audit_on_every_look_sim src/helpers/HeapFloor.h "} else if (m.largest >= _floor + _hyst) {" "} else if (audit.add(ts, Posture::EV_LOW_MEM, Posture::CALLER_SYSTEM, Posture::W_HEAP_FLOOR), m.largest >= _floor + _hyst) {" sim/tests/test_heap_floor.py::test_one_audit_entry_per_episode_however_long_it_lasts
+mutate heap_floor_audit_on_every_look src/helpers/HeapFloor.h "} else if (largest >= _floor + _hyst) {   //" "} else if (audit.add(ts, Posture::EV_LOW_MEM, Posture::CALLER_SYSTEM, Posture::W_HEAP_FLOOR), largest >= _floor + _hyst) {   //" unit:test_heap_floor
+mutate heap_floor_audit_on_every_look_sim src/helpers/HeapFloor.h "} else if (largest >= _floor + _hyst) {   //" "} else if (audit.add(ts, Posture::EV_LOW_MEM, Posture::CALLER_SYSTEM, Posture::W_HEAP_FLOOR), largest >= _floor + _hyst) {   //" sim/tests/test_heap_floor.py::test_one_audit_entry_per_episode_however_long_it_lasts
 mutate heap_floor_first_look_a_period_late src/helpers/HeapFloor.h "return enabled() && (!_primed || (uint32_t)(now_ms - _last) >= _period); }" "return enabled() && (uint32_t)(now_ms - _last) >= _period; }" unit:test_heap_floor
 mutate heap_floor_first_look_a_period_late_sim src/helpers/HeapFloor.h "return enabled() && (!_primed || (uint32_t)(now_ms - _last) >= _period); }" "return enabled() && (uint32_t)(now_ms - _last) >= _period; }" sim/tests/test_heap_floor.py::test_the_first_look_comes_right_after_setup_not_a_minute_later
 mutate heap_floor_period_ignored src/helpers/HeapFloor.h "return enabled() && (!_primed || (uint32_t)(now_ms - _last) >= _period); }" "return enabled(); }" unit:test_heap_floor
@@ -27,3 +27,10 @@ mutate heap_floor_not_started examples/companion_radio/main.cpp "heapFloor().beg
 # the Repeater and the Room server run the same check (Issue #440)
 mutate heap_floor_repeater_not_started examples/simple_repeater/main.cpp "    heapFloor().begin(HEAP_FLOOR_BYTES);" "    heapFloor().begin(0);" "sim/tests/test_heap_floor_server.py::test_a_server_checks_the_floor_like_the_companion[repeater]"
 mutate heap_floor_room_not_started examples/simple_room_server/main.cpp "    heapFloor().begin(HEAP_FLOOR_BYTES);" "    heapFloor().begin(0);" "sim/tests/test_heap_floor_server.py::test_a_server_checks_the_floor_like_the_companion[room_server]"
+# a TLS session's input buffer is allowed for while one is open (Issue #651)
+mutate heap_floor_session_allowance_never_applied src/helpers/HeapFloor.h "const uint32_t largest = m.largest + _held.load();" "const uint32_t largest = m.largest;" unit:test_heap_floor
+mutate heap_floor_session_allowance_ignores_close src/helpers/HeapFloor.h "void releaseSession(uint32_t bytes) {" "void releaseSession(uint32_t bytes) { return;" unit:test_heap_floor
+mutate heap_floor_session_allowance_not_added src/helpers/HeapFloor.h "void holdSession(uint32_t bytes) { _held.fetch_add(bytes); }" "void holdSession(uint32_t bytes) { _held.store(bytes); }" unit:test_heap_floor
+mutate heap_floor_session_allowance_off_by_one src/helpers/HeapFloor.h "const uint32_t largest = m.largest + _held.load();" "const uint32_t largest = m.largest + _held.load() + 1;" unit:test_heap_floor
+mutate heap_floor_session_allowance_kept_across_begin src/helpers/HeapFloor.h "    _held = 0;
+" "" unit:test_heap_floor

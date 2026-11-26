@@ -15,9 +15,17 @@
 // The largest block is the figure, not the total free heap: the total can look healthy while fragmentation leaves no
 // block big enough. Where MemStats is not measurable (`known` false) the check never fires.
 //
+// A TLS session's own input record buffer (the content length plus the record overhead) is allocated from the biggest
+// region and stays there for as long as the session is open, so the largest block of a healthy connected board is
+// smaller by exactly that much. The MQTT network layer reports it with holdSession() while a session (or its handshake)
+// exists and releases it when the session is closed; the check then counts the largest block plus that figure, so a
+// healthy connected board is not low, while a block that is short for any other reason still is. The floor itself is
+// not lowered, and the figure `get mecon.mem` prints as `largest` stays the measured block.
+//
 // Pure logic: no clock, no heap API of its own (the caller passes both), so it runs in the native unit tests.
 
 #include <stdint.h>
+#include <atomic>
 #include "MemStats.h"
 #include "AuditLog.h"
 
@@ -35,6 +43,12 @@
   #define HEAP_FLOOR_PERIOD_MS 60000UL
 #endif
 
+#ifndef HEAP_FLOOR_TLS_SESSION_BYTES
+  // The ESP32 builds' TLS input buffer: 16,384 B of content (MBEDTLS_SSL_IN_CONTENT_LEN) + 512 B of record overhead.
+  // The network layer passes the configured content length when the library defines it (MqttNetEsp32.cpp).
+  #define HEAP_FLOOR_TLS_SESSION_BYTES (16384 + 512)
+#endif
+
 class HeapFloor {
 public:
   // floor_bytes 0 disables the check. hysteresis: how far above the floor the block must be to end an episode.
@@ -45,7 +59,18 @@ public:
     _low = false;
     _primed = false;
     _last = 0;
+    _held = 0;
   }
+
+  // A TLS session's input buffer is held (or released again): the network layer calls these as a session or its handshake
+  // starts and when it is closed, each with the same figure. Sums over sessions (the MQTT and the update network each
+  // have their own); atomic because the handshake runs on the connect worker and the close on the loop task.
+  void holdSession(uint32_t bytes) { _held.fetch_add(bytes); }
+  void releaseSession(uint32_t bytes) {
+    uint32_t cur = _held.load();
+    while (!_held.compare_exchange_weak(cur, cur > bytes ? cur - bytes : 0)) {}
+  }
+  uint32_t sessionHeld() const { return _held.load(); }
 
   bool enabled() const { return _floor > 0; }
   bool low() const { return _low; }
@@ -59,13 +84,14 @@ public:
     _primed = true;
     _last = now_ms;
     if (!enabled() || !m.known) return false;
+    const uint32_t largest = m.largest + _held.load();   // what the largest block would be without the open session's buffer
     if (!_low) {
-      if (m.largest < _floor) {
+      if (largest < _floor) {
         _low = true;
         audit.add(ts, Posture::EV_LOW_MEM, Posture::CALLER_SYSTEM, Posture::W_HEAP_FLOOR);
         return true;
       }
-    } else if (m.largest >= _floor + _hyst) {   // (floor + hyst cannot wrap for any sane floor)
+    } else if (largest >= _floor + _hyst) {   // (floor + hyst cannot wrap for any sane floor)
       _low = false;
       return true;
     }
@@ -79,6 +105,7 @@ public:
 
 private:
   uint32_t _floor = 0, _hyst = HEAP_FLOOR_HYSTERESIS_BYTES, _period = HEAP_FLOOR_PERIOD_MS, _last = 0;
+  std::atomic<uint32_t> _held{0};
   bool _low = false, _primed = false;
 };
 
