@@ -1,9 +1,9 @@
 # Signed firmware updates over LoRa (contract draft)
 
-> **Status: draft for review, version 0 (2026-11-23).** Built end to end in the simulator, on main and in no release yet; not run on real radios, so nothing here is bench-verified. Built: the bulk frame and answer codec (`LoraBulk`), the target's transfer state (`LoraTransfer`), the target side of the transfer (`update.manifest.part`, an `update.offer` with `source.lora`, the `paused` state and its resume, the writing of the slot with durable `next`, and the verify, activate and confirm a push has), the target's radio side (a point-to-point bulk frame goes to the transfer, a bulk frame on the management channel is dropped and counted, block answers go back to the peer the frames came from through the duty window), and the gateway's `rf.bulk` and `rf.status` with the 80% bulk ceiling. Not built: deflate and the fast preset (an offer naming a preset is `unsupported`), the reference manager, and nRF52. It extends the [signed update](UPDATES.md)
+> **Status: draft for review, version 0 (2026-11-23).** Built in the simulator, on main and in no release yet; not run on real radios, so nothing here is bench-verified. Built: the bulk frame and answer codec (`LoraBulk`), the target's transfer state (`LoraTransfer`), the target side of the transfer (`update.manifest.part`, an `update.offer` with `source.lora`, the `paused` state and its resume, the writing of the slot with durable `next`, and the verify, activate and confirm a push has), the target's radio side (a point-to-point bulk frame goes to the transfer, a bulk frame on the management channel is dropped and counted, block answers go back to the peer the frames came from through the duty window), and the gateway's `rf.bulk` and `rf.status` with the 80% bulk ceiling, the carrying of `update.manifest`, `update.manifest.part`, `update.offer` and `update.status` over the radio, point to point only, in builds with the path, and the reference manager with its fixtures and simulator tests (section 11); the manager's control requests use the radio (`LoraControl`) by default, with `--target-port` as an option. Not built: deflate and the fast preset (an offer naming a preset is `unsupported`), and nRF52. It extends the [signed update](UPDATES.md)
 > lifecycle to a LoRa delivery path and [management over LoRa](LORA_MANAGEMENT.md) to carry image bytes. It is written to
 > be agreed between this firmware and a public manager (the reference Backend), before either implements it. Section 12
-> lists what is still open. Until this draft is accepted, `update.*` stays off LoRa as LORA_MANAGEMENT says.
+> lists what is still open. Over LoRa the target carries `update.manifest`, `update.manifest.part`, `update.offer` and `update.status`, point to point only and in builds that have the path (section 8).
 
 ## 1. What this adds, and what it does not
 
@@ -84,7 +84,9 @@ A signed stage of the longest manifest is about 1,480 bytes, more than the 1,024
   `part`, are the manifest text followed by its 64-byte signature (raw), so the longest is 640 + 64 = 704 bytes in four parts
   of 176. A joined text whose SHA-256 is not `sha256` is `invalid`, `bad-args`, and the parts are spent. *(Built on main, in no
   release yet.)* It is a **signed** request like every request over LoRa (LORA_MANAGEMENT
-  section 2), with no `job_id` (a read-class staging, as `update.manifest` is).
+  section 2), and carries a `job_id` like every signed request that is not one of the plain reads (AUTHORITY section 7.1), so each part
+  takes a number of the member's sequence. The parts are carried over LoRa point to point, as are `update.manifest`, `update.offer` and
+  `update.status`, and never on the management channel.
 - The target reassembles in a RAM slot keyed by `sha256`, then runs exactly what `update.manifest` runs. A part for
   another hash, or a part count that changes, discards the slot (the new part starts a new one); a part held already is
   replaced; parts may arrive in any order. While parts are missing it answers `{"sha256", "part", "parts", "held"}`, the
@@ -225,17 +227,35 @@ rebooted in between; and the gateway and the target both back on their own radio
 
 ## 11. The reference manager and fixtures
 
-So that the firmware can be built and proven without either Backend:
+So that the firmware can be built and proven without either Backend (*built on main, in no release yet*):
 - `tools/lora_ota_manager.py`: a standalone manager that stages, offers, sends blocks through a USB-attached Companion,
   resumes and confirms, with the public test keys;
 - signed fixtures for the offer, the manifest parts, the bulk tag, a block answer that arrives after the next block
   has started (a stale `base`), a pause followed by a resume, a captured block answer replayed at the target as a bulk
   frame (dropped), a bulk frame offered to the manager as an answer (dropped), and frames of a wrong length, short and
-  long, before the last (dropped) (`test/fixtures/lora_updates_v1.json`);
+  long, before the last (dropped) (`test/fixtures/lora_updates_v1.json`, written by `lora_ota_manager.py vectors`; the
+  native test `test_lora_updates` reads it through the firmware's codecs and its Ed25519 verify, and
+  `tools/tests/test_lora_ota_manager_model.py` through the Python tool, so each side checks the other);
 - simulator tests for loss, reordering, a stranger's frames, a reboot mid-transfer, a pause and a resume, cancellation,
-  and the duty reserve. The simulator's standalone Companion also has a test-only operation, for tests that need no radio,
+  and the duty reserve, driven through the manager (`sim/tests/test_lora_ota_manager.py`), with five mutants (four of the manager, one of the firmware's channel list)
+  in `sim/mutants/425_lora_ota_manager.sh`. The simulator's standalone Companion also has a test-only operation, for tests that need no radio,
   `update.lora.frame {"frame": <hex>}`, that hands the target one bulk frame and returns the block answer it gave, if any;
   firmware builds do not have it.
+
+### Using the manager
+
+    tools/lora_ota_manager.py --gateway <port of the Companion that relays> --node <target node key, 64 hex> \
+        --image <release image> --manifest <release .manifest.json> [--key <member key file>] [--block 8] \
+        [--window-hours 8] [--frame-ms 1460] [--target-port <the target's own port>] [--unsigned]
+    tools/lora_ota_manager.py ... --resume     # the same manifest again with a new window, after a pause or a reboot
+    tools/lora_ota_manager.py ... --cancel     # ends the job and erases the target's slot
+
+It stages the manifest in parts, offers (the window is `--window-hours` from now, at most 12), sends blocks as the gateway's
+`bulk_budget_ms` allows (`--frame-ms` is the airtime of one full frame at the radio setting, 1,460 by default for EU Narrow), prints one line
+per block, stops at the window's end (exit status 3, the job paused) and, when the last block is whole, waits for the target to
+verify, activate and attest, then confirms. `--key` is a JSON file `{"seed_hex", "issuer", "deployment_id",
+"authority_revision"}`; without it the public test key is used, valid on no real device. Neither the key nor the transfer token is
+printed. By default the staging, the offer and the job reads go over the radio, signed, through the gateway (`rf.request`). `--target-port` sends them over the target's own interface instead (a target with no Deployment record takes them with `--unsigned`). The gateway is trusted on its cable: it is not signed to.
 
 A Backend implements the manager side of sections 3 to 7 against the same fixtures.
 

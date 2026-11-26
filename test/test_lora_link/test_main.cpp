@@ -243,6 +243,15 @@ TEST(LoraLink, OnTheChannelOnlyAVerifiedResultIsAnswered) {
   EXPECT_TRUE(loraChannelOpAllowed("config.apply"));
 }
 
+TEST(LoraLink, TheUpdateOperationsAreCarriedPointToPointAndNeverOnTheChannel) {
+  for (const char* op : {"update.manifest", "update.manifest.part", "update.offer", "update.status"}) {
+    EXPECT_TRUE(loraOpAllowed(op)) << op << " (the native build carries the LoRa update path)";
+    EXPECT_FALSE(loraChannelOpAllowed(op)) << op << ": an offer or a staging is never a group message";
+  }
+  EXPECT_FALSE(loraOpAllowed("update.chunk")) << "a push chunk stays off LoRa";
+  EXPECT_FALSE(loraOpAllowed("update.cancel"));
+}
+
 TEST(LoraLink, AReplyPathIsTheFloodReversed) {
   const uint8_t path[] = {1, 2, 3, 4};
   uint8_t out[8];
