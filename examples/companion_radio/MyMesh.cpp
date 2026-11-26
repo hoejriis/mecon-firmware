@@ -848,14 +848,18 @@ void MyMesh::queueChannelMessage(mesh::Packet *pkt, uint8_t channel_idx, uint32_
   if (_listener) {
     // The screen and the buzzer: a channel message reaches them only from a favourite slot (docs/UI.md). The
     // message is queued and the app told above either way; the queue size still goes to the UI for its count.
+#ifndef MECON_NO_FAVOURITE_CLI   // the 256 KB STM32WL build has no screen or buzzer and nothing sets a mark: the listener hears every message as before
     if (ChannelFav::notifies<ChannelDetails>(*this, channel_idx)) {
-      // Get the channel name from the channel index
-      ChannelDetails channel_details;
-      if (!getChannel(channel_idx, channel_details)) {
-        strcpy(channel_details.name, "Unknown");
-      }
-      _listener->onChannelMessageRecv(pkt, channel_details, text);
+#endif
+    // Get the channel name from the channel index
+    ChannelDetails channel_details;
+    if (!getChannel(channel_idx, channel_details)) {
+      strcpy(channel_details.name, "Unknown");
     }
+    _listener->onChannelMessageRecv(pkt, channel_details, text);
+#ifndef MECON_NO_FAVOURITE_CLI
+    }
+#endif
     _listener->onQueueSizeChanged(offline_queue_len);
   }
 }
@@ -2346,11 +2350,13 @@ void MyMesh::handleCmdFrame(size_t len) {
     StrHelper::strncpy(channel.name, (char *)&cmd_frame[2], 32);
     memset(channel.channel.secret, 0, sizeof(channel.channel.secret));
     memcpy(channel.channel.secret, &cmd_frame[2 + 32], 16); // NOTE: only 128-bit supported
+#ifndef MECON_NO_FAVOURITE_CLI
     ChannelDetails cur;
     if (getChannel(channel_idx, cur) && memcmp(cur.channel.secret, channel.channel.secret, sizeof(cur.channel.secret)) == 0) {
       channel.favourite = cur.favourite;   // the same channel written again keeps its mark; a different one starts off
     }
     Iface::wipe(&cur, sizeof(cur));
+#endif
     if (setChannel(channel_idx, channel)) {
       saveChannels();
       writeOKFrame();
@@ -3043,7 +3049,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
 #endif
 
-#ifdef MAX_GROUP_CHANNELS
+#if defined(MAX_GROUP_CHANNELS) && !defined(MECON_NO_FAVOURITE_CLI)   // the 256 KB STM32WL build has no screen or buzzer and no room
   // The channels whose messages notify the screen and buzzer (docs/UI.md). Saved with the channel table.
   if (strcmp(command, "get channel.favourites") == 0) {
     int n = 0;
