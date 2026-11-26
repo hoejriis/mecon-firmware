@@ -2,12 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/mqtt.profile.anchor.result.json",
   "title": "Result of mqtt.profile.anchor",
-  "description": "The broker profile and the trust anchor it now holds: a certificate fingerprint, a CA certificate, or none (unset, the CLI's word). A caller other than the cable may not change the anchor of the profile its own session runs on (refused, in-use).",
+  "description": "The broker profile and the trust anchor it now holds: a certificate fingerprint, a CA certificate, or none (unset, the CLI's word). The pieces of a CA sent in several requests (ca_begin, ca_add) answer with the number of base64 characters staged so far and change no anchor; ca_end answers with the anchor. A caller other than the cable may not change the anchor of the profile its own session runs on (refused, in-use).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["profile", "anchor"],
+  "required": ["profile"],
   "properties": {
     "profile": {"type": "integer", "minimum": 0, "maximum": 5},
-    "anchor": {"enum": ["fingerprint", "ca", "unset"]}
-  }
+    "anchor": {"enum": ["fingerprint", "ca", "unset"]},
+    "staged": {"type": "integer", "minimum": 0, "maximum": 1920, "description": "ca_begin and ca_add: base64 characters of the CA held in the staging buffer"}
+  },
+  "oneOf": [
+    {"required": ["anchor"], "not": {"required": ["staged"]}},
+    {"required": ["staged"], "not": {"required": ["anchor"]}}
+  ]
 }

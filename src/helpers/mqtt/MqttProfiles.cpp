@@ -1,6 +1,8 @@
 #include "MqttProfiles.h"
 #include "MqttCore.h"
 #include <stdio.h>
+#include <Arduino.h>
+#include <Utils.h>
 
 static bool parseIndex(const char*& p, uint8_t& idx) {
   if (*p < '0' || *p > '9') return false;
@@ -8,6 +10,13 @@ static bool parseIndex(const char*& p, uint8_t& idx) {
   p++;
   if (*p != 0 && *p != ' ') return false;   // one digit only
   return true;
+}
+
+static int hexval(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
 }
 
 static bool nameChars(const char* s) {
@@ -116,20 +125,33 @@ void MqttProfiles::dropStage() {
   free(stage_);
   stage_ = nullptr;
   stage_len_ = 0;
+  stage_expect_ = false;
 }
 
-bool MqttProfiles::setCa(uint8_t i, const char* b64) {
-  if (i >= COUNT || strlen(b64) > MqttProfile::CA_B64_MAX) return false;
+void MqttProfiles::stageTick(uint32_t now) {
+  if (stage_ && (uint32_t)(now - stage_at_) >= STAGE_TIMEOUT_MS) dropStage();
+}
+
+MqttProfiles::CaResult MqttProfiles::installCa(uint8_t i, const char* b64, bool expect, uint16_t size, const uint8_t* sha) {
+  if (i >= COUNT || strlen(b64) > MqttProfile::CA_B64_MAX) return CA_BAD_DER;
   uint8_t der[MqttProfile::CA_B64_MAX / 4 * 3 + 3];
-  if (mqttCaDecode(b64, der, sizeof(der)) < 0) return false;
+  const int n = mqttCaDecode(b64, der, sizeof(der));
+  if (n < 0) return CA_BAD_DER;
+  if (expect) {
+    uint8_t got[32];
+    mesh::Utils::sha256(got, sizeof(got), der, n);
+    if ((uint16_t)n != size || memcmp(got, sha, sizeof(got)) != 0) return CA_MISMATCH;
+  }
   char* copy = (char*)malloc(strlen(b64) + 1);
-  if (!copy) return false;
+  if (!copy) return CA_NOMEM;
   strcpy(copy, b64);
   free(p[i].ca);
   p[i].ca = copy;
   p[i].anchor[0] = 0;    // a profile has one anchor: the CA replaces a leaf fingerprint
-  return true;
+  return CA_OK;
 }
+
+bool MqttProfiles::setCa(uint8_t i, const char* b64) { return installCa(i, b64, false, 0, nullptr) == CA_OK; }
 
 void MqttProfiles::clearCa(uint8_t i) {
   if (i >= COUNT) return;
@@ -263,17 +285,53 @@ bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture,
       else { pr.clearCa(idx); done(true, "anchor updated"); }
     } else if (memcmp(p, "ca ", 3) == 0) {
       const char* v = p + 3;
-      if (strcmp(v, "begin") == 0) {
+      pr.stageTick(millis());   // a buffer left idle for 10 minutes is gone before this line reads it
+      if (strcmp(v, "begin") == 0 || memcmp(v, "begin ", 6) == 0) {
+        // `ca begin` (the console) promises nothing; `ca begin <DER bytes> <sha256 hex>` (the chunked form over the
+        // device interface) promises the certificate's size and SHA-256, which `ca end` then checks.
+        bool expect = false;
+        uint16_t size = 0;
+        uint8_t sha[32];
+        if (v[5]) {
+          const char* w = v + 6;
+          unsigned n = 0;
+          const char* d = w;
+          for (; *d >= '0' && *d <= '9' && n <= MqttProfile::CA_B64_MAX; d++) n = n * 10 + (unsigned)(*d - '0');
+          const unsigned der_max = MqttProfile::CA_B64_MAX / 4 * 3;
+          bool ok = d != w && *d == ' ' && n >= 1 && n <= der_max && strlen(d + 1) == 64;
+          for (int k = 0; ok && k < 32; k++) {
+            const int hi = hexval(d[1 + 2 * k]), lo = hexval(d[2 + 2 * k]);
+            if (hi < 0 || lo < 0) ok = false; else sha[k] = (uint8_t)(hi << 4 | lo);
+          }
+          if (!ok) { snprintf(reply, cap, "ERR: ca begin [<DER bytes 1-%u> <64 hex SHA-256>]", der_max); return true; }
+          expect = true;
+          size = (uint16_t)n;
+        }
         pr.dropStage();
         pr.stage_ = (char*)malloc(MqttProfile::CA_B64_MAX + 1);
         if (!pr.stage_) { snprintf(reply, cap, "ERR: out of memory"); return true; }
         pr.stage_[0] = 0;
         pr.stage_len_ = 0;
         pr.stage_idx_ = idx;
+        pr.stage_at_ = millis();
+        pr.stage_expect_ = expect;
+        pr.stage_size_ = size;
+        if (expect) memcpy(pr.stage_sha_, sha, sizeof(sha));
         snprintf(reply, cap, "> profile %u ca: send ca add <base64>, then ca end", (unsigned)idx);
       } else if (memcmp(v, "add ", 4) == 0) {
         const char* chunk = v + 4;
         if (!pr.stage_ || pr.stage_idx_ != idx) { snprintf(reply, cap, "ERR: ca begin first"); return true; }
+        if (*chunk == '@') {   // `ca add @<offset> <base64>`: only the piece that starts where the staged text ends
+          unsigned off = 0;
+          const char* d = chunk + 1;
+          for (; *d >= '0' && *d <= '9' && off <= MqttProfile::CA_B64_MAX; d++) off = off * 10 + (unsigned)(*d - '0');
+          if (d == chunk + 1 || *d != ' ') { snprintf(reply, cap, "ERR: ca add @<offset> <base64>"); return true; }
+          if (off != pr.stage_len_) {
+            snprintf(reply, cap, "ERR: ca add offset %u is not the staged length %u; nothing appended", off, (unsigned)pr.stage_len_);
+            return true;
+          }
+          chunk = d + 1;
+        }
         if (memcmp(chunk, "-----", 5) == 0) {   // a PEM armour line pasted as it is
           snprintf(reply, cap, "> ca %u chars", (unsigned)pr.stage_len_);
           return true;
@@ -289,12 +347,15 @@ bool mqttProfileCommand(MqttProfiles& pr, const MqttCore* core, uint8_t posture,
         }
         memcpy(pr.stage_ + pr.stage_len_, chunk, n + 1);
         pr.stage_len_ = (uint16_t)(pr.stage_len_ + n);
+        pr.stage_at_ = millis();
         snprintf(reply, cap, "> ca %u chars", (unsigned)pr.stage_len_);
       } else if (strcmp(v, "end") == 0) {
         if (!pr.stage_ || pr.stage_idx_ != idx) { snprintf(reply, cap, "ERR: ca begin first"); return true; }
-        bool ok = pr.setCa(idx, pr.stage_);
+        const MqttProfiles::CaResult r = pr.installCa(idx, pr.stage_, pr.stage_expect_, pr.stage_size_, pr.stage_sha_);
         pr.dropStage();
-        if (ok) done(true, "anchor is a CA certificate");
+        if (r == MqttProfiles::CA_OK) done(true, "anchor is a CA certificate");
+        else if (r == MqttProfiles::CA_MISMATCH) snprintf(reply, cap, "ERR: ca is not the size and SHA-256 given to ca begin; the profile is unchanged");
+        else if (r == MqttProfiles::CA_NOMEM) snprintf(reply, cap, "ERR: out of memory; the profile is unchanged");
         else snprintf(reply, cap, "ERR: ca is not one complete base64 DER certificate; the profile is unchanged");
       } else if (strcmp(v, "clear") == 0) {
         pr.clearCa(idx);

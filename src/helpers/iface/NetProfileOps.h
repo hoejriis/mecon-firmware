@@ -29,6 +29,7 @@ NetProfileHost netProfileHost(bool (*run)(void*, const char*, char*, size_t), vo
 bool netProfileOpsBuilt();   // a build with Wi-Fi or MQTT: the two operations are offered
 
 Status opNetProfileClear(OpContext& c, NetProfileHost& h);   // {"kind":"wifi"|"mqtt","profile":n}
-Status opMqttAnchor(OpContext& c, NetProfileHost& h);        // {"profile":n, "fingerprint":"<64 hex>"|"ca":"<base64>"|"clear":true}
+Status opMqttAnchor(OpContext& c, NetProfileHost& h);        // {"profile":n, "fingerprint":"<64 hex>"|"ca":"<base64>"|"clear":true,
+                                                              // or a CA in pieces: "ca_begin":{"size","sha256"} then "ca_add":{"offset","data"}... then "ca_end":true}
 
 }  // namespace Iface

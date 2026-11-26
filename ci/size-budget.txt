@@ -17,6 +17,9 @@
 # scope's start and end. Measured on main (b734acdf) against this change, flash: WioTrackerL1_companion_radio_ble
 # 705,428 to 705,764 B (+336), WioTrackerL1_companion_radio_usb 696,196 to 696,516 (+320), t1000e_companion_radio_usb 603,660 to
 # 603,836 (+176); t1000e_companion_radio_ble measured 610,580 with this change. Those four rows were raised by 1 KB; the Wio BLE row stays 1.9 KB under the part's 708,608 B.
+# CA anchor in pieces (src/helpers/mqtt/MqttProfiles.cpp, src/helpers/iface/NetProfileOps.cpp): measured on this change,
+# WioTrackerL1_companion_radio_usb flash 699,620 B (RAM 90,056) and heltec_v4_repeater flash 1,588,984 B (RAM 81,400); those two rows
+# were raised to the measured use rounded up to a whole KB. Heltec_v3_companion_radio_wifi measured 1,443,136 B flash, 115,676 B RAM, inside its row.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1459200     122880
 Heltec_v3_companion_radio_standalone     1842176     141312
@@ -28,14 +31,14 @@ heltec_v4_companion_radio_ble           1449984     122880
 heltec_v4_companion_radio_standalone     1828864     140288
 heltec_v4_companion_radio_usb            703488      41984
 heltec_v4_companion_radio_wifi          1432576     118784
-heltec_v4_repeater                       1586176     82944
+heltec_v4_repeater                       1589248     82944
 heltec_v4_room_server                    1574912     87040
 t1000e_companion_radio_ble               611328      168960
 t1000e_companion_radio_usb               604160      164864
 t1000e_repeater                          555008      43008
 t1000e_room_server                       539648      49152
 WioTrackerL1_companion_radio_ble         706560      95232
-WioTrackerL1_companion_radio_usb         697344      90112
+WioTrackerL1_companion_radio_usb         700416      90112
 WioTrackerL1_repeater                    637952      46080
 WioTrackerL1_room_server                 621568      51200
 # NimBLE twins (Issue #68, docs/NIMBLE_EVALUATION.md) and the LilyGo T-LoRa Bluedroid build they are compared with.
