@@ -57,6 +57,18 @@ def drawn_since(node, mark):
     return "\n".join(node.ui.text(f) for f in node.ui.frames()[mark:])
 
 
+def send_channel_until_heard(s, v, slot, text, ts):
+    """A channel message is a flood with no ACK, and the simulated radio drops one that meets the receiver's own
+    transmission (a DM's ACK and path return); send again, with a later timestamp, until the receiver's app queue has it."""
+    for attempt in range(4):
+        assert s.send_channel(slot, text, ts + attempt)[0] == harness.RESP_OK
+        got = v.sync_messages(timeout=12, want=1)
+        if any(m["text"].endswith(text) for m in got):
+            return got
+        time.sleep(2.0)
+    pytest.fail("the channel message never reached the receiver")
+
+
 def test_a_dm_notifies_and_a_channel_only_when_favourite(ether, nodes):
     rv, v, s = pair(ether, nodes, 41)
     assert v.cli("get channel.favourites") == "> none"                 # off for every slot, the public channel included
@@ -68,9 +80,7 @@ def test_a_dm_notifies_and_a_channel_only_when_favourite(ether, nodes):
 
     # a channel message on a slot that is not a favourite: queued for the app, nothing on the screen
     mark = len(rv.ui.frames())
-    assert s.send_channel(1, "quiet-text", RTC + 20)[0] == harness.RESP_OK
-    got = v.sync_messages(timeout=60, want=1)
-    assert any(m["text"].endswith("quiet-text") for m in got), got      # it reached the app queue
+    send_channel_until_heard(s, v, 1, "quiet-text", RTC + 20)           # it reached the app queue
     time.sleep(3.0)                                                      # the screen had every chance to draw it
     assert "quiet-text" not in drawn_since(rv, mark), drawn_since(rv, mark)
 
@@ -78,15 +88,18 @@ def test_a_dm_notifies_and_a_channel_only_when_favourite(ether, nodes):
     assert v.cli("set channel.favourite 2 on") == "OK"
     assert v.cli("get channel.favourites") == "> 2"
     mark = len(rv.ui.frames())
-    assert s.send_channel(2, "loud-text", RTC + 30)[0] == harness.RESP_OK
-    assert rv.ui.wait_text("loud-text", 60), rv.ui.last_text()
+    for attempt in range(4):   # the screen first: draining the app queue sends it back to the home page
+        assert s.send_channel(2, "loud-text", RTC + 30 + attempt)[0] == harness.RESP_OK
+        if rv.ui.wait_text("loud-text", 12):
+            break
+        time.sleep(2.0)
+    assert "loud-text" in rv.ui.last_text(), rv.ui.last_text()          # the screen shows it
     got = v.sync_messages(timeout=30, want=1)
-    assert any(m["text"].endswith("loud-text") for m in got), got        # and the app still gets it
+    assert any(m["text"].endswith("loud-text") for m in got), got       # and the app still gets it
 
     # slot 1 is still quiet after the favourite on slot 2
     mark = len(rv.ui.frames())
-    assert s.send_channel(1, "quiet-again", RTC + 40)[0] == harness.RESP_OK
-    assert any(m["text"].endswith("quiet-again") for m in v.sync_messages(timeout=60, want=1))
+    send_channel_until_heard(s, v, 1, "quiet-again", RTC + 40)
     time.sleep(3.0)
     assert "quiet-again" not in drawn_since(rv, mark)
 
