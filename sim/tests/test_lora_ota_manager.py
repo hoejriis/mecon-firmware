@@ -2,8 +2,9 @@
 (docs/contract/LORA_UPDATES.md sections 3 to 7 and 11): two simulated Companions, the gateway the manager drives over its
 interface (rf.status, rf.bulk, the rf stream) and the target. The manager stages the manifest, offers, paces, resends and
 resumes; a test breaks the channel by wrapping the gateway object the manager reads, so each loss is exactly where the test
-says. The control requests (staging, offer, job reads) go over the target's own interface: the firmware does not carry
-update.manifest.part and update.offer over LoRa yet (the last test says so).
+says. Most tests send the control requests (staging, offer, job reads) over the target's own interface, which keeps their radio
+time to the bulk frames; two send them signed over the radio, through the gateway (LoraControl, the manager's default), and one
+checks that the management channel does not carry them.
 
 Nothing here has run on real radios. At 60 times real time the gateway's duty window is seeded full at its first use, so bulk
 (80% of the window) has no budget for the first 12 minutes of its hour, which is about 12 real seconds: the manager waits
