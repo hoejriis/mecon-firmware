@@ -13,18 +13,22 @@ const unsigned CHANNEL_NAME_MAX = 31;     // bytes of a name; the native slot ho
 const unsigned CHANNEL_SECRET_BYTES = 16; // only 128-bit keys, as the native CMD_SET_CHANNEL frame
 const unsigned CHANNEL_PAGE = 8;          // used slots per channel.list page
 
+const int FAV_KEEP = -1;   // ChannelHost::set: keep the slot's favourite mark
+
 struct ChannelInfo {
   char name[CHANNEL_NAME_MAX + 1];   // "" for an empty slot
   uint8_t hash;                      // the channel hash on air (first byte of SHA-256 of the key)
   uint8_t key_bytes;                 // 16 or 32
   bool keyed;                        // a non-zero key is set (a slot can hold a key with an empty name)
+  bool favourite;                    // the slot notifies the screen and buzzer (docs/UI.md)
 };
 
 struct ChannelHost {
   int capacity;                                                            // slots 0 .. capacity - 1
   bool (*get)(void* user, int slot, ChannelInfo& out);                    // false when the slot does not exist
-  // Writes the slot and saves the table; an empty name and an all-zero secret clear it. False when it cannot.
-  bool (*set)(void* user, int slot, const char* name, const uint8_t secret[CHANNEL_SECRET_BYTES]);
+  // Writes the slot and saves the table; an empty name and an all-zero secret clear it. favourite is the mark to
+  // write (0 or 1), or FAV_KEEP to leave the slot's mark as it is (a key rotation and its revert). False when it cannot.
+  bool (*set)(void* user, int slot, const char* name, const uint8_t secret[CHANNEL_SECRET_BYTES], int favourite);
   int (*find)(void* user, const uint8_t secret[CHANNEL_SECRET_BYTES]);    // slot holding this key, or -1
   void* user;
 };

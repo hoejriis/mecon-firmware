@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/ChannelFavourite.h>
 #include <helpers/BootTrace.h>
 #include <helpers/PassBlame.h>
 #include <helpers/net/NetCommands.h>
@@ -845,12 +846,20 @@ void MyMesh::queueChannelMessage(mesh::Packet *pkt, uint8_t channel_idx, uint32_
     _serial->writeFrame(frame, 1);
   }
   if (_listener) {
+    // The screen and the buzzer: a channel message reaches them only from a favourite slot (docs/UI.md). The
+    // message is queued and the app told above either way; the queue size still goes to the UI for its count.
+#ifndef MECON_NO_FAVOURITE_CLI   // the 256 KB STM32WL build has no screen or buzzer and nothing sets a mark: the listener hears every message as before
+    if (ChannelFav::notifies<ChannelDetails>(*this, channel_idx)) {
+#endif
     // Get the channel name from the channel index
     ChannelDetails channel_details;
     if (!getChannel(channel_idx, channel_details)) {
       strcpy(channel_details.name, "Unknown");
     }
     _listener->onChannelMessageRecv(pkt, channel_details, text);
+#ifndef MECON_NO_FAVOURITE_CLI
+    }
+#endif
     _listener->onQueueSizeChanged(offline_queue_len);
   }
 }
@@ -2341,6 +2350,13 @@ void MyMesh::handleCmdFrame(size_t len) {
     StrHelper::strncpy(channel.name, (char *)&cmd_frame[2], 32);
     memset(channel.channel.secret, 0, sizeof(channel.channel.secret));
     memcpy(channel.channel.secret, &cmd_frame[2 + 32], 16); // NOTE: only 128-bit supported
+#ifndef MECON_NO_FAVOURITE_CLI
+    ChannelDetails cur;
+    if (getChannel(channel_idx, cur) && memcmp(cur.channel.secret, channel.channel.secret, sizeof(cur.channel.secret)) == 0) {
+      channel.favourite = cur.favourite;   // the same channel written again keeps its mark; a different one starts off
+    }
+    Iface::wipe(&cur, sizeof(cur));
+#endif
     if (setChannel(channel_idx, channel)) {
       saveChannels();
       writeOKFrame();
@@ -3030,6 +3046,51 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
       if (changed) savePrefs();
       return true;
     }
+  }
+#endif
+
+#if defined(MAX_GROUP_CHANNELS) && !defined(MECON_NO_FAVOURITE_CLI)   // the 256 KB STM32WL build has no screen or buzzer and no room
+  // The channels whose messages notify the screen and buzzer (docs/UI.md). Saved with the channel table.
+  if (strcmp(command, "get channel.favourites") == 0) {
+    int n = 0;
+    n += snprintf(reply, 150, "> ");
+    bool any = false;
+    ChannelDetails ch;
+    for (int i = 0; i < MAX_GROUP_CHANNELS && n < 140; i++) {
+      if (getChannel(i, ch) && ch.favourite) { n += snprintf(&reply[n], 150 - n, any ? ",%d" : "%d", i); any = true; }
+    }
+    Iface::wipe(&ch, sizeof(ch));   // the copy holds a channel's secret
+    if (!any) strcpy(&reply[n], "none");
+    return true;
+  }
+  if (memcmp(command, "set channel.favourite ", 22) == 0) {
+    const char* a = &command[22];
+    char* end;
+    const long slot = strtol(a, &end, 10);
+    while (*end == ' ') end++;
+    const bool on = strcmp(end, "on") == 0;
+    if (end == a || slot < 0 || slot >= MAX_GROUP_CHANNELS || (!on && strcmp(end, "off") != 0)) {
+      strcpy(reply, "Error, usage: set channel.favourite <slot> on|off");
+    } else {
+      ChannelDetails ch, before;
+      getChannel((int)slot, ch);
+      before = ch;
+      if (!ch.name[0]) {
+        strcpy(reply, "Error, empty slot");
+      } else {
+        ch.favourite = on ? 1 : 0;
+        setChannel((int)slot, ch);
+        if (saveChannels()) {
+          strcpy(reply, "OK");
+        } else {
+          setChannel((int)slot, before);   // RAM and flash stay alike
+          strcpy(reply, "Error, could not save");
+        }
+      }
+      Iface::wipe(&ch, sizeof(ch));   // the copies hold a channel's secret
+      Iface::wipe(&before, sizeof(before));
+    }
+    return true;
   }
 #endif
 

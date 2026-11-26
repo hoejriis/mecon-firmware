@@ -14,6 +14,7 @@ struct FakeTable {
   static const int N = 40;
   std::string name[N];
   uint8_t key[N][CHANNEL_SECRET_BYTES] = {{0}};
+  bool fav[N] = {false};
   int writes = 0;
   bool fail = false;
 };
@@ -25,13 +26,15 @@ bool getCb(void* u, int slot, ChannelInfo& out) {
   out.hash = (uint8_t)(t->key[slot][0] ^ 0x5A);   // stands in for the SHA-256 byte
   out.key_bytes = CHANNEL_SECRET_BYTES;
   out.keyed = false;
+  out.favourite = t->fav[slot];
   for (unsigned i = 0; i < CHANNEL_SECRET_BYTES; i++) out.keyed |= t->key[slot][i] != 0;
   return true;
 }
-bool setCb(void* u, int slot, const char* name, const uint8_t* key) {
+bool setCb(void* u, int slot, const char* name, const uint8_t* key, int favourite) {
   FakeTable* t = static_cast<FakeTable*>(u);
   if (t->fail || slot < 0 || slot >= FakeTable::N) return false;
   t->name[slot] = name;
+  if (favourite != FAV_KEEP) t->fav[slot] = favourite != 0;   // as the device: written as asked, or left as it is
   memcpy(t->key[slot], key, CHANNEL_SECRET_BYTES);
   t->writes++;
   return true;
@@ -201,4 +204,67 @@ TEST(ChannelOps, GetOfASlotOutsideTheTableIsInvalid) {
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
+}
+
+// ---- favourite (Issue #652)
+
+TEST(ChannelOps, FavouriteIsOffByDefaultAndReadBack) {
+  Rig r;
+  std::string res = r.put(3, "ops", KEY_A);
+  EXPECT_TRUE(has(res, "\"favourite\":false")) << res;
+  EXPECT_FALSE(r.t.fav[3]);
+  EXPECT_TRUE(has(r.call("channel.get", "{\"slot\":3}"), "\"favourite\":false"));
+  EXPECT_TRUE(has(r.call("channel.list", "{}"), "\"favourite\":false"));
+}
+
+TEST(ChannelOps, PutWithFavouriteSetsItAndGetAndListShowIt) {
+  Rig r;
+  std::string res = r.call("channel.put", "{\"slot\":2,\"name\":\"fav\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":true}");
+  EXPECT_TRUE(has(res, "\"favourite\":true")) << res;
+  EXPECT_TRUE(r.t.fav[2]);
+  EXPECT_TRUE(has(r.call("channel.get", "{\"slot\":2}"), "\"favourite\":true"));
+  EXPECT_TRUE(has(r.call("channel.list", "{}"), "\"favourite\":true"));
+}
+
+TEST(ChannelOps, TheSameChannelPutAgainKeepsItsMark) {
+  Rig r;
+  r.call("channel.put", "{\"slot\":2,\"name\":\"fav\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":true}");
+  std::string res = r.put(2, "fav", KEY_A);   // identical name and secret, no favourite given
+  EXPECT_TRUE(has(res, "\"favourite\":true")) << res;
+  EXPECT_TRUE(r.t.fav[2]);
+  res = r.call("channel.put", "{\"slot\":2,\"name\":\"fav\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":false}");
+  EXPECT_FALSE(r.t.fav[2]) << "an explicit false still turns it off";
+}
+
+TEST(ChannelOps, ADifferentSecretClearsTheMark) {
+  Rig r;
+  r.call("channel.put", "{\"slot\":2,\"name\":\"fav\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":true}");
+  r.put(2, "fav", KEY_B);   // same name, other key
+  EXPECT_FALSE(r.t.fav[2]);
+}
+
+TEST(ChannelOps, AReplacedSlotLosesItsMark) {
+  Rig r;
+  r.call("channel.put", "{\"slot\":2,\"name\":\"fav\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":true}");
+  ASSERT_TRUE(r.t.fav[2]);
+  std::string res = r.put(2, "other", KEY_B);   // another channel in the slot, no favourite given
+  EXPECT_TRUE(has(res, "\"replaced\":true")) << res;
+  EXPECT_TRUE(has(res, "\"favourite\":false")) << res;
+  EXPECT_FALSE(r.t.fav[2]);
+}
+
+TEST(ChannelOps, ARemovedSlotLosesItsMarkAndReturnsOff) {
+  Rig r;
+  r.call("channel.put", "{\"slot\":2,\"name\":\"fav\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":true}");
+  r.call("channel.remove", "{\"slot\":2}");
+  EXPECT_FALSE(r.t.fav[2]);
+  r.put(2, "again", KEY_A);
+  EXPECT_FALSE(r.t.fav[2]);
+}
+
+TEST(ChannelOps, AFavouriteThatIsNotABooleanIsInvalidAndWritesNothing) {
+  Rig r;
+  std::string res = r.call("channel.put", "{\"slot\":2,\"name\":\"x\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":\"yes\"}");
+  EXPECT_TRUE(has(res, "\"status\":\"invalid\"")) << res;
+  EXPECT_EQ(0, r.t.writes);
 }
