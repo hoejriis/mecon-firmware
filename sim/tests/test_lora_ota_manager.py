@@ -3,7 +3,7 @@
 interface (rf.status, rf.bulk, the rf stream) and the target. The manager stages the manifest, offers, paces, resends and
 resumes; a test breaks the channel by wrapping the gateway object the manager reads, so each loss is exactly where the test
 says. Most tests send the control requests (staging, offer, job reads) over the target's own interface, which keeps their radio
-time to the bulk frames; two send them signed over the radio, through the gateway (LoraControl, the manager's default), and one
+time to the bulk frames; one sends them signed over the radio, through the gateway (LoraControl, the manager's default), and another
 checks that the management channel does not carry them.
 
 Nothing here has run on real radios. At 60 times real time the gateway's duty window is seeded full at its first use, so bulk
