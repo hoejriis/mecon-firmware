@@ -67,14 +67,3 @@ def test_no_restart_in_the_first_hour_after_boot(nodes, tmp_path):
     assert n.proc.poll() is None, "the once-an-hour cap did not hold in the first hour"
     assert not [e for e in audit_entries(c.cli) if " mqtt-recover " in e]
 
-
-def test_the_long_lived_platform_resources_are_taken_before_wifi_starts(nodes, tmp_path):
-    """The ESP32's connect worker (a task with a 10 KB stack, never freed) used to be made at the first connect attempt,
-    after the broker's Wi-Fi was up, in the middle of the largest free block. The simulator has no block layout, so what
-    is checked is the order: the controller's platform is asked to reserve before the Wi-Fi stack starts."""
-    n, c = boot(nodes, tmp_path, "recr", low=False)
-    time.sleep(3)
-    log = harness.node_log(n)
-    assert "SIMMQTT reserve" in log, "the connect worker was not reserved at boot"
-    assert "SIMWIFISTACK up" in log
-    assert log.index("SIMMQTT reserve") < log.index("SIMWIFISTACK up"), "reserved only after the Wi-Fi stack had started"

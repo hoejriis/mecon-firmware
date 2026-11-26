@@ -21,10 +21,3 @@ mutate mqtt_recovery_failures_not_counted src/helpers/mqtt/MqttController.cpp " 
   return;" $RS::test_failed_connects_under_a_low_heap_restart_the_device_and_the_audit_entry_survives
 mutate mqtt_recovery_audit_not_flushed examples/companion_radio/main.cpp "                                     auditStore().flush(millis());   // the entry reaches flash before the restart
 " "" $RS::test_failed_connects_under_a_low_heap_restart_the_device_and_the_audit_entry_survives
-mutate mqtt_worker_not_reserved_at_boot examples/companion_radio/main.cpp "    if (mqtt_may_run) mqttPlatformNet().reserve();
-" "" $RS::test_the_long_lived_platform_resources_are_taken_before_wifi_starts
-mutate mqtt_worker_reserved_after_wifi examples/companion_radio/main.cpp "    if (mqtt_may_run) mqttPlatformNet().reserve();
-#endif
-    wifiController().begin(&the_mesh.getNodePrefs()->wifi_profiles);" "#endif
-    wifiController().begin(&the_mesh.getNodePrefs()->wifi_profiles);
-    if (mqtt_may_run) mqttPlatformNet().reserve();" $RS::test_the_long_lived_platform_resources_are_taken_before_wifi_starts

@@ -366,11 +366,6 @@ void setup() {
 #if defined(ESP32)
     board.setInhibitSleep(true);   // prevent sleep when WiFi is active
 #endif
-#ifdef ENABLE_MQTT
-    // The connect worker's task and stack are long-lived: taken now, before Wi-Fi and TLS take their memory, they no longer
-    // land in the middle of the largest free block after the broker join (Issue #651).
-    if (mqtt_may_run) mqttPlatformNet().reserve();
-#endif
     wifiController().begin(&the_mesh.getNodePrefs()->wifi_profiles);
     if (tcp_may_start) {
       wifi_interface.begin(TCP_PORT);

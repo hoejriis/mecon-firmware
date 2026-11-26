@@ -10,8 +10,8 @@
 # Reports kept for later (Issue #610), 2026-11-25: every env with the device interface (the 14 rows that carry the standing
 # instructions) got 7 KB more flash on top of the rows above. Measured on t1000e_repeater: 544,248 to 550,432 B (+6,184, RAM
 # +104 B), and on Heltec_v3_repeater: 1,581,544 to 1,587,712 B (+6,168, RAM +88 B). The other 12 were raised by the same 7 KB.
-# Reconnect recovery and the connect worker taken at boot (Issue #651), 2026-11-26: Heltec_v3_companion_radio_standalone measured
-# 1,840,412 to 1,841,360 B flash (+948 B), RAM 139,380 to 139,404 B (+24 B); its flash row was raised to the measured use rounded up to a whole KB.
+# Reconnect recovery and the link queues made at boot (Issue #651), 2026-11-26: Heltec_v3_companion_radio_standalone measured
+# 1,840,412 to 1,841,236 B flash (+824 B), RAM 139,380 to 139,412 B (+32 B); its flash row was raised to the measured use rounded up to a whole KB.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1459200     122880
 Heltec_v3_companion_radio_standalone     1842176     141312

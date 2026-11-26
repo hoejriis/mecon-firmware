@@ -36,10 +36,6 @@ class MqttNet {
 public:
   virtual ~MqttNet() { }
   virtual void init(const char* node_id) { (void)node_id; }
-  // Take the long-lived platform resources now (on ESP32 the connect worker's task and its 10 KB stack), so they come
-  // from the heap before Wi-Fi and TLS take theirs and do not split the largest free block in the middle of a session
-  // (Issue #651). Called once, before the Wi-Fi controller starts; asyncStart() makes them itself if it was not called.
-  virtual void reserve() { }
   virtual bool linkUp() = 0;
   // Blocking, bounded by the platform's DNS timeout. IPv4 only.
   virtual bool resolve(const char* host, uint32_t& addr) = 0;

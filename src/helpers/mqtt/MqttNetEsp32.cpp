@@ -21,16 +21,15 @@
 namespace {
 // The connect worker: one FreeRTOS task, created on the first connect attempt and kept (creating and deleting a task
 // per attempt would churn the heap and risk a failed allocation exactly when a TLS context needs the memory). It
-// is created at boot by reserve(), before Wi-Fi and TLS take their memory (Issue #651). It sleeps on a task
-// notification, runs one job, and sleeps again.
+// sleeps on a task notification, runs one job, and sleeps again.
 //
 // Stack: 10240 bytes. The sequence it runs (DNS, WiFiClientSecure::connect with the mbedTLS handshake, then
 // PubSubClient::connect) runs today on the Arduino loop task, whose stack is 8192 bytes and which also carries the
 // Companion's call depth; the mbedTLS handshake is the deepest part (ECDHE and ECDSA/RSA verification, X.509 parsing)
 // and its large buffers are on the heap, not the stack. 10 KiB is that 8 KiB plus 25 % headroom, not a measurement:
 // the high-water mark of the worker's stack is read after every job (stackFree()) so the hardware run can replace the
-// estimate with a figure. The stack is allocated from the internal heap by reserve() at boot (or, for a net that was not
-// reserved, when the first attempt starts); it is never freed.
+// estimate with a figure. The stack is allocated from the internal heap when the first attempt starts, so a device
+// that never connects never pays it.
 //
 // Core: the Arduino loop (and with it the mesh) runs on ARDUINO_RUNNING_CORE; the worker is pinned to the other core,
 // so a handshake that takes hundreds of milliseconds of CPU does not compete with mesh processing. Priority 1, the
@@ -64,20 +63,14 @@ class Worker {
   }
 
 public:
-  // The task and its stack are internal heap that is never freed. Taken at the first attempt, after Wi-Fi was up, they
-  // sat in the middle of the largest free block for the rest of the run, the likeliest source of the early drop of that
-  // block in Issue #651 (to be confirmed on a board); reserve() takes them at boot instead.
-  bool reserve() {
-    if (_task) return true;
-    if (xTaskCreatePinnedToCore(&Worker::body, "mqttconn", WORKER_STACK_BYTES, this, 1, &_task, WORKER_CORE) != pdPASS) {
-      _task = nullptr;
-      return false;
-    }
-    return true;
-  }
   bool start(void (*job)(void*), void* arg) {
     if (_busy.load(std::memory_order_acquire)) return false;
-    if (!reserve()) return false;
+    if (!_task) {
+      if (xTaskCreatePinnedToCore(&Worker::body, "mqttconn", WORKER_STACK_BYTES, this, 1, &_task, WORKER_CORE) != pdPASS) {
+        _task = nullptr;
+        return false;
+      }
+    }
     _job = job;
     _arg = arg;
     _busy.store(true, std::memory_order_relaxed);
@@ -173,8 +166,6 @@ class Esp32Net : public MqttNet {
 
 public:
   void init(const char* node_id) override { snprintf(_hostname, sizeof(_hostname), "mecon-%s", node_id); }
-
-  void reserve() override { _worker.reserve(); }
 
   bool linkUp() override { return WiFi.status() == WL_CONNECTED; }
 

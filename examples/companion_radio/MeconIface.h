@@ -268,7 +268,10 @@ private:
   char* nonceOf(Link* link) { return link ? link->nonce : _mqtt_nonce; }
   bool queueResult(Link& l, const char* msg, size_t len);
   bool ensureQueue(Link& l);
-  Iface::OutQueue* _spare_q = nullptr;   // Wi-Fi mode: the first link's queue, made at boot (Issue #651)
+  // Wi-Fi mode: the queues of the two links known at boot, the cable and the TCP port, made at boot and handed to the first
+  // two links that ask (Issue #651). The MQTT session has no queue (its events go straight to the broker); BLE does not run.
+  static const int SPARE_QUEUES = 2;
+  Iface::OutQueue* _spare_q[SPARE_QUEUES] = {nullptr, nullptr};
 
   Link _links[LINKS];
   Iface::MessageTable* _messages = nullptr;   // allocated on the first message.send, or at begin() in Wi-Fi mode

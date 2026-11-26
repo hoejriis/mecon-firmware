@@ -87,9 +87,6 @@ bool begin(Mesh& mesh, Prefs& p, Board& board, Iface::ConsoleIface& iface, uint3
 #if defined(ESP32)
   board.setInhibitSleep(true);   // no light sleep under a Wi-Fi link
 #endif
-#ifdef ENABLE_MQTT
-  if (mqtt_may_run) mqttPlatformNet().reserve();   // the connect worker's stack before Wi-Fi and TLS take theirs (Issue #651)
-#endif
   wifiController().begin(&p.wifi_profiles);
 #ifdef ENABLE_MQTT
   if (p.mqtt_enabled) {

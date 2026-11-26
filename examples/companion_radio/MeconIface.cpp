@@ -1160,14 +1160,15 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
     _jobs.table();
     _inbox.alloc();
     if (!_messages) _messages = new (std::nothrow) MessageTable();
-    // The first transport's event queue (a cable client's, the first to ask) is made now too: made on its first message
-    // it would also land after the broker join (Issue #651). A second transport's still comes on its first message.
-    if (!_spare_q) {
+    // The event queues of the links known at boot, the cable and the TCP port, are made now too: made on a link's first
+    // message each would land after the broker join, and the first message of a session is usually a cable client's
+    // status read (Issue #651). The MQTT session has no queue. A link beyond those two still makes its own on first use.
+    for (int i = 0; i < SPARE_QUEUES; i++) {
+      if (_spare_q[i]) continue;
       uint8_t* store = static_cast<uint8_t*>(malloc(QUEUE_BYTES));
-      if (store) {
-        _spare_q = new (std::nothrow) OutQueue(store, QUEUE_BYTES);
-        if (!_spare_q) free(store);
-      }
+      if (!store) break;
+      _spare_q[i] = new (std::nothrow) OutQueue(store, QUEUE_BYTES);
+      if (!_spare_q[i]) { free(store); break; }
     }
   }
 #endif
@@ -1229,7 +1230,8 @@ MeconIface::Link* MeconIface::linkFor(const BaseSerialInterface* src, bool creat
 
 bool MeconIface::ensureQueue(Link& l) {
   if (l.q) return true;
-  if (_spare_q) { l.q = _spare_q; _spare_q = nullptr; return true; }   // made at boot in Wi-Fi mode
+  for (int i = 0; i < SPARE_QUEUES; i++)   // made at boot in Wi-Fi mode
+    if (_spare_q[i]) { l.q = _spare_q[i]; _spare_q[i] = nullptr; return true; }
   uint8_t* store = static_cast<uint8_t*>(malloc(QUEUE_BYTES));
   if (!store) return false;
   l.q = new (std::nothrow) OutQueue(store, QUEUE_BYTES);
