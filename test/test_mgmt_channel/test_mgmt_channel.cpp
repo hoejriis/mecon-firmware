@@ -25,10 +25,11 @@ bool getCb(void* u, int slot, ChannelInfo& out) {
   out.hash = t->key[slot][0];
   out.key_bytes = CHANNEL_SECRET_BYTES;
   out.keyed = false;
+  out.favourite = false;
   for (unsigned i = 0; i < CHANNEL_SECRET_BYTES; i++) out.keyed |= t->key[slot][i] != 0;
   return true;
 }
-bool setCb(void* u, int slot, const char* name, const uint8_t* key) {
+bool setCb(void* u, int slot, const char* name, const uint8_t* key, bool) {
   FakeTable* t = static_cast<FakeTable*>(u);
   if (t->fail || slot < 0 || slot >= FakeTable::N) return false;
   t->name[slot] = name;

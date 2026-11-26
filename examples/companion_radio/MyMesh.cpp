@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/ChannelFavourite.h>
 #include <helpers/BootTrace.h>
 #include <helpers/PassBlame.h>
 #include <helpers/net/NetCommands.h>
@@ -845,12 +846,16 @@ void MyMesh::queueChannelMessage(mesh::Packet *pkt, uint8_t channel_idx, uint32_
     _serial->writeFrame(frame, 1);
   }
   if (_listener) {
-    // Get the channel name from the channel index
-    ChannelDetails channel_details;
-    if (!getChannel(channel_idx, channel_details)) {
-      strcpy(channel_details.name, "Unknown");
+    // The screen and the buzzer: a channel message reaches them only from a favourite slot (docs/UI.md). The
+    // message is queued and the app told above either way; the queue size still goes to the UI for its count.
+    if (ChannelFav::notifies<ChannelDetails>(*this, channel_idx)) {
+      // Get the channel name from the channel index
+      ChannelDetails channel_details;
+      if (!getChannel(channel_idx, channel_details)) {
+        strcpy(channel_details.name, "Unknown");
+      }
+      _listener->onChannelMessageRecv(pkt, channel_details, text);
     }
-    _listener->onChannelMessageRecv(pkt, channel_details, text);
     _listener->onQueueSizeChanged(offline_queue_len);
   }
 }
@@ -3030,6 +3035,51 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
       if (changed) savePrefs();
       return true;
     }
+  }
+#endif
+
+#ifdef MAX_GROUP_CHANNELS
+  // The channels whose messages notify the screen and buzzer (docs/UI.md). Saved with the channel table.
+  if (strcmp(command, "get channel.favourites") == 0) {
+    int n = 0;
+    n += snprintf(reply, 150, "> ");
+    bool any = false;
+    ChannelDetails ch;
+    for (int i = 0; i < MAX_GROUP_CHANNELS && n < 140; i++) {
+      if (getChannel(i, ch) && ch.favourite) { n += snprintf(&reply[n], 150 - n, any ? ",%d" : "%d", i); any = true; }
+    }
+    Iface::wipe(&ch, sizeof(ch));   // the copy holds a channel's secret
+    if (!any) strcpy(&reply[n], "none");
+    return true;
+  }
+  if (memcmp(command, "set channel.favourite ", 22) == 0) {
+    const char* a = &command[22];
+    char* end;
+    const long slot = strtol(a, &end, 10);
+    while (*end == ' ') end++;
+    const bool on = strcmp(end, "on") == 0;
+    if (end == a || slot < 0 || slot >= MAX_GROUP_CHANNELS || (!on && strcmp(end, "off") != 0)) {
+      strcpy(reply, "Error, usage: set channel.favourite <slot> on|off");
+    } else {
+      ChannelDetails ch, before;
+      getChannel((int)slot, ch);
+      before = ch;
+      if (!ch.name[0]) {
+        strcpy(reply, "Error, empty slot");
+      } else {
+        ch.favourite = on ? 1 : 0;
+        setChannel((int)slot, ch);
+        if (saveChannels()) {
+          strcpy(reply, "OK");
+        } else {
+          setChannel((int)slot, before);   // RAM and flash stay alike
+          strcpy(reply, "Error, could not save");
+        }
+      }
+      Iface::wipe(&ch, sizeof(ch));   // the copies hold a channel's secret
+      Iface::wipe(&before, sizeof(before));
+    }
+    return true;
   }
 #endif
 

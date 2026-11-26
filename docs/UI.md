@@ -67,6 +67,14 @@ front -> home -> recent -> radio -> connectivity -> advert -> discovery -> hiber
 
 A new message interrupts any page and shows the **message preview**: `Unread: n` and the age, the sender or channel with its hop count (`(2) Name:`; `(D)` for direct), then the wrapped text. Click shows the next older unread message, long press clears the queue. Unchanged.
 
+### Notifications: direct messages and favourite channels
+
+The screen and the buzzer announce a **direct message** always, and a **channel message** only when its slot is marked **favourite**. A channel message on any other slot is received, stored and queued for the app exactly the same (the app's push tickle and message sync, forwarding and MQTT publishing do not change); only the message preview, the display wake-up, the buzzer and the vibration are left out, so a quiet channel adds nothing to the screen. The unread count the screen shows is the app queue's size, which still counts every message.
+
+Every slot starts off, the public channel included. Mark one with `set channel.favourite <slot> on` (`get channel.favourites` lists them) or `favourite` on the device interface's `channel.put`. The mark is saved with the channel table, and a slot that is replaced (another `channel.put`, the app's `CMD_SET_CHANNEL`), removed or reset loses it; the management channel's slot follows the same rule. The app's own frames have no field for it.
+
+**Difference from stock MeshCore:** stock notifies for every channel message. Earlier MECON Companion firmware notified only for favourites, and this restores that.
+
 ### Stock pages, captured
 
 These are the same stock pages as on any MeshCore `ui-new` build; they are captured here so the other pictures have context.

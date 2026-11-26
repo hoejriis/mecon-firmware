@@ -247,7 +247,7 @@ private:
   static int contRemove(void* self, const uint8_t* key);
   static int contProtect(void* self, const uint8_t* key, bool on);
   static bool chanGet(void* self, int slot, Iface::ChannelInfo& out);
-  static bool chanSet(void* self, int slot, const char* name, const uint8_t* secret);
+  static bool chanSet(void* self, int slot, const char* name, const uint8_t* secret, bool favourite);
   static int chanFind(void* self, const uint8_t* secret);
   static bool mgmtSlotFp(void* self, int slot, uint8_t out[Iface::MGMT_FP_BYTES]);
   static void mgmtKeyFp(void* self, const uint8_t* key, uint8_t out[Iface::MGMT_FP_BYTES]);

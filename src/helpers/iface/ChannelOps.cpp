@@ -37,6 +37,7 @@ void writeChannel(JsonWriter& w, int slot, const ChannelInfo& ch) {
   w.key("name"); w.str(ch.name);
   w.key("hash"); w.str(hash);
   w.key("key_bits"); w.unum((uint64_t)ch.key_bytes * 8);
+  w.key("favourite"); w.boolean(ch.favourite);
 }
 
 }  // namespace
@@ -89,7 +90,10 @@ Status opChannelPut(OpContext& c) {
   if (other >= 0 && other != slot) { wipe(key, sizeof(key)); c.error = "duplicate-secret"; return ST_FAILED; }   // the native table matches the first
   ChannelInfo before;
   const bool replaced = h->get(h->user, slot, before) && (before.name[0] || before.keyed);
-  const bool written = h->set(h->user, slot, name, key);
+  bool favourite = false;   // a put replaces the slot, so the mark is only what this call asks for
+  const int fv = argOf(c, "favourite");
+  if (fv >= 0 && !jsonGetBool(*c.doc, fv, &favourite)) { wipe(key, sizeof(key)); return ST_INVALID; }
+  const bool written = h->set(h->user, slot, name, key, favourite);
   wipe(key, sizeof(key));
   if (!written) { c.error = "write-failed"; return ST_FAILED; }
   ChannelInfo ch;
@@ -107,7 +111,7 @@ Status opChannelRemove(OpContext& c) {
   ChannelInfo ch;
   const bool was = h->get(h->user, slot, ch) && (ch.name[0] || ch.keyed);   // a key with no name still receives
   static const uint8_t ZERO[CHANNEL_SECRET_BYTES] = {0};
-  if (was && !h->set(h->user, slot, "", ZERO)) { c.error = "write-failed"; return ST_FAILED; }
+  if (was && !h->set(h->user, slot, "", ZERO, false)) { c.error = "write-failed"; return ST_FAILED; }
   JsonWriter& w = *c.out;
   w.key("slot"); w.unum((uint64_t)slot);
   w.key("removed"); w.boolean(was);

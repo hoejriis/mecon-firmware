@@ -23,7 +23,8 @@
           "slot",
           "name",
           "hash",
-          "key_bits"
+          "key_bits",
+          "favourite"
         ],
         "properties": {
           "slot": {
@@ -45,6 +46,10 @@
               128,
               256
             ]
+          },
+          "favourite": {
+            "type": "boolean",
+            "description": "True when this slot's messages notify the device's screen and buzzer. Off for every slot unless set; a replaced or removed slot loses the mark."
           }
         }
       }

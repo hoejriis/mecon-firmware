@@ -61,7 +61,7 @@ private:
     wipe(key, sizeof(key));
     return true;
   }
-  static bool hostSet(void* user, int slot, const char* name, const uint8_t secret[CHANNEL_SECRET_BYTES]) {
+  static bool hostSet(void* user, int slot, const char* name, const uint8_t secret[CHANNEL_SECRET_BYTES], bool /*favourite: a Repeater has no screen to notify*/) {
     MgmtSlot* s = static_cast<MgmtSlot*>(user);
     if (slot != 0 || !s->_store) return false;
     if (!name[0] && isZero(secret)) {   // how a slot is cleared

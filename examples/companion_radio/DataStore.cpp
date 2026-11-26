@@ -2,6 +2,7 @@
 #include "DataStore.h"
 #include <helpers/iface/DeviceMeta.h>
 #include <helpers/AtomicFile.h>
+#include <helpers/ChannelFavourite.h>
 #include <helpers/deployment/DepRecord.h>
 #include <helpers/deployment/DepFsStore.h>
 #ifdef ENABLE_MECON_IFACE
@@ -520,6 +521,7 @@ void DataStore::loadChannels(DataStoreHost* host) {
         success = success && (file.read((uint8_t *)ch.channel.secret, 32) == 32);
 
         if (!success) break; // EOF
+        ch.favourite = ChannelFav::decode(unused);   // an older file has zeros here: off
 
         if (host->onChannelLoaded(channel_idx, ch)) {
           channel_idx++;
@@ -537,9 +539,9 @@ bool DataStore::saveChannels(DataStoreHost* host) {
     uint8_t channel_idx = 0;
     ChannelDetails ch;
     uint8_t unused[4];
-    memset(unused, 0, 4);
 
     while (host->getChannelForSave(channel_idx, ch)) {
+      ChannelFav::encode(ch.favourite != 0, unused);
       bool success = (file.write(unused, 4) == 4);
       success = success && (file.write((uint8_t *)ch.name, 32) == 32);
       success = success && (file.write((uint8_t *)ch.channel.secret, 32) == 32);

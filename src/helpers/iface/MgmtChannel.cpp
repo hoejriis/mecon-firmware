@@ -372,7 +372,7 @@ Status opMgmtRotate(OpContext& c) {
   bool answered;
   s = beginChange(c, h, "mgmt.channel.rotate", rec.slot, MgmtSnap::SLOT_KEY, fp, p, &answered);
   if (s != ST_OK || answered) { wipe(key, sizeof(key)); return s; }
-  bool ok = h.channels->set(h.channels->user, rec.slot, name, key);
+  bool ok = h.channels->set(h.channels->user, rec.slot, name, key, false);
   wipe(key, sizeof(key));
   if (ok) {
     MgmtRecord next = rec;
@@ -411,7 +411,7 @@ Status opMgmtUnbind(OpContext& c) {
   bool ok = true;
   if (remove) {
     static const uint8_t ZERO[CHANNEL_SECRET_BYTES] = {0};
-    ok = h.channels->set(h.channels->user, rec.slot, "", ZERO);
+    ok = h.channels->set(h.channels->user, rec.slot, "", ZERO, false);
   }
   if (ok) {
     w.key("state"); w.str("none");
@@ -501,7 +501,7 @@ bool mgmtRevert(const MgmtHost& h, const Job& j) {
     if (any) h.key_fp(h.user, s->key, old_fp);
     const bool applied = s->slot_change == MgmtSnap::SLOT_CLEARED ? !keyed : keyed && sameFp(cur, s->applied_fp);
     const bool untouched = any ? keyed && sameFp(cur, old_fp) : !keyed;
-    if (applied && !untouched) ok = h.channels->set(h.channels->user, s->slot, s->name, s->key);
+    if (applied && !untouched) ok = h.channels->set(h.channels->user, s->slot, s->name, s->key, false);
     else if (!untouched) ok = false;   // someone else's change since: never overwritten
   }
   if (ok) {

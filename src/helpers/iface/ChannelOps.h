@@ -18,13 +18,15 @@ struct ChannelInfo {
   uint8_t hash;                      // the channel hash on air (first byte of SHA-256 of the key)
   uint8_t key_bytes;                 // 16 or 32
   bool keyed;                        // a non-zero key is set (a slot can hold a key with an empty name)
+  bool favourite;                    // the slot notifies the screen and buzzer (docs/UI.md)
 };
 
 struct ChannelHost {
   int capacity;                                                            // slots 0 .. capacity - 1
   bool (*get)(void* user, int slot, ChannelInfo& out);                    // false when the slot does not exist
-  // Writes the slot and saves the table; an empty name and an all-zero secret clear it. False when it cannot.
-  bool (*set)(void* user, int slot, const char* name, const uint8_t secret[CHANNEL_SECRET_BYTES]);
+  // Writes the slot and saves the table; an empty name and an all-zero secret clear it. The favourite mark is part of
+  // what is written: a slot that is replaced or cleared keeps no earlier mark. False when it cannot.
+  bool (*set)(void* user, int slot, const char* name, const uint8_t secret[CHANNEL_SECRET_BYTES], bool favourite);
   int (*find)(void* user, const uint8_t secret[CHANNEL_SECRET_BYTES]);    // slot holding this key, or -1
   void* user;
 };
