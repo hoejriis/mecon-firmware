@@ -41,6 +41,32 @@
     "parts": 4,
     "data": "hUKZ4lAMWSWvmYxA5kvjhrj8SwCfz7SM5eiFPVe22zhKYEGh1z2jjBw5EyfyONrYjbrzBCV9HIzmrQU="
    }
+  ],
+  "signed_part_wires": [
+   {
+    "mecon_auth": 1,
+    "issuer": "beb99f3951a648330a8b278e6a506107",
+    "sig": "mhCf59+tLLm9M342xm8rsXhCaFZEt+UOlxrZ0gdbukRw9D05oAmglnADOSKzMo/KRgErAczIVKDa0eNZEDaoDQ==",
+    "body": "{\"v\":1,\"id\":\"m-96-update.manifest.part\",\"op\":\"update.manifest.part\",\"args\":{\"sha256\":\"ab33392b8cce2d3f9b564f133df2f282aefa8303b08392a930b9db691082045e\",\"part\":1,\"parts\":4,\"data\":\"eyJ2IjoxLCJrZXlfaWQiOiIxNWQwZTVjOTJlNTM0MzZhIiwibGluZSI6InB1YmxpYyIsInZlcnNpb24iOiJ2MS4xOC4wLW1lY29uLjk5LjAuMCIsImJ1aWxkIjoiMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCIsInVwc3RyZWFtIjoidjEuMTguMCIsImludGVyZmFjZSI6IjEuMCIsImg=\"},\"issuer\":\"beb99f3951a648330a8b278e6a506107\",\"deployment_id\":\"20516e87dd57526592786b6d1b31a3f9\",\"authority_revision\":1,\"issued_at\":1792800000,\"target_public_key\":\"c78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe\",\"job_id\":96}"
+   },
+   {
+    "mecon_auth": 1,
+    "issuer": "beb99f3951a648330a8b278e6a506107",
+    "sig": "bm8ISL3ap/cjN4ku4kXWJYpIt9qa9AXqdhRcacQ5vHlpDlcH5WrY6LmS2QScyMs1h5BKTlQqMgzzbYcqX898BQ==",
+    "body": "{\"v\":1,\"id\":\"m-97-update.manifest.part\",\"op\":\"update.manifest.part\",\"args\":{\"sha256\":\"ab33392b8cce2d3f9b564f133df2f282aefa8303b08392a930b9db691082045e\",\"part\":2,\"parts\":4,\"data\":\"YXJkd2FyZSI6ImZpeHR1cmUtYm9hcmQiLCJoYXJkd2FyZV9yZXYiOlsiMSJdLCJyb2xlIjoiY29tcGFuaW9uIiwidmFyaWFudCI6ImZpeHR1cmVfdmFyaWFudCIsImxheW91dCI6MSwiYm9vdGxvYWRlcl9taW4iOm51bGwsImRhdGFfZm9ybWF0IjoxLCJzZWN1cml0eV92ZXJzaW9uIjoxLCJpbWFnZSI6eyJzaXo=\"},\"issuer\":\"beb99f3951a648330a8b278e6a506107\",\"deployment_id\":\"20516e87dd57526592786b6d1b31a3f9\",\"authority_revision\":1,\"issued_at\":1792800000,\"target_public_key\":\"c78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe\",\"job_id\":97}"
+   },
+   {
+    "mecon_auth": 1,
+    "issuer": "beb99f3951a648330a8b278e6a506107",
+    "sig": "Q+ihECMsC+V91o9Mj52c3oXkD2ZtDVJBe5Kw0D1FBRw2LbAmSTLpcYJG1gwW8bkf3uxjUdtt01jVyH61XaP4Cw==",
+    "body": "{\"v\":1,\"id\":\"m-98-update.manifest.part\",\"op\":\"update.manifest.part\",\"args\":{\"sha256\":\"ab33392b8cce2d3f9b564f133df2f282aefa8303b08392a930b9db691082045e\",\"part\":3,\"parts\":4,\"data\":\"ZSI6NTgwLCJzaGEyNTYiOiI0MDA5MzhkNGIzZDEzMzlmMTFlYzVhZDdmYWI2OThjMTljOWMyMGE0MjEwNWQ2Y2I5ODBkMDQ1YzhlNWU2NTUyIn0sImtpbmQiOiJhcHAiLCJtaW5fZnJvbSI6InYxLjE4LjAtbWVjb24uMC4wLjAiLCJkb3duZ3JhZGUiOmZhbHNlLCJpc3N1ZWRfYXQiOjE3OTAwMDAwMDB9DFS1uPQ=\"},\"issuer\":\"beb99f3951a648330a8b278e6a506107\",\"deployment_id\":\"20516e87dd57526592786b6d1b31a3f9\",\"authority_revision\":1,\"issued_at\":1792800000,\"target_public_key\":\"c78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe\",\"job_id\":98}"
+   },
+   {
+    "mecon_auth": 1,
+    "issuer": "beb99f3951a648330a8b278e6a506107",
+    "sig": "SYtS924Ynk15QlMk2HpQGqd76v81x3EZpjCJ2dEtAjqsn3Ze/7hO6UaioqBaBot5ixLyqbMa/qAFhezOY+PkCw==",
+    "body": "{\"v\":1,\"id\":\"m-99-update.manifest.part\",\"op\":\"update.manifest.part\",\"args\":{\"sha256\":\"ab33392b8cce2d3f9b564f133df2f282aefa8303b08392a930b9db691082045e\",\"part\":4,\"parts\":4,\"data\":\"hUKZ4lAMWSWvmYxA5kvjhrj8SwCfz7SM5eiFPVe22zhKYEGh1z2jjBw5EyfyONrYjbrzBCV9HIzmrQU=\"},\"issuer\":\"beb99f3951a648330a8b278e6a506107\",\"deployment_id\":\"20516e87dd57526592786b6d1b31a3f9\",\"authority_revision\":1,\"issued_at\":1792800000,\"target_public_key\":\"c78ad1f42ff649e780aaa83b3c9eb160e670f133c93109594335b9069f5b46fe\",\"job_id\":99}"
+   }
   ]
  },
  "offer": {

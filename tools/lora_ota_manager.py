@@ -17,9 +17,8 @@ The gateway is trusted on its cable and is not signed to. The target's requests 
 `--key` (a JSON file {"seed_hex", "issuer", "deployment_id", "authority_revision"}; the public test key by default,
 valid on no real device). Neither the key nor the transfer token is ever printed.
 
-`--target-port` reaches the target's own USB interface for the control requests (staging, offer, job reads) instead of
-the radio. A signed request is accepted over the radio only for the operations LoRa carries, and the firmware does not
-yet carry update.manifest.part and update.offer there (see docs/contract/LORA_UPDATES.md section 11)."""
+The control requests (staging, offer, job reads) go over the radio, signed, through the gateway. `--target-port` sends them over
+the target's own USB interface instead."""
 import argparse
 import base64
 import hashlib
@@ -508,12 +507,15 @@ def _fixture_manifest(image):
 def vectors():
     v = json.load(open(TEST_FIXTURE))
     node_key = v["keys"]["device node"]["public_key"]
-    signer = Signer.public_test(job_base=100)
+    parts_first = 96   # the parts' job ids, then the offer's 100 and the resume's 101: one rising sequence
+    signer = Signer.public_test(job_base=parts_first)
     image = bytes((i * 7 + 3) & 0xFF for i in range(FIXTURE_SIZE))
     text = _fixture_manifest(image)
     sig = base64.b64encode(ed25519_ref.sign(FIXTURE_RELEASE_SEED, b"MECON-RELEASE-v1\x00" + text.encode())).decode()
     sha = hashlib.sha256(text.encode()).hexdigest()
     parts = manifest_parts(text, sig)
+    signed_parts = [signer.wrap(node_key, "update.manifest.part", p, job=signer.next_job(), issued_at=FIXTURE_ISSUED) for p in parts]
+    assert [json.loads(w["body"])["job_id"] for w in signed_parts] == list(range(96, 96 + len(parts))) and len(parts) == 4
     token = hashlib.sha256(b"mecon-firmware public test token: lora updates").digest()[:16]
     k = bulk.keys(token)
     job = signer.next_job()
@@ -542,7 +544,7 @@ def vectors():
         "node_key": node_key, "issued_at": FIXTURE_ISSUED,
         "issuer_public_key": ed25519_ref.public_key(signer._seed).hex(),
         "release_public_key": ed25519_ref.public_key(FIXTURE_RELEASE_SEED).hex(),
-        "manifest": {"text": text, "sig_b64": sig, "sha256": sha, "parts": parts},
+        "manifest": {"text": text, "sig_b64": sig, "sha256": sha, "parts": parts, "signed_part_wires": signed_parts},
         "offer": {"job_id": job_id, "job": job, "wire": offer(job, FIXTURE_ISSUED + window),
                   "answer_example": {"job": job_id, "state": "accepted", "transfer_token_hex": token.hex(), "size": FIXTURE_SIZE,
                                      "transfer_size": FIXTURE_SIZE, "encoding": "raw", "next": 0, "frame_bytes": bulk.BULK_DATA,

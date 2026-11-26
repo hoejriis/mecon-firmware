@@ -310,19 +310,39 @@ def test_a_signed_offer_and_a_signed_job_get_through_the_manager(ether, nodes):
     assert m.confirm(timeout_s=30, poll_s=0.5)["state"] == "confirmed"
 
 
-@pytest.mark.xfail(strict=True, raises=lom.Refused, reason="update.manifest.part and update.offer are not among the operations a "
-                                                           "target carries over LoRa (loraOpAllowed in src/helpers/iface/LoraLink.h), "
-                                                           "which LORA_UPDATES section 3 puts on that path")
 @pytest.mark.timescale(SCALE)
-def test_the_manifest_is_staged_over_the_radio(ether, nodes):
+def test_the_manager_stages_offers_and_reads_the_job_over_the_radio_signed(ether, nodes):
+    """update.manifest.part, update.offer and job.get all travel as signed requests through rf.request (LoraControl), and
+    the first block goes the same way; cancelling over the radio ends the job."""
     img = image(1200)
     n, d, u, g = enrolled_pair(nodes, ether, "mg", 87)
-    gw = lom.Gateway(g.i, d.node_key, renew_s=1.0)
+    key = d.node_key
     signer = lom.Signer.public_test(job_base=10)
-    m, _, _ = manager(u, g, img, "mg", gw=gw, control=lom.LoraControl(gw, d.node_key, signer, prefix="mg"))
-    try:
-        m.stage()
-    except lom.Refused as e:
-        assert e.reply["status"] == "unknown-op", "refused for another reason than the missing operation: %s" % e.reply
-        raise
-    assert d.i.request("update.status")["result"]["staged"][0]["sha256"] == m.sha256
+    gw = Tap(g.i, key, renew_s=1.0)
+    control = lom.LoraControl(gw, key, signer, prefix="mg")
+    m, _, clock = manager(u, g, img, "mg", gw=gw, control=control, block=4)
+    m.log = lambda s: clock.skip(10 ** 5) if s.startswith("block at 0 ") else None
+    m.start()
+    assert [op for op, _ in control.history].count("update.manifest.part") == 4
+    assert d.i.request("update.status")["result"]["job"]["job"] == m.job
+    assert m.run() == "paused" and m.next == 4
+    g1 = m.progress()   # a signed job.get, over the radio
+    assert (g1["state"], g1["next"], g1["frames_total"]) == ("progress", 4, 11), g1
+    assert m.cancel()["state"] == "cancelled"
+    assert job_get(d, m.job)["state"] == "cancelled"
+    assert m.stats["refused"] == 0
+
+
+def test_an_update_operation_on_the_management_channel_is_unknown(ether, nodes):
+    """Offers and staging are point to point only: on the channel every member would hear them."""
+    from test_lora_management import CH, on_channel
+    from test_deployment_authority import wrap
+    d, m = on_channel(nodes, ether, "companion_standalone", "mh")
+    for op, args, job in (("update.offer", {"manifest_sha256": "ab" * 32, "issued_at": DEP_RTC,
+                                            "source": {"lora": {"block": 8, "window_end": DEP_RTC + 600}}}, 5),
+                          ("update.manifest.part", {"sha256": "ab" * 32, "part": 1, "parts": 1, "data": "AA=="}, 6),
+                          ("update.status", {}, 7)):
+        r = m.send(d.node_key, wrap(d.node_key, op, args, job=job), slot=CH)
+        assert r and r["status"] == "unknown-op", (op, r)
+    r = m.send(d.node_key, wrap(d.node_key, "update.status", {}, job=8, rid="us"))
+    assert r and r["status"] == "ok", "the same read, point to point, is carried: %s" % r

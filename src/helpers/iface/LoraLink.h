@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "Wipe.h"
+#include "../updates/UpdFeatures.h"
 
 namespace Iface {
 
@@ -304,12 +305,20 @@ private:
 
 // What a request may run over this link: an operation stays off LoRa until it is named here (LORA_MANAGEMENT.md section 2).
 // No secret or sensitive operation is ever named: key material never goes on the air, and there is no nonce handshake.
+// The four update operations (UPD_LORA builds only, LORA_UPDATES.md sections 3 to 5) are safe here: a manifest is public and
+// carries its own release signature, an offer is a signed request, and the transfer token it answers travels only point to
+// point, encrypted to the one peer that asked. They are not on the channel (loraChannelOpAllowed): an offer is never a group
+// message.
 inline bool loraOpAllowed(const char* op) {
   static const char* const OPS[] = {"hello", "status.get", "config.schema", "config.get", "config.apply", "deployment.get",
                                     "job.get", "job.list", "job.ack", "job.cancel", "job.confirm", "posture.set", "report.now",
                                     "standing.put", "standing.list", "standing.remove", "region.list", "region.put",
                                     "region.remove", "region.flood", "region.home", "region.default", "report.list", "report.ack"};
   for (const char* o : OPS) if (strcmp(o, op) == 0) return true;
+#if defined(UPD_LORA)
+  static const char* const UPD[] = {"update.manifest", "update.manifest.part", "update.offer", "update.status"};
+  for (const char* o : UPD) if (strcmp(o, op) == 0) return true;
+#endif
   return false;
 }
 

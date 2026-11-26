@@ -214,6 +214,31 @@ TEST_F(Fixtures, TheSignedOffersVerifyUnderTheMembersKey) {
   }
 }
 
+TEST_F(Fixtures, TheSignedPartsCarryAJobIdAndVerifyUnderTheMembersKey) {
+  const auto pub = hex(str(j, "issuer_public_key"));
+  const std::string prefix = std::string("MECON-DEVMSG-v1") + '\0' + "iface" + '\0';
+  size_t pos = j.find("\"signed_part_wires\": [");
+  ASSERT_NE(std::string::npos, pos);
+  int n = 0;
+  long last = 0;
+  while ((pos = j.find("\"mecon_auth\"", pos)) != std::string::npos) {
+    const std::string body = str(j, "body", pos);
+    const auto sig = b64(str(j, "sig", pos));
+    ASSERT_EQ(64u, sig.size());
+    const std::string msg = prefix + body;
+    EXPECT_TRUE(Dep::verifySig(sig.data(), reinterpret_cast<const uint8_t*>(msg.data()), msg.size(), pub.data()));
+    const size_t jp = body.find("\"job_id\":");
+    ASSERT_NE(std::string::npos, jp) << "a signed part carries a job_id";
+    const long id = atol(body.c_str() + jp + 9);
+    EXPECT_GT(id, last);
+    last = id;
+    pos += 12;
+    n++;
+    if (n == 4) break;
+  }
+  EXPECT_EQ(4, n);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

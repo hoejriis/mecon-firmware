@@ -393,3 +393,14 @@ def test_frames_a_target_drops_and_answers_a_manager_drops():
     for name, c in f["answer_cases"].items():
         assert (bulk.check_answer(k, job, bytes.fromhex(c["hex"])) is not None) == c["accepted"], name
     assert {"frame_short_before_last", "frame_long_before_last", "frame_short_last", "frame_long_last"} <= set(f["frame_cases"])
+
+
+def test_a_signed_part_carries_a_job_id_in_the_one_rising_sequence():
+    f = load()
+    m = f["manifest"]
+    ids = []
+    for w, p in zip(m["signed_part_wires"], m["parts"]):
+        body = json.loads(w["body"])
+        assert body["op"] == "update.manifest.part" and body["args"] == p and "job_id" in body
+        ids.append(body["job_id"])
+    assert ids == sorted(ids) and len(set(ids)) == len(ids) and ids[-1] < f["offer"]["job"] < f["pause_resume"]["resume_job"]
