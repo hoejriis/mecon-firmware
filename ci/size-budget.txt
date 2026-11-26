@@ -10,9 +10,12 @@
 # Reports kept for later (Issue #610), 2026-11-25: every env with the device interface (the 14 rows that carry the standing
 # instructions) got 7 KB more flash on top of the rows above. Measured on t1000e_repeater: 544,248 to 550,432 B (+6,184, RAM
 # +104 B), and on Heltec_v3_repeater: 1,581,544 to 1,587,712 B (+6,168, RAM +88 B). The other 12 were raised by the same 7 KB.
+# Channel favourite mark (Issue #652): measured on main (5173bb48) against this change. Heltec_v3_companion_radio_standalone flash
+# 1,840,412 to 1,841,268 B (+856, RAM +40 B); t1000e_companion_radio_ble flash 608,736 to 610,224 B (+1,488, RAM +40 B). Those two
+# rows were raised to the measured use rounded up to a whole KB; the other rows had room and are unchanged.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1459200     122880
-Heltec_v3_companion_radio_standalone     1841152     141312
+Heltec_v3_companion_radio_standalone     1842176     141312
 Heltec_v3_companion_radio_usb            717824      41984
 Heltec_v3_companion_radio_wifi          1443840     118784
 Heltec_v3_repeater                       1599488     82944
@@ -23,7 +26,7 @@ heltec_v4_companion_radio_usb            703488      41984
 heltec_v4_companion_radio_wifi          1432576     118784
 heltec_v4_repeater                       1586176     82944
 heltec_v4_room_server                    1574912     87040
-t1000e_companion_radio_ble               609280      168960
+t1000e_companion_radio_ble               610304      168960
 t1000e_companion_radio_usb               602112      164864
 t1000e_repeater                          555008      43008
 t1000e_room_server                       539648      49152
