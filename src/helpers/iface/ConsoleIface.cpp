@@ -149,6 +149,13 @@ Status opHello(OpContext& c) {
 #endif
   w.endArray();
   if (next >= 0) { w.key("next"); w.num(next); }
+  // The console's longest request line (DEVICE_INTERFACE section 7). After the list, so it does not take the list's room: a
+  // plain hello stays one page, and its 29 bytes fit the 36 the plain budget leaves under the 1,536-byte result.
+  if (!m->onLora() && !m->onBroker()) {
+    w.key("limits"); w.beginObject();
+    w.key("line_bytes"); w.unum(ConsoleIface::MAX_LINE);
+    w.endObject();
+  }
   return ST_OK;
 }
 

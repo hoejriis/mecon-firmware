@@ -118,9 +118,9 @@ void setup() {
   CryptoRNG::seedAtBoot();
   Posture::audit().setClockCheck([]() -> bool { return the_mesh.getRTCClock()->isSet(); });
 #if defined(ESP_PLATFORM) && defined(ENABLE_MECON_IFACE)
-  // A device-interface line is up to 1,600 bytes. Over a board's native USB (Heltec V4) the host delivers it at USB
+  // A device-interface line is up to 4,096 bytes. Over a board's native USB (Heltec V4) the host delivers it at USB
   // speed, faster than the loop drains the default 256-byte buffer, and the rest is lost; a UART at 115200 is slow enough.
-  Serial.setRxBufferSize(2048);
+  Serial.setRxBufferSize(4352);   // a whole 4,096-byte line, its prefix and CRLF
 #endif
   Serial.begin(115200);
 #if defined(ENABLE_MECON_IFACE) && defined(ESP32) && !ARDUINO_USB_CDC_ON_BOOT
