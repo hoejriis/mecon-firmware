@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include "MqttCore.h"
 #include "MqttNet.h"
+#include "MqttRecovery.h"
 #include "MqttWsClient.h"
 #include "../cli/CliMqtt.h"
 #if defined(SIM_FREE_HEAP) && defined(ESP32)
@@ -64,6 +65,10 @@ public:
   const MqttCore* core() const { return &_core; }
   // Seconds clock for the audit entry of a refused profile (a stored anchor that cannot be used); without one, 0.
   void setAuditClock(uint32_t (*now)()) { _audit_now = now; }
+  // Recovery from failed connects under a low heap (MqttRecovery.h, Issue #651). `low` says whether the heap floor is
+  // below its floor now; `restart` saves what must be saved and restarts the device. The controller writes the audit
+  // entry (event low-mem, class mqtt-recover) first. Without both, nothing is ever restarted.
+  void setRecovery(bool (*low)(), void (*restart)(void*), void* user) { _heap_low = low; _restart = restart; _restart_user = user; }
   // Whether a real source has set the clock, asked at each connect; without one, dates are judged.
   void setClockKnown(bool (*known)()) { _clock_known = known; }
 
@@ -140,6 +145,11 @@ private:
   char _iface_req[48] = {0};
   char _iface_resp[48] = {0};
   uint32_t (*_audit_now)() = nullptr;
+  MqttRecovery _rec;
+  bool (*_heap_low)() = nullptr;
+  void (*_restart)(void*) = nullptr;
+  void* _restart_user = nullptr;
+  void connectFailed(uint32_t now, MqttFail why);   // the core's onConnectFailed, and the recovery rule
   bool (*_clock_known)() = nullptr;
   uint32_t _cur_addr = 0;
   uint32_t _sessions = 0;   // sessions established since boot

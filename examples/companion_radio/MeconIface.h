@@ -268,6 +268,7 @@ private:
   char* nonceOf(Link* link) { return link ? link->nonce : _mqtt_nonce; }
   bool queueResult(Link& l, const char* msg, size_t len);
   bool ensureQueue(Link& l);
+  Iface::OutQueue* _spare_q = nullptr;   // Wi-Fi mode: the first link's queue, made at boot (Issue #651)
 
   Link _links[LINKS];
   Iface::MessageTable* _messages = nullptr;   // allocated on the first message.send, or at begin() in Wi-Fi mode

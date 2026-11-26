@@ -62,7 +62,8 @@ A persistent ring of 32 security events, readable with `get audit` on a trusted 
 - a transport that Hardened did not start (BLE, TCP server),
 - every attempt at the local unlock of an enrolled device ([Management authority contract](contract/AUTHORITY.md), section 10): `unlock` for an unlock, `login-fail` for a wrong answer, `refused` for an attempt over another transport, with no secret set, or during the lockout, all with the command class `unlock`; the response, the challenge and the secret are never recorded,
 - a clock set back from the cable (`clock-back`);
-- a low-heap episode (`low-mem`, caller `system`, class `heap-floor`; [Heap floor](CONNECTIVITY_MODE.md#heap-floor)).
+- a low-heap episode (`low-mem`, caller `system`, class `heap-floor`; [Heap floor](CONNECTIVITY_MODE.md#heap-floor));
+- a restart to recover a broker connection under a low heap (`low-mem`, caller `system`, class `mqtt-recover`; [MQTT](MQTT.md#recovery-from-failed-connects-under-a-low-heap)).
 
 It records no secret, no password and no command arguments. Repeats of the same kind (event, caller, command class) fold into one entry with a count and the latest timestamp, so a caller over the air cannot push a posture change out of the ring: it would need 32 distinct kinds. The audit log survives a factory reset: the reset erases the files, and the log is written again with the reset on it. Timestamps are the node's clock, which may be unset on a device that has never been synchronised.
 

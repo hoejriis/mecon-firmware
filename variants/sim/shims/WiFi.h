@@ -28,7 +28,8 @@ struct SimIPAddress { std::string toString() const; };
 
 class SimWiFi {
 public:
-  void mode(WiFiMode_t) {}
+  // The real call starts the Wi-Fi stack, which takes its memory then; logged so a test can tell what came before it.
+  void mode(WiFiMode_t m) { if (m != WIFI_OFF) { fprintf(stderr, "SIMWIFISTACK up\n"); fflush(stderr); } }
   void persistent(bool) {}
   void setAutoReconnect(bool) {}
   void setTimeout(unsigned long) {}

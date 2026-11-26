@@ -34,6 +34,7 @@ enum What : uint8_t {
   W_BLE_START = 12, W_NET_START = 13, W_CONNMODE = 14, W_MQTT_SESSION = 15, W_MGMT_FLAG = 16, W_HEAP_FLOOR = 17,
   W_APP_FRAME = 18, W_UNLOCK = 19,
   W_CLOCK_BACK = 21,
+  W_MQTT_RECOVER = 22,   // a restart to recover a broker connection under a low heap (low-mem event; Issue #651)
   W_STALE_LOGIN = 20   // a correct password whose login timestamp was not newer than the client's last one (issue #112)
 };
 
@@ -208,6 +209,7 @@ public:
       case W_MQTT_SESSION: return "mqtt-session";
       case W_MGMT_FLAG: return "mgmt-flag";
       case W_HEAP_FLOOR: return "heap-floor";
+      case W_MQTT_RECOVER: return "mqtt-recover";
       case W_APP_FRAME: return "app-frame";
       case W_UNLOCK: return "unlock";
       case W_STALE_LOGIN: return "stale-login";

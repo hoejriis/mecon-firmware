@@ -1160,6 +1160,15 @@ void MeconIface::begin(MyMesh* mesh, const uint8_t device_id[16], uint32_t epoch
     _jobs.table();
     _inbox.alloc();
     if (!_messages) _messages = new (std::nothrow) MessageTable();
+    // The first transport's event queue (a cable client's, the first to ask) is made now too: made on its first message
+    // it would also land after the broker join (Issue #651). A second transport's still comes on its first message.
+    if (!_spare_q) {
+      uint8_t* store = static_cast<uint8_t*>(malloc(QUEUE_BYTES));
+      if (store) {
+        _spare_q = new (std::nothrow) OutQueue(store, QUEUE_BYTES);
+        if (!_spare_q) free(store);
+      }
+    }
   }
 #endif
 }
@@ -1220,6 +1229,7 @@ MeconIface::Link* MeconIface::linkFor(const BaseSerialInterface* src, bool creat
 
 bool MeconIface::ensureQueue(Link& l) {
   if (l.q) return true;
+  if (_spare_q) { l.q = _spare_q; _spare_q = nullptr; return true; }   // made at boot in Wi-Fi mode
   uint8_t* store = static_cast<uint8_t*>(malloc(QUEUE_BYTES));
   if (!store) return false;
   l.q = new (std::nothrow) OutQueue(store, QUEUE_BYTES);

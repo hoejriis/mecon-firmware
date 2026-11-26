@@ -77,6 +77,7 @@ void MqttController::begin(MqttProfiles* profiles, MqttNet* net, const uint8_t* 
   _psc.setSocketTimeout(SOCKET_TIMEOUT_S);
   _psc.setBufferSize(_iface_fn ? IFACE_PACKET_BUFFER : PACKET_BUFFER);
   _psc.setCallback(&MqttController::trampoline);
+  _rec.begin();
   _started = true;
   _enabled = true;
   _core.setPosture(*_posture);
@@ -162,7 +163,7 @@ void MqttController::attempt(const MqttAction& a) {
   j.dates_unknown = _clock_known && !_clock_known();
   if (j.tls && q.hasCa()) {
     j.ca = (char*)malloc(strlen(q.ca) + 1);
-    if (!j.ca) { _core.onConnectFailed(now, MqttFail::Tls); return; }
+    if (!j.ca) { connectFailed(now, MqttFail::Tls); return; }
     strcpy(j.ca, q.ca);
   } else if (j.has_anchor) {
     strlcpy_(j.anchor, q.anchor, sizeof(j.anchor));
@@ -182,8 +183,18 @@ void MqttController::attempt(const MqttAction& a) {
     _job_active = false;
     free(j.ca);
     memset(&j, 0, sizeof(j));
-    _core.onConnectFailed(now, MqttFail::Tcp);
+    connectFailed(now, MqttFail::Tcp);
   }
+}
+
+// A connect attempt failed. Beyond the core's bookkeeping: FAILS_NEEDED in a row under a low heap restart the device once
+// an hour at most (MqttRecovery.h). The audit entry is written first, then the platform saves what is pending and restarts.
+void MqttController::connectFailed(uint32_t now, MqttFail why) {
+  _core.onConnectFailed(now, why);
+  if (!_heap_low || !_restart) return;
+  if (!_rec.onFailed(now, _heap_low())) return;
+  Posture::audit().add(_audit_now ? _audit_now() : 0, Posture::EV_LOW_MEM, Posture::CALLER_SYSTEM, Posture::W_MQTT_RECOVER);
+  _restart(_restart_user);
 }
 
 void MqttController::connectEntry(void* self) { static_cast<MqttController*>(self)->runConnect(); }
@@ -267,18 +278,19 @@ void MqttController::takeResult() {
   const uint32_t now = millis();
   switch (j.result) {
     case ConnectJob::Ok: break;
-    case ConnectJob::Dns: _core.onConnectFailed(now, MqttFail::Dns); return;
-    case ConnectJob::Tcp: _core.onConnectFailed(now, MqttFail::Tcp); return;
-    case ConnectJob::Tls: _core.onConnectFailed(now, MqttFail::Tls); return;
-    case ConnectJob::Pin: _core.onConnectFailed(now, MqttFail::Pin); return;
-    case ConnectJob::Ws: _core.onConnectFailed(now, MqttFail::Ws); return;
-    case ConnectJob::Auth: _core.onConnectFailed(now, MqttFail::Auth); return;
-    case ConnectJob::Timeout: _core.onConnectFailed(now, MqttFail::Timeout); return;
+    case ConnectJob::Dns: connectFailed(now, MqttFail::Dns); return;
+    case ConnectJob::Tcp: connectFailed(now, MqttFail::Tcp); return;
+    case ConnectJob::Tls: connectFailed(now, MqttFail::Tls); return;
+    case ConnectJob::Pin: connectFailed(now, MqttFail::Pin); return;
+    case ConnectJob::Ws: connectFailed(now, MqttFail::Ws); return;
+    case ConnectJob::Auth: connectFailed(now, MqttFail::Auth); return;
+    case ConnectJob::Timeout: connectFailed(now, MqttFail::Timeout); return;
     case ConnectJob::Cancelled: _core.onConnectCancelled(); return;
   }
   _cur_addr = j.addr;
   _cur_port = j.port;
   _core.onConnected(now, j.tls && j.has_anchor);
+  _rec.onConnected();
   _sessions++;
   if (_cli_fn) _psc.subscribe(_req_topic);
   if (_iface_fn) _psc.subscribe(_iface_req);
@@ -383,6 +395,7 @@ void MqttController::loop() {
     return;
   }
   uint32_t now = millis();
+  _rec.tick(now);
   _core.setPosture(*_posture);
   _core.setLink(now, _net->linkUp());
 

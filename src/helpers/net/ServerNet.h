@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <helpers/AuditLog.h>
+#include <helpers/AuditStore.h>
+#include <helpers/HeapFloor.h>
 #include <helpers/Posture.h>
 #include <helpers/cli/CliCaller.h>
 #include <helpers/cli/CliEngine.h>
@@ -17,6 +19,20 @@
 #endif
 
 namespace ServerNet {
+
+// What the recovery restart reaches (a captureless callback has no other way to the mesh and the board).
+template <class Mesh, class Board>
+struct Restart {
+  static Mesh* mesh;
+  static Board* board;
+  static void now(void*) {
+    mesh->beforeGoingDown();           // a change waiting for its lazy save, as the CLI's `reboot` does
+    auditStore().flush(millis());      // the recovery's audit entry reaches flash before the restart
+    board->reboot();
+  }
+};
+template <class Mesh, class Board> Mesh* Restart<Mesh, Board>::mesh = nullptr;
+template <class Mesh, class Board> Board* Restart<Mesh, Board>::board = nullptr;
 
 // One command line over the broker: run as the console runs it (timestamp 0), decided and audited as the session.
 template <class Mesh>
@@ -71,6 +87,9 @@ bool begin(Mesh& mesh, Prefs& p, Board& board, Iface::ConsoleIface& iface, uint3
 #if defined(ESP32)
   board.setInhibitSleep(true);   // no light sleep under a Wi-Fi link
 #endif
+#ifdef ENABLE_MQTT
+  if (mqtt_may_run) mqttPlatformNet().reserve();   // the connect worker's stack before Wi-Fi and TLS take theirs (Issue #651)
+#endif
   wifiController().begin(&p.wifi_profiles);
 #ifdef ENABLE_MQTT
   if (p.mqtt_enabled) {
@@ -84,6 +103,12 @@ bool begin(Mesh& mesh, Prefs& p, Board& board, Iface::ConsoleIface& iface, uint3
     iface.setMqttEvents(
         [](const char* stream, const char* payload, size_t len) { return mqttController().publishIfaceEvent(stream, payload, len); },
         []() { return mqttController().sessionUp(); });
+#if defined(ESP32)
+    // Failed connects under a low heap restart the device, at most once an hour (helpers/mqtt/MqttRecovery.h, Issue #651).
+    Restart<Mesh, Board>::mesh = &mesh;
+    Restart<Mesh, Board>::board = &board;
+    mqttController().setRecovery([]() { return heapFloor().low(); }, &Restart<Mesh, Board>::now, nullptr);
+#endif
     mqttController().begin(&p.mqtt_profiles, &mqttPlatformNet(), &p.posture, node_id);
   }
 #endif

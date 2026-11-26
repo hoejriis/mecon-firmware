@@ -369,6 +369,9 @@ class SimNet : public MqttNet {
   bool _browsing = false;
   unsigned long _browse_at = 0;
 public:
+  // The firmware asks for its long-lived platform resources before Wi-Fi starts (Issue #651); the simulated worker is a
+  // thread made on first use, so there is nothing to take, but the call and its place in the boot are logged for the tests.
+  void reserve() override { fprintf(stderr, "SIMMQTT reserve\n"); fflush(stderr); }
   bool asyncStart(void (*job)(void*), void* arg) override { return _w.start(job, arg); }
   bool asyncIdle() override { return _w.idle(); }
 

@@ -8,6 +8,7 @@
 #include "MyMesh.h"
 #include <helpers/net/NetTelemetry.h>
 #include <helpers/HeapFloor.h>
+#include <helpers/AuditStore.h>
 #include <helpers/HeapWatch.h>
 #if defined(ESP32) && defined(ENABLE_CONNMODE) && !defined(SIM_BLE_STUB)   // the simulated board has no BT controller
   #include <esp_bt.h>   // esp_bt_controller_mem_release, in Wi-Fi mode
@@ -365,6 +366,11 @@ void setup() {
 #if defined(ESP32)
     board.setInhibitSleep(true);   // prevent sleep when WiFi is active
 #endif
+#ifdef ENABLE_MQTT
+    // The connect worker's task and stack are long-lived: taken now, before Wi-Fi and TLS take their memory, they no longer
+    // land in the middle of the largest free block after the broker join (Issue #651).
+    if (mqtt_may_run) mqttPlatformNet().reserve();
+#endif
     wifiController().begin(&the_mesh.getNodePrefs()->wifi_profiles);
     if (tcp_may_start) {
       wifi_interface.begin(TCP_PORT);
@@ -386,6 +392,18 @@ void setup() {
       the_mesh.iface().setMqttEvents(
           [](const char* stream, const char* payload, size_t len) { return mqttController().publishIfaceEvent(stream, payload, len); },
           []() { return mqttController().sessionUp(); });
+#endif
+#if defined(ESP32)
+      // Failed connects under a low heap restart the device, at most once an hour (helpers/mqtt/MqttRecovery.h, Issue #651):
+      // what is pending is saved first, as the CLI's `reboot` does. The controller writes the audit entry.
+      mqttController().setRecovery([]() { return heapFloor().low(); },
+                                   [](void*) {
+#ifdef ENABLE_MECON_IFACE
+                                     the_mesh.saveDirtyContacts();   // a contact change waiting for its lazy save
+#endif
+                                     auditStore().flush(millis());   // the entry reaches flash before the restart
+                                     board.reboot();
+                                   }, nullptr);
 #endif
       mqttController().begin(&the_mesh.getNodePrefs()->mqtt_profiles, &mqttPlatformNet(),
                              &the_mesh.getNodePrefs()->posture, node_id);
