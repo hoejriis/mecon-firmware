@@ -9,7 +9,7 @@
 //           (free = the heap region's size minus mallinfo().uordblks, dbgHeapFree()). Neither FreeRTOS (heap_3, no
 //           xPortGetMinimumEverFreeHeapSize) nor newlib keeps a low-water mark for it, so the figure is the least `free`
 //           this function has returned: sampled at each call (the periodic look of HeapWatch and the end of each scope),
-//           so a peak that is allocated and freed between two looks is missed; it is a floor on the true low, not the low.
+//           so a peak that is allocated and freed between two looks is missed; it can only be at or above the true low.
 // loop_stack_free  the least free stack the calling task (the Arduino loop, where every CLI command runs) has had
 //           since it started, in bytes; 0 = not tracked
 #include <stdint.h>
