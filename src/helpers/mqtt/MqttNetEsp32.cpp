@@ -4,6 +4,7 @@
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS   // SecClient::dropPeerChain reaches the session's stored peer chain
 #include "MqttNet.h"
 #include "MqttProfiles.h"
+#include "../HeapFloor.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ESPmDNS.h>
@@ -151,6 +152,7 @@ public:
 class Esp32Net : public MqttNet {
   WiFiClient* _plain = nullptr;
   SecClient* _sec = nullptr;
+  uint32_t _held = 0;                 // the TLS input buffer reported to the heap floor while _sec exists
   WiFiClient _none;                   // handed out only when nothing is open
   Worker _worker;
   char _hostname[24] = {0};
@@ -229,20 +231,30 @@ public:
     return n;
   }
 
+  // The TLS input record buffer: the configured content length plus the 512 B record overhead (docs/PLATFORM.md).
+  static uint32_t tlsInputBufferBytes() {
+#if defined(MBEDTLS_SSL_IN_CONTENT_LEN)
+    return (uint32_t)MBEDTLS_SSL_IN_CONTENT_LEN + 512;
+#else
+    return HEAP_FLOOR_TLS_SESSION_BYTES;
+#endif
+  }
+
   MqttOpen open(const MqttOpenArgs& a) override {
     close();
     IPAddress ip((a.addr >> 24) & 255, (a.addr >> 16) & 255, (a.addr >> 8) & 255, a.addr & 255);
     if (a.tls) {
       _sec = new SecClient();
       if (!_sec) return MqttOpen::Tls;
+      _held = tlsInputBufferBytes(); heapFloor().holdSession(_held);   // the input record buffer is taken from here on (heap floor)
       // The handshake runs without the library's chain validation; the broker is authenticated afterwards by the
       // anchor: a leaf fingerprint, or a chain to a CA certificate (and the host name, when the profile has one). A TLS
       // profile without an anchor is encrypted but unauthenticated, and the controller reports it as such.
       _sec->setInsecure();
       _sec->setHandshakeTimeout((a.timeout_ms + 999) / 1000);
-      if (!_sec->connectNamed(ip, a.port, a.name, (int32_t)a.timeout_ms)) return MqttOpen::Tls;
-      if (a.ca_b64 && !_sec->chainsTo(a.ca_b64, a.name, a.dates_unknown)) return MqttOpen::Pin;
-      if (!a.ca_b64 && a.anchor_hex && !_sec->verify(a.anchor_hex, nullptr)) return MqttOpen::Pin;
+      if (!_sec->connectNamed(ip, a.port, a.name, (int32_t)a.timeout_ms)) { close(); return MqttOpen::Tls; }
+      if (a.ca_b64 && !_sec->chainsTo(a.ca_b64, a.name, a.dates_unknown)) { close(); return MqttOpen::Pin; }
+      if (!a.ca_b64 && a.anchor_hex && !_sec->verify(a.anchor_hex, nullptr)) { close(); return MqttOpen::Pin; }
       _sec->dropPeerChain();   // authenticated: the chain is not needed again
       return MqttOpen::Ok;
     }
@@ -262,6 +274,7 @@ public:
 
   void close() override {
     if (_sec) { _sec->stop(); delete _sec; _sec = nullptr; }   // frees the TLS context, the large heap user
+    if (_held) { heapFloor().releaseSession(_held); _held = 0; }
     if (_plain) { _plain->stop(); delete _plain; _plain = nullptr; }
   }
 };
