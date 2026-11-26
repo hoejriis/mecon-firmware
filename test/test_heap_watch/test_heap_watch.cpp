@@ -83,3 +83,25 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+TEST(HeapWatch, TheLoopStackLowIsPutDownToWhatRanAndOnlyWhereItIsTracked) {
+  HeapWatch h;
+  char r[200];
+  h.observeStack(0, 3);                              // not tracked: nothing seen
+  EXPECT_FALSE(h.loopStack().seen);
+  h.observe(mem(30000, 40000), 3);
+  Cli::formatHeapLow(h, r, sizeof(r));
+  EXPECT_STREQ(r, "> largest=30000 by=idle at=3s min_free=40000 by=idle at=3s");
+  h.observeStack(1752, 4);
+  const char* prev = h.enter("status.get");
+  h.observeStack(900, 8);                            // fell while the operation ran
+  EXPECT_STREQ(h.loopStack().by, "status.get");
+  h.leave(prev);
+  h.observeStack(950, 9);                            // not lower
+  h.observeStack(844, 12);                           // fell between scopes
+  EXPECT_EQ(h.loopStack().bytes, 844u);
+  EXPECT_STREQ(h.loopStack().by, "idle");
+  EXPECT_EQ(h.loopStack().at_s, 12u);
+  Cli::formatHeapLow(h, r, sizeof(r));
+  EXPECT_STREQ(r, "> largest=30000 by=idle at=3s min_free=40000 by=idle at=3s loop_stack_free=844 by=idle at=12s");
+}

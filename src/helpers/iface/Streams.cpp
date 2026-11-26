@@ -308,19 +308,26 @@ void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low,
   w.key("loop_gap_ms"); w.beginObject();
   w.key("max"); w.unum(gap.take());
   w.endObject();
-  if (heap_low >= 0) {
-    w.key("heap_low"); w.boolean(heap_low != 0);
+  if (heap_low >= 0) { w.key("heap_low"); w.boolean(heap_low != 0); }
+#if defined(NRF52_PLATFORM)
+  const bool lows_wanted = true;    // the nRF52 builds check no floor, but track the lows and the loop stack's
+#else
+  const bool lows_wanted = heap_low >= 0;
+#endif
+  if (lows_wanted) {
     // What was running at the lowest of each figure (HeapWatch.h): null until the first look.
     const HeapWatch::Low* lows[2] = {&heapWatch().largest(), &heapWatch().minFree()};
     static const char* const NAMES[2] = {"largest", "min_free"};
     w.key("heap_lows"); w.beginObject();
-    for (int i = 0; i < 2; i++) {
-      w.key(NAMES[i]);
-      if (!lows[i]->seen) { w.null(); continue; }
+    for (int i = 0; i < 3; i++) {
+      const HeapWatch::Low* l = i < 2 ? lows[i] : &heapWatch().loopStack();
+      if (i == 2 && !l->seen) break;   // loop_stack: only where the loop's stack is tracked (nRF52)
+      w.key(i < 2 ? NAMES[i] : "loop_stack_free");
+      if (!l->seen) { w.null(); continue; }
       w.beginObject();
-      w.key("bytes"); w.unum(lows[i]->bytes);
-      w.key("by"); w.str(lows[i]->by);
-      w.key("at_s"); w.unum(lows[i]->at_s);
+      w.key("bytes"); w.unum(l->bytes);
+      w.key("by"); w.str(l->by);
+      w.key("at_s"); w.unum(l->at_s);
       w.endObject();
     }
     w.endObject();

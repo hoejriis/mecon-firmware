@@ -16,6 +16,11 @@
 // Work on another task (the MQTT connect runs on a worker) cannot hold the name, which belongs to the loop: while it runs,
 // setBackground() names it for the looks taken outside every scope, so a handshake's low is not put down to "idle".
 //
+// The same names say what ran when the loop task's stack reached a new low (nRF52, where the loop runs on a fixed 4 KB stack
+// that a deep path can nearly use up). The stack's high-water mark is read where a scope begins and ends and at the periodic
+// look, so a drop is put down to the scope running since the previous reading: the scope itself, or "idle" when it came
+// between scopes. One figure, no per-call record. Where no loop-stack figure is supplied it stays unseen.
+//
 // Names are string literals (or other static storage): only the pointer is kept.
 //
 // Pure logic: the caller passes the heap figures and the time, so it runs in the native unit tests.
@@ -50,8 +55,14 @@ public:
     if (m.min_free && (!_min_free.seen || m.min_free < _min_free.bytes)) set(_min_free, m.min_free, uptime_s);
   }
 
+  // One reading of the loop task's least free stack since it started (bytes; 0 = not known).
+  void observeStack(uint32_t free_bytes, uint32_t uptime_s) {
+    if (free_bytes && (!_loop_stack.seen || free_bytes < _loop_stack.bytes)) set(_loop_stack, free_bytes, uptime_s);
+  }
+
   const Low& largest() const { return _largest; }
   const Low& minFree() const { return _min_free; }
+  const Low& loopStack() const { return _loop_stack; }
 
 private:
   void set(Low& l, uint32_t bytes, uint32_t at_s) {
@@ -63,7 +74,7 @@ private:
 
   const char* _tag = nullptr;
   const char* _bg = nullptr;
-  Low _largest, _min_free;
+  Low _largest, _min_free, _loop_stack;
 };
 
 // One per device. Function-local, as heapFloor(): the examples construct their mesh object before main().
@@ -74,6 +85,16 @@ inline HeapWatch& heapWatch() {
 
 #if defined(ARDUINO) || defined(SIM_FREE_HEAP)
   #include <Arduino.h>
+  #if defined(NRF52_PLATFORM)
+    #include "NrfWorker.h"
+    // The loop task's stack high-water mark (a scan of the stack's untouched pattern, about 1,000 words at most), put down
+    // to what is running now.
+    __attribute__((noinline)) inline void heapWatchStack() {   // one copy: it is called at every scope's start and end
+      heapWatch().observeStack(NrfWorker::loopStackFree(), millis() / 1000);
+    }
+  #else
+    inline void heapWatchStack() {}
+  #endif
   // Outside every scope, a look once a second; called from the loop.
   inline void heapWatchTick() {
     static uint32_t last = 0;
@@ -81,15 +102,25 @@ inline HeapWatch& heapWatch() {
     if (last && now - last < 1000) return;
     last = now ? now : 1;
     heapWatch().observe(memStats(), now / 1000);
+    heapWatchStack();
   }
-  // Work that may allocate, named: the heap is looked at when it ends.
+  // Work that may allocate, named: the heap is looked at when it ends. The work is in two out-of-line functions: a scope
+  // sits at a dozen call sites, and its look inlined at each one cost flash on the nRF52 builds that have little left.
+  // The stack look before the name is taken puts a drop since the last look to the outer name, not to this scope.
+  __attribute__((noinline)) inline const char* heapScopeEnter(const char* what) {
+    heapWatchStack();
+    return heapWatch().enter(what);
+  }
+  __attribute__((noinline)) inline void heapScopeLeave(const char* prev) {
+    const uint32_t s = millis() / 1000;
+    heapWatch().observe(memStats(), s);
+    heapWatchStack();
+    heapWatch().leave(prev);
+  }
   class HeapScope {
   public:
-    explicit HeapScope(const char* what) : _prev(heapWatch().enter(what)) {}
-    ~HeapScope() {
-      heapWatch().observe(memStats(), millis() / 1000);
-      heapWatch().leave(_prev);
-    }
+    explicit HeapScope(const char* what) : _prev(heapScopeEnter(what)) {}
+    ~HeapScope() { heapScopeLeave(_prev); }
     HeapScope(const HeapScope&) = delete;
     HeapScope& operator=(const HeapScope&) = delete;
   private:

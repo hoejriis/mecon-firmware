@@ -95,7 +95,7 @@
         "largest",
         "min_free"
       ],
-      "description": "beside heap_low, what was running when each figure was at its lowest since boot (HeapWatch); null until the first look",
+      "description": "beside heap_low (and on nRF52, which has no heap_low), what was running when each figure was at its lowest since boot (HeapWatch); null until the first look. loop_stack_free is present on nRF52 only, once seen",
       "properties": {
         "largest": {
           "type": [
@@ -139,6 +139,34 @@
             "bytes": {
               "type": "integer",
               "minimum": 0
+            },
+            "by": {
+              "type": "string",
+              "description": "what was running: an operation's name, request, stream.<name>, mqtt.connect, mqtt.request, mqtt.publish, or idle"
+            },
+            "at_s": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "seconds since boot"
+            }
+          }
+        },
+        "loop_stack_free": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "bytes",
+            "by",
+            "at_s"
+          ],
+          "properties": {
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "the least free stack, in bytes, the loop task has had since boot"
             },
             "by": {
               "type": "string",

@@ -13,6 +13,10 @@
 # Channel favourite mark (Issue #652): measured on main (5173bb48) against this change. Heltec_v3_companion_radio_standalone flash
 # 1,840,412 to 1,841,268 B (+856, RAM +40 B); t1000e_companion_radio_ble flash 608,736 to 610,224 B (+1,488, RAM +40 B). Those two
 # rows were raised to the measured use rounded up to a whole KB; the other rows had room and are unchanged.
+# Lows for the nRF52 loop stack and free heap (Issue #641): the heap-scope look moved out of line and a stack look added at each
+# scope's start and end. Measured on main (b734acdf) against this change, flash: WioTrackerL1_companion_radio_ble
+# 705,428 to 705,764 B (+336), WioTrackerL1_companion_radio_usb 696,196 to 696,516 (+320), t1000e_companion_radio_usb 603,660 to
+# 603,836 (+176); t1000e_companion_radio_ble measured 610,580 with this change. Those four rows were raised by 1 KB; the Wio BLE row stays 1.9 KB under the part's 708,608 B.
 # environment                             flash        ram
 Heltec_v3_companion_radio_ble           1459200     122880
 Heltec_v3_companion_radio_standalone     1842176     141312
@@ -26,12 +30,12 @@ heltec_v4_companion_radio_usb            703488      41984
 heltec_v4_companion_radio_wifi          1432576     118784
 heltec_v4_repeater                       1586176     82944
 heltec_v4_room_server                    1574912     87040
-t1000e_companion_radio_ble               610304      168960
-t1000e_companion_radio_usb               603136      164864
+t1000e_companion_radio_ble               611328      168960
+t1000e_companion_radio_usb               604160      164864
 t1000e_repeater                          555008      43008
 t1000e_room_server                       539648      49152
-WioTrackerL1_companion_radio_ble         705536      95232
-WioTrackerL1_companion_radio_usb         696320      90112
+WioTrackerL1_companion_radio_ble         706560      95232
+WioTrackerL1_companion_radio_usb         697344      90112
 WioTrackerL1_repeater                    637952      46080
 WioTrackerL1_room_server                 621568      51200
 # NimBLE twins (Issue #68, docs/NIMBLE_EVALUATION.md) and the LilyGo T-LoRa Bluedroid build they are compared with.
