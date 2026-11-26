@@ -35,7 +35,7 @@ namespace Iface {
 
 class ConsoleIface {
 public:
-  static const size_t MAX_LINE = 1600;   // the request bound MQTT already sets (section 7)
+  static const size_t MAX_LINE = 4096;   // the request bound of the frame transports (section 3); results stay OUT_MAX
   static constexpr const char* PREFIX = "mecon> ";
   static const size_t PREFIX_LEN = 7;
 

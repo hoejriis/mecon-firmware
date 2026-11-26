@@ -119,14 +119,14 @@ def test_a_bad_value_writes_nothing(nodes):
 
 def test_a_line_too_long_is_refused_not_truncated(nodes):
     n, (cli, i) = start(nodes, "repeater", "long")
-    i.send_raw(json.dumps({"v": 1, "id": "big", "op": "hello", "pad": "x" * 2000}))
+    i.send_raw(json.dumps({"v": 1, "id": "big", "op": "hello", "pad": "x" * 4200}))
     r = i.wait_result("")
     assert r["status"] == "busy" and r["error"] == "line-too-long", r
     assert ok(i.request("hello"), "hello.result.json")["role"] == "repeater", "the next line is read normally"
 
 
 def test_the_line_bound_counts_the_envelope_after_the_prefix(nodes):
-    # The bound is 1,600 bytes of envelope after "mecon> ", without the ending CR: exactly that many is read, one more is not.
+    # The bound is 4,096 bytes of envelope after "mecon> ", without the ending CR: exactly that many is read, one more is not.
     n, (cli, i) = start(nodes, "repeater", "edge")
 
     def env(size, rid):
@@ -135,10 +135,10 @@ def test_the_line_bound_counts_the_envelope_after_the_prefix(nodes):
         assert len(text.encode()) == size
         return text
 
-    i.send_raw(env(1600, "at-bound"))
+    i.send_raw(env(4096, "at-bound"))
     r = i.wait_result("at-bound")
     assert r.get("error") != "line-too-long", r
-    i.send_raw(env(1601, "past-bound"))
+    i.send_raw(env(4097, "past-bound"))
     r = i.wait_result("")
     assert r["status"] == "busy" and r["error"] == "line-too-long", r
 
