@@ -377,6 +377,7 @@ void MqttController::onMessage(const char* topic, const uint8_t* payload, unsign
 
 void MqttController::loop() {
   if (!_started) return;
+  _profiles->stageTick(millis());   // a CA staging buffer left idle for 10 minutes is freed even when nobody types
   if (!_enabled) {
     // A finished attempt is taken even while disabled: a cancelled one must still have its transport closed.
     if (_job_active && _net->asyncIdle()) takeResult();

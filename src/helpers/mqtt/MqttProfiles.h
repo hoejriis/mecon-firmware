@@ -89,7 +89,18 @@ struct MqttProfiles {
   char* stage_ = nullptr;
   uint16_t stage_len_ = 0;
   uint8_t stage_idx_ = 0;
+  // What `ca begin <size> <sha256>` promised (the chunked form over the device interface): the DER length and its
+  // SHA-256, checked at `ca end`. A plain `ca begin` promises nothing.
+  bool stage_expect_ = false;
+  uint16_t stage_size_ = 0;
+  uint8_t stage_sha_[32];
+  uint32_t stage_at_ = 0;                       // millis() at the last begin or add
+  static constexpr uint32_t STAGE_TIMEOUT_MS = 10UL * 60UL * 1000UL;   // an idle staging buffer is freed after 10 minutes
   void dropStage();
+  void stageTick(uint32_t now);                 // frees an idle staging buffer; the controller's loop calls it
+  enum CaResult : uint8_t { CA_OK, CA_BAD_DER, CA_MISMATCH, CA_NOMEM };
+  // Installs the text if it is one complete DER certificate and, when `expect` is set, has that size and SHA-256.
+  CaResult installCa(uint8_t i, const char* b64, bool expect, uint16_t size, const uint8_t* sha);
   bool setCa(uint8_t i, const char* b64);       // validates; false leaves the profile as it was
   void clearCa(uint8_t i);
   // Prefs loading: chunk `n` (CA_CHUNK characters but the last) of profile i's CA; false when out of order.

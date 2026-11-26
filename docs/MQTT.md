@@ -65,9 +65,21 @@ A CA certificate is 600 to 1,900 characters and the console line takes 79, so it
 - `ca end` decodes the text and installs it only if it is one complete DER certificate (a SEQUENCE whose declared length is exactly what arrived), so a damaged or truncated paste is refused with `ERR: ca is not one complete base64 DER certificate; the profile is unchanged`. It then saves the prefs and replaces any fingerprint anchor. That check proves the shape; it does not prove the certificate is the right one or parses as X.509, which the connect finds out (and reports as `pin`).
 - A pasted `-----BEGIN CERTIFICATE-----` line is skipped, so the lines of a PEM file can be sent as they are. `ca begin` starts again; `ca clear` and `anchor clear` remove a CA; `set mqtt.profile <n> clear` removes the profile and its CA and drops its staging buffer. A second profile may stage only after the first finishes: there is one staging buffer.
 
+- Two optional forms serve the device interface below. `ca begin <DER bytes> <64 hex SHA-256>` also records the certificate's size and hash, and `ca end` then refuses a certificate that has another. `ca add @<offset> <base64>` is refused with nothing appended unless `<offset>` is the number of characters staged so far. A staging buffer that has had no `ca begin` or `ca add` for 10 minutes is freed, so a forgotten begin does not hold 1.9 KB.
+
 ### Setting an anchor over the device interface
 
 A manager sets the anchor in one request with `mqtt.profile.anchor`: a fingerprint, a whole CA certificate as base64 DER (checked whole, as `ca end` checks it), or `clear`. `net.profile.clear` removes a profile. Any caller but the cable is refused (`in-use`) for the profile its own session runs on ([managed operations](contract/OPERATIONS.md#51-device-interface-operations)).
+
+**A CA in pieces.** A whole CA, signed and enveloped, can pass the 1,551 bytes a request over a broker may have, and the console's `ca begin`, `ca add` and `ca end` have no signed path of their own. So the same operation takes the CA in several requests, which run those console lines as the caller (the same staging buffer, the same whole-certificate check, the same class and callers):
+
+1. `{"profile":n, "ca_begin":{"size":<DER bytes>, "sha256":"<64 hex of the DER>"}}` opens the staging buffer for that profile and states what the certificate must be. A new begin restarts it; nothing changes yet.
+2. `{"profile":n, "ca_add":{"offset":<characters staged so far>, "data":"<base64 piece>"}}`, in order. An `offset` that is not the staged length is refused, and nothing is appended, so a lost or repeated request is found and resent rather than corrupting the text. The answer carries `staged`, the characters held.
+3. `{"profile":n, "ca_end":true}` decodes the text and installs it only if it is one complete DER certificate (as `ca end` checks it) with the size and SHA-256 from the begin. Otherwise it is refused and the profile keeps its anchor. The buffer is freed either way.
+
+**Piece size.** Send pieces of **768 base64 characters**. A signed `ca_add` of that size, with a 31-character request id and a 10-digit job number, is about 1,340 bytes in its envelope, inside the 1,551 bytes of a request over a broker; the operation itself accepts up to 1,024 characters, which only the larger limits of a cable carry. The longest CA (1,920 characters) is three pieces, and the console's 48-character lines are not needed. The same limits apply as for a whole `ca`: at most 1,920 characters in all.
+
+**Rules that do not change.** The buffer is the one `ca begin` uses (1.9 KB of heap, allocated only while staging, and one certificate for one profile at a time); it is freed by `ca end`, by a new begin, after 10 minutes without a begin or an add, and at reboot. `in-use` applies to every step: only the cable may stage or end a CA for the profile its own session runs on. The staging is not saved to the prefs: only `ca end` changes the profile.
 
 ### WebSocket
 
