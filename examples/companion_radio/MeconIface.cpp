@@ -966,14 +966,14 @@ bool MeconIface::chanGet(void* user, int slot, ChannelInfo& out) {
 // Writes the slot and saves the table, as the native CMD_SET_CHANNEL frame does. When the save fails, the slot's
 // previous contents go back into RAM, so RAM and flash agree and a removed key cannot return after a reboot. An
 // empty name with an all-zero key is how the app clears a slot.
-bool MeconIface::chanSet(void* user, int slot, const char* name, const uint8_t* secret, bool favourite) {
+bool MeconIface::chanSet(void* user, int slot, const char* name, const uint8_t* secret, int favourite) {
   MyMesh* mesh = static_cast<MeconIface*>(user)->_mesh;
   ChannelDetails ch, before;
   if (!mesh->getChannel(slot, before)) return false;
   memset(&ch, 0, sizeof(ch));
   StrHelper::strncpy(ch.name, name, sizeof(ch.name));
   memcpy(ch.channel.secret, secret, CHANNEL_SECRET_BYTES);
-  ch.favourite = favourite ? 1 : 0;   // the slot is replaced: an earlier mark does not carry over
+  ch.favourite = favourite < 0 ? before.favourite : (favourite ? 1 : 0);   // FAV_KEEP leaves the mark; else as asked
   bool ok = mesh->setChannel(slot, ch);
   if (ok && !mesh->saveChannels()) {
     mesh->setChannel(slot, before);

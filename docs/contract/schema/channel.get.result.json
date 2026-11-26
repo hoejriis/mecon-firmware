@@ -34,7 +34,7 @@
     },
     "favourite": {
       "type": "boolean",
-      "description": "True when this slot's messages notify the device's screen and buzzer. Off for every slot unless set; a replaced or removed slot loses the mark."
+      "description": "True when this slot's messages notify the device's screen and buzzer. Off for every slot unless set; the same channel written again keeps it; a different channel or a removal clears it."
     }
   }
 }

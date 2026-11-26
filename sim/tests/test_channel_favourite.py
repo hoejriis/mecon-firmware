@@ -128,16 +128,19 @@ def test_the_flag_is_set_by_channel_put_read_back_and_survives_a_reboot(nodes):
     assert i.request("channel.get", {"slot": 4})["result"]["favourite"] is False
 
 
-def test_a_replaced_or_removed_slot_loses_its_mark(nodes):
+def test_a_replaced_or_removed_slot_loses_its_mark_and_the_same_channel_keeps_it(nodes):
     n = nodes("companion_standalone", "ff2", seed=46, rtc=RTC).start()
     c = CompanionClient(n)
     c.app_start()
     i = iface(c)
     assert put(i, 3, "ops", KEY, favourite=True)["status"] == "ok"
-    assert put(i, 3, "other", KEY2)["result"]["favourite"] is False        # replaced through the interface
+    assert put(i, 3, "ops", KEY)["result"]["favourite"] is True            # the same channel written again keeps it
+    assert c.set_channel(3, "ops", KEY)[0] == harness.RESP_OK              # and so does the app's own frame
+    assert c.cli("get channel.favourites") == "> 3"
+    assert put(i, 3, "other", KEY2)["result"]["favourite"] is False        # a different channel through the interface
     assert c.cli("get channel.favourites") == "> none"
     assert c.cli("set channel.favourite 3 on") == "OK"
-    assert c.set_channel(3, "native", KEY)[0] == harness.RESP_OK            # replaced by the app's own frame
+    assert c.set_channel(3, "native", KEY)[0] == harness.RESP_OK            # a different key through the app's frame
     assert c.cli("get channel.favourites") == "> none"
     assert c.cli("set channel.favourite 3 on") == "OK"
     assert i.request("channel.remove", {"slot": 3})["result"]["removed"] is True

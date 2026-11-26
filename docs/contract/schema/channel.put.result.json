@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/hoejriis/mecon-firmware/docs/contract/schema/channel.put.result.json",
   "title": "Result of channel.put",
-  "description": "Request args: {\"slot\": n, \"name\": 1 to 31 bytes, \"secret\": 32 hex digits (a 128-bit key, as the native CMD_SET_CHANNEL frame), \"favourite\": true or false, optional}. The slot is replaced, so it is a favourite only when the request says so (default false); any earlier mark is dropped. A key that another slot already holds is failed with error duplicate-secret; an all-zero key is invalid; a table that cannot be saved is failed with error write-failed and the slot is left as it was. The secret is written, never read back. Companion only.",
+  "description": "Request args: {\"slot\": n, \"name\": 1 to 31 bytes, \"secret\": 32 hex digits (a 128-bit key, as the native CMD_SET_CHANNEL frame), \"favourite\": true or false, optional}. With no favourite given, the slot keeps its mark when the same key is written again and is off when the slot gets a different channel; a value given always wins. A key that another slot already holds is failed with error duplicate-secret; an all-zero key is invalid; a table that cannot be saved is failed with error write-failed and the slot is left as it was. The secret is written, never read back. Companion only.",
   "type": "object",
   "required": [
     "slot",
@@ -39,7 +39,7 @@
     },
     "favourite": {
       "type": "boolean",
-      "description": "True when this slot's messages notify the device's screen and buzzer. Off for every slot unless set; a replaced or removed slot loses the mark."
+      "description": "True when this slot's messages notify the device's screen and buzzer. Off for every slot unless set; the same channel written again keeps it; a different channel or a removal clears it."
     }
   }
 }

@@ -2346,6 +2346,11 @@ void MyMesh::handleCmdFrame(size_t len) {
     StrHelper::strncpy(channel.name, (char *)&cmd_frame[2], 32);
     memset(channel.channel.secret, 0, sizeof(channel.channel.secret));
     memcpy(channel.channel.secret, &cmd_frame[2 + 32], 16); // NOTE: only 128-bit supported
+    ChannelDetails cur;
+    if (getChannel(channel_idx, cur) && memcmp(cur.channel.secret, channel.channel.secret, sizeof(cur.channel.secret)) == 0) {
+      channel.favourite = cur.favourite;   // the same channel written again keeps its mark; a different one starts off
+    }
+    Iface::wipe(&cur, sizeof(cur));
     if (setChannel(channel_idx, channel)) {
       saveChannels();
       writeOKFrame();

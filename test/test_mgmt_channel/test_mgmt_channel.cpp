@@ -15,6 +15,7 @@ struct FakeTable {
   static const int N = 8;
   std::string name[N];
   uint8_t key[N][CHANNEL_SECRET_BYTES] = {{0}};
+  bool fav[N] = {false};
   bool fail = false;
 };
 
@@ -25,15 +26,16 @@ bool getCb(void* u, int slot, ChannelInfo& out) {
   out.hash = t->key[slot][0];
   out.key_bytes = CHANNEL_SECRET_BYTES;
   out.keyed = false;
-  out.favourite = false;
+  out.favourite = t->fav[slot];
   for (unsigned i = 0; i < CHANNEL_SECRET_BYTES; i++) out.keyed |= t->key[slot][i] != 0;
   return true;
 }
-bool setCb(void* u, int slot, const char* name, const uint8_t* key, bool) {
+bool setCb(void* u, int slot, const char* name, const uint8_t* key, int favourite) {
   FakeTable* t = static_cast<FakeTable*>(u);
   if (t->fail || slot < 0 || slot >= FakeTable::N) return false;
   t->name[slot] = name;
   memcpy(t->key[slot], key, CHANNEL_SECRET_BYTES);
+  if (favourite != FAV_KEEP) t->fav[slot] = favourite != 0;
   return true;
 }
 int findCb(void* u, const uint8_t* key) {
@@ -274,6 +276,21 @@ TEST(MgmtChannel, ARotationNotConfirmedInTimeRevertsTheKeyAndTheRecord) {
   EXPECT_TRUE(has(g, "\"state\":\"bound\"")) << g;
   EXPECT_TRUE(has(g, "\"generation\":1")) << g;
   EXPECT_TRUE(r.snap.file.empty());
+}
+
+TEST(MgmtChannel, ARotationKeepsTheFavouriteMarkAndSoDoesItsRevert) {
+  Rig r;
+  r.slot(3, "ops", 0x10);
+  r.t.fav[3] = true;
+  r.call("mgmt.channel.bind", "{\"slot\":3}");
+  r.call("mgmt.channel.rotate", "{\"secret\":\"" + hexOf(0x70) + "\"}");
+  ASSERT_EQ(0x70, r.t.key[3][0]);
+  EXPECT_TRUE(r.t.fav[3]) << "the same slot's channel with a new key";
+  r.cable = false;
+  r.call("mgmt.channel.rotate", "{\"secret\":\"" + hexOf(0x71) + "\",\"confirm\":{\"within_s\":30}}");
+  r.tick(31);
+  EXPECT_EQ(0x70, r.t.key[3][0]) << "reverted";
+  EXPECT_TRUE(r.t.fav[3]);
 }
 
 TEST(MgmtChannel, RotationRefusesThePublicKeyADuplicateAndAnUnboundDevice) {

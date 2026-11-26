@@ -90,10 +90,12 @@ Status opChannelPut(OpContext& c) {
   if (other >= 0 && other != slot) { wipe(key, sizeof(key)); c.error = "duplicate-secret"; return ST_FAILED; }   // the native table matches the first
   ChannelInfo before;
   const bool replaced = h->get(h->user, slot, before) && (before.name[0] || before.keyed);
-  bool favourite = false;   // a put replaces the slot, so the mark is only what this call asks for
+  // The mark: what the call asks for; with no "favourite", it stays when the slot already holds this very key (the same
+  // channel written again) and goes when the slot gets a different channel.
+  bool favourite = other == slot && before.favourite;
   const int fv = argOf(c, "favourite");
   if (fv >= 0 && !jsonGetBool(*c.doc, fv, &favourite)) { wipe(key, sizeof(key)); return ST_INVALID; }
-  const bool written = h->set(h->user, slot, name, key, favourite);
+  const bool written = h->set(h->user, slot, name, key, favourite ? 1 : 0);
   wipe(key, sizeof(key));
   if (!written) { c.error = "write-failed"; return ST_FAILED; }
   ChannelInfo ch;

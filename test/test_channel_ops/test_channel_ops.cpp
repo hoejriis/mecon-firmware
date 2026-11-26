@@ -30,11 +30,11 @@ bool getCb(void* u, int slot, ChannelInfo& out) {
   for (unsigned i = 0; i < CHANNEL_SECRET_BYTES; i++) out.keyed |= t->key[slot][i] != 0;
   return true;
 }
-bool setCb(void* u, int slot, const char* name, const uint8_t* key, bool favourite) {
+bool setCb(void* u, int slot, const char* name, const uint8_t* key, int favourite) {
   FakeTable* t = static_cast<FakeTable*>(u);
   if (t->fail || slot < 0 || slot >= FakeTable::N) return false;
   t->name[slot] = name;
-  t->fav[slot] = favourite;   // as the device: the slot is written whole, so no earlier mark survives
+  if (favourite != FAV_KEEP) t->fav[slot] = favourite != 0;   // as the device: written as asked, or left as it is
   memcpy(t->key[slot], key, CHANNEL_SECRET_BYTES);
   t->writes++;
   return true;
@@ -224,6 +224,23 @@ TEST(ChannelOps, PutWithFavouriteSetsItAndGetAndListShowIt) {
   EXPECT_TRUE(r.t.fav[2]);
   EXPECT_TRUE(has(r.call("channel.get", "{\"slot\":2}"), "\"favourite\":true"));
   EXPECT_TRUE(has(r.call("channel.list", "{}"), "\"favourite\":true"));
+}
+
+TEST(ChannelOps, TheSameChannelPutAgainKeepsItsMark) {
+  Rig r;
+  r.call("channel.put", "{\"slot\":2,\"name\":\"fav\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":true}");
+  std::string res = r.put(2, "fav", KEY_A);   // identical name and secret, no favourite given
+  EXPECT_TRUE(has(res, "\"favourite\":true")) << res;
+  EXPECT_TRUE(r.t.fav[2]);
+  res = r.call("channel.put", "{\"slot\":2,\"name\":\"fav\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":false}");
+  EXPECT_FALSE(r.t.fav[2]) << "an explicit false still turns it off";
+}
+
+TEST(ChannelOps, ADifferentSecretClearsTheMark) {
+  Rig r;
+  r.call("channel.put", "{\"slot\":2,\"name\":\"fav\",\"secret\":\"" + std::string(KEY_A) + "\",\"favourite\":true}");
+  r.put(2, "fav", KEY_B);   // same name, other key
+  EXPECT_FALSE(r.t.fav[2]);
 }
 
 TEST(ChannelOps, AReplacedSlotLosesItsMark) {
