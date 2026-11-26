@@ -160,10 +160,10 @@ TEST(AnchorPieces, AGapOrARepeatIsRefusedAndNothingIsAppended) {
   ASSERT_TRUE(Rig::ok(r.begin(0, der.size(), shaHex(der))));
   ASSERT_TRUE(Rig::ok(r.add(0, 0, text.substr(0, 200))));
   std::string a = r.add(0, 300, text.substr(300, 100));   // a gap: the piece 200..300 never came
-  EXPECT_TRUE(has(a, "\"status\":\"invalid\"")) << a;
+  EXPECT_TRUE(has(a, "\"status\":\"invalid\"") && has(a, "\"error\":\"offset\"")) << a;
   EXPECT_EQ(200, r.profiles.stage_len_);
   a = r.add(0, 0, text.substr(0, 200));                    // a repeat of the first piece
-  EXPECT_TRUE(has(a, "\"status\":\"invalid\"")) << a;
+  EXPECT_TRUE(has(a, "\"error\":\"offset\"")) << a;
   EXPECT_EQ(200, r.profiles.stage_len_);
   a = r.add(0, 100, text.substr(100, 100));                // an overlap
   EXPECT_TRUE(has(a, "\"status\":\"invalid\"")) << a;
@@ -176,10 +176,10 @@ TEST(AnchorPieces, AGapOrARepeatIsRefusedAndNothingIsAppended) {
 
 TEST(AnchorPieces, AnAddMustFollowABeginOfTheSameProfile) {
   Rig r;
-  EXPECT_TRUE(has(r.add(0, 0, "AAAA"), "\"status\":\"invalid\""));
-  EXPECT_TRUE(has(r.end(0), "\"status\":\"invalid\""));
+  EXPECT_TRUE(has(r.add(0, 0, "AAAA"), "\"error\":\"not-staged\"")) << "nothing begun";
+  EXPECT_TRUE(has(r.end(0), "\"error\":\"not-staged\""));
   ASSERT_TRUE(Rig::ok(r.begin(0, 100, std::string(64, 'a'))));
-  EXPECT_TRUE(has(r.add(1, 0, "AAAA"), "\"status\":\"invalid\"")) << "another profile is not the one staged";
+  EXPECT_TRUE(has(r.add(1, 0, "AAAA"), "\"error\":\"not-staged\"")) << "another profile is not the one staged";
   EXPECT_EQ(0, r.profiles.stage_len_);
 }
 
@@ -211,11 +211,11 @@ TEST(AnchorPieces, ASizeOrHashMismatchIsRefusedAtEndAndTheProfileKeepsItsAnchor)
     ASSERT_TRUE(Rig::ok(r.begin(0, cs.size, cs.sha))) << cs.what;
     ASSERT_TRUE(Rig::ok(r.add(0, 0, text))) << cs.what;
     std::string a = r.end(0);
-    EXPECT_TRUE(has(a, "\"status\":\"invalid\"")) << cs.what << " " << a;
+    EXPECT_TRUE(has(a, "\"status\":\"invalid\"") && has(a, "\"error\":\"ca-mismatch\"")) << cs.what << " " << a;
     EXPECT_FALSE(r.profiles.p[0].hasCa()) << cs.what;
     EXPECT_STREQ(STATIC_ANCHOR, r.profiles.p[0].anchor) << cs.what;
     EXPECT_EQ(nullptr, r.profiles.stage_) << cs.what << ": the buffer is freed on a refused end too";
-    EXPECT_TRUE(has(r.end(0), "\"status\":\"invalid\"")) << cs.what << ": and a second end finds nothing";
+    EXPECT_TRUE(has(r.end(0), "\"error\":\"not-staged\"")) << cs.what << ": and a second end finds nothing";
   }
 }
 
@@ -248,7 +248,7 @@ TEST(AnchorPieces, ANewBeginRestartsTheBufferAndOnlyOneCertificateStagesAtATime)
   ASSERT_TRUE(Rig::ok(r.begin(1, der.size(), shaHex(der)))) << "a second profile takes the one buffer";
   EXPECT_EQ(0, r.profiles.stage_len_);
   EXPECT_EQ(1, r.profiles.stage_idx_);
-  EXPECT_TRUE(has(r.add(0, 0, "AAAA"), "\"status\":\"invalid\"")) << "the first profile's stage is gone";
+  EXPECT_TRUE(has(r.add(0, 0, "AAAA"), "\"error\":\"not-staged\"")) << "the first profile's stage is gone";
   EXPECT_TRUE(Rig::ok(r.send(1, der))) << "and a begin after a begin starts the sending again";
   EXPECT_TRUE(r.profiles.p[1].hasCa());
   EXPECT_FALSE(r.profiles.p[0].hasCa());
