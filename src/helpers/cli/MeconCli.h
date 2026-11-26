@@ -133,8 +133,14 @@ inline void formatHeapLow(const HeapWatch& h, char* reply, size_t max) {
     n += l.seen ? snprintf(reply + n, max - n, "%lu by=%s at=%lus", (unsigned long)l.bytes, l.by, (unsigned long)l.at_s)
                 : snprintf(reply + n, max - n, "none");
   if (n > 0 && (size_t)n < max)
-    snprintf(reply + n, max - n, m.seen ? " min_free=%lu by=%s at=%lus" : " min_free=none", (unsigned long)m.bytes,
-             m.seen ? m.by : "", (unsigned long)m.at_s);
+    n += snprintf(reply + n, max - n, m.seen ? " min_free=%lu by=%s at=%lus" : " min_free=none", (unsigned long)m.bytes,
+                  m.seen ? m.by : "", (unsigned long)m.at_s);
+#if defined(NRF52_PLATFORM) || !defined(ARDUINO)   // tracked on nRF52 (and in the native tests)
+  // nRF52 only: the loop task's least free stack and what was running when it got there; absent where not tracked.
+  const HeapWatch::Low& k = h.loopStack();
+  if (k.seen && n > 0 && (size_t)n < max)
+    snprintf(reply + n, max - n, " loop_stack_free=%lu by=%s at=%lus", (unsigned long)k.bytes, k.by, (unsigned long)k.at_s);
+#endif
 }
 
 // Returns true when `cmd` is one of the MECON commands and `reply` holds the answer.

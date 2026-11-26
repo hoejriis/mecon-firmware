@@ -5,6 +5,11 @@
 // min_free  the lowest free heap since boot (high-water mark), where the platform tracks it; 0 = not tracked
 // psram     bytes of PSRAM free now, on a board that has PSRAM; 0 = none. The three figures above are internal RAM
 //           only: the BLE, Wi-Fi and TLS stacks allocate from it, and a PSRAM block would hide its exhaustion.
+//           nRF52: the heap `free` measures is the newlib heap the Adafruit core's malloc and FreeRTOS's pvPortMalloc share
+//           (free = the heap region's size minus mallinfo().uordblks, dbgHeapFree()). Neither FreeRTOS (heap_3, no
+//           xPortGetMinimumEverFreeHeapSize) nor newlib keeps a low-water mark for it, so the figure is the least `free`
+//           this function has returned: sampled at each call (the periodic look of HeapWatch and the end of each scope),
+//           so a peak that is allocated and freed between two looks is missed; it can only be at or above the true low.
 // loop_stack_free  the least free stack the calling task (the Arduino loop, where every CLI command runs) has had
 //           since it started, in bytes; 0 = not tracked
 #include <stdint.h>
@@ -41,10 +46,17 @@ struct MemStats {
   #include "NrfWorker.h"
   // loop_stack_free: the Arduino loop task's, recorded by the interface worker once it has run (a request may itself run
   // on the worker, where uxTaskGetStackHighWaterMark(NULL) would be the worker's own).
+  // The least `free` handed to it so far (0 until a look): the same heap as `free`. One copy, not one per caller.
+  __attribute__((noinline)) inline uint32_t nrfHeapLow(uint32_t free_now) {
+    static uint32_t low = 0;
+    if (free_now && (!low || free_now < low)) low = free_now;
+    return low;
+  }
   inline MemStats memStats() {
     MemStats m;
     int f = dbgHeapFree();
     m.free = m.largest = f > 0 ? (uint32_t)f : 0;
+    m.min_free = nrfHeapLow(m.free);
     m.loop_stack_free = NrfWorker::loopStackFree();
     m.known = true;
     return m;
