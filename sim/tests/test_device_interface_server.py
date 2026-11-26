@@ -128,6 +128,7 @@ def test_a_line_too_long_is_refused_not_truncated(nodes):
 def test_the_line_bound_counts_the_envelope_after_the_prefix(nodes):
     # The bound is 4,096 bytes of envelope after "mecon> ", without the ending CR: exactly that many is read, one more is not.
     n, (cli, i) = start(nodes, "repeater", "edge")
+    assert i.request("hello")["result"]["limits"] == {"line_bytes": 4096}, "hello reports the bound it enforces"
 
     def env(size, rid):
         base = json.dumps({"v": 1, "id": rid, "op": "hello", "pad": ""}, separators=(",", ":"))
