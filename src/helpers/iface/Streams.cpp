@@ -319,10 +319,18 @@ void writeRuntime(JsonWriter& w, mesh::MainBoard& b, LoopGap& gap, int heap_low,
     const HeapWatch::Low* lows[2] = {&heapWatch().largest(), &heapWatch().minFree()};
     static const char* const NAMES[2] = {"largest", "min_free"};
     w.key("heap_lows"); w.beginObject();
+#if defined(NRF52_PLATFORM)
+    const HeapWatch::Low* const all[3] = {lows[0], lows[1], &heapWatch().loopStack()};   // the loop stack: tracked on nRF52 only
+    static const char* const KEYS[3] = {NAMES[0], NAMES[1], "loop_stack_free"};
     for (int i = 0; i < 3; i++) {
-      const HeapWatch::Low* l = i < 2 ? lows[i] : &heapWatch().loopStack();
-      if (i == 2 && !l->seen) break;   // loop_stack: only where the loop's stack is tracked (nRF52)
-      w.key(i < 2 ? NAMES[i] : "loop_stack_free");
+      const HeapWatch::Low* l = all[i];
+      if (i == 2 && !l->seen) break;
+      w.key(KEYS[i]);
+#else
+    for (int i = 0; i < 2; i++) {
+      const HeapWatch::Low* l = lows[i];
+      w.key(NAMES[i]);
+#endif
       if (!l->seen) { w.null(); continue; }
       w.beginObject();
       w.key("bytes"); w.unum(l->bytes);
