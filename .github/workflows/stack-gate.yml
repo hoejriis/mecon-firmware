@@ -68,10 +68,13 @@ jobs:
         #   advert, are handed to the worker (Dispatcher::recvOnWorker). The
         #   receive chain fits the loop task by only a few bytes before LittleFS's relocation recursion, so the depth
         #   limit alone would not catch receive moved back onto the loop.
-        #   Iface::signOnLoop is the same for a signature (Provenance::signMessage, src/helpers/iface/SignDispatch.h): on the
-        #   nRF52 it runs on the worker, and only a worker that could not be created at boot falls back to the loop task,
-        #   which then signs as before (the gate does not count that degraded mode). Without this entry the whole signing
-        #   chain, about 1.6 KB, would count against every loop path that signs.
+        #   Iface::signJob and Iface::signOnLoop are the same for a signature (Provenance::signMessage,
+        #   src/helpers/iface/SignDispatch.h): on the nRF52 it runs on the worker, and only a worker that could not be created
+        #   falls back to the loop task, which then signs as before (the gate does not count that degraded mode). Without
+        #   this entry the whole signing chain, about 1.6 KB, would count against every loop path that signs.
+        # - Provenance::sign|signResult|makeReport=the other jobs: the run() beneath a signature only ever runs the signature (or runs
+        #   it inline, on the worker); run's map reaches every job, and a job that signs would make a cycle (run, job, sign,
+        #   run) that does not exist.
         # - ^lfs_=File/TeeStream/Adafruit_LittleFS: LittleFS holds the file-system lock for the whole call and is not
         #   re-entrant, and its flash drivers' debug output goes to Serial, never to a file.
         # RECURSION, the recursions accepted (--recursion): a depth counts a recursion once, so anything whose depth comes
@@ -99,7 +102,9 @@ jobs:
           python3 tools/stack_callgraph.py .pio/build/${{ matrix.env }} \
             --root 'loop_task\(void\*\)=3840' \
             --root 'NrfWorker::.*body=7936' \
-            --indirect 'NrfWorker::.*body|NrfWorker::run=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|RoleRotation<.*>::recoverJob|Iface::signJob' \
+            --indirect 'NrfWorker::.*body|NrfWorker::run=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|RoleRotation<.*>::recoverJob' \
+            --indirect 'NrfWorker::run=Iface::signJob' \
+            --no-reentry 'Iface::Provenance::(sign|signResult|signResultInner|makeReport)\(=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|RoleRotation<.*>::recoverJob' \
             --indirect 'Dispatcher::handleWith=Iface::.*::op[A-Z][A-Za-z]*\(Iface::OpContext&\)|MeconIface::op[A-Z]|Iface::DeployAuth::op[A-Z]' \
             --indirect 'DeployAuth::dispatchSigned=ConsoleIface::runSigned|MeconIface::runSigned' \
             --indirect 'recvJob|Dispatcher::recvOnLoop=MyMesh::onRecvPacket|mesh::Mesh::onRecvPacket' \
