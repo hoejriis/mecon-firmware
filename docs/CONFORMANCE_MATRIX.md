@@ -28,6 +28,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | Signed `deployment.reset` | fam | ✓ 2026-10-28 b20 | ✓ 2026-11-05 m7 | ✓ 2026-11-06 d1 |
 | Signed `identity.rotate` | ✓ 2026-11-06 a46 | ✓ 2026-11-06 b28 | fam | ✓ 2026-11-23 d25 |
 | Management-channel slot bind, rotate, unbind | fam | ✓ 2026-11-23 b52 | fam | ✓ 2026-11-06 d1 |
+| Channel `favourite` field reported by `channel.list` | ✓ 2026-11-27 a64 | fam | — | — |
 | Hardened posture, locked reads | ✓ 2026-10-23 a10 | ✓ 2026-11-07 b39 | fam | ✓ 2026-11-24 d29 |
 | Corrupt Deployment record refused | fam | ✓ 2026-10-28 b21 | fam | ✓ 2026-10-31 d5 |
 | **Device interface by transport** | | | | |
@@ -94,7 +95,9 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 | LoRa point to point | fam | ✓ 2026-11-08 m16 | ✓ 2026-11-14 c15 | ✓ 2026-11-14 d16 |
 | LoRa management channel | fam | ✓ 2026-11-08 m16 | — | — |
 | Stock remote-admin CLI over LoRa | ✓ 2026-10-22 a7 | fam | — | — |
-| Long console lines (to 1,600 B) | fam | ✓ 2026-11-04 b27 | — | — |
+| Long console lines (to 1,600 B, the limit before v0.3.21) | fam | ✓ 2026-11-04 b27 | — | — |
+| Console request line of 4,096 B (`limits.line_bytes`) | fam | ✓ 2026-11-27 b60 | — | — |
+| nRF52 hardware watchdog | n/a | n/a | — | ✓ 2026-11-25 d33 |
 | **Telemetry streams** | | | | |
 | Signed `logs` stream over broker | ✓ 2026-11-05 m12 | ✓ 2026-11-05 m12 | n/a | n/a |
 | `runtime` stream, heap floor flag | fam | ✓ 2026-11-11 b42 | — | — |
@@ -183,6 +186,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 - **Messaging operations on a Repeater or Room server:** Companion only.
 - **`packet.transmit` on a Companion or Room server:** Repeater only.
 - **Wi-Fi join, profiles and connectivity mode on the nRF52 boards:** no Wi-Fi.
+- **The nRF52 hardware watchdog on a Heltec board:** ESP32 builds already reset themselves on a hang.
 
 ## Limits worth knowing before trusting a cell
 
@@ -190,7 +194,7 @@ Rows are grouped by capability. Boards are the Heltec V3, Heltec V4, Seeed Wio T
 - Where a row names a hardware test peer, such as a Heltec V3 Companion acting as the manager's radio, the mark belongs to the board under test, not the peer.
 - A BLE `✓` on the T1000-E Companion is 33 of 34 fixtures: the one failure is a fixture that sets a Wi-Fi key, which a board without Wi-Fi refuses by design.
 - The T1000-E reset-scope cells (`d30`) cover every scope but `factory`: the board's node key had to stay for a Backend row. The factory reset over the interface on an nRF52 server role has no row.
-- On the Heltec V4 Repeater, the console update (`b41`) was run with 1,024-byte chunks. Chunks of 2,304 bytes moved nothing because the console line limit is 1,600 bytes.
+- On the Heltec V4 Repeater, the console update (`b41`) was run with 1,024-byte chunks. Chunks of 2,304 bytes moved nothing because the console line limit was 1,600 bytes. It is 4,096 bytes from v0.3.21.
 - A Wio Tracker L1 row marked `c8` was reported by the reference Backend's tooling through the Reader, not run by this repository's own tools.
 - The row `m24`, LoRa management on the Wio Tracker L1 and T1000-E pair, does not say which board held the Room server and which the Repeater, so no cell takes a mark from it.
 - The Heltec V4 screen cell (`a42`) is filed under the Heltec V3 heading in HARDWARE_VERIFIED, but the row itself names a Heltec V4 Companion.
@@ -250,6 +254,7 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `a53` Heltec V3: † v0.3.0 signed update over USB from the signed v0.2.1, from the release's own assets (standalone)
 - `a55` Heltec V3: v0.3.3 Companion interface keys and reads (standalone, enrolled on the reference Backend, the release's image in both app slots)
 - `a59` Heltec V3: Large requests over the USB cable (v0.3.5 standalone, enrolled on the reference Backend, the release's image in both app slots)
+- `a64` Heltec V3: The channel favourite field on a standalone Companion (v0.3.21 release image)
 - `b6` Heltec V4: Default-PIN BLE refusals
 - `b7` Heltec V4: Connectivity mode
 - `b9` Heltec V4: Wi-Fi failover between two access points
@@ -281,6 +286,8 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `b57` Heltec V4: Signed `deployment.reset` over the console (Repeater and Room server, v0.3.17)
 - `b58` Heltec V4: `device.reset` scopes and the factory reset over the console (Repeater and Room server, v0.3.17)
 - `b59` Heltec V4: Continuity package storage over the console (Repeater and Room server, v0.3.17)
+- `b60` Heltec V4: Console request line of 4,096 bytes (Repeater, v0.3.21)
+- `b61` Heltec V4: The v0.3.22 Repeater release image
 - `b48` Heltec V4: `packet.transmit` on a Repeater (`heltec_v4_repeater`, main 13fcd703, enrolled with the public test authori...
 - `c1` Wio Tracker L1: Adaptive contacts capacity
 - `c2` Wio Tracker L1: nRF52 interface worker
@@ -320,6 +327,7 @@ Each code is a row of [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md) under the named 
 - `d30` SenseCAP T1000-E: `device.reset` scopes over the console (Repeater and Room server, v0.3.19)
 - `d31` SenseCAP T1000-E: Continuity package storage over the console (Repeater and Room server, v0.3.19)
 - `d32` SenseCAP T1000-E: Server reads, unsigned writes, flood limits, duty floor (Repeater and Room server, v0.3.19)
+- `d33` SenseCAP T1000-E: The nRF52 hardware watchdog (Repeater, build of the change)
 - `m1` More than one board: `get dutycycle` per band (Heltec V3 standalone Companion)
 - `m2` More than one board: `message.deliver` (Heltec V3 standalone Companion, USB)
 - `m3` More than one board: Clock unset until a real source sets it (Heltec V3)

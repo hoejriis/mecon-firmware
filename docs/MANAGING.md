@@ -51,7 +51,7 @@ A request names an operation and carries an id. The result repeats the id:
 The settings and actions that stock MeshCore offers only on its CLI also run through the interface, on every role:
 - **Companion:** the BLE PIN (`ble.pin.set`), the time-zone offset (`tz.offset`), contact auto-add, telemetry sharing and the advert location, the radio preferences, and `contact.capacity`.
 - **Repeater and Room server:** the flood limits, the board's readings and battery divider, power saving, sensor and GPS settings, and the server actions: `clock.reset`, `stats.clear`, the packet log, `radio.temp`, `neighbour.*` on a Repeater and `room.post` on a Room server.
-- **Every role:** `audit.list` reads the audit log's history, and on builds with Wi-Fi, profiles can be removed and broker anchors set (`net.profile.clear`, `mqtt.profile.anchor`).
+- **Every role:** `audit.list` reads the audit log's history, and on builds with Wi-Fi, profiles can be removed and broker anchors set (`net.profile.clear`, `mqtt.profile.anchor`). From v0.3.22, `mqtt.profile.anchor` also takes a CA certificate in pieces (`ca_begin`, `ca_add`, `ca_end`), for a certificate too large for one request over MQTT.
 
 Each runs the CLI line it stands for, as the caller, so the CLI's own permission check decides it. Some are limited to one role or path, such as `log.read` to the console and `clock.back` to the cable: see [what differs](SUPPORTED_HARDWARE.md#what-differs-and-why) and the [managed operations](contract/OPERATIONS.md#51-device-interface-operations).
 
@@ -130,7 +130,7 @@ A manager can ask the device for a [compact report](contract/TELEMETRY.md) over 
 - **Airtime.** A report goes through the duty window. With no room, it looks again once a minute for 5 minutes. Then it counts as `skipped`, which does not use up a run, and waits for the next period.
 - **Counters and removal.** `standing.list` counts `runs`, `failed` and `skipped` since the last boot. `standing.remove` ends an instruction. One set by a member who leaves the authority set is removed the next time it comes due.
 
-- **Keeping reports for later** *(on main, in no release yet)*. An instruction put with `keep: true` also keeps every report it sends, as the exact signed bytes, in the device's flash: the last 64, whether or not anyone heard them. `report.list` hands them back page by page and `report.ack` releases them. A report with `location` is listed only to a caller who may read the location. See [Reports kept for later](contract/TELEMETRY.md#reports-kept-for-later).
+- **Keeping reports for later** *(since v0.3.21)*. An instruction put with `keep: true` also keeps every report it sends, as the exact signed bytes, in the device's flash: the last 64, whether or not anyone heard them. `report.list` hands them back page by page and `report.ack` releases them. A report with `location` is listed only to a caller who may read the location. See [Reports kept for later](contract/TELEMETRY.md#reports-kept-for-later).
 
 **In v0.2.0 and v0.2.1,** a new instruction sends its first report at once, and a count set with `runs` starts again at each boot. Both are fixed from v0.3.0.
 
