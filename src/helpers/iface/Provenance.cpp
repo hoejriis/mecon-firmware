@@ -4,12 +4,25 @@
 #include <stdlib.h>
 #include <string.h>
 #include "IfaceEnvelope.h"
+#include "SignDispatch.h"
+#if defined(NRF52_PLATFORM)
+#include "helpers/NrfWorker.h"
+#endif
 
 namespace Iface {
 
 namespace {
 
 const char DOMAIN[] = "MECON-UPLINK-v1";
+
+// The one place a signature is computed (see SignDispatch.h): on an nRF52 on the 8 KB worker, elsewhere in place.
+void signMessage(const mesh::LocalIdentity* key, uint8_t* sig, const uint8_t* msg, int len) {
+#if defined(NRF52_PLATFORM)
+  signVia(NrfWorker::run, key, sig, msg, len);
+#else
+  key->sign(sig, msg, len);
+#endif
+}
 
 }  // namespace
 
@@ -37,7 +50,7 @@ size_t Provenance::makeReport(uint8_t* out, size_t cap, uint8_t fields, const Re
   memcpy(msg + sizeof(DOMAIN), STREAM, sizeof(STREAM));
   memcpy(msg + sizeof(DOMAIN) + sizeof(STREAM), out, n);
   uint8_t sig[64];
-  _id->sign(sig, msg, (int)(sizeof(DOMAIN) + sizeof(STREAM) + n));
+  signMessage(_id, sig, msg, (int)(sizeof(DOMAIN) + sizeof(STREAM) + n));
   memcpy(out + n, sig, sizeof(sig));
   *seq_out = ++_seq;
   return n + sizeof(sig);
@@ -73,7 +86,7 @@ int Provenance::sign(const char* stream, char* buf, size_t len, size_t cap, cons
   memcpy(msg + pre, buf, len - 1);
   memcpy(msg + pre + len - 1, tail, (size_t)tl);
   uint8_t sig[64];
-  key->sign(sig, msg, (int)(pre + text_len));
+  signMessage(key, sig, msg, (int)(pre + text_len));
   free(msg);
   memcpy(buf + len - 1, tail, (size_t)tl - 1);   // the tail without its closing brace
   size_t n = text_len - 1;

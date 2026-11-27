@@ -68,6 +68,10 @@ jobs:
         #   advert, are handed to the worker (Dispatcher::recvOnWorker). The
         #   receive chain fits the loop task by only a few bytes before LittleFS's relocation recursion, so the depth
         #   limit alone would not catch receive moved back onto the loop.
+        #   Iface::signOnLoop is the same for a signature (Provenance::signMessage, src/helpers/iface/SignDispatch.h): on the
+        #   nRF52 it runs on the worker, and only a worker that could not be created at boot falls back to the loop task,
+        #   which then signs as before (the gate does not count that degraded mode). Without this entry the whole signing
+        #   chain, about 1.6 KB, would count against every loop path that signs.
         # - ^lfs_=File/TeeStream/Adafruit_LittleFS: LittleFS holds the file-system lock for the whole call and is not
         #   re-entrant, and its flash drivers' debug output goes to Serial, never to a file.
         # RECURSION, the recursions accepted (--recursion): a depth counts a recursion once, so anything whose depth comes
@@ -95,7 +99,7 @@ jobs:
           python3 tools/stack_callgraph.py .pio/build/${{ matrix.env }} \
             --root 'loop_task\(void\*\)=3840' \
             --root 'NrfWorker::.*body=7936' \
-            --indirect 'NrfWorker::.*body|NrfWorker::run=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|RoleRotation<.*>::recoverJob' \
+            --indirect 'NrfWorker::.*body|NrfWorker::run=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|RoleRotation<.*>::recoverJob|Iface::signJob' \
             --indirect 'Dispatcher::handleWith=Iface::.*::op[A-Z][A-Za-z]*\(Iface::OpContext&\)|MeconIface::op[A-Z]|Iface::DeployAuth::op[A-Z]' \
             --indirect 'DeployAuth::dispatchSigned=ConsoleIface::runSigned|MeconIface::runSigned' \
             --indirect 'recvJob|Dispatcher::recvOnLoop=MyMesh::onRecvPacket|mesh::Mesh::onRecvPacket' \
@@ -107,8 +111,9 @@ jobs:
             --indirect 'Print::=Adafruit_USBD_CDC::write|AtomicFile::TeeStream::write' \
             --indirect '^lfs_|lfs_cache=_internal_flash_(read|prog|erase|sync)|CustomLFS::_flash_|CustomLFS_QSPIFlash::_qspi_' \
             --indirect 'flash_cache_=^fal_(read|program|erase|verify)$' \
-            --no-reentry 'loop_task=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|Dispatcher::recvOnLoop|MyMesh::recoverRotationOnLoop' \
+            --no-reentry 'loop_task=answerJob|dispatchJob|recvJob|MyMesh::recoverRotationJob|Dispatcher::recvOnLoop|MyMesh::recoverRotationOnLoop|Iface::signJob|Iface::signOnLoop' \
             --require 'Dispatcher::processRecvPacket=NrfWorker::run' "${LOOPBACK[@]}" \
+            --require 'Iface::Provenance::sign\(=NrfWorker::run' --require 'Iface::Provenance::makeReport=NrfWorker::run' \
             --no-reentry '^lfs_=AtomicFile::TeeStream::|Adafruit_LittleFS_Namespace::File::|Adafruit_LittleFS::' \
             --recursion "loop_task\\(void\\*\\)=$RECURSION" --recursion "NrfWorker::.*body=$RECURSION" \
             | tee -a "$GITHUB_STEP_SUMMARY"
