@@ -16,9 +16,8 @@ simulated-board suite covers it). Compiling is not support. The intended product
 Rows built on 2026-10-24 or later from 114feab6 onwards ran on Arduino-ESP32 3.1.3 / ESP-IDF 5.3 with NimBLE (see
 [PLATFORM](PLATFORM.md)); earlier rows ran on Arduino-ESP32 2.0.17 / ESP-IDF 4.4.
 
-Bench boards (on the MECON Pi): the Heltec V3 test board (Heltec V3, MAC 44:1b:f6:fd:9c:f0), the Heltec V4 test board (Heltec V4, MAC
-f8:5b:1b:a1:aa:30, 2 MB PSRAM), the Wio Tracker L1 test board (Seeed Wio Tracker L1). The Pi acts as BLE central (BlueZ, bleak), MQTT
-broker host (throwaway TLS brokers) and USB host. Dates are UTC. A row's build is the `main` commit flashed, unless the row names a release, a branch, a PR or a test build instead.
+Bench boards (on a Linux bench host): a Heltec V3, a Heltec V4 (2 MB PSRAM), a Seeed Wio Tracker L1 and a SenseCAP T1000-E. The
+bench host acts as BLE central (BlueZ, bleak), MQTT broker host (throwaway TLS brokers) and USB host. Dates are UTC. A row's build is the `main` commit flashed, unless the row names a release, a branch, a PR or a test build instead.
 
 Reading a release on a Heltec V3 or V4 includes `tools/mecon_latency_hw.py <port>` on the release's own image: the median time to the first answer frame of `status.get`, `hello` and `config.schema` must stay under 200 ms. It opens the port with DTR and RTS low, which resets a Heltec V3, so run it only on a confirmed image.
 
