@@ -8,7 +8,7 @@ mutate uf2_gap_allowed $F '        elif addr != base + len(payload):' '        e
 mutate uf2_not_required_for_dfu $F '            if not os.path.isfile(uf2_path):' '            if False:' "$T"
 mutate uf2_required_for_app $F '        if v["kind"] == "bootloader-dfu":
             uf2_path' '        if True:
-            uf2_path' "$T"
+            uf2_path' "$T::test_the_index_needs_a_uf2_for_every_bootloader_dfu_variant_and_none_for_an_app"
 mutate verify_skips_uf2_compare $F '            if "0x%x" % uf2_checked(uf2, image, e["recovery_uf2"]) != e["recovery_uf2_base"]:' '            if False:' "$T"
 mutate verify_skips_uf2_hash $F '            if hashlib.sha256(uf2).hexdigest() != e["recovery_uf2_sha256"]:' '            if False:' "$T"
 mutate verify_allows_missing_uf2 $F '        if e["kind"] == "bootloader-dfu" and "recovery_uf2" not in e:' '        if False:' "$T"
