@@ -46,7 +46,8 @@ Errors (`failed` unless noted):
 - `duplicate-secret`: rotation to a key that another slot holds.
 - `unsupported-key`: a change whose snapshot would have to hold a 256-bit key.
 - `write-failed`: the record or the slot could not be saved.
-- `invalid` with `confirm-required` or `confirm-not-needed`: see section 4.
+- `invalid` with `confirm-required` or `confirm-not-needed`: see section 4; with `confirm-unsupported` on a host that has no job table to confirm through.
+- The generic `busy` codes `no-memory`, `storage` and `job-open:<job>`, and `failed` `result-expired`, as for any state-changing operation.
 - `stale` on `unbind` with `remove`: the binding is not healthy, so the slot is kept.
 
 Binding a slot that is already bound returns its state and writes nothing.
@@ -82,8 +83,8 @@ The rules are the same as for `config.apply`:
   binding reads `stale`. The snapshot is removed in every case.
 - **One at a time.** One state-changing job runs at a time ([Managed operations](OPERATIONS.md) section 3.3).
 
-A `channel.put` of the bound slot that is allowed (by the cable, or confirmed) moves the binding to the new key, with
-`generation` + 1. A `channel.remove` of the bound slot ends the binding.
+A `channel.put` of the recorded slot (bound or stale) that is allowed (by the cable, or confirmed) moves the binding to the new key, with
+`generation` + 1. A `channel.remove` of the recorded slot ends the binding.
 
 ## 5. Secrets
 
