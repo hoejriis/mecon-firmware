@@ -32,7 +32,7 @@ A remote caller never inherits a local caller's privileges: a LoRa or MQTT calle
 | `write` | everything else that changes a setting or transmits, including `set ...`, `password`, `advert`; **also the class of any command nobody registered** |
 | `secret` | private-key material: `get prv.key`, `set prv.key`; the Companion frames `CMD_EXPORT_PRIVATE_KEY` and `CMD_IMPORT_PRIVATE_KEY` |
 | `posture` | `set posture ...`, `get audit`, `set connectivity.mode`, `set mqtt.profile <n> manage ...` |
-| `destructive` | `erase`, `poweroff`, `shutdown`; the Companion frame `CMD_FACTORY_RESET` (a powered-off device needs someone on site, so no remote caller, a managing broker included, may) |
+| `destructive` | `erase`, `poweroff`, `shutdown`, `start ota`, and on a Companion the cable-only `clock back`; the Companion frame `CMD_FACTORY_RESET` (a powered-off device needs someone on site, so no remote caller, a managing broker included, may) |
 | `reboot` | `reboot` (exactly; `reboot now` is a `write`) |
 | `update` | no command line: the device-interface operation `update.offer`, and `job.confirm` and `job.cancel` of an update job ([signed updates](contract/UPDATES.md) section 5). `update.chunk` is authorised by its job's transfer token instead |
 
@@ -126,6 +126,8 @@ New commands live under `mecon.` and are tried at the place where upstream calls
 |---|---|---|
 | `get mecon.cli.who` | read | `> transport=usb auth=cable remote=0 posture=normal principal=cable`, how the engine sees the caller (`mgmt=on` is appended for a flagged broker session) |
 | `get mecon.cli.check <line>` | read | `> class=write remote-limited`: the class of `<line>` and what the table says for this caller, without running it and without an audit entry |
+
+The diagnostic reads `get mecon.mem`, `get mecon.heaplow`, `get mecon.slowpass`, `get mecon.slowsections`, `get mecon.version` and `get mecon.boot` are also `read`; their replies are in the [CLI reference](CLI_REFERENCE.md).
 
 ## The command line over MQTT
 

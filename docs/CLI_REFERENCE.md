@@ -141,7 +141,7 @@ The Companion also accepts `get`/`set` lines of the **board** (vendor commands a
 | `erase` | Format the file system. | stock, behaviour changed | destructive | Also returns the posture to Normal and writes a factory-reset audit entry. |
 | `ls [path]` | List files (`UserData/...`, `ExtraFS/...`). | stock | write | Refused on a device that belongs to a Deployment or is Hardened: use `rebuild` or `erase`. |
 | `cat <path>` | Print a file in hex. | stock | write | Path must start with `UserData/` or `ExtraFS/`. Refused on a device that belongs to a Deployment or is Hardened: use `rebuild` or `erase`. |
-| `rm <path>` | Remove a file. | stock | destructive | Refuses an empty path and `/`. Refused on a device that belongs to a Deployment or is Hardened: use `rebuild` or `erase`. |
+| `rm <path>` | Remove a file. | stock | write | Refuses an empty path and `/`. Refused on a device that belongs to a Deployment or is Hardened: use `rebuild` or `erase`. |
 | `reboot` | Restart. | stock | reboot |  |
 
 ## Repeater, Room server and Sensor

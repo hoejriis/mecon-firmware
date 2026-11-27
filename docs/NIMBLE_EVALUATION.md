@@ -12,7 +12,7 @@ Each NimBLE build adds the `[esp32_nimble]` section of `platformio.ini` to a BLE
 
 - `-D USE_NIMBLE`, and NimBLE-Arduino pinned at 2.3.9;
 - the central and observer roles left out (`CONFIG_BT_NIMBLE_ROLE_CENTRAL_DISABLED`, `CONFIG_BT_NIMBLE_ROLE_OBSERVER_DISABLED`): the Companion is only ever a peripheral;
-- `CONFIG_BT_NIMBLE_MAX_BONDS=15`, the same bond limit as Bluedroid in arduino-esp32 2.0.17;
+- `CONFIG_BT_NIMBLE_MAX_BONDS=15`, the same bond limit as Bluedroid in Arduino-ESP32 2.0.17;
 - the Bluedroid source (`SerialBLEInterface.cpp`) and the Bluedroid Arduino library (`ESP32 BLE Arduino`) kept out of the build.
 
 During the evaluation each Heltec BLE Companion had an opt-in NimBLE twin (`Heltec_v3_companion_radio_ble_nimble`, `Heltec_v3_companion_radio_standalone_nimble`, `heltec_v4_companion_radio_standalone_nimble`). Those twins are gone: the regular environments now are the NimBLE builds. The target-boards workflow reports flash and static RAM per build and checks them against `ci/size-budget.txt`.
@@ -30,7 +30,7 @@ From the target-boards workflow on the pull request that added the option (run 3
 
 On the ESP32-S3 boards (V3, V4) NimBLE saves about 403 KB of flash and 12 KB of static RAM. On the classic ESP32 (LilyGo) it saves about 476 KB of flash and costs 1.4 KB more static RAM. Why the static RAM goes the other way on the classic ESP32 is not established; NimBLE keeps its buffer pools in static memory, Bluedroid allocates most of its state from the heap at start-up, so the boot-heap figure is what decides the RAM comparison.
 
-Static RAM is what the linker places in internal RAM (`.data` + `.bss`). The heap the stack allocates when it starts is not in it, and is the larger part of Bluedroid's cost; it is still **to measure on hardware** (`get mecon.mem` on v3test, before and after the BLE stack is up).
+Static RAM is what the linker places in internal RAM (`.data` + `.bss`). The heap the stack allocates when it starts is not in it, and is the larger part of Bluedroid's cost; it is still **to measure on hardware** (`get mecon.mem` on a Heltec V3, before and after the BLE stack is up).
 
 ## Behaviour: how the two classes map
 
@@ -58,14 +58,14 @@ The public interface is the same, so `examples/companion_radio/main.cpp` uses ei
 
 - **Unauthenticated links are dropped.** Bluedroid marks the link up on any successful pairing; its characteristics already refuse reads and writes without MITM, so a Just Works link could do nothing but stay connected. The NimBLE class requires an encrypted and authenticated link before it is up, and drops anything else like a failed pairing. Stricter, never looser.
 - **`disable()` drops every connection**, not only the last one, so a central that connected but never paired is not left behind.
-- **A phone that forgot its bond.** NimBLE's host, by default, ignores a new pairing request from a peer it already holds a bond for (`BLE_GAP_EVENT_REPEAT_PAIRING` is answered "ignore" because NimBLE-Arduino's server does not handle it, and the event cannot be hooked from outside). Bluedroid is expected to accept the new pairing and replace the old bond (not checked in its source or on a board). So after "forget device" on the phone, a NimBLE device might refuse to pair again until its own bond is removed. Checked on a Heltec V3 test board with the Pi as central: after the central forgot its bond, it paired again (see [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md)). A phone app is not yet checked.
+- **A phone that forgot its bond.** NimBLE's host, by default, ignores a new pairing request from a peer it already holds a bond for (`BLE_GAP_EVENT_REPEAT_PAIRING` is answered "ignore" because NimBLE-Arduino's server does not handle it, and the event cannot be hooked from outside). Bluedroid is expected to accept the new pairing and replace the old bond (not checked in its source or on a board). So after "forget device" on the phone, a NimBLE device might refuse to pair again until its own bond is removed. Checked on a Heltec V3 test board with a test central: after the central forgot its bond, it paired again (see [HARDWARE_VERIFIED](HARDWARE_VERIFIED.md)). A phone app is not yet checked.
 - **Advertising layout.** The name moves to the scan response. Apps that filter on the service UUID or that read the scan response see the device as before; a scanner that reads only the advertisement would show it without a name.
 
 ## Risks
 
-- The mapping above is read from the two libraries' sources; on hardware it is checked on a Heltec V3 test board only, with the Pi as central. No phone app and no LilyGo board has run it.
+- The mapping above is read from the two libraries' sources; on hardware it is checked on a Heltec V3 test board only, with a test central. No phone app and no LilyGo board has run it.
 - The Bluedroid class stays in the tree for upstream's other ESP32 boards. A change to the shared behaviour (pacing, queues, posture hooks) has to be made in both while both exist.
-- NimBLE-Arduino 2.x on arduino-esp32 2.0.17 is supported by the library; this project's run time on it is the Heltec V3 test-board checks.
+- NimBLE-Arduino 2.x is supported by the library on both Arduino-ESP32 2.0.17 (the LilyGo) and 3.1.3 (the Heltec V3 and V4). This project's run time on it is the Heltec V3 test-board checks, made on 2.0.17 first and on ESP-IDF 5.3 since ([PLATFORM](PLATFORM.md)).
 
 ## Recommendation per board
 
