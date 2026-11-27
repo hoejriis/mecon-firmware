@@ -135,6 +135,11 @@ def test_a_full_ring_keeps_the_last_64_and_counts_what_it_pushed_out(ether, node
             break
         time.sleep(1.0)
     assert last["dropped"] >= 3 and len(got) == 64, (len(got), last)
+    # At this timescale a report is due every 0.3 s: stop the standing report so the ring holds still between the list and
+    # the ack, or a report made in between pushes the oldest out and the ack releases one fewer.
+    assert rq(d, "standing.remove", {"id": "k"})["status"] == "ok"
+    got, last = pages(unsigned_list(d))
+    assert last["dropped"] >= 3 and len(got) == 64, (len(got), last)
     first = got[0]["cursor"]
     assert first == got[-1]["cursor"] - 63, "the last 64, in order"
     assert last["dropped"] == first - 1, "what was pushed out is what the gap in the cursors shows: %s" % last
