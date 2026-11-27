@@ -88,6 +88,8 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Usage:**
 - `start ota`
 
+**In this fork:** off unless the build defines `ENABLE_WIFI_OTA`, and always refused on device-interface and nRF52 builds. Firmware updates are signed ([signed updates](contract/UPDATES.md)). See the [CLI reference](CLI_REFERENCE.md).
+
 ---
 
 ### Erase/Factory Reset
@@ -364,7 +366,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Serial Only:**
 - `get prv.key`: Yes
-- `set prv.key`: No
+- `set prv.key`: Yes in this fork (stock let a remote admin replace the identity). Both are refused in the Hardened posture, the cable included.
 
 **Note:** Requires reboot to take effect after setting
 
@@ -575,6 +577,8 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 - `set dutycycle 1` — 1% duty cycle (strictest EU requirement)
 
 > **Note:** Added in firmware v1.15.0
+
+> **In this fork** the limit that applies is the stricter of this value and the regulatory floor of the band in use, so `set dutycycle 100` does not lift the floor in a regulated band. `get dutycycle` prints the band, the limit in force, the floor, your setting and the airtime used in the trailing hour (the Sensor role keeps the stock reply). See the [CLI reference](CLI_REFERENCE.md).
 
 ---
 

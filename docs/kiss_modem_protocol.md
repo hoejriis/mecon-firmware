@@ -60,6 +60,8 @@ Data frames carry raw packet data only, with no metadata prepended. The Data com
 
 Only one packet may be pending for radio transmission at a time. If the host sends a second Data frame before the first has completed, the modem responds with Error (0xF1) and TxBusy (0x07).
 
+**In this fork**, every transmission is also held to the regulatory duty-cycle floor of the channel the modem is on, over a sliding one-hour window (no user airtime factor). A Data frame that does not fit waits in the modem until enough airtime has aged out, and further Data frames meanwhile get TxBusy as for any pending frame. A frame longer than the whole limit, or sent with no known channel, ends with TxDone result 0. A channel with no floor is not limited ([upstream delta register](UPSTREAM_DELTA.md#duty-cycle-enforcement-transmit-paths)).
+
 ### Host Output Backpressure
 
 Outbound frames are encoded into a 2-slot queue and flushed when serial output space is available; `loop()` never blocks on writes. Radio TX state advances independently of host read speed. TxDone is retained until it can be queued. If the outbound queue is full, the modem responds with Error (0xF1) and TxBusy (0x07). Hosts should read serial promptly to avoid delayed responses.

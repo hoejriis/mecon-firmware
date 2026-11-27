@@ -16,7 +16,9 @@ sim/build.sh sim_companion
 sim/run.sh python3 -m pytest sim/tests -q
 ```
 
-In CI the suite runs in three shards, each listed by `sim/shard.py`, because it takes about an hour in one job. `sim/tests/test_shard.py` fails if a test file belongs to no shard.
+The simulator builds only on Linux: `variants/sim/sim_wifi.cpp` and `variants/sim/sim_mqtt_net.cpp` read file times through `st_mtim`, which macOS does not have (it names the field `st_mtimespec`). On a Mac, build and run it in the dev container with `sim/run.sh`, as above.
+
+In CI the suite runs in four shards, each listed by `sim/shard.py`, because it takes about an hour in one job. `sim/tests/test_shard.py` fails if a test file belongs to no shard.
 
 `sim/run.sh <cmd>` is `docker run` with the repo mounted and the PlatformIO cache volume
 attached. For long jobs run it detached with output redirected to a file under

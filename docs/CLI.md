@@ -32,7 +32,7 @@ A remote caller never inherits a local caller's privileges: a LoRa or MQTT calle
 | `write` | everything else that changes a setting or transmits, including `set ...`, `password`, `advert`; **also the class of any command nobody registered** |
 | `secret` | private-key material: `get prv.key`, `set prv.key`; the Companion frames `CMD_EXPORT_PRIVATE_KEY` and `CMD_IMPORT_PRIVATE_KEY` |
 | `posture` | `set posture ...`, `get audit`, `set connectivity.mode`, `set mqtt.profile <n> manage ...` |
-| `destructive` | `erase`, `poweroff`, `shutdown`; the Companion frame `CMD_FACTORY_RESET` (a powered-off device needs someone on site, so no remote caller, a managing broker included, may) |
+| `destructive` | `erase`, `poweroff`, `shutdown`, `start ota`, and on a Companion the cable-only `clock back`; the Companion frame `CMD_FACTORY_RESET` (a powered-off device needs someone on site, so no remote caller, a managing broker included, may) |
 | `reboot` | `reboot` (exactly; `reboot now` is a `write`) |
 | `update` | no command line: the device-interface operation `update.offer`, and `job.confirm` and `job.cancel` of an update job ([signed updates](contract/UPDATES.md) section 5). `update.chunk` is authorised by its job's transfer token instead |
 
@@ -95,6 +95,10 @@ A refusal's reply text (the strings are those the individual checks always gave)
 
 Every refusal is an audit entry ([Standalone security postures](STANDALONE_POSTURES.md)): the class (`remote-write`, `posture`, `audit`, `key-export`, ...) and who asked (`cable`, `ble`, `net`, `remote-admin`, `remote-cli`, `mqtt`). Two new kinds: `mqtt-session` (a request on a session that is not TLS-verified) and `mgmt-flag` (an attempt to set the management flag from a caller that may not). A refusal on a BLE link is recorded as `ble` whether the link is paired with a PIN of its own or still has a default PIN (which authenticates nobody, but is still BLE); `net` is for the TCP ports (Wi-Fi, Ethernet) and the Ethernet console. Repeats fold into one entry with a count.
 
+## The serial console's line length
+
+The stock Repeater and Room server console reads at most 160 characters and echoes each one. A line that starts with `mecon> ` is the device interface's: after the prefix the rest is taken without echo, and a request envelope may be up to 4,096 bytes (the prefix and the line ending are not counted; [device interface](contract/DEVICE_INTERFACE.md)). Only such a line is that long: every other line is the stock CLI, with the stock limit. On the ESP32 Repeater and Room server with the device interface the serial receive buffer is 4,352 bytes, so a whole 4,096-byte line, its prefix and CRLF arrive without loss over a board's native USB, which delivers faster than the loop drains the default 256 bytes.
+
 ## The Ethernet console
 
 The RAK4631 `_ethernet` builds of the Repeater and Room server listen on a TCP port (23 by default) and hand each line to the same command handler as the serial console. The serial console is the cable. The TCP port is a plain-text line protocol on a network, so it is not.
@@ -122,6 +126,8 @@ New commands live under `mecon.` and are tried at the place where upstream calls
 |---|---|---|
 | `get mecon.cli.who` | read | `> transport=usb auth=cable remote=0 posture=normal principal=cable`, how the engine sees the caller (`mgmt=on` is appended for a flagged broker session) |
 | `get mecon.cli.check <line>` | read | `> class=write remote-limited`: the class of `<line>` and what the table says for this caller, without running it and without an audit entry |
+
+The diagnostic reads `get mecon.mem`, `get mecon.heaplow`, `get mecon.slowpass`, `get mecon.slowsections`, `get mecon.version` and `get mecon.boot` are also `read`; their replies are in the [CLI reference](CLI_REFERENCE.md).
 
 ## The command line over MQTT
 

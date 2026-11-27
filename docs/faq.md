@@ -255,6 +255,8 @@ You can get the latitude and longitude from Google Maps by right-clicking the lo
 
 `password {new-password}`
 
+> **In this fork**, a remote admin login is refused for as long as the admin password is the default (`password`) or empty. Set a new one on the local serial console first ([Standalone security postures](STANDALONE_POSTURES.md)).
+
 
 ### 3.4. Q: What is the password to join a room server?
 **A:** The default guest password to a room server is `hello`. Use the following command to change the guest password:
@@ -759,6 +761,8 @@ Allow user access on your USB port:
 After this bootloader is flashed onto the device, you can trigger an over-the-air update using Bluetooth by holding the button next to the D-Pad and then clicking the reset button. Then follow the same OTA update instructions above. You can skip the `start ota` instruction and start the update using the DFU app.
 
 
+> **In this fork**, `start ota` does not start a DFU update on an nRF52 build, and it is refused on every device-interface build. The fork updates with signed images ([updating and recovery](UPDATING_AND_RECOVERY.md)). The steps above are for stock MeshCore firmware.
+
 ### 7.2. Q: How to update ESP32-based devices over the air?
 **A:** For ESP32-based devices (e.g. Heltec V3):
 
@@ -770,6 +774,8 @@ After this bootloader is flashed onto the device, you can trigger an over-the-ai
 6. From your phone or computer connect to the 'MeshCore OTA' hotspot.
 7. From a browser, go to <http://192.168.4.1/update> and upload the non-merged bin from the flasher.
 
+
+> **In this fork**, `start ota` is off unless the build defines `ENABLE_WIFI_OTA`, and it is refused on every device-interface build, so the Wi-Fi hotspot steps above do not apply to its release images ([updating and recovery](UPDATING_AND_RECOVERY.md)).
 
 ### 7.3. Q: Is there a way to lower the chance of a failed OTA device firmware update (DFU)?
 **A:** Yes, developer `che aporeps` has an enhanced OTA DFU bootloader for nRF52 based devices. With this bootloader, if it detects that the application firmware is invalid, it falls back to OTA DFU mode so you can attempt to flash again to recover. This bootloader has other changes to make the OTA DFU process more fault tolerant.
@@ -808,6 +814,8 @@ Where `&type` is:
 **A:**
 Wi-Fi firmware requires you to compile it yourself, as you need to set the Wi-Fi SSID and password.
 Edit WIFI_SSID and WIFI_PWD in `./variants/heltec_v3/platformio.ini` and then flash it to your device.
+
+> **In this fork**, the Heltec V3 and V4 Wi-Fi builds take up to ten networks at run time with `set wifi.profile` ([connect to Wi-Fi and MQTT](CONNECTING.md)); no rebuild is needed.
 
 ### 7.7. Q: I have a Station G2, or a Heltec V4, or an Ikoka Stick, or a radio with an EByte E22-900M30S or an EByte E22-900M33S module, what should their transmit power be set to?
 **A:**

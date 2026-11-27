@@ -847,7 +847,7 @@ Bytes 5-8: Round trip in milliseconds (32-bit little-endian)
 | 6    | `ERR_CODE_ILLEGAL_ARG`     | Invalid argument (bad length, out-of-range value, reserved field, etc.)      |
 | 7    | `ERR_CODE_NOT_PERMITTED`   | MECON addition: the command is refused on this transport (see below)         |
 
-`ERR_CODE_NOT_PERMITTED` is returned for `CMD_RUN_CLI_COMMAND`, `CMD_EXPORT_PRIVATE_KEY`, `CMD_IMPORT_PRIVATE_KEY`, `CMD_SET_DEVICE_PIN` and `CMD_FACTORY_RESET` when they arrive over the unauthenticated TCP transport (`_wifi` and Ethernet builds). USB serial and paired BLE serve them as before.
+`ERR_CODE_NOT_PERMITTED` is returned for `CMD_RUN_CLI_COMMAND`, `CMD_EXPORT_PRIVATE_KEY`, `CMD_IMPORT_PRIVATE_KEY`, `CMD_SET_DEVICE_PIN` and `CMD_FACTORY_RESET`, and for the other frames that manage the device (settings, raw transmission, signing, remote administration, reboot), when they arrive over the unauthenticated TCP transport (`_wifi` and Ethernet builds) or over BLE paired with a default PIN (0 or 123456). USB serial and BLE paired with the device's own PIN serve them as before, except in the Hardened posture, which refuses key export and import on every transport. On an untrusted transport the device info answers the BLE PIN as 0 and `CMD_GET_CHANNEL` answers a channel's secret as zeros. The full list of gated frames is in the [command-line engine](CLI.md#the-table).
 
 **Note**: Error codes may vary by firmware version. Always check byte 1 of `PACKET_ERROR` response, and treat unknown codes as generic errors.
 

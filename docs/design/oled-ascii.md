@@ -2,6 +2,8 @@
 
 Source: approved 128×64 PNG mockups, 15 November 2026. **These text diagrams are content/layout transcriptions, not pixel-identical bitmap reproductions.** The approved PNGs remain the visual reference for exact 128×64 spacing and logo shape. All displayed values are examples.
 
+**This page is the approved design, not the shipped behaviour.** What the firmware shows is in [UI](../UI.md#boot-splash) and `src/helpers/ui/` (`MeconSplash.h`, `FrontPage.h`). The six front-page cases below match what ships (the row texts, the labels, `never` and the `..` clip at 21 columns). The splash differs in its values: the shipped URL line is `https://mecon.cloud/`, the MECON line shows the firmware's own version (`MECON 0.3.7` from `v1.18.0-mecon.0.3.7`), and the MeshCore line carries the upstream version without a leading `v` (`MeshCore 1.18.0`). Hostnames, networks and times in the diagrams are examples.
+
 ## Boot splash (same for Companion and Repeater)
 
 ```text
