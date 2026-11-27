@@ -126,7 +126,7 @@ jobs:
             sudo ln -sf /etc/apparmor.d/mosquitto /etc/apparmor.d/disable/mosquitto
             sudo apparmor_parser -R /etc/apparmor.d/mosquitto || true
           fi
-      - run: pip install "platformio==6.2.0" pytest
+      - run: pip install "platformio==6.2.0" pytest cryptography   # tools/tests sign a throwaway release set
       - name: PlatformIO packages, with retries
         # Before the first build, so a download outage fails here as infrastructure, not as "does not build" (#258).
         run: python3 tools/pio_fetch.py $(sim/build.sh --envs) native native_kiss_modem
