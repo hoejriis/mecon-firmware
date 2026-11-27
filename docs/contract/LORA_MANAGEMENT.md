@@ -42,7 +42,7 @@ Every role carries both paths. A Repeater or Room server holds a single manageme
   same signed request would be allowed over MQTT, USB or BLE, with the same class, the same per-line check for an
   operation that maps to a CLI line, and the same audit of a refusal.
 - **Opt in, per operation.** One list names what goes point to point and a shorter one what goes on the channel
-  ([managed operations](OPERATIONS.md) section 5.4). A new operation stays off LoRa until someone adds it. An operation
+  ([managed operations](OPERATIONS.md) section 5.4). A new operation stays off LoRa until someone adds it. The four update operations of [LoRa updates](LORA_UPDATES.md) (`update.manifest`, `update.manifest.part`, `update.offer`, `update.status`) are on the point-to-point list in builds that have that path, and never on the channel's. An operation
   not listed for a path answers `unknown-op` there, and `hello` on that link leaves it out.
 - **Never over LoRa:** a write-only setting such as a password, refused by key (`not-over-lora`), and every `secret`-class operation, on either path, since key material never goes on the air,
   whatever the encryption. Also every sensitive operation of AUTHORITY section 7.1, and so no link-nonce handshake in
@@ -102,7 +102,7 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   - the result of a state-changing operation;
   - errors.
   An operation whose result lists or reveals state is point to point only: `hello`, `status.get`, `config.schema`,
-  `config.get`, `deployment.get`, `job.list` and `region.list`. `contact.list` and the `channel.*` reads are not offered over LoRa at all.
+  `config.get`, `deployment.get`, `job.list`, `region.list`, `standing.put`, `standing.list`, `standing.remove`, `report.list` and `report.ack`. `contact.list` and the `channel.*` reads are not offered over LoRa at all.
 
 ## 4. Frames
 
@@ -179,8 +179,9 @@ encrypted on both paths. A node is addressed by its node public key, as native M
   when the window allows, or dropped at its deadline and counted. It is never lost without a trace. The manager's
   re-send then gets the stored result. Every frame of a reply is the same message, so a window that holds frame 3
   holds the rest behind it, and frames of two messages never interleave.
-- **Control is not starved by bulk.** No budget separate from the duty window applies to this path. Later bulk work on
-  LoRa, such as image bytes, must not be able to spend the airtime that a reply, a `parts-missing` or a revert needs.
+- **Control is not starved by bulk.** No budget separate from the duty window applies to this path. Bulk work on
+  LoRa, the image bytes of [LoRa updates](LORA_UPDATES.md), cannot spend the airtime that a reply, a `parts-missing` or a revert needs:
+  it stops at 80% of the window (LORA_UPDATES section 9).
 - **No storms on a group channel.** On the channel only the addressed node ever answers. There is no "who is X"
   broadcast that every member answers, no acknowledgement of frames that are not for this node, no answer to an
   unsigned or wrongly addressed frame, and no `parts-missing`.

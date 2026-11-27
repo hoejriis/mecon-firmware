@@ -12,7 +12,7 @@
     "staged": {"type": "integer", "minimum": 0, "maximum": 1920, "description": "ca_begin and ca_add: base64 characters of the CA held in the staging buffer"}
   },
   "oneOf": [
-    {"required": ["anchor"], "not": {"required": ["staged"]}},
-    {"required": ["staged"], "not": {"required": ["anchor"]}}
+    {"required": ["anchor"]},
+    {"required": ["staged"]}
   ]
 }
