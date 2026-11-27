@@ -3,8 +3,8 @@
 A Heltec V3 (a CP2102 bridge, USB vendor 0x10c4) wires DTR and RTS to its auto-reset pair: EN goes low, and the board
 resets, while RTS is high and DTR is low. Linux raises both lines at open, which the pair ignores, so the safe thing is to
 leave them as the open leaves them. Setting DTR low first and RTS low second passes through the reset state; that is how
-mecon_iface_hw.py reset v3test twice on 2026-11-08, once in the middle of an F2 session. The same rule, measured on
-v3test, is in the Reader's bench serial bridge (deimos-mesh, serial_bridge.py, #907).
+mecon_iface_hw.py reset a bench Heltec V3 twice on 2026-11-08, once in the middle of a managed session. A manager's
+bench serial bridge follows the same rule.
 
 Every other board keeps the preset: DTR low and RTS low, or DTR high for an nRF52 board (MECON_SERIAL_DTR=1), which stays
 silent on USB until the host asserts DTR. BENCH_LINES=untouched or BENCH_LINES=low overrides the choice.
