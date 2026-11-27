@@ -14,3 +14,5 @@ mutate anchor_refused_end_keeps_the_buffer $F '        const MqttProfiles::CaRes
 mutate anchor_op_sends_pieces_without_the_offset $G '"set mqtt.profile %u ca add @%u %.*s", idx, (unsigned)(off + at), (int)k, b64 + at' '"set mqtt.profile %u ca add %.*s", idx, (int)k, b64 + at' "$T"
 mutate anchor_op_begin_drops_the_hash $G '"set mqtt.profile %u ca begin %u %s", idx, (unsigned)size, hex' '"set mqtt.profile %u ca begin", idx' "$T"
 mutate anchor_pieces_in_use_ignored $G '  if (!h.cable && in_use != NET_NONE && (unsigned)n == in_use) { c.error = "in-use"; return ST_REFUSED; }' '' "$T"
+mutate anchor_not_staged_unnamed $G '    if (strstr(reply, "ca begin first")) c.error = "not-staged";' '    if (false) c.error = "not-staged";' "$T"
+mutate anchor_offset_unnamed $G '    else if (strstr(reply, "is not the staged length")) c.error = "offset";' '' "$T"

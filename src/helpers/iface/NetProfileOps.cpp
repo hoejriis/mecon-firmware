@@ -23,7 +23,16 @@ bool cliOk(const char* reply) { return strncmp(reply, "OK", 2) == 0 || strncmp(r
 Status runLine(OpContext& c, NetProfileHost& h, const char* line) {
   char reply[LINE];
   reply[0] = 0;
-  if (!h.run(h.user, line, reply, sizeof(reply)) || !cliOk(reply)) { c.error = "rejected"; return ST_INVALID; }
+  if (!h.run(h.user, line, reply, sizeof(reply)) || !cliOk(reply)) {
+    // The staged-anchor refusals are named, so a manager can resume (MQTT.md, "A CA in pieces"): no stage for this profile
+    // (never begun, ended, timed out, a reboot, or another profile's), an offset that is not the staged length, and an end
+    // whose certificate is not the size and SHA-256 that begin gave.
+    if (strstr(reply, "ca begin first")) c.error = "not-staged";
+    else if (strstr(reply, "is not the staged length")) c.error = "offset";
+    else if (strstr(reply, "not the size and SHA-256")) c.error = "ca-mismatch";
+    else c.error = "rejected";
+    return ST_INVALID;
+  }
   return ST_OK;
 }
 
