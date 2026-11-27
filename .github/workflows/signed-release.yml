@@ -43,7 +43,15 @@ jobs:
         run: |
           mkdir image
           B=.pio/build/${{ matrix.env }}
-          if [ -f "$B/firmware.zip" ]; then cp "$B/firmware.zip" image/${{ matrix.env }}.zip; else cp "$B/firmware.bin" image/${{ matrix.env }}.bin; fi
+          if [ -f "$B/firmware.zip" ]; then
+            # An nRF52 build: the signed DFU package, and the same application as a UF2 for the bootloader's USB drive. The hex
+            # carries its own addresses. The update set's index decodes the UF2 and refuses it unless it equals the zip's image.
+            cp "$B/firmware.zip" image/${{ matrix.env }}.zip
+            test -f "$B/firmware.hex"
+            python3 bin/uf2conv/uf2conv.py -c -f 0xADA52840 -o image/${{ matrix.env }}.uf2 "$B/firmware.hex"
+          else
+            cp "$B/firmware.bin" image/${{ matrix.env }}.bin
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: image-${{ matrix.env }}

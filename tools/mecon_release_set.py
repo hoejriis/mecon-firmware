@@ -7,16 +7,22 @@
 
     mecon_release_set.py index <images dir> <tag> <signed dir>
         Writes <signed dir>/update-set.json from the signed manifests there, and copies each image in under its asset name.
+        A bootloader-dfu variant also needs <images dir>/<variant>.uf2, the same application for the bootloader's USB drive. It
+        is decoded and compared with the firmware.bin of that variant's zip, and refused unless they agree; it is copied in as
+        <variant>-<version>.uf2 and the entry records its asset, hash and base address.
 
     mecon_release_set.py verify <signed dir>
         Checks every entry of the index: its signature against a production key in docs/contract/release-keys.json, and its
-        image and manifest hashes. A test key does not pass.
+        image and manifest hashes, and for a listed recovery UF2 its hash and that it decodes to its zip's firmware.bin.
+        A test key does not pass.
 """
 import hashlib
 import json
 import os
 import shutil
+import struct
 import sys
+import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPSTREAM = "v1.18.0"     # MECON_UPSTREAM_BASE (src/helpers/MeconVersion.h)
@@ -54,6 +60,53 @@ def read_image(images, v):
         return f.read()
 
 
+UF2_MAGIC0, UF2_MAGIC1, UF2_MAGIC_END = 0x0A324655, 0x9E5D5157, 0x0AB16F30
+UF2_FAMILY_NRF52840 = 0xADA52840
+UF2_FLAG_FAMILY = 0x2000
+
+
+def uf2_decode(data, what):
+    """(family, base address, payload) of a UF2 file. Refuses a malformed block, a mixed family and a gap or overlap in the addresses."""
+    if not data or len(data) % 512:
+        fail("%s is not a whole number of 512-byte UF2 blocks" % what)
+    family = base = None
+    payload = bytearray()
+    count = len(data) // 512
+    for i in range(count):
+        b = data[i * 512:(i + 1) * 512]
+        m0, m1, flags, addr, size, no, total, fam = struct.unpack_from("<8I", b, 0)
+        if m0 != UF2_MAGIC0 or m1 != UF2_MAGIC1 or struct.unpack_from("<I", b, 508)[0] != UF2_MAGIC_END:
+            fail("%s: block %d has bad magic numbers" % (what, i))
+        if flags != UF2_FLAG_FAMILY or size == 0 or size > 476 or no != i or total != count:
+            fail("%s: block %d has flags, size or numbering that are not a family-tagged sequential UF2" % (what, i))
+        if i == 0:
+            family, base = fam, addr
+        elif fam != family:
+            fail("%s: block %d changes the family" % (what, i))
+        elif addr != base + len(payload):
+            fail("%s: block %d is at 0x%x, not contiguous (expected 0x%x)" % (what, i, addr, base + len(payload)))
+        payload += b[32:32 + size]
+    return family, base, bytes(payload)
+
+
+def uf2_checked(uf2, zip_bytes, what):
+    """The UF2's base address, once it is shown to be the application of that DFU zip (nrfutil's firmware.bin) for the nRF52840."""
+    import io
+    family, base, payload = uf2_decode(uf2, what)
+    if family != UF2_FAMILY_NRF52840:
+        fail("%s has family 0x%08x, not 0x%08x" % (what, family, UF2_FAMILY_NRF52840))
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+            fw = z.read("firmware.bin")
+    except (zipfile.BadZipFile, KeyError):
+        fail("the DFU zip for %s has no firmware.bin" % what)
+    # The converter pads the last block to 256 bytes with 0xFF, the erased state of flash (0x00 is accepted too); nothing else may differ.
+    pad = payload[len(fw):]
+    if payload[:len(fw)] != fw or len(pad) >= 256 or set(pad) not in (set(), {0xFF}, {0x00}):
+        fail("%s is not the firmware.bin of its signed zip" % what)
+    return base
+
+
 def manifest_text(v, image, version, commit, key_id, issued_at):
     m = {"v": 1, "key_id": key_id, "line": "public", "version": version, "build": commit, "upstream": UPSTREAM, "interface": INTERFACE,
          "hardware": v["hardware"], "hardware_rev": [HARDWARE_REV], "role": v["role"], "variant": v["variant"], "layout": LAYOUT,
@@ -89,9 +142,21 @@ def index(images, tag, signed):
             fail("the signed manifest of %s is not for this image" % v["variant"])
         asset = name + image_name(v)[len(v["variant"]):]
         shutil.copyfile(os.path.join(images, image_name(v)), os.path.join(signed, asset))
+        extra = {}
+        if v["kind"] == "bootloader-dfu":
+            uf2_path = os.path.join(images, v["variant"] + ".uf2")
+            if not os.path.isfile(uf2_path):
+                fail("no recovery UF2 for %s: %s" % (v["variant"], uf2_path))
+            with open(uf2_path, "rb") as f:
+                uf2 = f.read()
+            base = uf2_checked(uf2, image, v["variant"] + ".uf2")
+            uf2_asset = name + ".uf2"
+            with open(os.path.join(signed, uf2_asset), "wb") as f:
+                f.write(uf2)
+            extra = {"recovery_uf2": uf2_asset, "recovery_uf2_sha256": hashlib.sha256(uf2).hexdigest(), "recovery_uf2_base": "0x%x" % base}
         entries.append({"variant": v["variant"], "hardware": v["hardware"], "role": v["role"], "kind": v["kind"], "manifest": name + ".manifest.json",
                         "image": asset, "image_sha256": m["image"]["sha256"], "image_size": len(image),
-                        "manifest_sha256": hashlib.sha256(text.encode()).hexdigest()})
+                        "manifest_sha256": hashlib.sha256(text.encode()).hexdigest(), **extra})
     with open(os.path.join(signed, "update-set.json"), "w") as f:
         json.dump({"set": 1, "line": "public", "version": version, "variants": entries}, f, indent=1)
 
@@ -125,6 +190,15 @@ def verify(signed, keys_file=os.path.join(ROOT, "docs", "contract", "release-key
             fail("the image of %s is not the one signed" % e["variant"])
         if hashlib.sha256(text).hexdigest() != e["manifest_sha256"]:
             fail("the index's hash of the manifest of %s is wrong" % e["variant"])
+        if e["kind"] == "bootloader-dfu" and "recovery_uf2" not in e:
+            fail("%s lists no recovery UF2" % e["variant"])
+        if "recovery_uf2" in e:
+            with open(os.path.join(signed, e["recovery_uf2"]), "rb") as f:
+                uf2 = f.read()
+            if hashlib.sha256(uf2).hexdigest() != e["recovery_uf2_sha256"]:
+                fail("the recovery UF2 of %s is not the one listed" % e["variant"])
+            if "0x%x" % uf2_checked(uf2, image, e["recovery_uf2"]) != e["recovery_uf2_base"]:
+                fail("the recovery UF2 of %s is at another address than listed" % e["variant"])
     print("%d variants verified" % len(entries))
 
 
