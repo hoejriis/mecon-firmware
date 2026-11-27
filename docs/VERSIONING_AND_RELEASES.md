@@ -30,6 +30,18 @@ One source: the build script `bin/mecon_version.py` (a PlatformIO `pre:` script 
 
 A release states, per board and role, what it supports. Its notes say what was verified and how, what was not, the behaviour changes and the measured memory cost. An update-capable release publishes a release manifest signed by a release key, with the image digest, the board, layout and role, the upstream base and the minimum version it may be installed over ([signed updates](contract/UPDATES.md)). USB stays the recovery path on every board.
 
+Every nRF52 variant in a release (the Wio Tracker L1 and the T1000-E) ships two images of one application: the signed serial-DFU package `<variant>-<version>.zip`, and `<variant>-<version>.uf2` for the bootloader's USB drive. The release's build makes the UF2 from the same build as the package, and the release is refused unless the UF2 decodes to the package's `firmware.bin` (same bytes, one contiguous run, family `0xADA52840`). `update-set.json` lists it as `recovery_uf2`, with `recovery_uf2_sha256` and `recovery_uf2_base`, the application's start address (`0x27000` for the S140 7.3.0 bootloader these boards ship). The UF2 is not signed and no manager installs it: it is for a person at a cable (recovery below). ESP32 variants have no UF2.
+
+### Recovering an nRF52 board from the bootloader's UF2 drive
+
+A board whose bootloader came up after an interrupted update, with no valid application, can sit in the bootloader's UF2 mode, where a serial DFU may report success and activate nothing. The drive (named like TRACKER L1 or T1000-E boot) is up in that mode.
+
+1. Open `INFO_UF2.TXT` on the drive. It must name the SoftDevice S140 7.3.0 (`SoftDevice: S140 7.3.0`). A board with another SoftDevice must not take this file: its application base differs.
+2. Copy the release's `<variant>-<version>.uf2` for that board and role onto the drive and wait for the copy to finish (sync or eject).
+3. The first copy can return to the bootloader. If the drive reappears, copy the same file again and the application starts.
+
+The node key, the device id and the Deployment record are not touched, because the UF2 writes only the application region. A manager confirms the new version in `hello` after the start.
+
 ## Release gate
 
 A release is published as a pre-release first. It is promoted, or advertises a board and role, only after that board and role pass their hardware checks with realistic stored state ([hardware evidence](HARDWARE_VERIFIED.md)).
