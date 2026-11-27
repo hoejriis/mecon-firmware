@@ -4,7 +4,7 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 
 ## 1. Model
 
-- **Streams.** Telemetry comes in named streams, one per family. A consumer starts one with `sub.start {"stream": <name>, "period_s", "lifetime_s"}` and stops it with `sub.stop`. A stream sends a snapshot at its period and, where the family has them, events when something changes. A subscription ends at its lifetime unless renewed, so a vanished consumer costs nothing.
+- **Streams.** Telemetry comes in named streams, one per family. A consumer starts one with `sub.start {"stream": <name>, "period_s", "lifetime_s"}` and stops it with `sub.stop`. A stream sends a snapshot at its period and, where the family has them, events when something changes. A subscription ends at its lifetime unless renewed, so a vanished consumer costs nothing. `period_s` runs from the stream's minimum period (section 2) to 3,600 s, default as in section 2, else `invalid` `bad-period`; an event stream with no period given one is `invalid` `no-period`. `lifetime_s` runs from 10 to 600 s, 300 by default, else `invalid` `bad-lifetime`.
 - **Discovery.** `hello` lists `stream.<name>` in `capabilities` for every stream the build and board can produce. A stream the device cannot produce is absent from the list and `sub.start` answers `invalid` with `unknown-stream`. A device without a sensor, a screen or a battery reading omits that capability. It never sends zeros in its place.
 - **Envelope.** Every event is `{"v":1,"ev":<stream>,"seq","epoch","ts","data"}` (DEVICE_INTERFACE section 3). `seq` counts per stream per device, so a gap on one transport is an event dropped there; `epoch` is the boot counter, so `(epoch, seq)` orders events across reboots and a Backend that receives one event over two paths drops the second copy.
 - **Absent, null, zero, stale.** Absent: this build or board does not have the field. `null`: the field exists but is unknown right now (a noise floor not yet calibrated, a clock not yet set). `0`: measured zero. Where a value can go stale (a GPS fix, a sensor reading), the event carries its age in seconds beside it. A sensor that fails a read reports its key with `null`, not a missing key.
@@ -46,7 +46,7 @@ This page is the one telemetry model. The device interface ([DEVICE_INTERFACE](D
 | `battery_level_method` | text | firmware | all | *(since v0.3.12.)* How `battery_level` was derived: `mv_mean_60s` |
 | `battery_level_changes` | count | `BatteryLevel` | all | *(since v0.3.12.)* Times `battery_level` changed since boot, the first change after boot (from `unknown` to a level) and every change to or from `unknown` included. A 16-bit counter that wraps at 65536 and restarts at 0 with a new `epoch`; `0` is a measured zero. A level that flaps shows as a count that keeps rising |
 | `power_source` | text | board | all | *(since v0.3.12.)* `external` or `battery` on a board that senses USB power (the Wio Tracker L1: the nRF52 USB regulator's VBUS flag, so `battery` means no USB power, not that a cell is fitted or that no other supply is connected), otherwise `unknown`. The Heltec V3 and V4 have no way to sense the supply, so they report `unknown`: a voltage is never taken for a source, and a USB-powered V3 with no cell, reading the rail at about 4.2 V, reports `ok` and `unknown`. The T1000-E reports `unknown` here too: its power-detect pins feed the `power` stream's `external`, but their polarity has not been confirmed on a board, so `power_source` does not rely on them |
-| `battery_guard` | object | `battery.guard` setting | all | *(Since v0.3.12.)* `{enabled, supported, effective}`: `enabled` is the stored setting, `supported` whether this board and role have the guard (the Heltec V3 and V4 voltage only, the Wio Tracker L1 and the T1000-E, as a Companion or a Repeater; `false` on the Room server and the Sensor, and on any other board), and `effective` is `report-only` in this release: **nothing sleeps or shuts down, whatever `enabled` says.** In the health stream only, not in `status.get`, whose whole answer must fit one signed reply over LoRa |
+| `battery_guard` | object | `battery.guard` setting | all | *(Since v0.3.16.)* `{enabled, supported, effective}`: `enabled` is the stored setting, `supported` whether this board and role have the guard (the Heltec V3 and V4 voltage only, the Wio Tracker L1 and the T1000-E, as a Companion or a Repeater; `false` on the Room server and the Sensor, and on any other board), and `effective` is `report-only` in this release: **nothing sleeps or shuts down, whatever `enabled` says.** In the health stream only, not in `status.get`, whose whole answer must fit one signed reply over LoRa |
 | `contacts.count`, `.capacity` | entries | contact store | Companion | absent on the server roles |
 
 ### `runtime`
@@ -229,7 +229,7 @@ A small binary subset of the producers above, for the radio, with the same meani
 
 ### Reports kept for later
 
-> **Status: built, on main and in no release yet.** Version 0 (2026-11-23), agreed with the reference Backend's coder.
+> **Status: built, since v0.3.21.** Version 0 (2026-11-23), agreed with the reference Backend's coder.
 
 A report sent while no receiver listens is lost today. A standing instruction may ask the device to keep what it sends,
 so a manager can collect it later over any link.

@@ -58,7 +58,7 @@ Carried as a string beside its signature (`authority_set`, `authority_set_sig`).
 {"v":1,"deployment_id":"<id>","from_epoch":1,"to_epoch":2,"new_public_key":"<hex>","issued_at":1790001000}
 ```
 
-Signed by the DAK of `from_epoch`, and `to_epoch` is `from_epoch + 1`. A device applies a chain of up to 8 in order, stopping at the first that fails (`untrusted_authority_key` for the whole message).
+Signed by the DAK of `from_epoch`, and `to_epoch` is `from_epoch + 1`. A device applies a chain of up to 8 in order, stopping at the first that fails (`untrusted_authority_key` for the whole message, or `wrong_deployment` when the rotation names another Deployment).
 
 ### 3.3 Signed request
 
@@ -135,7 +135,7 @@ A Backend records a device's `device_id` from `hello` or from `get device.id`, a
     - The page is a log of 16-byte slots, `{magic, state, ~state, CRC-32}`, read fail-closed. An erased page is absent. Valid slots followed only by erased ones give the last slot's state. Anything else is present: a torn write, or another firmware's data written over the page after a downgrade.
     - A write appends a slot. A full or unclean page is erased first, so there is one erase per 256 changes. Every write is read back.
     - A build whose image has grown into the page has no marker store at all.
-  - Only two operations clear it: `deployment.reset` and the factory reset (section 11). Nothing else, a file system format included, clears it.
+  - Only two operations clear it: `deployment.reset` and the factory reset (section 11). Nothing else, a file system format included, clears it. A first provisioning that fails to commit takes back the marker it had just set.
 - **Contents.** The payload holds:
   - the contract version, `deployment_id` and a 1 to 64 byte display name;
   - the DAK, `authority_epoch` and `authority_revision`, and the set text with its signature;
@@ -144,7 +144,7 @@ A Backend records a device's `device_id` from `hello` or from `get device.id`, a
   - optional broker-profile roles (transport metadata, never authority).
 - **Replay marks are kept apart.** Each member's sequence mark (section 8) lives in a small separate record. It has two copies framed the same way, so a power cut leaves the previous marks. A signed request then rewrites tens of bytes, not the whole record with its set text. That matters on nRF52, where the file system is 28 KB and flash wears out.
 - **A write that fails is a refusal.** When the device cannot persist a mark or a record, it answers `busy` and runs nothing.
-- **Fallback flag.** When the device falls back to the older copy of either record because the newer one is damaged, it says so in `status.deployment` (`fallback: true`). The older marks may be behind; a manager that sees the flag raises its sequence before its next request (section 8).
+- **Fallback flag.** When the device falls back to the older copy of the record because the newer one is damaged, it says so in `status.deployment` (`fallback: true`). When the marks are lost or the marks copy is damaged, `status.deployment` reports `marks_fallback: true` and `blocked_members`: every member's mark is then set to the highest value, so every request of that member is refused `replay` until the member is re-admitted at a higher `admitted_revision` (section 8); raising the sequence does not help.
 
 ## 5. Accepting an authority set
 
@@ -196,7 +196,7 @@ A newer authority set, with any rotations before it, for a device that holds a r
 
 ### 6.3 `deployment.get`
 
-An open read: the stored set and its signature, `deployment_id`, the epoch and revisions, the fallback flag, each member's current sequence mark, and the `broker_roles` the provisioning set (an empty list when it set none). A manager that lost track of its sequence (a restore from backup) reads its mark and continues above it. It reveals nothing secret. The same set is published retained at `mecon/<device_id>/authority` over MQTT.
+An open read: the stored set and its signature, `deployment_id`, the epoch and revisions, the fallback flag, each member's current sequence mark, and the `broker_roles` the provisioning set (an empty list when it set none). A manager that lost track of its sequence (a restore from backup) reads its mark and continues above it. It reveals nothing secret.
 
 The members, their marks and any rotation statement always come. The set's text and signature come only if the whole result fits its limit. Otherwise `authority_set_len` gives the length of the text. A manager that needs the text and gets the length holds its own copy from when it issued the set.
 
@@ -229,14 +229,14 @@ In this order; a failure refuses the request (`status:"refused"`, `error` the co
 - **Plain reads** are an allowlist: `hello`, `status.get`, `config.schema`, `config.get` of keys that are not secret, `deployment.get`, `identity.get`, `identity.rotation`, `clock.get`, `job.get`, `job.list`, `region.list`, and `sub.start`/`sub.stop` of the streams that are not private. A signed plain read carries no `job_id`. Replaying it elsewhere returns only what that operation returns to anyone allowed to read.
 - **Every other operation**, including any the device does not recognise as a plain read, carries a `job_id` and is subject to section 8. A captured request can then run at most once.
 - **Sensitive operations** are those whose reply is itself secret or private:
-  - `identity.key.export`, `ble.pin.get`, `deployment.set_unlock`, `identity.rotate` and `identity.delegate.put`;
-  - `sub.start` of a private stream: `screen`, `location`, `logs`, `inventory` (which carries the contact and channel entries on the Companion) and `rf` (the managed devices' replies to the Companion's `rf.request`). *(Corrected 2026-11-08: `rf` was missing from this list and from the firmware's, though the stream has been private since it was built.)* It needs the nonce alone: no `job_id`, and one sent is not looked at. The nonce already stops a replay before and after a reboot, so renewing a stream writes no mark to flash. `sub.stop` of a private stream carries a `job_id` and no nonce.
+  - `identity.key.export`, `ble.pin.get`, `deployment.set_unlock`, `deployment.continuity.put`, `identity.rotate` and `identity.delegate.put`;
+  - `sub.start` of a private stream: `screen`, `location`, `logs`, `inventory` (which carries the contact and channel entries on the Companion) and `rf` (the managed devices' replies to the Companion's `rf.request`). *(Corrected 2026-11-08: `rf` was missing from this list and from the firmware's, though the stream has been private since it was built.)* It needs the nonce alone: no `job_id`; a `job_id` sent is ignored unless it is 0 or 4294967295, which is refused. The nonce already stops a replay before and after a reboot, so renewing a stream writes no mark to flash. `sub.stop` of a private stream carries a `job_id` and no nonce.
 
   On top of the `job_id` where one is required, each must carry the `channel_nonce` the device issued for the link it arrives on. A device issues a fresh nonce per link, readable with `hello` on that link and replaced when the link drops, and a nonce is used once. A request captured on one link and replayed over another link (the attacker's own USB, BLE or broker session) fails before the reply exists.
 
 ## 8. Replay
 
-- **One strictly increasing sequence per member.** The device keeps one mark per member: the highest `job_id` it accepted. A request with a `job_id` above the mark runs. One equal to the mark is a duplicate: it never runs again, and it gets the stored result, or `duplicate` with no result when the result was not kept. One below the mark is refused as `replay`. Ids 0 and 4294967295 are never valid, and are refused as a malformed request. Every operation that carries a `job_id` shares the one sequence, whatever it does.
+- **One strictly increasing sequence per member.** The device keeps one mark per member: the highest `job_id` it accepted. A request with a `job_id` above the mark runs. One equal to the mark is a duplicate: it never runs again, and it gets the stored result, or `duplicate` with no result when the result was not kept (status `failed`, error `duplicate`; a repeated provisioning or authority update answers `ok` with `duplicate: true`). One below the mark is refused as `replay`. Ids 0 and 4294967295 are never valid, and are refused as malformed (answered `unauthenticated`). Every operation that carries a `job_id` shares the one sequence, whatever it does.
 - **Why strict, and not a window.** With a window, a request that an intermediary (a broker, a bridge) held back could still run after newer ones, out of order. A held `config.apply` released after its successor would put back an old setting, and a held reboot or reset could fire late. With one strict sequence, the moment a newer request runs, every older one the intermediary still holds is dead.
 - **Retry with the same bytes.** A manager that gets no answer resends the **same signed request**, never the same work under a new id. The answer is the stored result, or `duplicate` (it ran, or a power cut lost it after the mark was saved) and the manager reads the state. Signing a new id is how a manager deliberately abandons the older request.
 - **One request at a time per member.** A manager sends its next state-changing request when the previous one has an answer. Managers of one Deployment do not drive one device concurrently. Their sequences are independent, so the device cannot order one manager's held request against another's.
@@ -296,7 +296,7 @@ An enrolled device in Normal holds the Deployment's **continuity package**: the 
 *(Since v0.3.10. A Companion only, on builds with the inbox.)* An enrolled Companion in Normal can receive, decrypt and natively acknowledge direct text messages addressed to up to **four** further identities besides its own node key, for instance one a user shares with a car or a boat. The device never sends as a delegated identity: it holds no way to originate a message, request or advert in its name, and a command or a request sent to one is dropped. The limit of four is the build's, and is reported as `max` by `identity.delegate.list`.
 
 - **Putting one.** `identity.delegate.put {"slot": 0..3, "pub": <64 hex>, "sealed": <base64 of 112 bytes>, "channel": 0..62 (optional)}` is a sensitive operation: a member's signature, a job id and this link's channel nonce, over any wire transport (USB, BLE, a broker, TCP), in Normal. `sealed` is the identity's private key sealed to this device's node key (mecon-dl-v1, below), so a broker, a log or a relay that carries the request never holds a usable key. Refusals: `not_enrolled`, `unauthenticated`, `deployment_record_corrupt`, `hardened`, `seal_invalid` (the seal does not open for this device, job, slot and public key), `bad_key` (not a valid private key), `key_mismatch` (the public key is not the sealed key's), `reserved_hash` (the key's first byte is `00` or `FF`, as for a node key), `same_as_node`, `duplicate` (the key is in another slot) and `bad-args`. A key may replace itself in its slot, and another key may replace the slot's. The answer is `{"delegate":"stored","slot","pub"}` (with `channel` when one was given), never cached and never carrying the key. It is not offered over LoRa, which has no nonce handshake.
-- **Deleting one.** `identity.delegate.delete {"slot"}` is a signed request with a job id, in Normal; an empty slot answers `removed: false`. **Listing.** `identity.delegate.list` answers `{"max","identities":[{"slot","pub"}]}`: public keys only.
+- **Deleting one.** `identity.delegate.delete {"slot"}` is a signed request with a job id, in Normal; an empty slot answers `removed: false`. **Listing.** `identity.delegate.list` answers `{"max","identities":[{"slot","pub","channel"?}]}`: public keys only, and the local channel slot of an identity that has one.
 - **Never readable.** No operation, link or posture returns a delegated private key, not even to the cable; nothing exports one. A manager that needs the key keeps its own copy.
 - **At rest.** The table of keys is sealed under a 32-byte wrapping key the device makes itself and never exports, with the same construction as the continuity package (section 10a) under labels of its own (`mecon delegates enc v1`, `mecon delegates mac v1`; the file begins `MDG1`), and a fresh nonce on every save. The table and the key are two files, apart from the record and the continuity package. Destroying the key makes the table unreadable, whatever flash still holds.
 - **Destroyed by** entering Hardened or booting in Hardened (within one pass of the loop), `deployment.reset`, and the factory reset (section 11), which also removes the two files. **Kept by** `identity.rotate`: a delegated identity is not the node key, so a rotation does not touch it. A Companion rescue `rebuild` removes them where it reformats (ESP32), as it removes the continuity package, and a manager puts them again. Returning to Normal leaves none until a new put.
@@ -328,7 +328,7 @@ An enrolled device in Normal holds the Deployment's **continuity package**: the 
 | re-enrollment into the same Deployment | nothing | everything; the set and revision move forward | signed `deployment.provision` |
 | `deployment.reset` (unenroll), healthy record | the record, watermarks, local unlock secret, continuity package, delegated identities, provisioned marker | node key, `device_id`, configuration, contacts, channels | signed, over USB only, in Normal |
 | `deployment.reset`, corrupt record | the same | the same | USB cable in Normal; local unlock in Hardened |
-| posture raise (Normal → Hardened) | the continuity package (section 10a) and the delegated identities (section 10b) | the record | signed (`posture.set`); the cable only with no record |
+| posture raise (Normal → Hardened) | the continuity package (section 10a) and the delegated identities (section 10b) | the record | signed (`posture.set`); the cable with no record, or with a local unlock held |
 | posture lower (Hardened → Normal) | continuity material ([Security and authority](SECURITY_AND_AUTHORITY.md)) | the record | signed (`posture.set`); the cable only with no record |
 | `identity.rotate` (new owner) | node key, and what was made with it. Companion: contacts, message queue. Repeater: the client ACL. Room server: the client ACL and its posts | configuration, record, posture, `device_id`, and a Companion's channels and delegated identities (section 10b) | signed and sensitive; refused without a readable record. Every role |
 | Companion rescue `rebuild` | the continuity package where it reformats (ESP32); otherwise nothing: it saves everything else back, the record included. A manager puts the package again | everything | the cable |
@@ -356,12 +356,12 @@ Rules:
 - **Device keys and secrets** come from the platform's cryptographic RNG, fed by the hardware RNG: `esp_fill_random` on ESP32, and the nRF52's hardware RNG peripheral. This covers the node key, `device_id`, the BLE PIN, the local unlock challenge and the channel nonces. Never Arduino `random()`, which is a seeded libc PRNG on some cores.
   - The node key's seed mixes that source with the LoRa radio's noise (`RadioNoiseListener`). On the nRF52 with the CC310 the source is the CC310's TRNG. On ESP32, `esp_fill_random` has full entropy only while Wi-Fi or BLE runs, and a node key is made in `setup()` before either starts, so it is drawn inside `bootloader_random_enable()`, which feeds the RNG from the SAR ADC's noise.
   - Every other draw on an ESP32 may come when neither radio runs, as on a Repeater or Room server, and the ADC source cannot run beside the radio or another ADC user. So each boot takes a 32-byte seed from the ADC source at the start of `setup()`, and every later draw has a SHA-256 stream from that seed XORed in. The seed moves on after each draw. This covers `device_id`, the local unlock challenge, the channel nonces, a rotation's new key and an update's nonce.
-- A signed update that names a minimum firmware version is bound to the record before a device enforces it, so downgrading the firmware cannot drop the rule.
+- The update security floor rises only with the running image and is kept outside the record, in NVS or its own flash page ([UPDATES](UPDATES.md) section 4); a manifest's claim never moves it.
 - **Wiping.** Key material is cleared with a wipe the compiler may not drop (a volatile loop), on every exit path of a rotation. A rotation's new key is drawn from a source that must pass a health test: not all zero, at least 16 distinct byte values, and not equal to the previous draw; otherwise the refusal is `rng`. After a rotation the old private key can remain in unerased flash blocks until they are reused (the file system replaces files atomically and does not erase in place), so a rotation protects against later use of the old key by the device, not against someone who images the flash of the same unit.
 - **The DAK and manager keys** never exist on a device. Only public keys and signatures do.
 - **The node private key** leaves a device only under the custody rule in [Security and authority](SECURITY_AND_AUTHORITY.md):
-  - before provisioning, over a USB cable;
-  - after provisioning, by a signed request answered only to the requester's channel.
+  - before provisioning, over a USB cable, and on a Companion by a phone paired with the device's own PIN in Normal;
+  - after provisioning, by a signed request answered only to the requester's channel; with a corrupt record, over the cable unsigned.
   It never leaves in Hardened.
 - **Never in any status, event, log, audit entry or screen telemetry stream:** Wi-Fi and broker passwords, the broker user, private keys, the local unlock secret, channel secrets. The screen stream is private because a frame can show message text and the pairing PIN. It reaches only the callers of the `private` class ([TELEMETRY](TELEMETRY.md)), a frame showing the pairing PIN is withheld, and it is never retained. Nothing else on a frame is redacted (pixels cannot be redacted reliably), so access control is its protection.
 
@@ -393,10 +393,10 @@ The review also changed: the size limits (2,048-byte set, 16 revoked ids, no rot
 
 ## 16. Conformance
 
-- Public test vectors: `test/fixtures/deployment_authority_public_v1.json`, generated by `tools/mecon_auth_vectors.py` from this page. Both land with the implementation branch. Every key is derived from a public label, so these are test keys and valid nowhere. The vectors cover two authority sets, a rotation, a signed request, a signed event, a signed result, the node rotation statement and the signed device_id binding with and without a nonce, and a foreign claim (another key signing the same device_id) that only the Backend rule refuses. `--check` fails if the fixture drifts from the generator.
+- Public test vectors: `test/fixtures/deployment_authority_public_v1.json`, generated by `tools/mecon_auth_vectors.py` from this page. Every key is derived from a public label, so these are test keys and valid nowhere. The vectors cover two authority sets, a rotation, a signed request, a signed event, a signed result, the node rotation statement and the signed device_id binding with and without a nonce, and a foreign claim (another key signing the same device_id) that only the Backend rule refuses. `--check` fails if the fixture drifts from the generator.
 - Unit tests cover:
   - every check of sections 5 and 7, in order;
   - the record framing under damage of either copy and a power cut at each step;
   - the membership and re-admission rules;
   - the sequence at the mark, below it and across a reboot, and a failed mark write refusing the request.
-- Simulated-board tests over every transport follow when the roles enforce the record.
+- Simulated-board tests cover the record on every role and transport (`sim/tests/`, including `test_delegates.py`).

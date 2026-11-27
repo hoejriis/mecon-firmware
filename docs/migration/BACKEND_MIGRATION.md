@@ -205,7 +205,7 @@ Backend parsers and UI must move from legacy health/status field assumptions to 
 
 ## OTA
 
-A legacy firmware line may already offer its own signed-manifest updates, with its own acknowledgement and relay topics. This firmware's update lifecycle is the one in the public contract ([updates](../contract/UPDATES.md)): signed release manifests, installs authorised per device, and delivery over IP, USB and BLE, depending on the board. Delivering firmware images over LoRa is not part of it yet.
+A legacy firmware line may already offer its own signed-manifest updates, with its own acknowledgement and relay topics. This firmware's update lifecycle is the one in the public contract ([updates](../contract/UPDATES.md)): signed release manifests, installs authorised per device, and delivery over IP, USB and BLE, depending on the board. Delivering firmware images over LoRa is in the ESP32 builds since v0.3.21 ([LoRa updates](../contract/LORA_UPDATES.md)); it has not yet run end to end on real radios, and the nRF52 builds do not carry it.
 
 Backend changes:
 
@@ -239,7 +239,7 @@ Before replacing a legacy fleet, demonstrate against the current MeshContinuum b
 - Companion messaging and provisioning;
 - direct USB/BLE Reader operation;
 - outage/private-channel behaviour and daily status;
-- update lifecycle (signed updates over IP, USB and BLE; no LoRa image delivery yet);
+- update lifecycle (signed updates over IP, USB and BLE; LoRa image delivery in the ESP32 builds only, not yet bench-verified);
 - backend handling of dynamic contact/resource capacity;
 - legacy adapters can be identified and later removed independently of the v1 implementation.
 

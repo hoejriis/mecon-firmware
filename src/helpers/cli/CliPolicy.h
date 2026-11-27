@@ -117,7 +117,7 @@ struct Context {
   // (MyMesh::handleCommand) and for the factory-reset frame; a context built anywhere else leaves it false.
   bool enrolled = false;
   // The cable link this request arrived on holds a valid local unlock (AUTHORITY.md section 10): the HMAC challenge was
-  // answered, and neither its 10 minutes nor the link have run out. Set by the owner of the Deployment record
+  // answered, and neither its 5 minutes nor the link have run out. Set by the owner of the Deployment record
   // (Iface::DeployAuth) for the cable link only; honoured by decide() and unlockManagement() for the cable principal and
   // by no other.
   bool unlocked = false;

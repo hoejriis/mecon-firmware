@@ -1,6 +1,6 @@
-# Signed firmware updates over LoRa (contract draft)
+# Signed firmware updates over LoRa
 
-> **Status: draft for review, version 0 (2026-11-23).** Built in the simulator, on main and in no release yet; not run on real radios, so nothing here is bench-verified. Built: the bulk frame and answer codec (`LoraBulk`), the target's transfer state (`LoraTransfer`), the target side of the transfer (`update.manifest.part`, an `update.offer` with `source.lora`, the `paused` state and its resume, the writing of the slot with durable `next`, and the verify, activate and confirm a push has), the target's radio side (a point-to-point bulk frame goes to the transfer, a bulk frame on the management channel is dropped and counted, block answers go back to the peer the frames came from through the duty window), and the gateway's `rf.bulk` and `rf.status` with the 80% bulk ceiling, the carrying of `update.manifest`, `update.manifest.part`, `update.offer` and `update.status` over the radio, point to point only, in builds with the path, and the reference manager with its fixtures and simulator tests (section 11); the manager's control requests use the radio (`LoraControl`) by default, with `--target-port` as an option. Not built: deflate and the fast preset (an offer naming a preset is `unsupported`), and nRF52. It extends the [signed update](UPDATES.md)
+> **Status: version 0 (2026-11-23), in the ESP32 builds since v0.3.21 and in the simulator; not run on real radios, so nothing here is bench-verified.** Built: the bulk frame and answer codec (`LoraBulk`), the target's transfer state (`LoraTransfer`), the target side of the transfer (`update.manifest.part`, an `update.offer` with `source.lora`, the `paused` state and its resume, the writing of the slot with durable `next`, and the verify, activate and confirm a push has), the target's radio side (a point-to-point bulk frame goes to the transfer, a bulk frame on the management channel is dropped and counted, block answers go back to the peer the frames came from through the duty window), and the gateway's `rf.bulk` and `rf.status` with the 80% bulk ceiling, the carrying of `update.manifest`, `update.manifest.part`, `update.offer` and `update.status` over the radio, point to point only, in builds with the path, and the reference manager with its fixtures and simulator tests (section 11); the manager's control requests use the radio (`LoraControl`) by default, with `--target-port` as an option. Not built: deflate and the fast preset (an offer naming a preset is `unsupported`), and nRF52. It extends the [signed update](UPDATES.md)
 > lifecycle to a LoRa delivery path and [management over LoRa](LORA_MANAGEMENT.md) to carry image bytes. It is written to
 > be agreed between this firmware and a public manager (the reference Backend), before either implements it. Section 12
 > lists what is still open. Over LoRa the target carries `update.manifest`, `update.manifest.part`, `update.offer` and `update.status`, point to point only and in builds that have the path (section 8).
@@ -49,7 +49,7 @@ The gateway reuses `rf.request` (OPERATIONS) for signed requests, and adds one r
 `issued_at` (AUTHORITY section 3.3: one of the six bound fields, at the request object's top level beside `op` and `args`), and the
 window is measured from it. An unsigned offer (the cable of a device with no Deployment record) may give `issued_at` in `args`
 instead; a signed offer whose `args` carry an `issued_at` that differs from the body's is `invalid`, `bad-args`. One is required
-with `source.lora`. *(Built on main, in no release yet.)*
+with `source.lora`. *(Since v0.3.21.)*
 
 - `block` (**required**): bulk frames per block, 1 to 8; any other value, or no value, is `invalid`, `bad-args`. The target answers once per block (section 6). A `source.lora` with any key beside `block`, `window_end` and `preset` is `invalid`, `bad-args` too, and so is a `source` that names another source as well.
 - `window_end` (**required**): the time after which the target takes no more bulk frames for this job, and pauses
@@ -82,8 +82,7 @@ A signed stage of the longest manifest is about 1,480 bytes, more than the 1,024
 - `update.manifest.part {"sha256", "part", "parts", "data"}`: `sha256` of the manifest text as UPDATES section 8 keys it,
   at most 4 parts, `part` counted from 1 to `parts`, `data` canonical base64 of at most 176 bytes. The parts, joined in order of
   `part`, are the manifest text followed by its 64-byte signature (raw), so the longest is 640 + 64 = 704 bytes in four parts
-  of 176. A joined text whose SHA-256 is not `sha256` is `invalid`, `bad-args`, and the parts are spent. *(Built on main, in no
-  release yet.)* It is a **signed** request like every request over LoRa (LORA_MANAGEMENT
+  of 176. A joined text whose SHA-256 is not `sha256` is `invalid`, `bad-args`, and the parts are spent. *(Since v0.3.21.)* It is a **signed** request like every request over LoRa (LORA_MANAGEMENT
   section 2), and carries a `job_id` like every signed request that is not one of the plain reads (AUTHORITY section 7.1), so each part
   takes a number of the member's sequence. The parts are carried over LoRa point to point, as are `update.manifest`, `update.offer` and
   `update.status`, and never on the management channel.
@@ -128,8 +127,7 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
   target, sends them through the duty window, and returns at once with `{"queued", "bulk_budget_ms"}`: the frames now
   waiting, and the airtime bulk may still spend in the current hour before the reserve (section 9). `rf.status` reads
   the same two figures without queuing anything, so a manager paces itself instead of filling the queue. The gateway
-  never reads or keeps the frames. On the USB link to the manager they are base64; on the air they are not. *(Built on main,
-  in no release yet.)* Each frame is at most 132 bytes and starts with the bulk marker, at most 8 to a call, else `invalid`,
+  never reads or keeps the frames. On the USB link to the manager they are base64; on the air they are not. *(Since v0.3.21.)* Each frame is at most 132 bytes and starts with the bulk marker, at most 8 to a call, else `invalid`,
   `bad-args`; the queue holds 16 frames for one node at a time; frames that would exceed `bulk_budget_ms` (or the queue) are
   all refused, `busy`, with nothing queued; frames that wait ten minutes are dropped. `bulk_budget_ms` is the 80% ceiling of
   the duty window (section 9) less the airtime already used in the hour and less that of the frames queued, so a node that
@@ -165,7 +163,7 @@ The image travels as raw bytes, never as base64 or JSON, because on LoRa every b
   resumes it: same job, same token, `next` as kept; the answer is the offer's answer, with `next` as it stands. A signed request
   cannot reuse a job number (AUTHORITY section 8), so a resume is matched by the manifest's hash under any newer `job_id`, and
   the answer names the original job and carries its original token. The bulk frames keep the original job's number: frames numbered
-  for the resuming request are another transfer's and are dropped. (*Built on main, in no release yet.*) The manifest has to be staged again after a reboot. A
+  for the resuming request are another transfer's and are dropped. (*Since v0.3.21.*) The manifest has to be staged again after a reboot. A
   window that is not later is `invalid`, `bad-args`, and changes nothing. Any other offer supersedes it (UPDATES section 7).
   The resume skips the 60 s limit on offers, which protects the slot from being erased, since it erases nothing.
 - **The job.** `job.get` on an open or paused transfer adds `next`, `frames_total`, `window_end` and, paused, `reason`. A paused
@@ -227,7 +225,7 @@ rebooted in between; and the gateway and the target both back on their own radio
 
 ## 11. The reference manager and fixtures
 
-So that the firmware can be built and proven without either Backend (*built on main, in no release yet*):
+So that the firmware can be built and proven without either Backend (*since v0.3.21*):
 - `tools/lora_ota_manager.py`: a standalone manager that stages, offers, sends blocks through a USB-attached Companion,
   resumes and confirms, with the public test keys;
 - signed fixtures for the offer, the manifest parts, the bulk tag, a block answer that arrives after the next block
