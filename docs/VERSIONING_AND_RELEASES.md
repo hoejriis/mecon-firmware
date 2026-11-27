@@ -34,7 +34,7 @@ Every nRF52 variant in a release (the Wio Tracker L1 and the T1000-E) ships two 
 
 ### Recovering an nRF52 board from the bootloader's UF2 drive
 
-A board whose bootloader came up after an interrupted update, with no valid application, can sit in the bootloader's UF2 mode, where a serial DFU may report success and activate nothing. The drive (named like TRACKER L1 or T1000-E boot) is up in that mode.
+A board whose bootloader came up after an interrupted update, with no valid application, can sit in the bootloader's UF2 mode, where a serial DFU may report success and activate nothing. On the bench, a bootloader DFU cut during the erase wait (about 15 s for these images) was recovered by one more full serial DFU; a cut after data writing began was not, and only the UF2 recovered it. `Device programmed.` is no evidence: confirm the version in `hello`. The drive (named like TRACKER L1 or T1000-E boot) is up in that mode.
 
 1. Open `INFO_UF2.TXT` on the drive. It must name the SoftDevice S140 7.3.0 (`SoftDevice: S140 7.3.0`). A board with another SoftDevice must not take this file: its application base differs.
 2. Copy the release's `<variant>-<version>.uf2` for that board and role onto the drive and wait for the copy to finish (sync or eject).

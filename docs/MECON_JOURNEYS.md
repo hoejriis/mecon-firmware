@@ -137,7 +137,7 @@ A node with no IP link sends a small signed report over LoRa. The manager can as
 | `standing.put` | Sends that report every `every_s` while the manager is away, with `runs` and `durable`. The same `id` replaces | [OPERATIONS](contract/OPERATIONS.md) section 5.1 |
 | `standing.list` | Each instruction, with `runs_left`, and since boot `runs`, `failed` and `skipped` | [OPERATIONS](contract/OPERATIONS.md) section 5.1 |
 | `standing.remove` | Removes one by `id` | [OPERATIONS](contract/OPERATIONS.md) section 5.1 |
-| `report.list`, `report.ack` | *(On main, in no release yet.)* Collect the reports a `keep` instruction kept, and release them | [OPERATIONS](contract/OPERATIONS.md) section 5.1 |
+| `report.list`, `report.ack` | *(Since v0.3.21.)* Collect the reports a `keep` instruction kept, and release them | [OPERATIONS](contract/OPERATIONS.md) section 5.1 |
 | `status.get` | `lora`, and on a Companion `rf` and `lora_tx` | [LORA_MANAGEMENT](contract/LORA_MANAGEMENT.md) section 7 |
 | `rf` stream | On a Companion, the replies and compact reports it hears, as `{"from","report"}` (base64) for the manager to verify | [TELEMETRY](contract/TELEMETRY.md), compact reports |
 

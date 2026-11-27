@@ -22,7 +22,7 @@ Some things hold on every board:
 - **The private key.** `get prv.key` works on the USB console in Normal, before enrolment. On a Companion, use the app's export: its command line has no such command. Keep the key safe: it is the device's identity. Hardened refuses the export.
 - **A change of role is not a clean swap.** A Companion and a Repeater share a settings file, so going from one to the other and back can change the radio and other settings. Compare with `get` afterwards.
 - **A stock contact file** migrates at the first boot ([contacts](CONTACTS.md)), except on the T1000-E Companion, which keeps the stock table.
-- **A board from the private reference firmware** reads that firmware's Deployment record as corrupt, and refuses changes until it is cleared ([steps](migration/BACKEND_MIGRATION.md#moving-a-board-from-the-private-090x-line)).
+- **A board from the private reference firmware** reads that firmware's Deployment record as corrupt, and refuses changes until it is cleared ([steps](migration/BACKEND_MIGRATION.md#moving-a-board-from-the-legacy-090x-line)).
 
 These are results from particular runs, not a guarantee for your device. If you cannot lose it, back it up first and compare afterwards. A factory reset erases everything, the node key included.
 

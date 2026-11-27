@@ -5,7 +5,7 @@
 - `get dutycycle`: the band, its regulatory floor, your limit and the airtime used in the last hour.
 - `get wifi.status`, `get mqtt.status`: link state, and for MQTT whether TLS was verified.
 - `get audit`: the security audit log (posture changes, refusals, failed logins, resets), over a trusted link ([postures](STANDALONE_POSTURES.md#audit-log)). A manager reads its history with `audit.list`.
-- `get mecon.mem`: free heap, the largest free block, the lowest free heap since boot, and whether the heap is below its floor ([heap floor](CONNECTIVITY_MODE.md#heap-floor)).
+- `get mecon.mem`: free heap, the largest free block, the lowest free heap since boot, and whether the heap is below its floor ([heap floor](CONNECTIVITY_MODE.md#heap-floor)). While a TLS broker session is open, the floor check adds that session's own input buffer to the largest block (from v0.3.21).
 - `get mecon.heaplow`: what was running when the largest block, and the free heap, were at their lowest since boot; on nRF52 also the loop task's least free stack and what was running when it was reached.
 - `get mecon.slowpass` and `get mecon.slowsections`, on a Companion: the longest main-loop pass and which part of the loop took it, and each part's own longest run. A long pass keeps the cable and the radio waiting ([CLI reference](CLI_REFERENCE.md)).
 - `status.get` over the device interface: the status snapshot, with the LoRa management counts (`lora`), and on a Companion that has relayed a request, the counts of its relay replies (`rf`), which show where a missing reply was lost ([LoRa management](contract/LORA_MANAGEMENT.md)). Within it:

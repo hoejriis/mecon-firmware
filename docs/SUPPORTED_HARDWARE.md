@@ -38,7 +38,8 @@ One management model covers every path: an operation means the same wherever it 
 | BLE on a Repeater or Room server | None. Local management is the USB console | Project decision |
 | BLE and Wi-Fi together on the Heltec Companion | One per boot | Project decision, to keep memory headroom |
 | A Hardened Companion in Wi-Fi mode | No app transport. Use USB | Project decision |
-| Firmware updates on nRF52 boards | Over USB only, written by the bootloader, with no previous image to return to | Hardware: one image slot and a bootloader that checks no signature. Project decision: no BLE update path |
+| Signed updates over LoRa | ESP32 dual-slot builds as the target, point to point only, from v0.3.21. Not on the nRF52 boards. Not yet run between two boards | Hardware and project decision: the transfer needs a second image slot ([signed updates over LoRa](contract/LORA_UPDATES.md)) |
+| Firmware updates on nRF52 boards | Over USB only, written by the bootloader, with no previous image to return to. Each release also ships a `.uf2` per variant, for a person at a cable to recover a board left in its bootloader ([recovery](VERSIONING_AND_RELEASES.md#recovering-an-nrf52-board-from-the-bootloaders-uf2-drive)) | Hardware: one image slot and a bootloader that checks no signature. Project decision: no BLE update path |
 | The sensor role | No device interface | Project decision |
 | Local access on each role | Companion: app frames over USB and BLE. Repeater, Room server: a console line over USB | Role: the stock roles differ |
 | Messages, received-message collection, contact operations and `rf.request` | Companion only | Role: a Repeater or Room server has no stock chat client |

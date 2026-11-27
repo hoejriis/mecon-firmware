@@ -9,8 +9,8 @@ Notes for coding agents, and people, building, testing and changing this firmwar
 - Native unit tests: `sh sim/run.sh pio test -e native -f <test_dir>`.
 - ESP32 targets need their rebuilt IDF libraries first, per environment, and again after building another board:
   `sh sim/run.sh sh bin/idf5_libs.sh <env>`, then `sh sim/run.sh pio run -e <env>` ([PLATFORM](docs/PLATFORM.md)).
-- Flash budgets live in `ci/size-budget.txt`. When a build goes over, raise it to the use plus 4 KB, rounded up to a
-  whole KB, and say why in the commit.
+- Flash budgets live in `ci/size-budget.txt`. When a build goes over, raise it to the measured use, rounded up to a
+  whole KB, and say why in the commit. (The rows were first seeded at use plus 4 KB.)
 
 ## Mutation tests
 

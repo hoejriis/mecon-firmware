@@ -24,8 +24,8 @@ From [v0.2.0](https://github.com/hoejriis/mecon-firmware/releases/tag/v0.2.0), a
 
 | Board | Delivery | If the new image fails |
 |---|---|---|
-| Heltec V3, V4 | pushed over USB or BLE (a manager on MQTT offers it and a bridge pushes it), or downloaded by the device over IP | The image boots on trial. It is reverted unless confirmed in time, and at once after a crash, watchdog or brownout reset |
-| T1000-E, Wio Tracker L1 | a signed offer, then the bootloader's serial DFU over USB (USB only, by design decision) | There is no previous image to return to. The device reports its version. A failed image is replaced over USB |
+| Heltec V3, V4 | pushed over USB or BLE (a manager on MQTT offers it and a bridge pushes it), or downloaded by the device over IP | The image boots on trial. It is reverted unless confirmed in time, and at once after a crash, watchdog or brownout reset. From v0.3.21 an ESP32 dual-slot build can also take a signed offer over LoRa, point to point, as the target; that path has not run between two boards ([availability](AVAILABILITY.md)) |
+| T1000-E, Wio Tracker L1 | a signed offer, then the bootloader's serial DFU over USB (USB only, by design decision) | There is no previous image to return to. The device reports its version. A failed image is replaced over USB. A board left in its bootloader by an update cut after data writing began is recovered from the release's `.uf2` (from v0.3.22; [steps](VERSIONING_AND_RELEASES.md#recovering-an-nrf52-board-from-the-bootloaders-uf2-drive)) |
 
 Stock MeshCore's unsigned Wi-Fi updater (`start ota`) is refused in these builds.
 
@@ -37,7 +37,7 @@ No board's bootloader checks signatures, and no secure boot or flash encryption 
 
 - **A configuration change sent remotely** (radio, transmit power, connectivity mode, Wi-Fi or broker settings, the management channel) takes effect as a job that must be confirmed. It reverts if it is not confirmed in time, if it is cancelled, or if the device boots twice first ([manage a device](MANAGING.md#changes-that-could-cut-you-off)).
 - **A save cut by power loss.** Settings, identity, channels and contacts are written to a temporary copy, checked and swapped in. A cut leaves the previous complete file. A damaged identity is set aside as `<file>.damaged`, not replaced.
-- **An update cut short.** The job fails with `interrupted`, and the running image is unchanged. On a Heltec board an image already written but not confirmed is reverted.
+- **An update cut short.** The job fails with `interrupted`, and the running image is unchanged. On a Heltec board an image already written but not confirmed is reverted. On an nRF52 board a cut after data writing began can leave the board in its bootloader, where a serial DFU may report success and activate nothing: copy the release's `.uf2` onto the bootloader's drive.
 - **Results across a disconnect.** A job's result is kept until the manager collects it with `job.get`, across a reboot too.
 
 ## Resets
@@ -58,4 +58,4 @@ To enter the rescue console on a Companion, long-press the user button within 8 
 - **A Hardened Companion in Wi-Fi mode** has no app transport, by design decision. Use USB.
 - **A Repeater or Room server refusing a correct password.** The client's clock once ran ahead and left a watermark in the future. A restart of the device clears it and changes no setting ([postures](STANDALONE_POSTURES.md#recovery)).
 - **A Companion whose own clock ran ahead.** `clock back <epoch seconds>` over USB sets it right, and its messages carry the right time at once. Peers that hold the contact ignore its adverts for as long as the clock went back, because they refuse an advert no newer than the last they heard. Removing and adding the contact on a peer ends that sooner. A clock left ahead costs the same wait, with the wrong time throughout.
-- **A device moved from the private reference firmware** reads that firmware's Deployment record as corrupt and refuses changes until it is cleared. [Backend migration](migration/BACKEND_MIGRATION.md#moving-a-board-from-the-private-090x-line) gives the steps.
+- **A device moved from the private reference firmware** reads that firmware's Deployment record as corrupt and refuses changes until it is cleared. [Backend migration](migration/BACKEND_MIGRATION.md#moving-a-board-from-the-legacy-090x-line) gives the steps.
