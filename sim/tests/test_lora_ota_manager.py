@@ -150,8 +150,16 @@ def test_the_manager_moves_an_image_through_loss_reordering_a_lost_and_a_stale_a
     gw.replace_base[8] = 4
     assert m.run() == "complete"
     sent = [s[0] for s in gw.sent]
-    # block 0 arrived backwards, so its first answer holds only the last frame: the three missing go again, with the last
-    assert sent[0:2] == [[0, 1, 2, 3], [0, 1, 2, 3]], sent
+    # block 0 arrived backwards, so its first answer was formed with only the frames that had come by then: the last one,
+    # and sometimes the one before it (when it lands before the answer goes). Whatever that answer held, the resend is
+    # exactly the frames it lacked, with the block's last frame at the end to ask for the answer again.
+    assert sent[0] == [0, 1, 2, 3], sent
+    first = next(bulk.check_answer(m.keys, m.job_no, a) for a in gw.heard if bulk.check_answer(m.keys, m.job_no, a)
+                 and bulk.check_answer(m.keys, m.job_no, a)[0] == 0)
+    held = [o for o in range(4) if first[2] >> o & 1]
+    assert 3 in held and 0 not in held, ("the last frame came first, the first came last", held)
+    missing = [o for o in range(4) if o not in held]
+    assert sent[1] == missing + ([] if 3 in missing else [3]), (held, sent)
     # block 1: frame 5 alone is missing; it goes again with the block's last frame, never the frames held
     assert sent[2:4] == [[4, 5, 6, 7], [5, 7]], sent
     # block 2: nothing is skipped on a stale answer's word; after the wait the whole block goes again
