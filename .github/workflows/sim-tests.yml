@@ -61,6 +61,9 @@ jobs:
         timeout-minutes: 8
         run: |
           APT="sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          # Only the Ubuntu archive is needed (mosquitto, openssl, libssl-dev). The runner image's third-party lists, among them
+          # packages.microsoft.com, can refuse an update (a 403 on 2026-11-27) and fail this step: drop them first.
+          sudo find /etc/apt/sources.list.d -maxdepth 1 \( -name '*.list' -o -name '*.sources' \) ! -name 'ubuntu*' -print -delete
           for i in 1 2; do
             timeout 180 $APT update && timeout 180 $APT install -y --no-install-recommends mosquitto mosquitto-clients openssl libssl-dev && break
             [ "$i" = 2 ] && exit 1
